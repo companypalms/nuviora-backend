@@ -1,0 +1,502 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use App\Models\Setting;
+use App\Models\Status;
+use App\Models\OrderActivityLog;
+use App\Models\OrderUpdate;
+
+class Order extends Model
+{
+    //
+    use HasFactory;
+ 
+    protected $casts = [
+        'change_payment_details' => 'array',
+        'scheduled_for'          => 'datetime',
+        'agency_locked'          => 'boolean',
+        'receipts_summary'       => 'array', // venta, recibido y excedente por método (documento de Fran, §9)
+        'location_lat'           => 'float', // coordenadas de la ubicación del cliente (Módulo 3, §7)
+        'location_lng'           => 'float',
+        'courier_shipment'       => 'boolean', // envío por agencia de encomiendas (MRW, Tealca, Zoom…), Fran 2026-10-12
+    ];
+
+    // Relationship methods follow...
+
+    /** Rutas almacén → cliente y su costo esperado (Módulo 3). Solo para administración (§14). */
+    public function deliveryRoutes()
+    {
+        return $this->hasMany(OrderDeliveryRoute::class);
+    }
+
+    /** Los cambios de la ubicación del cliente (Módulo 3, §19). */
+    public function locationHistory()
+    {
+        return $this->hasMany(OrderLocationHistory::class);
+    }
+
+    public function postponements()
+    {
+        return $this->hasMany(\App\Models\OrderPostponement::class);
+    }
+    public function products()
+    {
+        return $this->hasMany(OrderProduct::class);
+    }
+    public function client()
+    {
+        return $this->belongsTo(Client::class, 'client_id');
+    }
+    public function status()
+    {
+        return $this->belongsTo(Status::class, 'status_id');
+    }
+    public function agent()
+    {
+        return $this->belongsTo(User::class, 'agent_id');
+    }
+    public function updates()
+    {
+        return $this->hasMany(OrderUpdate::class);
+    }
+    public function deliveryReviews()
+    {
+        return $this->hasMany(OrderDeliveryReview::class);
+    }
+    public function locationReviews()
+    {
+        return $this->hasMany(OrderLocationReview::class);
+    }
+    public function rejectionReviews()
+    {
+        return $this->hasMany(OrderRejectionReview::class);
+    }
+
+    public function cancellations()
+    {
+        return $this->hasMany(OrderCancellation::class);
+    }
+
+    public function whatsappMessages()
+    {
+        return $this->hasMany(WhatsappMessage::class);
+    }
+    public function deliverer()
+    {
+        return $this->belongsTo(\App\Models\User::class, 'deliverer_id');
+    }
+
+    public function payments()
+    {
+        return $this->hasMany(OrderPayment::class);
+    }
+
+    public function paymentReceipts()
+    {
+        return $this->hasMany(PaymentReceipt::class);
+    }
+
+    public function city()
+    {
+        return $this->belongsTo(City::class);
+    }
+
+    public function province()
+    {
+        return $this->belongsTo(Province::class);
+    }
+
+    public function agency()
+    {
+        return $this->belongsTo(User::class, 'agency_id');
+    }
+
+    public function warehouse()
+    {
+        return $this->belongsTo(Warehouse::class, 'warehouse_id');
+    }
+
+    public function shop()
+    {
+        return $this->belongsTo(Shop::class);
+    }
+
+
+
+    /** El número para textos, con un solo "#": Shopify ya manda el nombre con "#" (#7849) y los manuales no (MAN-26729). */
+    public function getNumberLabelAttribute(): string
+    {
+        return '#' . ltrim((string) $this->name, '#');
+    }
+
+    public function getVesPriceAttribute()
+    {
+        $rate = (float) Setting::get('rate_binance_usd', 0);
+        return $this->current_total_price * $rate;
+    }
+
+    public function getBcvEquivalenceAttribute()
+    {
+        $rateBcv = (float) Setting::get('rate_bcv_usd', 0);
+        return $this->current_total_price * $rateBcv;
+    }
+
+    protected $fillable = [
+        'order_id',
+        'order_number',
+        'name',
+        'current_total_price',
+        'currency',
+        'processed_at',
+        'client_id',
+        'status_id',
+        'previous_status_id', // 👈 Guarda el status anterior a "Sin Stock" para poder restaurarlo
+        'reset_count',         // 👈 Cuántas veces fue reseteada a Nuevo al cerrar tienda; si > 0 se cancela
+        'cancelled_at',
+        'scheduled_for',
+        'agent_id',
+        'deliverer_id',
+        'payment_method',
+        'exchange_rate',
+        'payment_receipt',
+        'reminder_at',
+        'shop_id',
+        'was_shipped',
+        'shipped_at',
+        'city_id',
+        'province_id',
+        'agency_id',
+        'agency_locked', // la agencia se eligió a mano: el reparto automático no la cambia
+        'delivery_cost',
+        'cash_received',
+        'change_amount',
+        'change_covered_by',
+        'change_amount_company',
+        'change_amount_agency',
+        'change_method_company',
+        'change_method_agency',
+        'novedad_type',
+        'novedad_description',
+        'novedad_resolution',
+        'change_rate',
+        'is_return',
+        'is_exchange',
+        'parent_order_id',
+        'courier_shipment',
+        'courier_recipient_name',
+        'courier_recipient_id_number',
+        'courier_recipient_phone',
+    ];
+
+    /**
+     * Relationship to extra details (workaround for ALTER privileges)
+     */
+    public function changeExtra()
+    {
+        return $this->hasOne(OrderChangeExtra::class);
+    }
+
+    /**
+     * Get the parent order (if this is a return)
+     */
+    public function parentOrder()
+    {
+        return $this->belongsTo(Order::class, 'parent_order_id');
+    }
+
+    /**
+     * Get return orders created from this order
+     */
+    public function returnOrders()
+    {
+        return $this->hasMany(Order::class, 'parent_order_id');
+    }
+    
+    // Virtual attributes
+    protected $appends = ['ves_price', 'bcv_equivalence', 'change_payment_details', 'change_receipt', 'whatsapp_unread_count', 'is_store_open', 'payment_receipt_url', 'change_receipt_url'];
+
+    // 🔒 Enlaces firmados a los comprobantes (las rutas no piden sesión, pero sí esta firma; vencen en 12 h)
+    public function getPaymentReceiptUrlAttribute()
+    {
+        return $this->payment_receipt
+            ? \Illuminate\Support\Facades\URL::temporarySignedRoute('receipts.order', now()->addHours(12), ['order' => $this->id])
+            : null;
+    }
+
+    public function getChangeReceiptUrlAttribute()
+    {
+        return $this->change_receipt
+            ? \Illuminate\Support\Facades\URL::temporarySignedRoute('receipts.change', now()->addHours(12), ['order' => $this->id])
+            : null;
+    }
+
+    public function getIsStoreOpenAttribute()
+    {
+        // 1. Intentar con la tienda de la orden
+        if ($this->shop) {
+            return $this->shop->is_open;
+        }
+
+        // 2. Fallback: Buscar la primera tienda con horario configurado
+        $defaultShop = \App\Models\Shop::where('auto_schedule_enabled', true)->first();
+        return $defaultShop ? $defaultShop->is_open : true;
+    }
+
+
+    public function getChangePaymentDetailsAttribute()
+    {
+        return $this->changeExtra ? $this->changeExtra->change_payment_details : null;
+    }
+
+    public function getChangeReceiptAttribute()
+    {
+        return $this->changeExtra ? $this->changeExtra->change_receipt : null;
+    }
+
+    public function getWhatsappUnreadCountAttribute()
+    {
+        return $this->whatsappMessages()
+            ->where('is_from_client', true)
+            ->where('status', '!=', 'read')
+            ->count();
+    }
+
+    /**
+     * Resuelve el almacén relevante para el chequeo de stock de la orden.
+     *
+     * Prioridad:
+     *   1. Almacén de la agencia asignada (Warehouse.user_id = agency_id)
+     *   2. warehouse_id explícito de la orden (asignación directa de almacén)
+     *   3. Almacén principal (is_main)
+     */
+    public function resolveStockWarehouseId(): ?int
+    {
+        $warehouseId = null;
+
+        if ($this->agency_id) {
+            $warehouseId = \App\Models\Warehouse::where('user_id', $this->agency_id)->value('id');
+        }
+
+        if (!$warehouseId && $this->warehouse_id) {
+            $warehouseId = $this->warehouse_id;
+        }
+
+        if (!$warehouseId) {
+            $warehouseId = \App\Models\Warehouse::where('is_main', true)->value('id');
+        }
+
+        return $warehouseId;
+    }
+
+    /**
+     * Helper to check stock availability for an order
+     */
+    public function getStockDetails()
+    {
+        // 1. Determine relevant warehouse (agency → warehouse_id → main)
+        $warehouseId = $this->resolveStockWarehouseId();
+
+        if (!$warehouseId) {
+            return ['has_warning' => false, 'items' => [], 'lines' => []];
+        }
+
+        // 2. Stock útil (sin reservado, defectuoso ni bloqueado) por producto y por variante (tarea 4)
+        $check = app(\App\Services\Inventory\StockCheck::class)->at($this, $warehouseId);
+
+        return [
+            'has_warning' => !$check['ok'],
+            'items' => array_map(fn ($p) => ['available' => $p['available'], 'has_stock' => $p['has_stock']], $check['products']),
+            'lines' => $check['lines'], // por línea de la orden (id de order_products)
+        ];
+    }
+
+    /**
+     * Determina en qué OTROS almacenes activos hay stock ÚTIL suficiente
+     * para cumplir TODA la orden (todos sus productos y cantidades).
+     *
+     * Stock útil = quantity - reserved - defective - blocked  (Inventory::useful_stock)
+     *
+     * Se usa para mostrarle a la vendedora, cuando una orden está en "Sin Stock",
+     * en qué bodegas/agencias sí podría cumplirse, de modo que pueda reasignar la
+     * agencia y mover la orden a otro status.
+     *
+     * @return array<int, array{warehouse_id:int, warehouse_name:string, agency_user_id:?int, agency_name:?string, city_name:?string, items:array}>
+     */
+    public function getStockAvailabilityElsewhere(): array
+    {
+        // Almacén actualmente usado para el chequeo (para excluirlo del resultado).
+        // Usamos la MISMA resolución que getStockDetails para mantener coherencia.
+        $currentWarehouseId = $this->resolveStockWarehouseId();
+
+        if ($this->products->isEmpty()) {
+            return [];
+        }
+
+        // Almacenes activos candidatos (distintos del actual)
+        $warehouses = \App\Models\Warehouse::where('is_active', true)
+            ->when($currentWarehouseId, function ($q) use ($currentWarehouseId) {
+                $q->where('id', '!=', $currentWarehouseId);
+            })
+            ->get();
+
+        if ($warehouses->isEmpty()) {
+            return [];
+        }
+
+        // La misma revisión que getStockDetails (por producto y por variante), en todos a la vez
+        $checks = app(\App\Services\Inventory\StockCheck::class)->inWarehouses($this, $warehouses->pluck('id')->all());
+
+        $result = [];
+
+        foreach ($warehouses as $warehouse) {
+            $check = $checks[$warehouse->id];
+
+            // Solo reportamos almacenes que pueden cumplir TODA la orden
+            if (!$check['ok']) {
+                continue;
+            }
+            $items = $check['products'];
+
+            // Agencia (usuario) ligada a este almacén y su ciudad principal
+            $agencyUser = $warehouse->user_id ? \App\Models\User::find($warehouse->user_id) : null;
+            $cityName = $agencyUser
+                ? \App\Models\City::where('agency_id', $agencyUser->id)->orderBy('id')->value('name')
+                : null;
+
+            $result[] = [
+                'warehouse_id'    => $warehouse->id,
+                'warehouse_name'  => $warehouse->name,
+                'agency_user_id'  => $agencyUser?->id,
+                'agency_name'     => $agencyUser?->names,
+                'city_name'       => $cityName,
+                'items'           => $items,
+            ];
+        }
+
+        return $result;
+    }
+
+    public function hasStock()
+    {
+        // Si ya se descontó el stock de esta orden, ya no necesitamos validar contra el inventario actual
+        if ($this->isStockDeducted()) {
+            return true;
+        }
+
+        return !$this->getStockDetails()['has_warning'];
+    }
+
+    /**
+     * Verifica si ya se ha registrado un movimiento de salida de inventario para esta orden.
+     * Calcula la diferencia entre salidas e ingresos vinculados a la orden.
+     */
+    public function isStockDeducted()
+    {
+        $out = \App\Models\InventoryMovement::where('reference_type', 'Order')
+            ->where('reference_id', $this->id)
+            ->where('movement_type', 'out')
+            ->sum('quantity');
+
+        $in = \App\Models\InventoryMovement::where('reference_type', 'Order')
+            ->where('reference_id', $this->id)
+            ->where('movement_type', 'in')
+            ->sum('quantity');
+
+        return ($out - $in) > 0;
+    }
+
+    /**
+     * Automatically syncs the order status based on current stock levels.
+     * Moves to 'Sin Stock' and deassigns agent if stock is missing.
+     * Saves the previous status so it can be restored when stock is recovered.
+     */
+    public function syncStockStatus()
+    {
+        $excludedStatuses = [
+            'Entregado', 
+            'En ruta', 
+            'Cancelado', 
+            'Rechazado', 
+            'Sin Stock', 
+            'Novedades', 
+            'Novedad Solucionada',
+            'Asignar a agencia'
+        ];
+        
+        // Use relation if loaded, otherwise fresh query
+        $statusDesc = $this->status ? $this->status->description : Status::find($this->status_id)?->description;
+        
+        if (in_array($statusDesc, $excludedStatuses)) {
+            return false;
+        }
+
+        // Ya NO usamos getStockDetails() directamente.
+        // hasStock() incluye la validación de isStockDeducted() para no quitarle
+        // el estatus a las órdenes que ya hicieron su reserva de bodega.
+        if (!$this->hasStock()) {
+            // Varias agencias por ciudad (tarea 3c): si otra de la ciudad tiene stock, la orden pasa a esa
+            try {
+                if (app(\App\Services\Agencies\AgencyRouter::class)->provisional($this)) {
+                    return false;
+                }
+            } catch (\Throwable $e) {
+                report($e);
+            }
+            $sinStockStatus = Status::where('description', '=', 'Sin Stock')->first();
+            if ($sinStockStatus && $this->status_id !== $sinStockStatus->id) {
+                $oldStatusId = $this->status_id; // 💾 Guardar status anterior
+
+                $this->previous_status_id = $oldStatusId; // 💾 Persistir para restaurar después
+                $this->status_id = $sinStockStatus->id;
+                // ✅ NO se desasigna agent_id: la vendedora permanece asignada
+                $this->save();
+
+                // Log activity
+                OrderActivityLog::create([
+                    'order_id' => $this->id,
+                    'user_id'  => auth()->id() ?? 1,
+                    'action'   => 'status_changed',
+                    'description' => "Orden movida automáticamente a 'Sin Stock' por falta de existencias (Detectado en sincronización). Vendedora mantiene la asignación.",
+                    'properties' => [
+                        'old_status_id' => $oldStatusId,
+                        'agent_id'      => $this->agent_id,
+                        'reason'        => 'stock_shortage_sync'
+                    ]
+                ]);
+
+                // Order Update note
+                OrderUpdate::create([
+                    'order_id' => $this->id,
+                    'user_id'  => auth()->id() ?? User::whereHas('role', function($q){ $q->where('description', 'Admin'); })->first()?->id ?? 1,
+                    'message'  => "🚨 AUTOMÁTICO: La orden pasó a 'Sin Stock' por falta de producto en almacén. La vendedora asignada se mantiene."
+                ]);
+
+                // 📡 Broadcast via WebSocket for real-time Kanban update
+                $this->load(['status', 'client', 'agent', 'agency', 'deliverer']);
+                event(new \App\Events\OrderUpdated($this));
+
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function activityLogs()
+    {
+        return $this->hasMany(OrderActivityLog::class);
+    }
+
+    public function refunds()
+    {
+        return $this->hasMany(OrderRefund::class);
+    }
+
+    public function agencyTrips()
+    {
+        return $this->hasMany(AgencyTrip::class);
+    }
+}

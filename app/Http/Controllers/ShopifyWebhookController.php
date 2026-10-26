@@ -1,0 +1,489 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Http\Controllers\Controller;
+use App\Models\Client;
+use App\Models\Order;
+use App\Models\OrderProduct;
+use App\Models\Product;
+use App\Models\Status;
+use App\Models\User;
+use App\Notifications\OrderNoStockNotification;
+use App\Services\ShopifyService;
+use Carbon\Carbon;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\Http;
+use App\Services\Assignment\AssignOrderService;
+
+class ShopifyWebhookController extends Controller
+{
+    //
+    //
+    public function handleOrderCreate(Request $request, AssignOrderService $assignService, $shop_id = null)
+    {
+        $orderData = $request->all();
+        $shop = null;
+        if ($shop_id) {
+            $shop = \App\Models\Shop::find($shop_id);
+        }
+
+        // Si no se pasó shop_id en la URL, intentar resolver por dominio
+        if (!$shop) {
+            $domain = $request->header('X-Shopify-Shop-Domain');
+            if ($domain) {
+                $shop = \App\Models\Shop::where('shopify_domain', $domain)->first();
+            }
+        }
+
+        // 🔒 0. Verificar firma HMAC de Shopify
+        $hmacHeader = $request->header('X-Shopify-Hmac-Sha256');
+        $secret = ($shop && $shop->shopify_webhook_secret) 
+            ? $shop->shopify_webhook_secret 
+            : env('SHOPIFY_WEBHOOK_SECRET');
+
+        $calculatedHmac = base64_encode(
+            hash_hmac('sha256', $request->getContent(), $secret, true)
+        );
+
+        if (!hash_equals($hmacHeader, $calculatedHmac)) {
+            return response()->json(['error' => 'Invalid signature'], 401);
+        }
+
+        // 1️⃣ Guardar/actualizar cliente
+        // ⚠️ Mejorado: Si no viene el objeto 'customer' (POS, Guest checkout), intentamos sacar la info de shipping/billing
+        $customerData = $orderData['customer'] ?? null;
+        $shipping = $orderData['shipping_address'] ?? null;
+        $billing = $orderData['billing_address'] ?? null;
+        $fallbackSource = $shipping ?? $billing ?? [];
+
+        // Definir ID de cliente (Si no hay ID de Shopify, usamos el ID de la orden como temporal para este "Guest")
+        $shopifyCustomerId = $customerData['id'] ?? null;
+        $finalCustomerId = $shopifyCustomerId ?? $orderData['id'];
+
+        // Extraer email
+        $email = $customerData['email'] ?? $orderData['email'] ?? null;
+        
+        // Extraer nombres (Prioridad Cliente -> Shipping -> Billing)
+        $firstName = $customerData['first_name'] ?? $fallbackSource['first_name'] ?? 'Guest';
+        $lastName = $customerData['last_name'] ?? $fallbackSource['last_name'] ?? 'Customer';
+        $phone = $customerData['phone'] ?? $orderData['phone'] ?? $shipping['phone'] ?? $billing['phone'] ?? null;
+
+        // Extraer dirección para ciudad/provincia
+        $addressSource = $customerData['default_address'] ?? $shipping ?? $billing ?? [];
+
+        // ⚠️ Fallback para formularios COD personalizados (Releasit, Dropi, etc.) que envían datos en note_attributes
+        $noteAttributes = collect($orderData['note_attributes'] ?? []);
+        
+        $customAddress = $noteAttributes->firstWhere('name', 'Dirección de entrega (sea detallado)')['value']
+            ?? $noteAttributes->firstWhere('name', 'Dirección de envío')['value'] 
+            ?? $noteAttributes->firstWhere('name', 'Dirección')['value'] 
+            ?? $noteAttributes->firstWhere('name', 'address')['value'] 
+            ?? null;
+            
+        $customReference = $noteAttributes->firstWhere('name', 'Puntos de referencia')['value']
+            ?? $noteAttributes->firstWhere('name', 'Punto de referencia')['value'] 
+            ?? $noteAttributes->firstWhere('name', 'Referencia')['value'] 
+            ?? $noteAttributes->firstWhere('name', 'reference')['value'] 
+            ?? null;
+
+        // IDENTIDAD DEL CLIENTE = TELÉFONO.
+        // Shopify puede asignar distintos customer_id a la misma persona (checkout de
+        // invitado, emails distintos, etc.), lo que partía un mismo teléfono en varios
+        // clientes y dejaba sus órdenes regadas / fuera del WhatsApp CRM. Por eso, si la
+        // orden trae teléfono, primero buscamos un cliente existente por teléfono
+        // (últimos 10 dígitos, igual que el resto del sistema) y lo reutilizamos.
+        $clientData = [
+            'customer_number' => $finalCustomerId,
+            'first_name'      => $firstName,
+            'last_name'       => $lastName,
+            'phone'           => $phone,
+            'email'           => $email,
+            'country_name'    => $addressSource['country'] ?? null,
+            'country_code'    => $addressSource['country_code'] ?? null,
+            'province'        => $addressSource['province'] ?? null,
+            'city'            => $addressSource['province'] ?? null,
+            'address1'        => $addressSource['address1'] ?? $customAddress ?? null,
+            'address2'        => $addressSource['address2'] ?? $customReference ?? null,
+        ];
+
+        $last10 = $phone ? substr(preg_replace('/[^0-9]/', '', $phone), -10) : null;
+        $client = ($last10 && strlen($last10) >= 7)
+            ? Client::where('phone', 'like', "%{$last10}")->orderBy('id')->first()
+            : null;
+
+        if ($client) {
+            // Cliente ya existe (mismo teléfono): actualizamos sus datos pero NO pisamos
+            // su customer_id si ya tenía uno, para no romper vínculos previos.
+            if (empty($client->customer_id)) {
+                $clientData['customer_id'] = $finalCustomerId;
+            }
+            $client->update($clientData);
+        } else {
+            // Sin teléfono usable o cliente nuevo: comportamiento por customer_id.
+            $clientData['customer_id'] = $finalCustomerId;
+            $client = Client::updateOrCreate(['customer_id' => $finalCustomerId], $clientData);
+        }
+
+        // 2️⃣ Guardar/actualizar orden
+        // Buscar "ciudad" (que ahora es provincia) en la tabla cities
+        $provinceName = $client->province;
+        $cityId = null;
+        $candidateAgencyId = null;
+        if ($provinceName) {
+            // Busqueda case-insensitive en tabla cities (que contiene provincias)
+            $cityMatch = \App\Models\City::where('name', 'LIKE', trim($provinceName))->first();
+            if ($cityMatch) {
+                $cityId = $cityMatch->id;
+                $candidateAgencyId = $cityMatch->agency_id;
+            }
+        }
+
+        // Buscar provincia si existe
+        $provinceId = null;
+        if ($provinceName) {
+            $provinceMatch = \App\Models\Province::where('name', 'LIKE', trim($provinceName))->first();
+            if ($provinceMatch) {
+                $provinceId = $provinceMatch->id;
+            }
+        }
+
+        // Obtener el status "Nuevo" para órdenes recién creadas
+        $nuevoStatus = \App\Models\Status::where('description', 'Nuevo')->first();
+        $statusId = $nuevoStatus ? $nuevoStatus->id : 1; // Fallback a 1 si no existe
+
+        // 🔒 El estado "Nuevo" solo se fija al CREAR la orden: si Shopify reenvía el webhook
+        // (reintento por timeout), una orden que ya avanzó no vuelve a "Nuevo".
+        $order = Order::firstOrNew(['order_id' => $orderData['id']]);
+        $order->fill([
+            'name'                => $orderData['name'],
+            'current_total_price' => round($orderData['current_total_price'] ?? $orderData['total_price'] ?? 0),
+            'order_number'        => $orderData['order_number'],
+            'processed_at'        => $orderData['processed_at']
+                ? Carbon::parse($orderData['processed_at'])->toDateTimeString()
+                : null,
+            'currency'            => $orderData['currency'],
+            'client_id'           => $client->id,
+            'shop_id'             => $shop ? $shop->id : null,
+            'city_id'             => $cityId,
+            'province_id'         => $provinceId,
+        ]);
+        if (!$order->exists) {
+            $order->status_id = $statusId;
+        }
+
+        // 🔥 Tarea 2: el observer no asigna al crear; se hace abajo, con los productos ya guardados.
+        \App\Observers\OrderObserver::$deferIntake = true;
+        try {
+            $order->save();
+        } finally {
+            \App\Observers\OrderObserver::$deferIntake = false;
+        }
+        $isNewOrder = $order->wasRecentlyCreated;
+
+        // Auto-asignar agencia si la orden no tiene una y la ciudad/provincia tiene una asignada
+        if (!$order->agency_id && $candidateAgencyId) {
+            $order->agency_id = $candidateAgencyId;
+            $order->save();
+        }
+
+        // 3️⃣ Procesar productos de la orden
+        $variantCatalog = app(\App\Services\Inventory\VariantCatalog::class);
+        foreach ($orderData['line_items'] as $item) {
+            // Saltar items sin product_id (ej: productos personalizados, descuentos)
+            if (empty($item['product_id'])) {
+                \Log::warning("Shopify webhook: Skipping line item without product_id", [
+                    'order_id' => $orderData['id'],
+                    'item_title' => $item['title'] ?? 'N/A',
+                    'item_sku' => $item['sku'] ?? 'N/A'
+                ]);
+                continue;
+            }
+
+            // Obtener imagen desde Shopify API
+            // ⚠️ Se instancia aquí manualmente para que un fallo de credenciales
+            // NUNCA mate el webhook completo. Solo se pierde la imagen.
+            $imageUrl = null;
+            try {
+                $shopifyService = new \App\Services\ShopifyService($shop);
+                $imageUrl = $shopifyService->getProductImage(
+                    $item['product_id'],
+                    $item['variant_id'] ?? null
+                );
+            } catch (\Exception $e) {
+                \Log::warning("Shopify webhook: No se pudo obtener imagen del producto. El producto se guardará sin imagen.", [
+                    'order_id'   => $orderData['id'],
+                    'product_id' => $item['product_id'],
+                    'error'      => $e->getMessage(),
+                ]);
+            }
+
+            // Buscar producto usando el nombre completo
+            $baseName = trim($item['name'] ?? $item['title']);
+
+            // 🔥 Talla que manda el formulario: como propiedad de la línea o, para toda la orden, en la nota
+            $properties = collect($item['properties'] ?? []);
+            $talla = $properties->firstWhere('name', 'Talla')['value']
+                  ?? $properties->firstWhere('name', 'talla')['value']
+                  ?? null;
+            $noteTalla = null;
+            if (!$talla) {
+                $noteAttributes = collect($orderData['note_attributes'] ?? []);
+                $noteTalla = $noteAttributes->firstWhere('name', 'Talla')['value']
+                      ?? $noteAttributes->firstWhere('name', 'talla')['value']
+                      ?? null;
+            }
+
+            // 🔥 NATIVO SHOPIFY: Extraer la variante oficial de Shopify (si existe y no es el default)
+            $variantTitle = isset($item['variant_title']) && $item['variant_title'] !== '' && stripos($item['variant_title'], 'Default') === false
+                ? trim($item['variant_title'])
+                : null;
+            $shopifyVariantId = !empty($item['variant_id']) ? (int) $item['variant_id'] : null;
+
+            // 1. Tarea 4: si la variante de Shopify ya está en el catálogo, su producto. Si no, el producto
+            //    por su TÍTULO BASE, como siempre (para no dañar el inventario de Fran).
+            $productTitle = trim($item['title']);
+            $knownVariant = $variantTitle ? $variantCatalog->byShopifyId($shopifyVariantId) : null;
+            $existingProduct = $knownVariant?->product
+                ?? \App\Models\Product::whereRaw('LOWER(title) = ?', [strtolower($productTitle)])->first();
+
+            // La talla de la nota es de toda la orden: solo se aplica si la orden tiene un solo producto o si
+            // este ya maneja variantes (antes se le ponía a todos, y un producto sin tallas terminaba con una)
+            if (!$talla && $noteTalla) {
+                $productLines = collect($orderData['line_items'])->filter(fn ($i) => !empty($i['product_id']))->count();
+                if ($productLines === 1 || ($existingProduct && $existingProduct->variants()->exists())) {
+                    $talla = $noteTalla;
+                }
+            }
+
+            // Nombre para la vendedora: el producto con su talla o variante
+            $productName = $baseName;
+            if ($talla && stripos($productName, $talla) === false) {
+                $productName .= " - " . $talla;
+            }
+            if ($variantTitle && stripos($productName, $variantTitle) === false) {
+                $productName .= " - " . $variantTitle;
+            }
+
+            // Precio seguro: solo redondear si viene un valor positivo del webhook
+            $safePrice = (isset($item['price']) && $item['price'] > 0) ? round($item['price']) : null;
+
+            // Determinar la talla final (ya sea de variant_title o de propiedad/nota)
+            $finalSize = $variantTitle ?: $talla;
+
+            if ($existingProduct) {
+                // Actualizar producto existente
+                $updateData = [
+                    'product_id' => $item['product_id'],
+                    'variant_id' => $item['variant_id'] ?? null,
+                    'title'      => $existingProduct->title ?: $productTitle,
+                    'name'       => $item['name'] ?? null,
+                ];
+                // El SKU de una variante real es de la variante, no del producto; y uno vacío no borra el que hay
+                if (!$variantTitle && !empty($item['sku'])) {
+                    $updateData['sku'] = $item['sku'];
+                }
+
+                // Solo actualizar precio si viene un valor válido (evita sobreescribir con 0)
+                if ($safePrice !== null) {
+                    $updateData['price'] = $safePrice;
+                }
+                // Solo actualizar imagen si se obtuvo una (evita sobreescribir con null)
+                if ($imageUrl !== null) {
+                    $updateData['image'] = $imageUrl;
+                }
+                $existingProduct->update($updateData);
+                $product = $existingProduct;
+            } else {
+                // Crear nuevo producto genérico sin dividir por talla
+                $product = \App\Models\Product::create([
+                    'product_id'      => $item['product_id'],
+                    'variant_id'      => $item['variant_id'] ?? null,
+                    'title'           => $productTitle,
+                    'name'            => $item['name'] ?? null,
+                    'price'           => $safePrice ?? 0,
+                    'sku'             => $variantTitle ? null : ($item['sku'] ?? null),
+                    'image'           => $imageUrl,
+                ]);
+            }
+
+            // 2. La variante del catálogo: por su id de Shopify o por su nombre ("S/M" = "s / m"). Si es nueva, se
+            //    agrega. Sin variante (producto sin tallas), la línea descuenta del total como siempre.
+            $variant = $finalSize
+                ? $variantCatalog->resolve($product->id, $finalSize, $variantTitle ? $shopifyVariantId : null, $variantTitle ? ($item['sku'] ?? null) : null)
+                : null;
+
+            // Relación en OrderProducts (evita duplicados). Una línea por producto Y variante: antes, dos tallas
+            // del mismo producto en una orden quedaban en una sola línea con la cantidad de la última.
+            $orderProductPrice = $safePrice ?? ($existingProduct ? $existingProduct->price : 0);
+            OrderProduct::updateOrCreate(
+                [
+                    'order_id'   => $order->id,
+                    'product_id' => $product->id,
+                    'variant_id' => $variant?->id,
+                ],
+                [
+                    'product_number' => $product->product_id,
+                    'title'          => $item['title'],
+                    'name'           => $item['name'] ?? null,
+                    'price'          => $orderProductPrice,
+                    'quantity'       => $item['quantity'],
+                    'image'          => $imageUrl ?? $product->image, // Preservar imagen existente si no se obtuvo nueva
+                    'showable_name'  => $productName, // 🔥 Guardamos la talla solo a nivel de orden para que la vendedora la vea, sin afectar el inventario maestro
+                    'size'           => $variant?->title,   // El nombre de la variante, para leerlo
+                ]
+            );
+        }
+
+        // Un reenvío de una orden que ya está en curso solo actualiza datos: no se vuelve a revisar
+        // stock ni a asignar (antes podía mandarla a "Sin Stock" con su stock ya descontado).
+        // Si el primer intento quedó a medias (sigue en "Nuevo" y sin vendedora), se completa.
+        if (!$isNewOrder && !((int) $order->status_id === (int) $statusId && !$order->agent_id)) {
+            return response()->json(['success' => true, 'duplicate' => true], 200);
+        }
+
+        // 4️⃣ Verificación de Stock ANTES de auto-asignar
+        // ⚠️ Si la orden no tiene stock, la movemos a "Sin Stock" y notificamos a los admins.
+        // NUNCA debe llegar a una vendedora una orden sin existencias.
+        // (Sin stock NO se envía el webhook de "Nuevo": regla de Fran, para que n8n no reciba
+        // "Nuevo" y "Sin Stock" casi a la vez.)
+        $order->load('products'); // Asegurar que los productos recién guardados estén cargados
+        // Varias agencias por ciudad (tarea 3c): si la de la ciudad no tiene stock y otra sí, la orden pasa a esa
+        try {
+            app(\App\Services\Agencies\AgencyRouter::class)->provisional($order);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+        $stockCheck = $order->getStockDetails();
+
+        if ($stockCheck['has_warning']) {
+            // Mover a estado "Sin Stock"
+            $sinStockStatus = Status::where('description', 'Sin Stock')->first();
+            if ($sinStockStatus) {
+                $order->status_id = $sinStockStatus->id;
+                $order->save();
+            }
+
+            // Construir lista de productos sin stock para el mensaje (con la talla que falta, tarea 4)
+            $productNames = $order->products
+                ->filter(fn ($op) => !($stockCheck['lines'][$op->id]['has_stock'] ?? true))
+                ->map(fn ($op) => $op->title . ($op->size ? " ({$op->size})" : ''))
+                ->join(', ');
+
+            $alertMessage = "🚨 Orden {$order->number_label} recibida SIN STOCK. Productos sin existencias: {$productNames}. La orden está en espera de suministro.";
+
+            \Log::warning("Shopify webhook: Orden {$order->number_label} sin stock. Productos: {$productNames}");
+
+            // Notificar a todos los Admins y Gerentes
+            try {
+                // $admins = User::whereHas('role', function ($q) {
+                //     $q->whereIn('description', ['Admin', 'Gerente']);
+                // })->get();
+
+                // foreach ($admins as $admin) {
+                //     $admin->notify(new OrderNoStockNotification($order, $alertMessage));
+                // }
+            } catch (\Exception $e) {
+                \Log::error("Error enviando notificación de Sin Stock para orden {$order->number_label}: " . $e->getMessage());
+            }
+
+            // 📡 Broadcast para actualizar el Kanban en tiempo real
+            event(new \App\Events\OrderUpdated($order));
+
+            // 🔧 Intentar asignar via round robin AUNQUE no haya stock en el almacén
+            // principal: si hay stock en OTRA agencia y hay vendedoras activas,
+            // assignOne le asignará una vendedora (la orden queda en "Sin Stock" pero
+            // asignada, para que la vendedora pueda reasignar la agencia). Si no hay
+            // stock en ningún almacén del país, o la tienda está cerrada, queda sin asignar.
+            try {
+                $assignService->assignOne($order);
+            } catch (\Throwable $e) {
+                \Log::error("Error en auto-asignación Sin Stock para {$order->number_label}: " . $e->getMessage());
+            }
+
+            return response()->json(['success' => true, 'warning' => 'no_stock'], 200);
+        }
+
+        // 🔥 Tarea 2: avisar a n8n que la orden entró en "Nuevo" ANTES de asignarla
+        // (la asignación la pasa a "Asignado a vendedor" y dispara su propio webhook).
+        if ($isNewOrder) {
+            try {
+                app(\App\Services\WebhookService::class)->triggerOrderStatus($order);
+            } catch (\Throwable $e) {
+                \Log::error("Webhook 'Nuevo' falló para {$order->number_label}: " . $e->getMessage());
+            }
+        }
+
+        // 5️⃣ Intento de Auto-Asignación (Round Robin) — Solo si hay stock
+        try {
+            $assignedAgent = $assignService->assignOne($order);
+            if ($assignedAgent) {
+                \Log::info("Order #{$order->order_number} auto-assigned to agent: {$assignedAgent->email}");
+            } else {
+                \Log::info("Order #{$order->order_number} could not be auto-assigned (No roster/Closed business day)");
+            }
+        } catch (\Exception $e) {
+            \Log::error("Error auto-assigning order {$order->id}: " . $e->getMessage());
+        }
+
+        return response()->json(['success' => true], 200);
+    }
+    public function orderCreated(Request $request)
+    {
+        $pixelId = Config::get('services.facebook.pixel_id');
+        $accessToken = Config::get('services.facebook.access_token');
+
+        $order = $request->all();
+
+        // Generamos un event_id único (puede ser el ID de la orden)
+        $eventId = 'order_' . $order['id'];
+
+        // Extraemos datos del cliente
+        $email = $order['email'] ?? null;
+        $phone = $order['phone'] ?? null;
+        $firstName = $order['customer']['first_name'] ?? null;
+        $lastName = $order['customer']['last_name'] ?? null;
+
+        // Datos custom de la orden
+        $value = round($order['total_price'] ?? 0);
+        $currency = $order['currency'] ?? 'USD';
+        $contentIds = collect($order['line_items'])->pluck('product_id')->map(fn($id) => (string)$id)->toArray();
+
+        // Payload para Facebook CAPI
+        $payload = [
+            'data' => [
+                [
+                    'event_name'       => 'Purchase',
+                    'event_time'       => now()->timestamp,
+                    'event_source_url' => $order['landing_site'] ?? null,
+                    'event_id'         => $eventId,
+                    'action_source'    => 'website',
+                    'user_data'        => [
+                        'em' => $email ? hash('sha256', strtolower(trim($email))) : null,
+                        'ph' => $phone ? hash('sha256', preg_replace('/\D+/', '', $phone)) : null,
+                        'fn' => $firstName ? hash('sha256', strtolower(trim($firstName))) : null,
+                        'ln' => $lastName ? hash('sha256', strtolower(trim($lastName))) : null,
+                        'client_user_agent' => $request->header('User-Agent'),
+                        'ip_address'        => $request->ip(),
+                    ],
+                    'custom_data' => [
+                        'currency'      => $currency,
+                        'value'         => $value,
+                        'content_type'  => 'product',
+                        'content_ids'   => $contentIds,
+                    ],
+                ],
+            ],
+            'access_token' => $accessToken,
+        ];
+
+        // Enviar evento a Facebook
+        $response = Http::post("https://graph.facebook.com/v17.0/{$pixelId}/events", $payload);
+
+        return response()->json([
+            'status' => 'ok',
+            'facebook_response' => $response->json(),
+        ]);
+    }
+}

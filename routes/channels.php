@@ -1,0 +1,63 @@
+<?php
+
+use Illuminate\Support\Facades\Broadcast;
+
+Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
+    return (int) $user->id === (int) $id;
+});
+
+Broadcast::channel('orders', function ($user) {
+    return in_array($user->role?->description, ['Admin', 'Gerente', 'Master']);
+});
+
+Broadcast::channel('orders.agency.{id}', function ($user, $id) {
+    return (int) $user->id === (int) $id && $user->role?->description === 'Agencia';
+});
+
+Broadcast::channel('orders.agent.{id}', function ($user, $id) {
+    return (int) $user->id === (int) $id && $user->role?->description === 'Vendedor';
+});
+
+Broadcast::channel('orders.deliverer.{id}', function ($user, $id) {
+    return (int) $user->id === (int) $id && $user->role?->description === 'Repartidor';
+});
+
+Broadcast::channel('orders.{id}', function ($user, $id) {
+    if (!$user) return false;
+    
+    // Admins always get access
+    if (in_array($user->role?->description, ['Admin', 'Gerente', 'Master'])) {
+        return true;
+    }
+    
+    // Verify Order ownership
+    $order = \App\Models\Order::find($id);
+    if (!$order) return false;
+
+    return (int) $order->agent_id === (int) $user->id || 
+           (int) $order->agency_id === (int) $user->id || 
+           (int) $order->deliverer_id === (int) $user->id;
+});
+Broadcast::channel('whatsapp', function ($user) {
+    return in_array($user->role?->description, ['Admin', 'Gerente', 'Master', 'SuperAdmin', 'Vendedor']);
+});
+
+// Chat interno vendedora <-> agencia. Participantes del hilo + supervisión Admin/Gerente/Master.
+Broadcast::channel('internal-chat.{conversationId}', function ($user, $conversationId) {
+    if (!$user) return false;
+
+    if (in_array($user->role?->description, ['Admin', 'Gerente', 'Master'])) {
+        return true;
+    }
+
+    $conversation = \App\Models\InternalConversation::find($conversationId);
+    if (!$conversation) return false;
+
+    if ($conversation->hasParticipant($user->id)) return true;
+
+    // La Líder sigue en vivo los hilos de las órdenes de su grupo (Fran, 2026-10-02)
+    $agentId = $conversation->order?->agent_id;
+    $group = $agentId ? $user->ledGroup() : null;
+
+    return $group !== null && $group->openMembers()->where('user_id', $agentId)->exists();
+});

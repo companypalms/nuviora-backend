@@ -1,0 +1,194 @@
+<?php
+
+namespace App\Models;
+
+// use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
+use App\Models\Order;
+
+class User extends Authenticatable
+{
+    /** @use HasFactory<\Database\Factories\UserFactory> */
+    use HasFactory, Notifiable, HasApiTokens;
+
+    /**
+     * Get the status that owns the user.
+     */
+    public function status()
+    {
+        return $this->belongsTo(Status::class, 'status_id');
+    }
+    /**
+     * Get the role that owns the user.
+     */
+    public function role()
+    {
+        return $this->belongsTo(Role::class, 'role_id');
+    }
+
+    public function shops()
+    {
+        return $this->belongsToMany(Shop::class, 'shop_user');
+    }
+    
+    /**
+     * Get the warehouse linked to this user (for Repartidor or Agencia)
+     */
+    public function warehouse()
+    {
+        return $this->hasOne(Warehouse::class);
+    }
+
+    public function agentOrders()
+    {
+        return $this->hasMany(Order::class, 'agent_id');
+    }
+
+    public function delivererOrders()
+    {
+        return $this->hasMany(Order::class, 'deliverer_id');
+    }
+
+    public function agencyOrders()
+    {
+        return $this->hasMany(Order::class, 'agency_id');
+    }
+
+    /**
+     * Ciudades que atiende este usuario cuando es una Agencia.
+     */
+    public function cities()
+    {
+        return $this->hasMany(City::class, 'agency_id');
+    }
+
+    public function stockMovements()
+    {
+        return $this->hasMany(StockMovement::class, 'deliverer_id');
+    }
+
+    /**
+     * Nombre a mostrar en el chat interno, con identidad enmascarada:
+     * - Agencia  -> ciudad(es) que atiende (oculta el nombre real).
+     * - Vendedor -> "Vendedora #ID" (oculta el nombre real).
+     * - Otros (Admin/Gerente) -> nombre real (supervisión).
+     */
+    public function chatDisplayName(): string
+    {
+        // Detección robusta (case-insensitive; "vende" cubre Vendedor y Vendedora).
+        $role = strtolower(trim($this->role?->description ?? ''));
+
+        if ($role === 'agencia') {
+            $cities = $this->cities->pluck('name')->filter()->implode(', ');
+            return $cities !== '' ? $cities : 'Agencia';
+        }
+
+        if (str_contains($role, 'vende')) {
+            return 'Vendedora #' . $this->id;
+        }
+
+        return trim(($this->names ?? '') . ' ' . ($this->surnames ?? ''));
+    }
+
+    /**
+     * Apellido, teléfono y dirección son opcionales en los formularios, pero las columnas no aceptan
+     * NULL: crear un usuario sin apellido daba error 500. Se guardan vacíos.
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (User $user) {
+            foreach (['surnames', 'phone', 'address'] as $field) {
+                // En un usuario ya guardado solo si se puso a NULL: uno leído con pocas columnas no se toca
+                $present = !$user->exists || array_key_exists($field, $user->getAttributes());
+                if ($present && $user->getAttribute($field) === null) {
+                    $user->setAttribute($field, '');
+                }
+            }
+        });
+    }
+
+    /**
+     * The attributes that are mass assignable.
+     *
+     * @var list<string>
+     */
+    protected $fillable = [
+        'names',
+        'surnames',
+        'phone',
+        'address',
+        'theme',
+        'color',
+        'email',
+        'password',
+        'role_id',
+        'status_id',
+        'agency_id',
+        'delivery_cost',
+        'is_lite_view',
+        'is_active_crm',
+        'can_handle_no_stock',
+        'max_active_orders',
+        'agency_is_working',
+        'agency_works_from',
+        'agency_works_until',
+    ];
+
+    /** Membresía vigente en un grupo de ventas (una sola a la vez). */
+    public function salesGroupMembership()
+    {
+        return $this->hasOne(SalesGroupMember::class)->whereNull('ended_at');
+    }
+
+    /**
+     * Grupo activo que lidera, o null si no es Líder. La Líder sigue siendo una usuaria Vendedor
+     * (Fran, 2026-09-24: "parte de la vendedora"); lo que la hace Líder es su membresía en el grupo.
+     */
+    public function ledGroup(): ?SalesGroup
+    {
+        return SalesGroup::active()
+            ->whereHas('openMembers', fn ($q) => $q->where('user_id', $this->id)->where('role', SalesGroupMember::ROLE_LEADER))
+            ->first();
+    }
+
+    public function deliverers()
+    {
+        return $this->hasMany(User::class, 'agency_id');
+    }
+
+    public function agency()
+    {
+        return $this->belongsTo(User::class, 'agency_id');
+    }
+
+    /**
+     * The attributes that should be hidden for serialization.
+     *
+     * @var list<string>
+     */
+    protected $hidden = [
+        'password',
+        'remember_token',
+    ];
+
+    /**
+     * Get the attributes that should be cast.
+     *
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'email_verified_at' => 'datetime',
+            'password' => 'hashed',
+            'is_lite_view' => 'boolean',
+            'is_active_crm' => 'boolean',
+            'can_handle_no_stock' => 'boolean',
+            'max_active_orders' => 'integer',
+            'agency_is_working' => 'boolean',
+        ];
+    }
+}
