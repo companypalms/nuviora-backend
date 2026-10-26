@@ -757,5 +757,78 @@ Route::middleware(['auth:sanctum', 'agency.gate'])->group(function () {
      * WEBHOOKS (OUTGOING) — solo Admin: pueden enviar datos de clientes a cualquier URL
      * ---------------------**/
     Route::apiResource('webhooks', \App\Http\Controllers\WebhookController::class)->middleware('role:Admin,Master');
+
+    /**---------------------
+     * LOGÍSTICA PROPIA (documento de Fran del 2026-10-21 y sus respuestas R1–R8). La configuración de los centros es
+     * del Admin (§23); el turno, las órdenes y las alertas, del operador de su centro (§3, §4.2, §21).
+     * ---------------------**/
+    Route::middleware('role:Admin,Master')->prefix('logistics')->group(function () {
+        Route::get('/centers', [\App\Http\Controllers\LogisticsCenterController::class, 'index']);
+        Route::post('/centers', [\App\Http\Controllers\LogisticsCenterController::class, 'store']);
+        Route::put('/centers/{center}', [\App\Http\Controllers\LogisticsCenterController::class, 'update']);
+        Route::put('/centers/{center}/active', [\App\Http\Controllers\LogisticsCenterController::class, 'setActive']);
+        Route::put('/centers/{center}/operators', [\App\Http\Controllers\LogisticsCenterController::class, 'syncOperators']);
+        Route::post('/centers/{center}/exceptions', [\App\Http\Controllers\LogisticsCenterController::class, 'storeException']);
+        Route::delete('/centers/{center}/exceptions/{exception}', [\App\Http\Controllers\LogisticsCenterController::class, 'destroyException']);
+        Route::get('/centers/{center}/calendar-setup', [\App\Http\Controllers\LogisticsCenterController::class, 'calendarSetup']);
+        Route::post('/centers/{center}/patterns', [\App\Http\Controllers\LogisticsCenterController::class, 'storePattern']);
+        Route::put('/centers/{center}/patterns/{pattern}/disable', [\App\Http\Controllers\LogisticsCenterController::class, 'disablePattern']);
+        Route::post('/centers/{center}/overrides', [\App\Http\Controllers\LogisticsCenterController::class, 'storeOverride']);
+        Route::delete('/centers/{center}/overrides/{override}', [\App\Http\Controllers\LogisticsCenterController::class, 'destroyOverride']);
+        Route::get('/settings', [\App\Http\Controllers\LogisticsCenterController::class, 'settings']);
+        Route::put('/settings', [\App\Http\Controllers\LogisticsCenterController::class, 'updateSettings']);
+        Route::get('/riders', [\App\Http\Controllers\LogisticsRiderController::class, 'index']);
+        Route::put('/riders/{user}', [\App\Http\Controllers\LogisticsRiderController::class, 'update']);
+        Route::post('/riders/{user}/test-push', [\App\Http\Controllers\LogisticsRiderController::class, 'testPush']);
+    });
+    Route::middleware('role:Admin,Master,Operador logístico')->prefix('logistics')->group(function () {
+        Route::get('/my-centers', [\App\Http\Controllers\LogisticsShiftController::class, 'mine']);
+        Route::get('/centers/{center}/board', [\App\Http\Controllers\LogisticsShiftController::class, 'show']);
+        Route::get('/centers/{center}/orders', [\App\Http\Controllers\LogisticsShiftController::class, 'orders']);
+        Route::post('/centers/{center}/shift/start', [\App\Http\Controllers\LogisticsShiftController::class, 'start']);
+        Route::get('/centers/{center}/shift/pending', [\App\Http\Controllers\LogisticsShiftController::class, 'pending']);
+        Route::post('/centers/{center}/shift/close', [\App\Http\Controllers\LogisticsShiftController::class, 'close']);
+        Route::post('/centers/{center}/alerts/{alert}/resolve', [\App\Http\Controllers\LogisticsShiftController::class, 'resolveAlert']);
+        Route::post('/road-reports/{report}/vote', [\App\Http\Controllers\LogisticsShiftController::class, 'voteRoadReport']);
+        Route::get('/centers/{center}/calendar', [\App\Http\Controllers\LogisticsShiftController::class, 'calendar']);
+        Route::get('/centers/{center}/riders', [\App\Http\Controllers\LogisticsRiderController::class, 'forCenter']);
+        Route::post('/centers/{center}/riders/{user}/cash', [\App\Http\Controllers\LogisticsRiderController::class, 'receiveCash']);
+        Route::get('/centers/{center}/payouts', [\App\Http\Controllers\LogisticsRiderController::class, 'payouts']);
+        Route::post('/centers/{center}/riders/{user}/payout', [\App\Http\Controllers\LogisticsRiderController::class, 'payRider']);
+        Route::get('/orders/{logisticsOrder}/candidates', [\App\Http\Controllers\LogisticsRiderController::class, 'candidates']);
+        Route::get('/orders/{logisticsOrder}', [\App\Http\Controllers\LogisticsDispatchController::class, 'show']);
+        Route::post('/orders/{logisticsOrder}/assign', [\App\Http\Controllers\LogisticsDispatchController::class, 'assign']);
+        Route::post('/orders/{logisticsOrder}/to-agency', [\App\Http\Controllers\LogisticsDispatchController::class, 'toAgency']);
+        Route::post('/orders/{logisticsOrder}/prepare', [\App\Http\Controllers\LogisticsDispatchController::class, 'prepare']);
+        Route::post('/orders/{logisticsOrder}/ready', [\App\Http\Controllers\LogisticsDispatchController::class, 'ready']);
+        Route::post('/orders/{logisticsOrder}/depart', [\App\Http\Controllers\LogisticsDispatchController::class, 'depart']);
+        Route::post('/orders/{logisticsOrder}/hand-to-agency', [\App\Http\Controllers\LogisticsDispatchController::class, 'handToAgency']);
+        Route::post('/orders/{logisticsOrder}/receive-return', [\App\Http\Controllers\LogisticsDispatchController::class, 'receiveReturn']);
+        Route::post('/orders/{logisticsOrder}/review', [\App\Http\Controllers\LogisticsDispatchController::class, 'resolveReturn']);
+        Route::post('/orders/{logisticsOrder}/transfer', [\App\Http\Controllers\LogisticsDispatchController::class, 'transfer']);
+        Route::post('/incidents/{incident}/continue', [\App\Http\Controllers\LogisticsDispatchController::class, 'incidentContinue']);
+        Route::post('/incidents/{incident}/interrupt', [\App\Http\Controllers\LogisticsDispatchController::class, 'incidentInterrupt']);
+        Route::post('/novelties/{novelty}/comment', [\App\Http\Controllers\LogisticsDispatchController::class, 'commentNovelty']);
+        Route::post('/novelties/{novelty}/resolve', [\App\Http\Controllers\LogisticsDispatchController::class, 'resolveNovelty']);
+        Route::post('/novelties/{novelty}/escalate', [\App\Http\Controllers\LogisticsDispatchController::class, 'escalateNovelty']);
+    });
+    // La app del rider (logística propia, §22): solo lo suyo
+    Route::middleware('role:Repartidor')->prefix('rider')->group(function () {
+        Route::get('/me', [\App\Http\Controllers\RiderAppController::class, 'me']);
+        Route::post('/device', [\App\Http\Controllers\RiderAppController::class, 'device']);
+        Route::post('/locations', [\App\Http\Controllers\RiderAppController::class, 'locations']);
+        Route::get('/offers', [\App\Http\Controllers\RiderAppController::class, 'offers']);
+        Route::post('/offers/{offer}/seen', [\App\Http\Controllers\RiderAppController::class, 'seen']);
+        Route::post('/offers/{offer}/confirm', [\App\Http\Controllers\RiderAppController::class, 'confirm']);
+        Route::get('/assignment', [\App\Http\Controllers\RiderAppController::class, 'assignment']);
+        Route::get('/novelty-types', [\App\Http\Controllers\RiderAppController::class, 'noveltyTypes']);
+        Route::post('/assignment/{logisticsOrder}/novelty', [\App\Http\Controllers\RiderAppController::class, 'novelty']);
+        Route::get('/incident-types', [\App\Http\Controllers\RiderAppController::class, 'incidentTypes']);
+        Route::get('/road-reports', [\App\Http\Controllers\RiderAppController::class, 'roadReports']);
+        Route::post('/road-reports', [\App\Http\Controllers\RiderAppController::class, 'roadReport']);
+        Route::post('/road-reports/{report}/vote', [\App\Http\Controllers\RiderAppController::class, 'roadReportVote']);
+        Route::post('/assignment/{logisticsOrder}/incident', [\App\Http\Controllers\RiderAppController::class, 'incident']);
+        Route::post('/assignment/{logisticsOrder}/transfer', [\App\Http\Controllers\RiderAppController::class, 'transfer']);
+    });
 });
 
