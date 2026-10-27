@@ -29,9 +29,13 @@ use Illuminate\Support\Facades\DB;
  */
 class RiderAppController extends Controller
 {
-    /** Cada cuánto manda la app su ubicación (decisión nuestra; ver tasks/logistica-propia/plan.md, 1.1). */
+    /**
+     * Cada cuánto manda la app su ubicación (decisión nuestra; ver tasks/logistica-propia/plan.md, 1.1). Sin distancia
+     * mínima: Android pide las dos cosas a la vez, y un rider quieto esperando órdenes dejaba de mandar y a los 5 min
+     * quedaba "sin_gps" (prueba en el emulador del 27/10).
+     */
     public const LOCATION_EVERY_SECONDS = 30;
-    public const LOCATION_EVERY_METERS = 100;
+    public const LOCATION_EVERY_METERS = 0;
 
     public function me()
     {
