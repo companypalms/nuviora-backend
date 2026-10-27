@@ -18,6 +18,7 @@ use App\Services\Logistics\LogisticsSettings;
 use App\Services\Logistics\Novelties;
 use App\Services\Logistics\RiderCash;
 use App\Services\Logistics\RoadReports;
+use App\Services\Logistics\Routes;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
@@ -198,9 +199,10 @@ class RiderAppController extends Controller
 
     /**
      * Lo que el rider ve después de confirmar (§9.1): el centro para recoger, el cliente, la dirección y su GPS, el cobro y
-     * cómo pagó, y su pago estimado si ya tiene tarifario. Solo sus órdenes en curso (§3).
+     * cómo pagó, y su pago estimado si ya tiene tarifario. Solo sus órdenes en curso (§3). En una ruta de varias paradas,
+     * en el orden oficial y con cuál toca ahora (§12, §22.3: no puede cambiar el orden).
      */
-    public function assignment(TariffBook $tariffs)
+    public function assignment(TariffBook $tariffs, Routes $routes)
     {
         $profile = $this->profile();
         // También sus retornos pendientes (§16.1) y la orden cuyo paquete todavía tiene mientras llega su reemplazo (§14)
@@ -209,11 +211,14 @@ class RiderAppController extends Controller
             'incidents' => fn ($q) => $q->whereIn('status', LogisticsIncident::ACTIVE)])
             ->where(fn ($q) => $q->where(fn ($w) => $w->where('rider_id', $me)->whereIn('status', [...Candidates::BUSY, LogisticsStatus::RETURN_PENDING]))
                 ->orWhere(fn ($w) => $w->where('pickup_rider_id', $me)->whereNotIn('status', LogisticsStatus::FINISHED)))
-            ->orderBy('id')->get();
+            ->orderBy('route_id')->orderBy('route_stop')->orderBy('id')->get();
+        $stopsByRoute = LogisticsOrder::with('order:id,name')->whereIn('route_id', $rows->pluck('route_id')->filter()->unique())
+            ->orderBy('route_stop')->get()->groupBy('route_id');
 
         return response()->json([
             'status' => true,
-            'assignments' => $rows->map(function (LogisticsOrder $row) use ($tariffs, $profile, $me) {
+            'assignments' => $rows->map(function (LogisticsOrder $row) use ($tariffs, $profile, $me, $routes, $stopsByRoute) {
+                $route = $this->routeInfo($row, $stopsByRoute, $routes);
                 $order = $row->order;
                 $incident = $row->incidents->sortByDesc('id')->first();
                 // §14: el que tuvo la incidencia espera a su reemplazo con el paquete; el reemplazo lo recoge donde está él
@@ -222,7 +227,9 @@ class RiderAppController extends Controller
                 $returning = $row->status === LogisticsStatus::RETURN_PENDING || $handingOver;
                 $client = $order?->client;
                 $tariff = $row->center ? $tariffs->find($me, (int) $row->center->city_id, now(config('app.timezone'))->toDateString()) : null;
-                $quote = $tariff && $row->center_client_meters !== null ? $tariffs->quote($tariff, (int) $row->center_client_meters) : null;
+                // §18.2: en una ruta de varias paradas se paga el tramo desde la parada anterior
+                $legMeters = Routes::legMeters($row);
+                $quote = $tariff && $legMeters !== null ? $tariffs->quote($tariff, $legMeters) : null;
 
                 return [
                     'logistics_order_id' => $row->id,
@@ -233,8 +240,12 @@ class RiderAppController extends Controller
                             ? 'Otro rider va a recoger el paquete donde estás: entrégaselo cuando llegue.'
                             : 'El operador está buscando quién recoja el paquete donde estás. Espera sus instrucciones.',
                         (bool) $pickingUp => 'Recoge el paquete donde está ' . ($row->pickupRider?->names ?? 'el otro rider') . ' y toca "Recibí el paquete".',
+                        $route && $route['waiting_for'] !== null => "Primero entrega la parada {$route['waiting_for']['stop']} (orden {$route['waiting_for']['order']}). Después sigue esta.",
+                        $route && in_array($row->status, Routes::BEFORE_DEPARTURE, true)
+                            => "Ruta de {$route['stops']} paradas: recoge los {$route['stops']} paquetes juntos en el centro.",
                         default => self::NEXT_ACTION[$row->status] ?? null,
                     },
+                    'route' => $route,
                     'pickup' => $pickingUp ? [
                         'name' => $row->pickupRider?->names,
                         'phone' => $row->pickupRider?->phone,
@@ -366,6 +377,28 @@ class RiderAppController extends Controller
         $out = $incidents->transfer($logisticsOrder, Auth::user(), $data['lat'] ?? null, $data['lng'] ?? null);
 
         return response()->json(['status' => $out['ok'], 'message' => $out['message']], $out['code']);
+    }
+
+    /**
+     * La parada dentro de su ruta: cuál es, de cuántas, la que sigue (§22.3: "pasar automáticamente a siguiente parada")
+     * y, si todavía hay una anterior sin resultado, cuál (§12: "termina la primera parada y luego la segunda").
+     */
+    private function routeInfo(LogisticsOrder $row, $stopsByRoute, Routes $routes): ?array
+    {
+        if (!$row->route_id || !isset($stopsByRoute[$row->route_id])) {
+            return null;
+        }
+        $stops = $stopsByRoute[$row->route_id];
+        $blocking = $routes->blockingStop($row);
+        $next = $stops->first(fn (LogisticsOrder $s) => $s->route_stop > $row->route_stop);
+
+        return [
+            'id' => (int) $row->route_id,
+            'stop' => (int) $row->route_stop,
+            'stops' => $stops->count(),
+            'next_logistics_order_id' => $next?->id,
+            'waiting_for' => $blocking ? ['stop' => (int) $blocking->route_stop, 'order' => $blocking->order?->name, 'logistics_order_id' => $blocking->id] : null,
+        ];
     }
 
     public const NEXT_ACTION = [

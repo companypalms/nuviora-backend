@@ -132,6 +132,10 @@ class LogisticsOrders
         $from = $row->status;
         $row->fill(['status' => $to] + $attributes)->save();
         $this->event($row, $action, $from, $to, $actorId, $reason, $data);
+        // Una parada que cambia puede deshacer la ruta (antes de salir) o terminarla (§20.2)
+        if ($row->route_id) {
+            app(Routes::class)->sync((int) $row->route_id);
+        }
 
         return $row;
     }

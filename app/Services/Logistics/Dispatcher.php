@@ -7,6 +7,7 @@ use App\Models\DispatchOffer;
 use App\Models\DispatchRound;
 use App\Models\LogisticsAlert;
 use App\Models\LogisticsOrder;
+use App\Models\LogisticsRoute;
 use App\Models\Order;
 use App\Models\RiderProfile;
 use App\Models\User;
@@ -240,9 +241,21 @@ class Dispatcher
         });
         if ($outcome['ok']) {
             $this->notifyCovered($outcome['row'], $offer->id);
+            $this->notifyRecoveryCovered($outcome['row']);
         }
 
         return $outcome;
+    }
+
+    /** Las otras paradas de una ruta de recuperación (§14) también quedaron cubiertas: se les avisa a sus rondas. */
+    private function notifyRecoveryCovered(LogisticsOrder $row): void
+    {
+        if (!$row->route_id) {
+            return;
+        }
+        foreach (LogisticsOrder::where('route_id', $row->route_id)->where('id', '!=', $row->id)->get() as $stop) {
+            $this->notifyCovered($stop, null);
+        }
     }
 
     /** §8.4: el operador asigna a un rider que le dijo que sí por teléfono (o en cualquier momento, §3). */
@@ -269,6 +282,7 @@ class Dispatcher
         });
         if ($outcome['ok']) {
             $this->notifyCovered($outcome['row'], null);
+            $this->notifyRecoveryCovered($outcome['row']);
             $profile = RiderProfile::where('user_id', $riderId)->first();
             $this->push->send($profile, ['type' => 'asignada', 'logistics_order_id' => $row->id], 300);
         }
@@ -324,6 +338,24 @@ class Dispatcher
         return $outcome;
     }
 
+    /**
+     * §9.3, §24.1: el operador aprobó sumar esta orden a la ruta de un rider que todavía no salió. Es del rider sin otra
+     * aceptación; sus rondas se cierran como cubiertas. Corre dentro de la transacción de Routes::approve.
+     */
+    public function assignToRoute(LogisticsOrder $row, int $riderId, User $by, int $routeId): void
+    {
+        $this->assignRider($row, $riderId, 'ruta', $by->id, null, ['ruta' => $routeId]);
+    }
+
+    /** Después de armar la ruta: "asignación cubierta" a los de la ronda y el aviso al rider (§8.2, §25). */
+    public function notifyRouteAssignment(LogisticsOrder $row, int $riderId): void
+    {
+        $this->notifyCovered($row, null);
+        if ($profile = RiderProfile::where('user_id', $riderId)->first()) {
+            $this->push->send($profile, ['type' => 'asignada', 'logistics_order_id' => $row->id], 300);
+        }
+    }
+
     /** La orden salió del centro mientras buscaba rider: se cierran las ofertas abiertas (y se le avisa a cada rider). */
     public function cancelOpenOffers(LogisticsOrder $row): void
     {
@@ -351,7 +383,7 @@ class Dispatcher
         Order::whereKey($row->order_id)->first()?->forceFill(['deliverer_id' => $riderId])->save();
         // §20.1: RIDER CONFIRMADO → PREPARANDO o LISTO; si el operador ya lo tenía listo, queda listo para que lo recoja
         $to = $row->ready_at ? LogisticsStatus::READY : LogisticsStatus::RIDER_CONFIRMED;
-        $this->orders->transition($row, $to, $via === 'manual' ? 'asignada_a_mano' : 'confirmada',
+        $this->orders->transition($row, $to, match ($via) { 'manual' => 'asignada_a_mano', 'ruta' => 'sumada_a_ruta', default => 'confirmada' },
             $byId ?? $riderId, $comment, $data + ['rider_id' => $riderId], [
                 'rider_id' => $riderId,
                 'rider_confirmed_at' => now(),
@@ -360,6 +392,34 @@ class Dispatcher
                 'assignment_note' => $comment !== null ? mb_substr($comment, 0, 250) : null,
             ]);
         $this->alerts->resolve("ronda:{$row->id}:*", $byId);
+        if ($row->pickup_rider_id && $via !== 'ruta') {
+            $this->recoverWithSameRider($row, $riderId, $byId);
+        }
+    }
+
+    /**
+     * §14, §29 punto 11: se interrumpió una ruta con varias paradas sin entregar. Todos esos paquetes están juntos donde
+     * quedó el rider, así que el reemplazo que gana una se lleva las demás, en el mismo orden, sin otra ronda (como en
+     * §9.3: todavía no los retiró). Las rondas de las otras se cierran como cubiertas.
+     */
+    private function recoverWithSameRider(LogisticsOrder $row, int $riderId, ?int $byId): void
+    {
+        $siblings = LogisticsOrder::where('pickup_rider_id', $row->pickup_rider_id)->where('center_id', $row->center_id)
+            ->where('status', LogisticsStatus::SEARCHING)->whereNull('rider_id')->where('id', '!=', $row->id)->lockForUpdate()->get();
+        if ($siblings->isEmpty()) {
+            return;
+        }
+        $stops = $siblings->push($row)->sortBy(fn (LogisticsOrder $s) => [$s->route_stop ?? 99, $s->id])->values();
+        $route = LogisticsRoute::create(['center_id' => $row->center_id, 'rider_id' => $riderId, 'status' => LogisticsRoute::OPEN,
+            'exceptional' => $stops->count() > 2, 'approved_by' => $byId, 'approved_at' => now(),
+            'plan' => ['recuperacion' => true, 'stops' => $stops->map(fn ($s, $i) => ['logistics_order_id' => $s->id, 'stop' => $i + 1])->all()]]);
+        foreach ($stops as $i => $stop) {
+            if ($stop->id !== $row->id) {
+                $this->assignRider($stop, $riderId, 'ruta', $byId, 'Recuperación de la ruta interrumpida (§14).', ['ruta' => $route->id]);
+            }
+            $stop->forceFill(['route_id' => $route->id, 'route_stop' => $i + 1, 'predicted_minutes' => null])->save();
+            $this->orders->event($stop, 'ruta_de_recuperacion', $stop->status, $stop->status, $byId, null, ['ruta' => $route->id, 'parada' => $i + 1, 'de' => $stops->count()]);
+        }
     }
 
     /** Cierra las rondas y ofertas abiertas de la orden con esa respuesta. */

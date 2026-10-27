@@ -32,7 +32,7 @@ class LogisticsSettings
         'max_stops_exceptional' => 3,
         'cash_limit_usd' => 60,              // §17
         'service_minutes_per_stop' => 10,    // R7 (la propuesta era 5)
-        'picking_minutes' => null,           // §7.1: "tiempo de picking/salida configurado"; sin valor de Fran
+        'picking_minutes' => 5,              // §7.1; Fran, 27/10: "menos de 3 minutos, máximo 5" (bolsa y etiqueta)
         'pay_failed_leg' => true,            // R7: si el rider llegó y el cliente no recibió, se paga la ida
         'return_deadline' => 'fin_de_turno', // R7: el mismo día, antes del cierre del turno
         'gps_max_age_seconds' => 300,        // §6.1: "GPS reciente suficiente". Decisión nuestra; confirmar con Fran

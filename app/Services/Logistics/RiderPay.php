@@ -58,7 +58,9 @@ class RiderPay
             return null;
         }
         $tariff = $this->tariffs->find((int) $row->rider_id, (int) $center->city_id, $date);
-        $quote = $tariff && $row->center_client_meters !== null ? $this->tariffs->quote($tariff, (int) $row->center_client_meters) : null;
+        // §18.2: en una ruta de varias paradas, la ida es el tramo desde la parada anterior
+        $meters = Routes::legMeters($row);
+        $quote = $tariff && $meters !== null ? $this->tariffs->quote($tariff, $meters) : null;
 
         return RiderTrip::create([
             'rider_id' => $row->rider_id,
@@ -67,7 +69,7 @@ class RiderPay
             'order_id' => $row->order_id,
             'concept' => RiderTrip::FAILED_LEG,
             'trip_date' => $date,
-            'meters' => $row->center_client_meters,
+            'meters' => $meters,
             'amount_usd' => $quote ? round((float) $quote['price'], 2) : null,
             'basis' => [
                 'novedad' => $novelty->type,
@@ -92,7 +94,8 @@ class RiderPay
         $earnings = Earning::where('user_id', $riderId)->where('role_type', 'repartidor')->whereDate('earning_date', $date)
             ->whereIn('order_id', $centerOrders)->orderBy('id')->get();
         $names = Order::whereIn('id', $earnings->pluck('order_id'))->pluck('name', 'id');
-        $meters = LogisticsOrder::whereIn('order_id', $earnings->pluck('order_id'))->pluck('center_client_meters', 'order_id');
+        $meters = LogisticsOrder::whereIn('order_id', $earnings->pluck('order_id'))->get()
+            ->mapWithKeys(fn (LogisticsOrder $r) => [$r->order_id => Routes::legMeters($r)]);
         $trips = $earnings->map(fn (Earning $e) => [
             'concept' => 'entrega',
             'label' => 'Entrega',

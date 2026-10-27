@@ -4,17 +4,20 @@ namespace App\Services\Finance;
 
 use App\Models\DelivererCostSetting;
 use App\Models\FinancialAuditLog;
+use App\Models\LogisticsOrder;
 use App\Models\Order;
 use App\Services\CommissionService;
 use App\Services\Delivery\GoogleRoutesClient;
 use App\Services\Delivery\MapsLinkResolver;
 use App\Services\Delivery\TariffBook;
+use App\Services\Logistics\Routes;
 
 /**
  * Lo que cobra un repartidor propio por una entrega (Módulo 4 de Fran, R11):
  * - "monto fijo": el suyo o, si no tiene, el monto general (finance.commission_deliverer, $2,50);
  * - "tarifario": la distancia por carretera desde el almacén que eligió el Admin hasta la ubicación del cliente, con el
- *   tarifario del repartidor para esa ciudad (el mismo del Módulo 3, cargado a su nombre en Tarifas de delivery).
+ *   tarifario del repartidor para esa ciudad (el mismo del Módulo 3, cargado a su nombre en Tarifas de delivery). En una
+ *   ruta de varias paradas de la logística propia, desde la segunda parada es el tramo desde la anterior (§18.2).
  * Si el tarifario no se puede aplicar (sin almacén con coordenadas, sin ubicación, sin tarifario o Google no responde),
  * se paga el monto fijo y queda dicho por qué en la auditoría (§82). Cada cálculo queda ahí con su base.
  */
@@ -46,8 +49,14 @@ class OwnDelivererCost
         if (!$tariff) {
             return $fallback('El repartidor no tiene tarifario vigente en esa ciudad.');
         }
+        // Logística propia, §18.2: en una ruta de varias paradas, desde la segunda se paga el tramo desde la parada anterior
+        // (en el orden oficial), no otra salida desde el almacén
+        $previous = ($row = LogisticsOrder::where('order_id', $order->id)->first()) ? app(Routes::class)->previousStop($row) : null;
+        $from = $previous?->order?->location_lat !== null
+            ? [(float) $previous->order->location_lat, (float) $previous->order->location_lng]
+            : [(float) $warehouse->latitude, (float) $warehouse->longitude];
         try {
-            $meters = $this->google->distanceMeters((float) $warehouse->latitude, (float) $warehouse->longitude, (float) $order->location_lat, (float) $order->location_lng);
+            $meters = $this->google->distanceMeters($from[0], $from[1], (float) $order->location_lat, (float) $order->location_lng);
         } catch (\Throwable $e) {
             return $fallback('Google Routes no respondió: ' . mb_substr($e->getMessage(), 0, 120));
         }
@@ -58,6 +67,7 @@ class OwnDelivererCost
 
         return ['amount' => round((float) $quote['price'], 2), 'basis' => [
             'mode' => 'tariff', 'warehouse_id' => $warehouse->id, 'distance_km' => round($meters / 1000, 3), 'tariff_id' => $tariff->id,
+            ...($previous ? ['desde_parada' => $previous->route_stop, 'desde_orden' => $previous->order_id] : []),
             'tariff_version' => $tariff->version, 'range_id' => $quote['range']->id, 'amount' => round((float) $quote['price'], 2),
         ]];
     }

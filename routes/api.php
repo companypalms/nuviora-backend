@@ -778,6 +778,7 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::post('/centers/{center}/exceptions', [\App\Http\Controllers\LogisticsCenterController::class, 'storeException']);
         Route::delete('/centers/{center}/exceptions/{exception}', [\App\Http\Controllers\LogisticsCenterController::class, 'destroyException']);
         Route::get('/centers/{center}/calendar-setup', [\App\Http\Controllers\LogisticsCenterController::class, 'calendarSetup']);
+        Route::get('/centers/{center}/metrics', [\App\Http\Controllers\LogisticsMetricsController::class, 'show']);
         Route::post('/centers/{center}/patterns', [\App\Http\Controllers\LogisticsCenterController::class, 'storePattern']);
         Route::put('/centers/{center}/patterns/{pattern}/disable', [\App\Http\Controllers\LogisticsCenterController::class, 'disablePattern']);
         Route::post('/centers/{center}/overrides', [\App\Http\Controllers\LogisticsCenterController::class, 'storeOverride']);
@@ -802,6 +803,9 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::post('/centers/{center}/riders/{user}/cash', [\App\Http\Controllers\LogisticsRiderController::class, 'receiveCash']);
         Route::get('/centers/{center}/payouts', [\App\Http\Controllers\LogisticsRiderController::class, 'payouts']);
         Route::post('/centers/{center}/riders/{user}/payout', [\App\Http\Controllers\LogisticsRiderController::class, 'payRider']);
+        Route::get('/centers/{center}/route-proposals', [\App\Http\Controllers\LogisticsRouteController::class, 'proposals']);
+        Route::post('/routes/approve', [\App\Http\Controllers\LogisticsRouteController::class, 'approve']);
+        Route::post('/routes/{logisticsRoute}/reorder', [\App\Http\Controllers\LogisticsRouteController::class, 'reorder']);
         Route::get('/orders/{logisticsOrder}/candidates', [\App\Http\Controllers\LogisticsRiderController::class, 'candidates']);
         Route::get('/orders/{logisticsOrder}', [\App\Http\Controllers\LogisticsDispatchController::class, 'show']);
         Route::post('/orders/{logisticsOrder}/assign', [\App\Http\Controllers\LogisticsDispatchController::class, 'assign']);

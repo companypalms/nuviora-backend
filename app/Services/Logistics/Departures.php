@@ -7,6 +7,7 @@ use App\Constants\OrderStatus;
 use App\Events\OrderUpdated;
 use App\Models\LogisticsCustodyEvent;
 use App\Models\LogisticsOrder;
+use App\Models\LogisticsRoute;
 use App\Models\Order;
 use App\Models\Status;
 use App\Models\User;
@@ -21,7 +22,7 @@ use Illuminate\Support\Facades\DB;
  * - a la agencia de respaldo el operador le entrega el paquete en el centro: pasa a custodia de la agencia (§16.2.2.4),
  *   y la agencia sigue la orden en su pantalla, como hoy.
  * Sin stock apartado para la orden, no sale (§16.2: "un pedido no puede salir si la cantidad… no está disponible o
- * reservada"). Ruta de una parada en la semana 1; las dobles vienen después (§10).
+ * reservada"). Las rutas de varias paradas (§10, Routes) salen todas juntas.
  */
 class Departures
 {
@@ -61,52 +62,111 @@ class Departures
         });
     }
 
-    /** §11: "Confirmar salida". */
+    /**
+     * §11: "Confirmar salida". Con una ruta de varias paradas salen todas juntas (el operador valida que el rider recibe
+     * los paquetes de la ruta correcta) y la ruta queda bloqueada: route_locked_at y departed_warehouse_at.
+     */
     public function depart(LogisticsOrder $row, User $by): array
     {
+        if ($row->route_id) {
+            return $this->departRoute($row, $by);
+        }
         $out = DB::transaction(function () use ($row, $by) {
             $row = LogisticsOrder::whereKey($row->id)->lockForUpdate()->first();
-            if (!in_array($row->status, self::DEPARTABLE, true) || !$row->rider_id) {
-                return $this->refuse($row, 'confirmar la salida');
+            if ($row->route_id) {
+                return ['ok' => false, 'message' => 'La orden entró en una ruta mientras tanto: vuelve a cargar la torre.', 'code' => 409];
             }
-            // §14.3: el paquete no está en el centro sino con el rider que tuvo la incidencia
-            if ($row->pickup_rider_id) {
-                return ['ok' => false, 'message' => 'El paquete está con el rider que tuvo la incidencia: confirma el traspaso cuando el reemplazo lo reciba (§14.3).', 'code' => 409];
-            }
-            // §16.1 punto 3: "debe entregar primero el retorno pendiente antes de recibir nuevos paquetes"
-            $pendingReturn = LogisticsOrder::with('order:id,name')->where('rider_id', $row->rider_id)
-                ->where('status', LogisticsStatus::RETURN_PENDING)->first();
-            if ($pendingReturn) {
-                return ['ok' => false, 'message' => "Primero recibe el retorno pendiente de este rider (orden {$pendingReturn->order?->name}): "
-                    . 'no puede salir con paquetes nuevos sin entregarlo (§16.1).', 'code' => 409];
-            }
-            // §17 punto 2 y §6.1: con USD 60 o más, entrega el efectivo antes de llevarse otra ruta
-            $cash = app(RiderCash::class);
-            if ($row->center && $cash->overLimit((int) $row->rider_id, $row->center)) {
-                return ['ok' => false, 'message' => 'Primero recibe el efectivo del rider: lleva USD ' . number_format($cash->balance((int) $row->rider_id)['total_usd'], 2, ',', '.')
-                    . ' y el tope es USD ' . number_format($cash->limit($row->center), 0) . ' (§17).', 'code' => 409];
+            if ($problem = $this->cannotDepart($row)) {
+                return $problem;
             }
             $order = Order::whereKey($row->order_id)->lockForUpdate()->first();
-            if (!$order->isStockDeducted()) {
-                return ['ok' => false, 'message' => 'La orden no tiene su producto apartado en el centro: no puede salir (§16.2).', 'code' => 422];
-            }
+            $this->leave($row, $order, $by, now());
 
-            $now = now();
-            $this->custody($row, $order, 'almacen', $row->center?->warehouse_id, 'rider', $row->rider_id, $by->id);
-            $this->orders->transition($row, LogisticsStatus::EN_ROUTE, 'salida', $by->id, null, ['rider_id' => $row->rider_id],
-                ['departed_at' => $now, 'ready_at' => $row->ready_at ?? $now]);
-
-            // La orden pasa a "En ruta" como cuando lo marca una agencia (was_shipped y shipped_at), sin agencia (§11)
-            $order->status_id = Status::where('description', OrderStatus::EN_RUTA)->value('id');
-            $order->was_shipped = true;
-            $order->shipped_at = $now;
-            $order->save();
-
-            return ['ok' => true, 'message' => 'Salida confirmada: la ruta queda cerrada.', 'code' => 200, 'order' => $order];
+            return ['ok' => true, 'message' => 'Salida confirmada: la ruta queda cerrada.', 'code' => 200, 'orders' => [$order]];
         });
+
+        return $this->afterDeparture($out);
+    }
+
+    private function departRoute(LogisticsOrder $row, User $by): array
+    {
+        $out = DB::transaction(function () use ($row, $by) {
+            $route = LogisticsRoute::whereKey($row->route_id)->lockForUpdate()->first();
+            if (!$route || $route->status !== LogisticsRoute::OPEN) {
+                return ['ok' => false, 'message' => 'Esa ruta ya salió o ya no existe: vuelve a cargar la torre.', 'code' => 409];
+            }
+            $stops = LogisticsOrder::where('route_id', $route->id)->orderBy('route_stop')->lockForUpdate()->get();
+            foreach ($stops as $stop) {
+                if ($problem = $this->cannotDepart($stop)) {
+                    $problem['message'] = "Parada {$stop->route_stop}: {$problem['message']}";
+
+                    return $problem;
+                }
+            }
+            $now = now();
+            $orders = [];
+            foreach ($stops as $stop) {
+                $order = Order::whereKey($stop->order_id)->lockForUpdate()->first();
+                $this->leave($stop, $order, $by, $now, ['ruta' => $route->id, 'parada' => $stop->route_stop]);
+                $orders[] = $order;
+            }
+            $route->update(['status' => LogisticsRoute::EN_ROUTE, 'locked_at' => $now, 'departed_at' => $now]);
+
+            return ['ok' => true, 'message' => "Salida confirmada: ruta de {$stops->count()} paradas cerrada.", 'code' => 200, 'orders' => $orders];
+        });
+
+        return $this->afterDeparture($out);
+    }
+
+    /** Lo que impide que esa orden salga ahora, o null. */
+    private function cannotDepart(LogisticsOrder $row): ?array
+    {
+        if (!in_array($row->status, self::DEPARTABLE, true) || !$row->rider_id) {
+            return $this->refuse($row, 'confirmar la salida');
+        }
+        // §14.3: el paquete no está en el centro sino con el rider que tuvo la incidencia
+        if ($row->pickup_rider_id) {
+            return ['ok' => false, 'message' => 'El paquete está con el rider que tuvo la incidencia: confirma el traspaso cuando el reemplazo lo reciba (§14.3).', 'code' => 409];
+        }
+        // §16.1 punto 3: "debe entregar primero el retorno pendiente antes de recibir nuevos paquetes"
+        $pendingReturn = LogisticsOrder::with('order:id,name')->where('rider_id', $row->rider_id)
+            ->where('status', LogisticsStatus::RETURN_PENDING)->first();
+        if ($pendingReturn) {
+            return ['ok' => false, 'message' => "Primero recibe el retorno pendiente de este rider (orden {$pendingReturn->order?->name}): "
+                . 'no puede salir con paquetes nuevos sin entregarlo (§16.1).', 'code' => 409];
+        }
+        // §17 punto 2 y §6.1: con USD 60 o más, entrega el efectivo antes de llevarse otra ruta
+        $cash = app(RiderCash::class);
+        if ($row->center && $cash->overLimit((int) $row->rider_id, $row->center)) {
+            return ['ok' => false, 'message' => 'Primero recibe el efectivo del rider: lleva USD ' . number_format($cash->balance((int) $row->rider_id)['total_usd'], 2, ',', '.')
+                . ' y el tope es USD ' . number_format($cash->limit($row->center), 0) . ' (§17).', 'code' => 409];
+        }
+        if (!Order::whereKey($row->order_id)->lockForUpdate()->first()->isStockDeducted()) {
+            return ['ok' => false, 'message' => 'La orden no tiene su producto apartado en el centro: no puede salir (§16.2).', 'code' => 422];
+        }
+
+        return null;
+    }
+
+    /** El producto pasa a custodia del rider y la orden a "En ruta" como cuando lo marca una agencia (§11). */
+    private function leave(LogisticsOrder $row, Order $order, User $by, $now, array $data = []): void
+    {
+        $this->custody($row, $order, 'almacen', $row->center?->warehouse_id, 'rider', $row->rider_id, $by->id);
+        $this->orders->transition($row, LogisticsStatus::EN_ROUTE, 'salida', $by->id, null, $data + ['rider_id' => $row->rider_id],
+            ['departed_at' => $now, 'ready_at' => $row->ready_at ?? $now]);
+        $order->status_id = Status::where('description', OrderStatus::EN_RUTA)->value('id');
+        $order->was_shipped = true;
+        $order->shipped_at = $now;
+        $order->save();
+    }
+
+    private function afterDeparture(array $out): array
+    {
         if ($out['ok']) {
-            event(new OrderUpdated($out['order']));
-            unset($out['order']);
+            foreach ($out['orders'] as $order) {
+                event(new OrderUpdated($order));
+            }
+            unset($out['orders']);
         }
 
         return $out;

@@ -59,6 +59,7 @@ class Tower
             'novelties' => fn ($q) => $q->whereNull('resolved_at')->with('reporter:id,names'),
             'incidents' => fn ($q) => $q->whereIn('status', LogisticsIncident::ACTIVE)->with('rider:id,names,phone'),
             'pickupRider:id,names,phone',
+            'route' => fn ($q) => $q->withCount('stops'),
         ])
             ->where('center_id', $center->id)
             ->when(!$all, fn ($q) => $q->whereNotIn('status', LogisticsStatus::FINISHED))
@@ -109,7 +110,8 @@ class Tower
         $incident = $r->incidents->sortByDesc('id')->first();
         $key = $this->priorityKey($r, $sla, $searching, $novelty, $handed, $returnOverdue, $settings, $incident);
 
-        return $r->toArray() + [
+        // La ruta va resumida más abajo (sin el modelo completo)
+        return array_diff_key($r->toArray(), ['route' => true]) + [
             'status_label' => LogisticsStatus::label($r->status),
             'sla_minutes' => $sla,
             'sla_level' => self::slaLevel($sla, $settings),
@@ -133,6 +135,15 @@ class Tower
                 'reported_at' => $incident->reported_at,
             ] : null,
             'pickup_rider' => $r->pickupRider?->only(['id', 'names', 'phone']),
+            // §10, §20.2: la ruta de varias paradas en la que va (la salida es de toda la ruta)
+            'route' => $r->route ? [
+                'id' => $r->route->id,
+                'status' => $r->route->status,
+                'exceptional' => $r->route->exceptional,
+                'stop' => $r->route_stop,
+                'stops' => $r->route->stops_count,
+                'locked' => $r->route->locked_at !== null,
+            ] : null,
             'return_deadline' => $returnDeadline,
             'return_overdue' => $returnOverdue,
             // Lo que pasa al recibirlo: apartada para la misma orden (R5) o a revisión (§16.1)

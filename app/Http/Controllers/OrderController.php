@@ -420,6 +420,16 @@ class OrderController extends Controller
                 }
             }
 
+        // Logística propia, §12 y §30: en una ruta de varias paradas el rider entrega en el orden oficial
+        if ($statusEntregado && (int) $statusEntregado->id === (int) $request->status_id && Auth::user()?->role?->description === 'Repartidor'
+            && ($logisticsRow = app(\App\Services\Logistics\LogisticsOrders::class)->active($order))
+            && ($blocking = app(\App\Services\Logistics\Routes::class)->blockingStop($logisticsRow))) {
+            return response()->json([
+                'status' => false,
+                'message' => "Primero entrega la parada {$blocking->route_stop} (orden {$blocking->order?->name}): la ruta va en ese orden.",
+            ], 422);
+        }
+
         // 1. Validar que existe comprobante de pago si se intenta cambiar a Entregado
         // SKIP for return/exchange orders - they don't require payments
         if ($statusEntregado && (int) $statusEntregado->id === (int) $request->status_id && !($order->is_return || $order->is_exchange)) {
