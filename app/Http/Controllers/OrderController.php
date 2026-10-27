@@ -443,7 +443,10 @@ class OrderController extends Controller
                 ]);
                 
                 $order->cash_received = $request->cash_received;
-                $order->change_amount = max(0, $request->cash_received - $order->current_total_price);
+                // El vuelto sale de todo lo que pagó el cliente, como en la gestión de vuelto. Con solo el efectivo, un
+                // pago mixto daba menos vuelto y la validación de administración dejaba de valer (#5641, 2026-10-27).
+                $paid = (float) $order->payments()->sum('amount');
+                $order->change_amount = max(0, ($paid > 0 ? $paid : (float) $request->cash_received) - $order->current_total_price);
                 $order->change_covered_by = $request->change_covered_by;
 
                 if ($request->change_covered_by === 'company') {
