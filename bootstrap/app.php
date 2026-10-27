@@ -21,7 +21,10 @@ return Application::configure(basePath: dirname(__DIR__))
             'agency.gate'  => \App\Http\Middleware\EnforceAgencyChatGate::class,
             'role'         => \App\Http\Middleware\EnsureRole::class,
             'order.access' => \App\Http\Middleware\EnsureOrderAccess::class,
+            'limited.roles' => \App\Http\Middleware\RestrictLimitedRoles::class,
         ]);
+        // El candado del rider y del operador va antes de buscar los modelos de la ruta: 403 parejo, sin revelar qué ids existen
+        $middleware->prependToPriorityList(\Illuminate\Routing\Middleware\SubstituteBindings::class, \App\Http\Middleware\RestrictLimitedRoles::class);
     })
     ->withBroadcasting(
     __DIR__ . '/../routes/channels.php',

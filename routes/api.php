@@ -61,8 +61,8 @@ Route::middleware('api_key')->prefix('external/whatsapp')->group(function () {
     Route::get('media-library', [\App\Http\Controllers\External\ExternalWhatsAppController::class, 'listMedia']);
 });
 
-// Endpoints
-Route::middleware(['auth:sanctum', 'agency.gate'])->group(function () {
+// Endpoints (limited.roles: el rider y el operador logístico solo llegan a lo suyo; ver RestrictLimitedRoles)
+Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(function () {
     Route::get('/kanban-data', [OrderController::class, 'kanban']);
 
     /**---------------------
@@ -214,9 +214,10 @@ Route::middleware(['auth:sanctum', 'agency.gate'])->group(function () {
     // Productos
     Route::get('products', [ProductController::class, 'index']);
     Route::get('products/{id}', [ProductController::class, 'show']);
-    Route::put('products/{id}', [ProductController::class, 'update']);
-    Route::post('products/{id}/gallery', [ProductController::class, 'uploadImage']);
-    Route::delete('products/{id}/gallery/{imageId}', [ProductController::class, 'deleteImage']);
+    // Editar el catálogo (precio, costo, fotos): solo administración. Antes cualquier rol podía (análisis de seguridad, 26/10)
+    Route::put('products/{id}', [ProductController::class, 'update'])->middleware('role:Admin,Gerente,Master');
+    Route::post('products/{id}/gallery', [ProductController::class, 'uploadImage'])->middleware('role:Admin,Gerente,Master');
+    Route::delete('products/{id}/gallery/{imageId}', [ProductController::class, 'deleteImage'])->middleware('role:Admin,Gerente,Master');
 
     /**---------------------
      * CURRENCY
@@ -238,7 +239,7 @@ Route::middleware(['auth:sanctum', 'agency.gate'])->group(function () {
     Route::get('/products', [ProductController::class, 'index']);
 
     // Stock
-    Route::put('/products/{product}/stock', [ProductController::class, 'updateStock']);
+    Route::put('/products/{product}/stock', [ProductController::class, 'updateStock'])->middleware('role:Admin,Gerente,Master');
     Route::get('/products/{product}/movements', [StockMovementController::class, 'index']);
 
     Route::post('facebook/events', [FacebookEventController::class, 'sendEvent']);
@@ -320,8 +321,8 @@ Route::middleware(['auth:sanctum', 'agency.gate'])->group(function () {
     Route::get('/commissions/admin/summary', [CommissionController::class, 'adminSummary']); // ?from=YYYY-MM-DD&to=...
     // Productos
     Route::get('/inventory/products', [ProductController::class, 'index']);
-    Route::post('/inventory/products', [ProductController::class, 'store']);
-    Route::put('/inventory/products/{id}', [ProductController::class, 'update']);
+    Route::post('/inventory/products', [ProductController::class, 'store'])->middleware('role:Admin,Gerente,Master');
+    Route::put('/inventory/products/{id}', [ProductController::class, 'update'])->middleware('role:Admin,Gerente,Master');
     // Variantes (tallas, colores) de cada producto (tarea 4)
     Route::get('/products/{product}/variants', [\App\Http\Controllers\ProductVariantController::class, 'index']);
     Route::post('/products/{product}/variants', [\App\Http\Controllers\ProductVariantController::class, 'store'])->middleware('role:Admin,Gerente,Master');
@@ -442,9 +443,12 @@ Route::middleware(['auth:sanctum', 'agency.gate'])->group(function () {
     Route::post('/media-explorer/delete', [\App\Http\Controllers\MediaExplorerController::class, 'delete']);
 
     // --- CRM Assignment & Shift Management (Automated Roster) ---
-    Route::get('/crm/agents', [\App\Http\Controllers\CrmAssignmentController::class, 'index']);
-    Route::post('/crm/agents/{id}/toggle', [\App\Http\Controllers\CrmAssignmentController::class, 'toggleStatus']);
-    Route::post('/crm/clients/{clientId}/assign', [\App\Http\Controllers\CrmAssignmentController::class, 'assign']);
+    // Turnos y reparto de clientes: solo administración (la web ya solo se los muestra a ellos; la API no lo cuidaba)
+    Route::middleware('role:Admin,Gerente,Master')->group(function () {
+        Route::get('/crm/agents', [\App\Http\Controllers\CrmAssignmentController::class, 'index']);
+        Route::post('/crm/agents/{id}/toggle', [\App\Http\Controllers\CrmAssignmentController::class, 'toggleStatus']);
+        Route::post('/crm/clients/{clientId}/assign', [\App\Http\Controllers\CrmAssignmentController::class, 'assign']);
+    });
 
     Route::get('/currency', [CurrencyController::class, 'show']);
     Route::post('/currency', [CurrencyController::class, 'create']);
@@ -483,7 +487,10 @@ Route::middleware(['auth:sanctum', 'agency.gate'])->group(function () {
      * ---------------------**/
     // Warehouse management
     Route::get('warehouse-types', [WarehouseController::class, 'getTypes']);
-    Route::apiResource('warehouses', WarehouseController::class);
+    // Ver, cualquiera; crear y borrar, administración; editar, administración o la agencia el suyo (lo cuida el controlador)
+    Route::apiResource('warehouses', WarehouseController::class)->only(['index', 'show']);
+    Route::apiResource('warehouses', WarehouseController::class)->only(['store', 'destroy'])->middleware('role:Admin,Gerente,Master');
+    Route::apiResource('warehouses', WarehouseController::class)->only(['update'])->middleware('role:Admin,Gerente,Master,Agencia');
     Route::get('warehouses/{warehouse}/inventory', [WarehouseController::class, 'inventory']);
 
     /**---------------------
