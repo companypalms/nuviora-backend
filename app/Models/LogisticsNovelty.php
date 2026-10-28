@@ -20,7 +20,9 @@ class LogisticsNovelty extends Model
         'precio_descuento' => ['label' => 'Descuento, precio o negociación', 'escalar' => true],
         'cancelacion_cliente' => ['label' => 'El cliente cancela', 'escalar' => true],
         'pago_vuelto' => ['label' => 'Problema de pago o vuelto', 'escalar' => true],
-        'otro' => ['label' => 'Otro', 'escalar' => false],
+        // Fran (idea 6 del 24/10, respuesta del 27/10): el operador coordina "no responde", "tarda en bajar" y "referencia o
+        // acceso"; todo lo demás, también lo que el rider no sabe clasificar, va a la vendedora
+        'otro' => ['label' => 'Otro', 'escalar' => true],
     ];
 
     protected $fillable = [

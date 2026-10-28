@@ -12,7 +12,9 @@ use Carbon\CarbonInterface;
  * El chequeo de la mañana (§6: "comprobación de preparación matutina alrededor de las 08:45… mostrar riders esperados,
  * última ubicación y ETA al almacén, y alertar al operador si un rider programado está demasiado lejos"). Corre una vez
  * por día y centro, a la hora de los parámetros. Avisa de los riders del día que no tienen GPS reciente o la alarma lista;
- * "demasiado lejos" solo cuando hay un ETA máximo (Fran todavía no lo fijó: sin valor, no se inventa).
+ * "Demasiado lejos" (Fran, 27/10): "que esté en un rango seguro para poder cumplir con los 45 minutos que le prometemos a
+ * los clientes". Si el Admin no fijó un ETA máximo, es el objetivo menos el picking: más lejos que eso, ni a un cliente
+ * en la puerta del centro le llega en 45 minutos. La hora del chequeo también es configurable.
  */
 class MorningCheck
 {
@@ -43,7 +45,8 @@ class MorningCheck
             ->values();
         $warning = $this->eta->refreshToCenter($profiles, $center, 0);
         $gpsMaxAge = (int) $settings['gps_max_age_seconds'];
-        $maxEta = $settings['morning_check_max_eta_minutes'] ?? null;
+        $maxEta = $settings['morning_check_max_eta_minutes']
+            ?? max(1, (int) $settings['sla_target_minutes'] - (int) ($settings['picking_minutes'] ?? 0));
         $date = $at->toDateString();
         $lines = [];
 

@@ -258,10 +258,30 @@ class Dispatcher
         }
     }
 
-    /** §8.4: el operador asigna a un rider que le dijo que sí por teléfono (o en cualquier momento, §3). */
+    /**
+     * §8.4: el operador asigna a un rider que le dijo que sí por teléfono. Fran, 27/10 (su idea 8, contra la compra de
+     * órdenes): solo desde el minuto 3, cuando las rondas ya no la colocaron; solo a un rider que llega a tiempo; y
+     * siempre con motivo. Si Google no da el tiempo del rider, se asigna igual y queda dicho en el historial.
+     */
     public function assignManually(LogisticsOrder $row, int $riderId, User $by, ?string $comment): array
     {
-        $outcome = DB::transaction(function () use ($row, $riderId, $by, $comment) {
+        if (trim((string) $comment) === '') {
+            return ['ok' => false, 'message' => 'Escribe el motivo de la asignación a mano.', 'code' => 422];
+        }
+        $settings = $this->settings->for($row->center);
+        $searching = $row->searching_started_at ? (int) $row->searching_started_at->diffInSeconds(now()) : 0;
+        if ($row->status === LogisticsStatus::SEARCHING && $searching < (int) $settings['manual_calls_at_seconds']) {
+            $minute = round($settings['manual_calls_at_seconds'] / 60);
+            return ['ok' => false, 'message' => "A mano solo desde el minuto {$minute}: hasta entonces la orden la toman las rondas.", 'code' => 409];
+        }
+        $candidates = $this->candidates->for($row);
+        $line = collect($candidates['eligible'])->firstWhere('rider_id', $riderId) ?? collect($candidates['excluded'])->firstWhere('rider_id', $riderId);
+        if ($line && in_array($line['reason'] ?? null, ['muy_lejos', 'pasa_limite', 'sin_gps', 'fuera_de_franja'], true)) {
+            return ['ok' => false, 'message' => "Ese rider no llega a tiempo: {$line['reason_label']}.", 'code' => 422];
+        }
+        $check = ['proyectado_min' => $line['projected_minutes'] ?? null, 'sin_verificar' => $line['reason'] ?? null];
+
+        $outcome = DB::transaction(function () use ($row, $riderId, $by, $comment, $check) {
             $row = LogisticsOrder::whereKey($row->id)->lockForUpdate()->first();
             if ($row->status !== LogisticsStatus::SEARCHING) {
                 return ['ok' => false, 'message' => 'La orden ya no está buscando rider (' . LogisticsStatus::label($row->status) . ').', 'code' => 409];
@@ -276,7 +296,7 @@ class Dispatcher
             if ($problem = $this->riderProblem($riderId, $row)) {
                 return ['ok' => false, 'message' => $problem, 'code' => 409];
             }
-            $this->assignRider($row, $riderId, 'manual', $by->id, $comment, []);
+            $this->assignRider($row, $riderId, 'manual', $by->id, $comment, array_filter($check, fn ($v) => $v !== null));
 
             return ['ok' => true, 'message' => 'Orden asignada a mano.', 'code' => 200, 'row' => $row];
         });

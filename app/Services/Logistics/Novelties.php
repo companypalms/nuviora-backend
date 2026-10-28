@@ -51,6 +51,10 @@ class Novelties
             $this->alerts->raise($row->center, 'novedad', LogisticsAlert::RED,
                 "{$this->label($row)}: {$rider->names} reporta \"{$novelty->typeLabel()}\"" . ($description ? ": {$description}" : '.'),
                 "novedad:{$novelty->id}", $row->order_id, $rider->id);
+            // Informe del 27/10, sección 06: el "no responde" se reporta en la puerta del cliente (le paga la ida, R7)
+            if ($type === 'cliente_no_responde') {
+                app(SiteCheck::class)->check($row, 'novedad', $lat, $lng, $rider->id);
+            }
 
             return ['ok' => true, 'message' => 'Novedad enviada al operador.', 'code' => 200, 'novelty' => $novelty];
         });

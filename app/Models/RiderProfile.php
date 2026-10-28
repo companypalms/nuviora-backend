@@ -30,6 +30,7 @@ class RiderProfile extends Model
         'last_lat' => 'float',
         'last_lng' => 'float',
         'last_location_at' => 'datetime',
+        'mock_location_at' => 'datetime',
         'eta_computed_at' => 'datetime',
     ];
 

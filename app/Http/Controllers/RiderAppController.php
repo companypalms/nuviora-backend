@@ -107,6 +107,8 @@ class RiderAppController extends Controller
             'points.*.accuracy' => 'nullable|numeric|min:0',
             'points.*.speed' => 'nullable|numeric',
             'points.*.recorded_at' => 'required|date',
+            // Android avisa si la ubicación viene de una app que la simula (informe del 27/10, sección 06)
+            'points.*.mocked' => 'nullable|boolean',
         ]);
         $profile = $this->profile();
         $now = now();
@@ -125,6 +127,7 @@ class RiderAppController extends Controller
                 'lng' => $point['lng'],
                 'accuracy' => $point['accuracy'] ?? null,
                 'speed' => $point['speed'] ?? null,
+                'mocked' => (bool) ($point['mocked'] ?? false),
                 'recorded_at' => $at,
                 'created_at' => $now,
             ];
@@ -143,6 +146,16 @@ class RiderAppController extends Controller
                 ])->save();
             }
         });
+        // GPS falso: el rider queda marcado y fuera de las rondas hasta que administración lo revise
+        if (collect($rows)->contains('mocked', true)) {
+            $first = !$profile->mock_location_at;
+            $profile->forceFill(['mock_location_at' => $now])->save();
+            if ($first && $profile->center) {
+                app(\App\Services\Logistics\Alerts::class)->raise($profile->center, 'gps_falso', \App\Models\LogisticsAlert::RED,
+                    "{$profile->user?->names}: el teléfono dice que su ubicación es simulada (app de GPS falso). Queda fuera de las rondas hasta que administración lo revise.",
+                    "gps_falso:{$profile->user_id}", null, (int) $profile->user_id);
+            }
+        }
 
         return response()->json(['status' => true, 'saved' => count($rows)]);
     }

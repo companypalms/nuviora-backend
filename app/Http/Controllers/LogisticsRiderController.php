@@ -57,8 +57,15 @@ class LogisticsRiderController extends Controller
             'schedule.*' => 'nullable|array|size:2',
             'schedule.*.*' => 'date_format:H:i',
             'notes' => 'nullable|string|max:2000',
+            // GPS falso: administración lo revisó y le quita la marca (vuelve a recibir rondas)
+            'clear_mock_location' => 'nullable|boolean',
         ]);
         $profile = RiderProfile::firstOrNew(['user_id' => $user->id]);
+        if (($data['clear_mock_location'] ?? false) && $profile->mock_location_at) {
+            $profile->forceFill(['mock_location_at' => null]);
+            \App\Models\LogisticsAlert::where('dedupe_key', "gps_falso:{$user->id}")->whereNull('resolved_at')
+                ->update(['resolved_at' => now(), 'resolved_by' => Auth::id()]);
+        }
         $wasSuspended = $profile->suspended_at !== null;
         $profile->fill([
             'center_id' => $data['center_id'],

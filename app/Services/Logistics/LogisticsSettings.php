@@ -39,6 +39,7 @@ class LogisticsSettings
         'morning_check_at' => '08:45',       // §6
         'morning_check_max_eta_minutes' => null, // §6: "ETA máximo… configurable"; sin valor de Fran
         'road_report_minutes' => 60,         // §15: "caducidad automática configurable". Decisión nuestra; confirmar con Fran
+        'onsite_radius_meters' => 300,       // Informe del 27/10, sección 06 punto 1 (Fran: "que se aplique todo")
     ];
 
     public const RULES = [
@@ -61,6 +62,7 @@ class LogisticsSettings
         'morning_check_at' => 'nullable|date_format:H:i',
         'morning_check_max_eta_minutes' => 'nullable|integer|min:1|max:240',
         'road_report_minutes' => 'integer|min:5|max:720',
+        'onsite_radius_meters' => 'integer|min:50|max:5000',
     ];
 
     /** Los valores vigentes para un centro en un momento: la última versión del centro o, si no tiene, la general. */

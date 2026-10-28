@@ -14,6 +14,7 @@ use App\Models\LogisticsIncident;
 use App\Services\Logistics\Dispatcher;
 use App\Services\Logistics\RiderCash;
 use App\Services\Logistics\RiderPay;
+use App\Services\Logistics\SiteCheck;
 use Illuminate\Support\Facades\Auth;
 
 /**
@@ -71,6 +72,8 @@ class LogisticsOrderObserver
             // §17: si cobró en efectivo, ese efectivo queda bajo su custodia
             if ($row->rider_id && $row->departed_at) {
                 app(RiderCash::class)->recordDelivery($row, $order, $actor);
+                // Informe del 27/10, sección 06: ¿estaba en el sitio al entregar?
+                app(SiteCheck::class)->check($row, 'entrega', null, null, $actor);
             }
 
             return;
