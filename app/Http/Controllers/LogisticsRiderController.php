@@ -197,7 +197,7 @@ class LogisticsRiderController extends Controller
     {
         return $p->only([
             'id', 'user_id', 'center_id', 'is_active', 'suspended_at', 'suspended_reason', 'schedule', 'platform', 'app_version',
-            'notifications_enabled', 'location_permission', 'device_reported_at', 'push_error', 'last_lat', 'last_lng',
+            'notifications_enabled', 'location_permission', 'device_reported_at', 'push_error', 'last_lat', 'last_lng', 'mock_location_at',
             'last_accuracy', 'last_location_at', 'eta_center_seconds', 'eta_center_meters', 'eta_computed_at', 'notes',
         ]) + [
             'center' => $p->center?->only(['id', 'name']),

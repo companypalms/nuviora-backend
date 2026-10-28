@@ -46,19 +46,36 @@ class LogisticsShiftController extends Controller
         return response()->json(['status' => true, 'center' => $this->summary($center)]);
     }
 
-    public function start(LogisticsCenter $center)
+    public function start(Request $request, LogisticsCenter $center)
     {
         $this->authorizeCenter($center);
-        $shift = $this->shifts->start($center, Auth::user());
+        $shift = $this->shifts->start($center, Auth::user(), $this->cash($request));
 
         return response()->json(['status' => true, 'message' => 'Turno iniciado: el centro está abierto para despacho.', 'shift' => $shift, 'center' => $this->summary($center->fresh())]);
+    }
+
+    /**
+     * El efectivo del cambio de turno (informe del 27/10, sección 06 punto 4): "cash_ok" confirma que está lo que dice el
+     * sistema; si no, la operadora escribe lo que hay. Sin ninguno de los dos, no se registra.
+     */
+    private function cash(Request $request): ?array
+    {
+        $data = $request->validate(['cash_ok' => 'nullable|boolean', 'cash_usd' => 'nullable|numeric|min:0', 'cash_ves' => 'nullable|numeric|min:0']);
+        if (($data['cash_ok'] ?? false) === true) {
+            return ['usd' => null, 'ves' => null];
+        }
+        if (isset($data['cash_usd']) || isset($data['cash_ves'])) {
+            return ['usd' => (float) ($data['cash_usd'] ?? 0), 'ves' => (float) ($data['cash_ves'] ?? 0)];
+        }
+
+        return null;
     }
 
     public function close(Request $request, LogisticsCenter $center)
     {
         $this->authorizeCenter($center);
         $request->validate(['reason' => 'nullable|string|max:1000']);
-        $shift = $this->shifts->close($center, Auth::user(), $request->input('reason'));
+        $shift = $this->shifts->close($center, Auth::user(), $request->input('reason'), $this->cash($request));
 
         return response()->json([
             'status' => true,
@@ -152,8 +169,21 @@ class LogisticsShiftController extends Controller
             'counts' => $counts,
             'alerts' => LogisticsAlert::where('center_id', $center->id)->whereNull('resolved_at')->orderByDesc('id')->limit(50)
                 ->get(['id', 'type', 'level', 'message', 'order_id', 'rider_id', 'created_at']),
-            'last_close' => $center->shifts()->whereNotNull('ended_at')->latest('ended_at')->first(['id', 'user_id', 'ended_at', 'close_type', 'close_reason', 'pending_at_close']),
+            'last_close' => $center->shifts()->whereNotNull('ended_at')->latest('ended_at')->with('user:id,names')
+                ->first(['id', 'user_id', 'ended_at', 'close_type', 'close_reason', 'pending_at_close', 'close_cash_usd', 'close_cash_ves']),
+            // Informe del 27/10, sección 06: el efectivo del centro, para la operadora y para administración
+            'cash' => app(\App\Services\Logistics\CenterCash::class)->balance($center),
         ];
+    }
+
+    /** Administración marca como recibido el efectivo del centro que le entregó la operadora. */
+    public function deliverCash(Request $request, LogisticsCenter $center)
+    {
+        $data = $request->validate(['usd' => 'nullable|numeric|min:0', 'ves' => 'nullable|numeric|min:0', 'method' => 'nullable|string|max:40', 'note' => 'nullable|string|max:250']);
+        $out = app(\App\Services\Logistics\CenterCash::class)->deliverToAdmin($center, Auth::user(), (float) ($data['usd'] ?? 0), (float) ($data['ves'] ?? 0),
+            $data['method'] ?? null, $data['note'] ?? null);
+
+        return response()->json(['status' => $out['ok'], 'message' => $out['message']], $out['code']);
     }
 
     private function authorizeCenter(LogisticsCenter $center): void

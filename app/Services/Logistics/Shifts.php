@@ -23,7 +23,8 @@ class Shifts
     {
     }
 
-    public function start(LogisticsCenter $center, User $user): LogisticsShift
+    /** $cash: lo que recibe la operadora que entra (null en usd/ves: confirma lo que dice el sistema). */
+    public function start(LogisticsCenter $center, User $user, ?array $cash = null): LogisticsShift
     {
         if (!$this->isOperatorOf($user, $center) && !self::isAdmin($user)) {
             throw ValidationException::withMessages(['turno' => 'No eres operador de este centro.']);
@@ -44,6 +45,9 @@ class Shifts
 
         $this->alerts->resolve("sin_operador:{$center->id}:*", $user->id);
         $this->orders->releaseWaiting($center, $user->id);
+        if ($cash !== null) {
+            app(CenterCash::class)->recordHandover($shift, $center, 'open', $cash['usd'], $cash['ves'], $user);
+        }
 
         return $shift;
     }
@@ -79,7 +83,8 @@ class Shifts
         return $items;
     }
 
-    public function close(LogisticsCenter $center, User $user, ?string $reason = null): LogisticsShift
+    /** $cash: lo que deja la operadora que sale (null en usd/ves: confirma lo que dice el sistema). */
+    public function close(LogisticsCenter $center, User $user, ?string $reason = null, ?array $cash = null): LogisticsShift
     {
         $shift = LogisticsShift::where('center_id', $center->id)->whereNull('ended_at')->first();
         if (!$shift) {
@@ -102,6 +107,9 @@ class Shifts
             'close_reason' => $reason ?: null,
             'pending_at_close' => $pending ?: null,
         ]);
+        if ($cash !== null) {
+            app(CenterCash::class)->recordHandover($shift, $center, 'close', $cash['usd'], $cash['ves'], $user);
+        }
 
         return $shift;
     }

@@ -16,6 +16,8 @@ class LogisticsShift extends Model
         'started_at' => 'datetime',
         'ended_at' => 'datetime',
         'pending_at_close' => 'array',
+        'open_expected' => 'array',
+        'close_expected' => 'array',
     ];
 
     public function center()

@@ -779,6 +779,9 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::delete('/centers/{center}/exceptions/{exception}', [\App\Http\Controllers\LogisticsCenterController::class, 'destroyException']);
         Route::get('/centers/{center}/calendar-setup', [\App\Http\Controllers\LogisticsCenterController::class, 'calendarSetup']);
         Route::get('/centers/{center}/metrics', [\App\Http\Controllers\LogisticsMetricsController::class, 'show']);
+        Route::get('/centers/{center}/review-sheet', [\App\Http\Controllers\LogisticsMetricsController::class, 'reviewSheet']);
+        Route::post('/adjustments/{adjustment}/decide', [\App\Http\Controllers\LogisticsAdjustmentController::class, 'decide']);
+        Route::post('/centers/{center}/cash/received', [\App\Http\Controllers\LogisticsShiftController::class, 'deliverCash']);
         Route::post('/centers/{center}/patterns', [\App\Http\Controllers\LogisticsCenterController::class, 'storePattern']);
         Route::put('/centers/{center}/patterns/{pattern}/disable', [\App\Http\Controllers\LogisticsCenterController::class, 'disablePattern']);
         Route::post('/centers/{center}/overrides', [\App\Http\Controllers\LogisticsCenterController::class, 'storeOverride']);
@@ -804,6 +807,9 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::get('/centers/{center}/payouts', [\App\Http\Controllers\LogisticsRiderController::class, 'payouts']);
         Route::post('/centers/{center}/riders/{user}/payout', [\App\Http\Controllers\LogisticsRiderController::class, 'payRider']);
         Route::get('/centers/{center}/route-proposals', [\App\Http\Controllers\LogisticsRouteController::class, 'proposals']);
+        Route::get('/centers/{center}/adjustments', [\App\Http\Controllers\LogisticsAdjustmentController::class, 'index']);
+        Route::get('/centers/{center}/adjustment-products', [\App\Http\Controllers\LogisticsAdjustmentController::class, 'products']);
+        Route::post('/centers/{center}/adjustments', [\App\Http\Controllers\LogisticsAdjustmentController::class, 'store']);
         Route::post('/routes/approve', [\App\Http\Controllers\LogisticsRouteController::class, 'approve']);
         Route::post('/routes/{logisticsRoute}/reorder', [\App\Http\Controllers\LogisticsRouteController::class, 'reorder']);
         Route::get('/orders/{logisticsOrder}/candidates', [\App\Http\Controllers\LogisticsRiderController::class, 'candidates']);

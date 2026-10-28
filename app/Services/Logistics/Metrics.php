@@ -107,6 +107,8 @@ class Metrics
             'riders_pay' => $this->ridersPay($center, $rows, $start, $end, $names),
             // 14. "Incidencias graves y reasignaciones de ruta"
             'incidents' => $this->incidents($center, $start, $end),
+            // Informe del 27/10, sección 06 punto 6 (Fran: "que se aplique todo"): las señales raras, por rider y por operador
+            'signals' => $this->signals($center, $rows, $start, $end, $names),
             // 15. "Delivery rate propia vs agencia por centro"
             'delivery_rate' => collect(['propia', 'agencia'])->mapWithKeys(function ($c) use ($rows, $channel) {
                 $list = $rows->filter(fn ($r) => $channel($r) === $c);
@@ -291,6 +293,58 @@ class Metrics
             'interrupted' => $list->whereNotNull('interrupted_at')->count(),
             'reassigned' => $list->whereNotNull('replacement_rider_id')->count() + $list->where('pickup', 'almacen')->count(),
         ];
+    }
+
+    /**
+     * "Un rider o una pareja rider-operador que se sale del promedio es la señal de complicidad". Por rider: "no responde",
+     * entregas fallidas, entregas o "no responde" fuera del sitio, diferencias de caja, retornos vencidos y asignaciones a
+     * mano. Por operador: asignaciones a mano, novedades que resolvió él y diferencias de caja que recibió. Se marca a quien
+     * tiene el doble del promedio o más (y al menos 2 casos).
+     */
+    private function signals(LogisticsCenter $center, Collection $rows, CarbonInterface $start, CarbonInterface $end, Collection $names): array
+    {
+        $ids = $rows->pluck('id');
+        $count = fn (Collection $values) => $values->filter()->countBy()->all();
+        $rider = [
+            'no_responde' => $count(LogisticsNovelty::whereIn('logistics_order_id', $ids)->where('type', 'cliente_no_responde')->pluck('reported_by')),
+            'fallidas' => $count($rows->whereNotNull('return_pending_at')->pluck('rider_id')),
+            'fuera_del_sitio' => $count(LogisticsOrderEvent::whereIn('logistics_order_id', $ids)->whereIn('action', ['entrega_en_sitio', 'novedad_en_sitio'])
+                ->get()->filter(fn ($e) => $e->data['fuera'] ?? false)->map(fn ($e) => $rows->firstWhere('id', $e->logistics_order_id)?->rider_id)),
+            'diferencias_caja' => $count(RiderCashMovement::where('center_id', $center->id)->where('type', RiderCashMovement::HANDOVER)->where('has_difference', true)
+                ->whereBetween('created_at', [$start, $end])->pluck('rider_id')),
+            'retornos_vencidos' => $count(\App\Models\LogisticsAlert::where('center_id', $center->id)->where('type', 'retorno_vencido')
+                ->whereBetween('created_at', [$start, $end])->pluck('rider_id')),
+            'a_mano' => $count($rows->where('assigned_via', 'manual')->pluck('rider_id')),
+        ];
+        $operator = [
+            'a_mano' => $count($rows->where('assigned_via', 'manual')->pluck('assigned_by')),
+            'novedades_resueltas' => $count(LogisticsNovelty::whereIn('logistics_order_id', $ids)->whereNull('escalated_at')->whereNotNull('resolved_at')->pluck('resolved_by')),
+            'diferencias_caja' => $count(RiderCashMovement::where('center_id', $center->id)->where('type', RiderCashMovement::HANDOVER)->where('has_difference', true)
+                ->whereBetween('created_at', [$start, $end])->pluck('actor_id')),
+        ];
+        $people = User::whereIn('id', collect($rider)->flatMap(fn ($c) => array_keys($c))->merge(collect($operator)->flatMap(fn ($c) => array_keys($c)))->unique())
+            ->pluck('names', 'id');
+        $table = function (array $columns) use ($people) {
+            $ids = collect($columns)->flatMap(fn ($c) => array_keys($c))->unique();
+            $averages = collect($columns)->map(fn ($c) => $ids->count() ? array_sum($c) / $ids->count() : 0);
+
+            return [
+                'averages' => $averages->map(fn ($a) => round($a, 1))->all(),
+                'rows' => $ids->map(function ($id) use ($columns, $averages, $people) {
+                    $line = ['id' => (int) $id, 'name' => $people[$id] ?? "#{$id}", 'flags' => []];
+                    foreach ($columns as $key => $values) {
+                        $n = (int) ($values[$id] ?? 0);
+                        $line[$key] = $n;
+                        if ($n >= 2 && $n >= 2 * $averages[$key]) {
+                            $line['flags'][] = $key;
+                        }
+                    }
+                    return $line;
+                })->sortByDesc(fn ($l) => count($l['flags']))->values()->all(),
+            ];
+        };
+
+        return ['riders' => $table($rider), 'operators' => $table($operator)];
     }
 
     private static function pct(int $part, int $total): ?float
