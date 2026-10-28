@@ -36,6 +36,9 @@ use Illuminate\Support\Facades\Route;
 
 // Login
 Route::post('login', [AuthController::class, 'login']);
+// La app Nuviora Rider, para descargar sin sesión (la página pública /app de la web)
+Route::get('apps/rider/info', [\App\Http\Controllers\RiderAppDownloadController::class, 'info'])->middleware('throttle:60,1');
+Route::get('apps/rider', [\App\Http\Controllers\RiderAppDownloadController::class, 'download'])->middleware('throttle:20,1');
 Route::post('forgot-password', [\App\Http\Controllers\ForgotPasswordController::class, 'sendResetLinkEmail']);
 Route::post('reset-password', [\App\Http\Controllers\ForgotPasswordController::class, 'reset']);
 
