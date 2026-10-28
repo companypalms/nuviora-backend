@@ -5,6 +5,7 @@ namespace App\Services\Logistics;
 use App\Constants\LogisticsStatus;
 use App\Models\DispatchOffer;
 use App\Models\Earning;
+use App\Models\LogisticsAlert;
 use App\Models\LogisticsCenter;
 use App\Models\LogisticsIncident;
 use App\Models\LogisticsNovelty;
@@ -259,6 +260,9 @@ class Metrics
             'collections' => $movements->where('type', RiderCashMovement::COLLECTION)->count(),
             'handovers' => $handovers->count(),
             'differences' => $handovers->where('has_difference', true)->count(),
+            // Lo que dejó o recibió la operadora en el cambio de turno contra lo que dice el sistema (CenterCash::recordHandover)
+            'shift_differences' => LogisticsAlert::where('center_id', $center->id)->where('type', 'caja_diferencia')
+                ->where('dedupe_key', 'like', 'caja_turno:%')->whereBetween('created_at', [$start, $end])->count(),
             'hours_to_handover' => self::stats($hours),
         ];
     }
@@ -364,8 +368,8 @@ class Metrics
 
         return [
             'count' => $n,
-            'avg' => round($sorted->avg(), 1),
-            'median' => $n % 2 ? $sorted[intdiv($n, 2)] : round(($sorted[$n / 2 - 1] + $sorted[$n / 2]) / 2, 1),
+            'avg' => round($sorted->avg(), 2),
+            'median' => $n % 2 ? $sorted[intdiv($n, 2)] : round(($sorted[$n / 2 - 1] + $sorted[$n / 2]) / 2, 2),
             'p90' => $at(0.9),
         ];
     }

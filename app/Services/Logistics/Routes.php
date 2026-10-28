@@ -220,7 +220,7 @@ class Routes
             }
             $route->update(['plan' => $plan]);
             $locked = LogisticsOrder::whereIn('id', $order)->lockForUpdate()->get()->keyBy('id');
-            $this->applyPlan($route, $plan, $locked, $by->id, 'ruta_reordenada', ['antes' => $before, 'despues' => $order, 'motivo' => $reason]);
+            $this->applyPlan($route, $plan, $locked, $by->id, 'ruta_reordenada', ['antes' => $before, 'despues' => $order, 'motivo' => $reason], $reason);
 
             return ['ok' => true, 'message' => 'Orden de las paradas cambiado.', 'code' => 200];
         });
@@ -423,7 +423,8 @@ class Routes
     }
 
     /** Deja la ruta en las paradas y en el historial de cada una (§26: "orden de paradas, ETA predichos, distancias"). */
-    private function applyPlan(LogisticsRoute $route, array $plan, Collection $rows, int $actorId, string $action, array $extra = []): void
+    private function applyPlan(LogisticsRoute $route, array $plan, Collection $rows, int $actorId, string $action, array $extra = [],
+        ?string $reason = null): void
     {
         foreach ($plan['stops'] as $stop) {
             $row = $rows[$stop['logistics_order_id']];
@@ -434,7 +435,7 @@ class Routes
                 'leg_meters' => $stop['leg_meters'],
                 'predicted_minutes' => $stop['projected_minutes'],
             ])->save();
-            $this->orders->event($row, $action, $row->status, $row->status, $actorId, null, $extra + [
+            $this->orders->event($row, $action, $row->status, $row->status, $actorId, $reason, $extra + [
                 'ruta' => $route->id,
                 'parada' => $stop['stop'],
                 'de' => count($plan['stops']),

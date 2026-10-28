@@ -109,9 +109,9 @@ class LogisticsRiderController extends Controller
         $busy = LogisticsOrder::with('order:id,name')->whereIn('status', Candidates::BUSY)->whereIn('rider_id', $profiles->pluck('user_id'))
             ->get()->groupBy('rider_id');
         $gpsMaxAge = (int) $this->settings->for($center)['gps_max_age_seconds'];
-        // §21.2 "rutas del día": las que salieron hoy con ese rider (hoy cada ruta es de una parada)
+        // §21.2 "rutas del día": las salidas de hoy con ese rider; una ruta de varias paradas cuenta una vez
         $routesToday = LogisticsOrder::whereIn('rider_id', $profiles->pluck('user_id'))->whereDate('departed_at', now()->toDateString())
-            ->selectRaw('rider_id, count(*) as total')->groupBy('rider_id')->pluck('total', 'rider_id');
+            ->selectRaw("rider_id, count(distinct coalesce(concat('r', route_id), concat('o', id))) as total")->groupBy('rider_id')->pluck('total', 'rider_id');
         // §21.2: "efectivo bajo custodia, retornos bajo custodia"
         $cash = $this->cash->balances($profiles->pluck('user_id'));
         $cashLimit = $this->cash->limit($center);
