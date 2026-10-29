@@ -95,12 +95,67 @@ describe('Qué dicen', function () {
     });
 });
 
+describe('Pagos de la semana', function () use ($on, $dates) {
+    it('a las vendedoras los lunes y a las agencias los miércoles (o el día que elija el dueño)', function () use ($on, $dates) {
+        expect($dates('sellers_pay', $on, '2026-11-01', '2026-11-15'))->toBe(['2026-11-02', '2026-11-09']);
+        expect($dates('agencies_pay', $on, '2026-11-01', '2026-11-15'))->toBe(['2026-11-04', '2026-11-11']);
+        $tuesday = ReminderRules::normalizeSettings(['sellers_pay' => ['weekday' => 2]]);
+        expect($dates('sellers_pay', $tuesday, '2026-11-01', '2026-11-08'))->toBe(['2026-11-03']);
+    });
+
+    it('la semana que se paga es la de lunes a domingo anterior', function () {
+        expect(array_map(fn ($d) => $d->toDateString(), ReminderRules::lastWeek(CarbonImmutable::parse('2026-11-02'))))->toBe(['2026-10-26', '2026-11-01']);
+        expect(array_map(fn ($d) => $d->toDateString(), ReminderRules::lastWeek(CarbonImmutable::parse('2026-11-04'))))->toBe(['2026-10-26', '2026-11-01']);
+    });
+
+    it('vendedoras: cada una con lo que ganó (comisiones, upsells y parte de líder) y el total', function () {
+        $facts = ['sellers' => ['2026-10-26' => [
+            ['id' => 8, 'name' => 'Carla', 'orders' => 15.0, 'upsells' => 2.0, 'leadership' => 3.5, 'total' => 20.5],
+            ['id' => 9, 'name' => 'Gigi', 'orders' => 10.0, 'upsells' => 0.0, 'leadership' => 0.0, 'total' => 10.0],
+        ]]];
+        $o = ReminderRules::occurrence('sellers_pay', '2026-11-02', '2026-11-02', $facts);
+        expect($o['details'])->toBe('Del lunes 26/10 al domingo 1/11: 2 personas, total $30,50.');
+        expect($o['lines'])->toBe([
+            ['label' => 'Carla', 'value' => '$20,50', 'note' => 'comisiones $15,00 · upsells $2,00 · líder $3,50'],
+            ['label' => 'Gigi', 'value' => '$10,00', 'note' => 'comisiones $10,00'],
+        ]);
+        expect($o['auto_done'])->toBeFalse();
+        // El lunes de la semana que viene: la semana todavía no terminó
+        $next = ReminderRules::occurrence('sellers_pay', '2026-11-02', '2026-10-29', $facts);
+        expect($next['details'])->toEndWith('La semana todavía no termina: es lo de hasta ahora.');
+        expect(ReminderRules::occurrence('sellers_pay', '2026-11-02', '2026-11-02', [])['details'])
+            ->toBe('Del lunes 26/10 al domingo 1/11: nadie ganó comisiones esa semana.');
+        expect(ReminderRules::occurrence('sellers_pay', '2026-11-16', '2026-10-29', [])['details'])
+            ->toBe('Del lunes 9/11 al domingo 15/11: lo que gane cada vendedora esa semana (todavía no empieza).');
+    });
+
+    it('agencias: el cierre de cada una y se tilda solo cuando todas quedan pagadas', function () {
+        $closure = fn (string $agency, string $label, ?float $amount, bool $paid) => ['agency' => $agency, 'status' => '', 'status_label' => $label, 'amount' => $amount, 'paid' => $paid];
+        $facts = ['closures' => ['2026-10-26' => [$closure('Centro', 'Pagado', 120.0, true), $closure('Este', 'Listo para pago', 80.5, false), $closure('Norte', 'Pendiente de archivo', null, false)]]];
+        $o = ReminderRules::occurrence('agencies_pay', '2026-11-04', '2026-11-04', $facts);
+        expect($o['details'])->toBe('Del lunes 26/10 al domingo 1/11: 3 agencias: 1 pagada y 2 por pagar ($80,50).');
+        expect($o['lines'][2])->toBe(['label' => 'Norte', 'value' => '—', 'note' => 'Pendiente de archivo']);
+        expect($o['auto_done'])->toBeFalse();
+        $allPaid = ['closures' => ['2026-10-26' => [$closure('Centro', 'Pagado', 120.0, true)]]];
+        $done = ReminderRules::occurrence('agencies_pay', '2026-11-04', '2026-11-05', $allPaid);
+        expect($done['auto_done'])->toBeTrue();
+        expect($done['auto_note'])->toBe('Todas las agencias de esa semana están pagadas.');
+        // Sin cierres: si el miércoles ya llegó, no hay nada que pagar; si todavía no llega, no se da por hecho
+        expect(ReminderRules::occurrence('agencies_pay', '2026-11-04', '2026-11-04', [])['auto_note'])->toBe('No hubo cierres de agencias esa semana.');
+        $future = ReminderRules::occurrence('agencies_pay', '2026-11-04', '2026-10-29', []);
+        expect($future['auto_done'])->toBeFalse();
+        expect($future['details'])->toBe('Del lunes 26/10 al domingo 1/11: los cierres de esa semana todavía no llegan.');
+    });
+});
+
 describe('Ajustes', function () {
     it('por defecto todos encendidos y la revisión semanal el jueves', function () {
         $s = ReminderRules::normalizeSettings(null);
         expect(array_keys($s))->toBe(array_keys(ReminderRules::RULES));
         expect(array_unique(array_column($s, 'on')))->toBe([true]);
         expect($s['review_week']['weekday'])->toBe(4);
+        expect($s['sellers_pay']['weekday'])->toBe(1);
+        expect($s['agencies_pay']['weekday'])->toBe(3);
         expect(ReminderRules::normalizeSettings(['review_week' => ['weekday' => 7], 'inventory' => ['on' => false]]))
             ->toMatchArray(['review_week' => ['on' => true, 'weekday' => 4], 'inventory' => ['on' => false]]);
     });

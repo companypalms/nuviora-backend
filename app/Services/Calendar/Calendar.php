@@ -4,9 +4,12 @@ namespace App\Services\Calendar;
 
 use App\Models\CalendarMark;
 use App\Models\CalendarNote;
+use App\Models\RecurringExpense;
 use App\Models\User;
 use App\Services\Calendar\Readers\ReminderFacts;
+use App\Services\Calendar\Rules\ExpenseRules;
 use App\Services\Calendar\Rules\NoteRules;
+use App\Services\Finance\OtherPayments;
 use App\Services\Calendar\Rules\ReminderRules;
 use App\Services\Calendar\Rules\Schedule;
 use App\Services\Metrics\PersonName;
@@ -16,14 +19,15 @@ use Illuminate\Validation\ValidationException;
 /**
  * El calendario del dueño (Etapa 3): junta lo que hay que hacer cada día y lo que ya se hizo. Solo el Admin (la ruta).
  *
- * Cada cosa del calendario es una "aparición" con la misma forma, venga de una nota del dueño o de un recordatorio del
- * sistema (ReminderRules; los pagos llegan en el paso 3). Es la misma forma que leerá el asistente de IA
+ * Cada cosa del calendario es una "aparición" con la misma forma, venga de una nota del dueño, de un recordatorio del
+ * sistema (ReminderRules) o de un gasto fijo de Finanzas (ExpenseRules). Es la misma forma que leerá el asistente de IA
  * (guias/CALENDARIO.md):
- *   item_key   de quién es: "note:12", "rule:rate" (y en el paso 3, "expense:…")
+ *   item_key   de quién es: "note:12", "rule:rate", "rule:sellers_pay", "expense:5" (el gasto recurrente 5)
  *   date       el día en que se muestra; due_date el día que le tocaba de verdad (distinto si se corrió por un domingo)
  *   type       payment | task | review;  group "daily" = la rutina de todos los días
  *   source     owner | assistant | system
- *   title, details, time, repeat_label, help (por qué importa), text (todo en una frase), link, actions (botones)
+ *   title, details, time, repeat_label, help (por qué importa), text (todo en una frase), link, actions (botones: link,
+ *              mark "done" o pay = el gasto recurrente que se paga), lines (el detalle: cada vendedora o agencia y su monto)
  *   status     pending | done | dismissed | overdue (atrasada)
  *   auto       si se tilda sola; mark: quién la marcó (source "auto": se tildó sola), cuándo y con qué nota
  * Las de todos los días que pasaron sin hacerse no se muestran: no se acumulan.
@@ -205,6 +209,12 @@ class Calendar
             return $rules[$m[1]]['on'] && $due >= $this->settings->startedOn(CarbonImmutable::now())
                 && Schedule::isDue(ReminderRules::pattern($m[1], $rules), $due);
         }
+        if (preg_match('/^expense:(\d+)$/', $itemKey, $m)) {
+            $recurring = RecurringExpense::where('is_active', true)->find((int) $m[1]);
+
+            return $recurring !== null
+                && in_array($due, array_column(app(OtherPayments::class)->dueDates($recurring, $due), 'due_date'), true);
+        }
 
         return false;
     }
@@ -217,7 +227,54 @@ class Calendar
      */
     private function occurrences(CarbonImmutable $from, CarbonImmutable $to, CarbonImmutable $now): array
     {
-        return array_merge($this->noteOccurrences($from, $to), $this->ruleOccurrences($from, $to, $now));
+        return array_merge($this->noteOccurrences($from, $to), $this->ruleOccurrences($from, $to, $now), $this->expenseOccurrences($from, $to, $now));
+    }
+
+    /**
+     * Los vencimientos de los gastos fijos de Finanzas (paso 3): en su día de pago, o el sábado antes si cae domingo. Desde
+     * el primer día del calendario (antes, lo vencido se ve en Finanzas).
+     *
+     * @return list<array>
+     */
+    private function expenseOccurrences(CarbonImmutable $from, CarbonImmutable $to, CarbonImmutable $now): array
+    {
+        $started = $this->settings->startedOn($now);
+        $today = $now->toDateString();
+        $items = [];
+        foreach ($this->facts->expenses($to->addDay()) as $expense) {
+            foreach ($expense['dues'] as $due) {
+                $date = Schedule::shift(CarbonImmutable::parse($due['due_date']), $expense['frequency'], 'payment')->toDateString();
+                if ($due['due_date'] < $started || $date < $from->toDateString() || $date > $to->toDateString()) {
+                    continue;
+                }
+                $o = ExpenseRules::occurrence($expense['id'], $expense['name'], $expense['category'], $due, $today);
+                $items[] = [
+                    'item_key' => 'expense:' . $expense['id'],
+                    'date' => $date,
+                    'due_date' => $due['due_date'],
+                    'type' => 'payment',
+                    'group' => null,
+                    'source' => 'system',
+                    'title' => $o['title'],
+                    'details' => $o['details'],
+                    'time' => null,
+                    'repeat_label' => $expense['schedule'],
+                    'help' => ExpenseRules::HELP,
+                    'base_text' => 'Pago: ' . $o['title'] . '. ' . $o['details'],
+                    'accumulates' => true,
+                    'auto' => true,
+                    'auto_done' => $o['auto_done'],
+                    'auto_note' => $o['auto_note'],
+                    'link' => '/finanzas?tab=recurring',
+                    'actions' => $o['actions'],
+                    'lines' => [],
+                    'note_id' => null,
+                    'note_fields' => null,
+                ];
+            }
+        }
+
+        return $items;
     }
 
     /** @return list<array> */
@@ -256,6 +313,7 @@ class Calendar
                     'auto_note' => null,
                     'link' => null,
                     'actions' => [],
+                    'lines' => [],
                     'note_id' => $note->id,
                     'note_fields' => $fields,
                 ];
@@ -278,16 +336,29 @@ class Calendar
             $facts += $this->facts->now($now);
         }
 
-        $items = [];
+        // Las fechas de cada recordatorio encendido; los pagos de la semana piden los datos de su semana
+        $dates = [];
+        $weeks = ['sellers_pay' => [], 'agencies_pay' => []];
         foreach (ReminderRules::RULES as $key => $rule) {
             if (!$rules[$key]['on']) {
                 continue;
             }
-            $pattern = ReminderRules::pattern($key, $rules);
-            foreach (Schedule::dates($pattern, $from, $to) as $d) {
-                if ($d['due'] < $started) {
-                    continue;
+            $dates[$key] = array_values(array_filter(Schedule::dates(ReminderRules::pattern($key, $rules), $from, $to), fn ($d) => $d['due'] >= $started));
+            if (isset($weeks[$key])) {
+                foreach ($dates[$key] as $d) {
+                    $weeks[$key][] = ReminderRules::lastWeek(CarbonImmutable::parse($d['due']))[0]->toDateString();
                 }
+            }
+        }
+        if ($weeks['sellers_pay'] !== [] || $weeks['agencies_pay'] !== []) {
+            $facts += $this->facts->weeks($weeks['sellers_pay'], $weeks['agencies_pay']);
+        }
+
+        $items = [];
+        foreach ($dates as $key => $list) {
+            $rule = ReminderRules::RULES[$key];
+            $pattern = ReminderRules::pattern($key, $rules);
+            foreach ($list as $d) {
                 $o = ReminderRules::occurrence($key, $d['due'], $today, $facts);
                 $items[] = [
                     'item_key' => "rule:{$key}",
@@ -308,6 +379,7 @@ class Calendar
                     'auto_note' => $o['auto_note'],
                     'link' => $o['link'],
                     'actions' => $o['actions'],
+                    'lines' => $o['lines'],
                     'note_id' => null,
                     'note_fields' => null,
                 ];

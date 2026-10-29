@@ -13,6 +13,9 @@ use Carbon\CarbonImmutable;
  *   los números de los últimos 3 días. No se acumulan: la de hoy reemplaza a la de ayer.
  * - Los jueves, la semana pasada (ya llegaron los cierres de las agencias); el día 8, el mes pasado; el último día hábil
  *   del mes, las metas del mes siguiente. Estos sí quedan atrasados si no se hacen.
+ * - Los pagos de la semana (paso 3): los lunes, a las vendedoras (lo que ganó cada una de lunes a domingo, como en su
+ *   pantalla de Ganancias); los miércoles, a las agencias (sus cierres de la semana pasada). Los gastos fijos de Finanzas
+ *   van aparte (ExpenseRules).
  * - Se tildan solos cuando el sistema ve que ya está hecho (la tasa guardada, nada por conciliar, nada por aprobar, nada en
  *   rojo, las metas puestas). Las revisiones de números las tilda el dueño.
  */
@@ -21,7 +24,22 @@ final class ReminderRules
     /** El día de la semana de la revisión semanal se puede cambiar (de lunes a sábado). */
     public const DEFAULT_WEEKDAY = 4;
 
+    /** Los que son "cada semana" y su día por defecto (el dueño los puede mover de lunes a sábado). */
+    public const WEEKDAY_RULES = ['sellers_pay' => 1, 'agencies_pay' => 3, 'review_week' => self::DEFAULT_WEEKDAY];
+
     public const RULES = [
+        'sellers_pay' => [
+            'type' => 'payment', 'group' => null, 'repeat' => 'weekly', 'accumulates' => true, 'auto' => false,
+            'title' => 'Pagar a las vendedoras',
+            'help' => 'Lo que ganó cada vendedora de lunes a domingo de la semana pasada: sus comisiones, sus upsells y, si es líder, su parte del grupo. Es lo mismo que ve cada una en Ganancias.',
+            'link' => null,
+        ],
+        'agencies_pay' => [
+            'type' => 'payment', 'group' => null, 'repeat' => 'weekly', 'accumulates' => true, 'auto' => true,
+            'title' => 'Pagar a las agencias',
+            'help' => 'El cierre de la semana pasada de cada agencia: lo que el sistema calculó y lo que cobra. Se paga desde Cierres de agencias; cuando todas quedan "Pagado", esto se tilda solo.',
+            'link' => '/admin/cierres-agencias',
+        ],
         'rate' => [
             'type' => 'task', 'group' => 'daily', 'repeat' => 'daily', 'accumulates' => false, 'auto' => true,
             'title' => 'Revisar la tasa del día',
@@ -84,9 +102,9 @@ final class ReminderRules
         foreach (array_keys(self::RULES) as $key) {
             $row = is_array($saved[$key] ?? null) ? $saved[$key] : [];
             $out[$key] = ['on' => array_key_exists('on', $row) ? (bool) $row['on'] : true];
-            if ($key === 'review_week') {
-                $weekday = (int) ($row['weekday'] ?? self::DEFAULT_WEEKDAY);
-                $out[$key]['weekday'] = $weekday >= 1 && $weekday <= 6 ? $weekday : self::DEFAULT_WEEKDAY;
+            if (isset(self::WEEKDAY_RULES[$key])) {
+                $weekday = (int) ($row['weekday'] ?? self::WEEKDAY_RULES[$key]);
+                $out[$key]['weekday'] = $weekday >= 1 && $weekday <= 6 ? $weekday : self::WEEKDAY_RULES[$key];
             }
         }
 
@@ -119,7 +137,7 @@ final class ReminderRules
             'repeat' => $rule['repeat'],
             'start' => '2020-01-01',
             'type' => $rule['type'],
-            'weekday' => $key === 'review_week' ? ($settings[$key]['weekday'] ?? self::DEFAULT_WEEKDAY) : null,
+            'weekday' => isset(self::WEEKDAY_RULES[$key]) ? ($settings[$key]['weekday'] ?? self::WEEKDAY_RULES[$key]) : null,
             'day' => $rule['day'] ?? null,
         ];
     }
@@ -128,17 +146,53 @@ final class ReminderRules
      * Lo que dice un recordatorio en una fecha. $facts son los datos del sistema (ReminderFacts); los de "ahora" (la
      * conciliación, lo que hay por aprobar, el inventario) solo sirven para hoy: otro día se muestra lo general.
      *
+     * Los pagos de la semana leen $facts['sellers'] y $facts['closures'] por el lunes de la semana que pagan.
+     *
      * @return array{title: string, details: string, link: ?string, actions: list<array{label: string, link?: string, mark?: string}>,
-     *               auto_done: bool, auto_note: ?string}
+     *               lines: list<array{label: string, value: string, note: ?string}>, auto_done: bool, auto_note: ?string}
      */
     public static function occurrence(string $key, string $due, string $today, array $facts): array
     {
         $rule = self::RULES[$key];
         $isToday = $due === $today;
-        $out = ['title' => $rule['title'], 'details' => '', 'link' => $rule['link'], 'actions' => [], 'auto_done' => false, 'auto_note' => null];
+        $out = ['title' => $rule['title'], 'details' => '', 'link' => $rule['link'], 'actions' => [], 'lines' => [], 'auto_done' => false, 'auto_note' => null];
         $d = CarbonImmutable::parse($due);
 
         switch ($key) {
+            case 'sellers_pay':
+                [$from, $to] = self::lastWeek($d);
+                $rows = $facts['sellers'][$from->toDateString()] ?? [];
+                $out['details'] = self::weekLabel($from, $to) . ': ' . match (true) {
+                    $from->toDateString() > $today => 'lo que gane cada vendedora esa semana (todavía no empieza).',
+                    $to->toDateString() >= $today => self::sellersSummary($rows) . ' La semana todavía no termina: es lo de hasta ahora.',
+                    default => self::sellersSummary($rows),
+                };
+                $out['lines'] = array_map(fn (array $r) => [
+                    'label' => $r['name'],
+                    'value' => self::money($r['total']),
+                    'note' => self::sellerParts($r),
+                ], $rows);
+                break;
+
+            case 'agencies_pay':
+                [$from, $to] = self::lastWeek($d);
+                $rows = $facts['closures'][$from->toDateString()] ?? [];
+                $paid = count(array_filter($rows, fn ($r) => $r['paid']));
+                $out['details'] = self::weekLabel($from, $to) . ': '
+                    . ($rows === [] && $due > $today ? 'los cierres de esa semana todavía no llegan.' : self::closuresSummary($rows));
+                $out['lines'] = array_map(fn (array $r) => [
+                    'label' => $r['agency'],
+                    'value' => $r['amount'] !== null ? self::money($r['amount']) : '—',
+                    'note' => $r['status_label'],
+                ], $rows);
+                // Un miércoles que todavía no llega no se da por hecho aunque no haya cierres abiertos
+                if ($due <= $today && ($rows === [] || $paid === count($rows))) {
+                    $out['auto_done'] = true;
+                    $out['auto_note'] = $rows === [] ? 'No hubo cierres de agencias esa semana.' : 'Todas las agencias de esa semana están pagadas.';
+                }
+                $out['actions'] = [['label' => 'Ir a cierres', 'link' => $rule['link']]];
+                break;
+
             case 'rate':
                 $saved = $facts['rate_days'][$due] ?? null;
                 $out['auto_done'] = $saved !== null;
@@ -193,8 +247,7 @@ final class ReminderRules
                 break;
 
             case 'review_week':
-                $from = $d->subDays($d->dayOfWeekIso - 1)->subWeek();
-                $to = $from->addDays(6);
+                [$from, $to] = self::lastWeek($d);
                 $out['details'] = 'Del ' . Schedule::dayName($from->toDateString()) . ' al ' . Schedule::dayName($to->toDateString())
                     . ': cuánto se ganó, cuánto se perdió y por producto.';
                 $out['link'] = self::panelLink($from, $to);
@@ -296,9 +349,75 @@ final class ReminderRules
         return implode(' y ', $parts) . '.';
     }
 
+    /** La semana de lunes a domingo anterior a ese día (la que se paga o se revisa). */
+    public static function lastWeek(CarbonImmutable $day): array
+    {
+        $from = $day->startOfDay()->subDays($day->dayOfWeekIso - 1)->subWeek();
+
+        return [$from, $from->addDays(6)];
+    }
+
+    /** "8 personas, total $282,50." */
+    public static function sellersSummary(array $rows): string
+    {
+        if ($rows === []) {
+            return 'nadie ganó comisiones esa semana.';
+        }
+        $total = array_sum(array_column($rows, 'total'));
+
+        return (count($rows) === 1 ? '1 persona' : count($rows) . ' personas') . ', total ' . self::money($total) . '.';
+    }
+
+    /** "comisiones $15,00 · upsells $2,00 · líder $3,00" (sin las partes en cero). */
+    public static function sellerParts(array $row): ?string
+    {
+        $parts = [];
+        foreach (['orders' => 'comisiones', 'upsells' => 'upsells', 'leadership' => 'líder'] as $key => $label) {
+            if (($row[$key] ?? 0) > 0.004) {
+                $parts[] = $label . ' ' . self::money($row[$key]);
+            }
+        }
+
+        return $parts ? implode(' · ', $parts) : null;
+    }
+
+    /** "3 agencias: 1 pagada y 2 por pagar ($240,00)." */
+    public static function closuresSummary(array $rows): string
+    {
+        if ($rows === []) {
+            return 'no hubo cierres de agencias.';
+        }
+        $unpaid = array_filter($rows, fn ($r) => !$r['paid']);
+        $paid = count($rows) - count($unpaid);
+        $owed = array_sum(array_map(fn ($r) => (float) ($r['amount'] ?? 0), $unpaid));
+        $text = (count($rows) === 1 ? '1 agencia' : count($rows) . ' agencias') . ': ';
+        if ($unpaid === []) {
+            return $text . (count($rows) === 1 ? 'pagada.' : 'todas pagadas.');
+        }
+        $parts = [];
+        if ($paid > 0) {
+            $parts[] = $paid === 1 ? '1 pagada' : "{$paid} pagadas";
+        }
+        $parts[] = (count($unpaid) === 1 ? '1 por pagar' : count($unpaid) . ' por pagar') . ($owed > 0 ? ' (' . self::money($owed) . ')' : '');
+
+        return $text . implode(' y ', $parts) . '.';
+    }
+
+    /** "$1.234,56" (como el resto del panel). */
+    public static function money(float $value): string
+    {
+        return ($value < 0 ? '−$' : '$') . number_format(abs($value), 2, ',', '.');
+    }
+
     public static function monthName(CarbonImmutable $d): string
     {
         return ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'][$d->month - 1];
+    }
+
+    /** "Del lunes 19/10 al domingo 25/10". */
+    private static function weekLabel(CarbonImmutable $from, CarbonImmutable $to): string
+    {
+        return 'Del ' . Schedule::dayName($from->toDateString()) . ' al ' . Schedule::dayName($to->toDateString());
     }
 
     /** El Panel del dueño con esas fechas ya puestas. */
