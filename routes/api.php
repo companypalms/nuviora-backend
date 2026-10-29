@@ -644,6 +644,7 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::get('/money', [\App\Http\Controllers\OwnerPanelController::class, 'money']);
         Route::get('/funnel', [\App\Http\Controllers\OwnerPanelController::class, 'funnel']);
         Route::get('/losses', [\App\Http\Controllers\OwnerPanelController::class, 'losses']);
+        Route::get('/losses/insights', [\App\Http\Controllers\OwnerPanelController::class, 'lossesInsights']);
     });
 
     // Finanzas (Módulo 4 de Fran): solo el Admin (§81). Gastos manuales y recurrentes (§24 a §33) y su historial (§82)

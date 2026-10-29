@@ -6,6 +6,7 @@ use App\Models\City;
 use App\Models\Product;
 use App\Models\Shop;
 use App\Services\Metrics\Filters;
+use App\Services\Metrics\Insights\CancellationInsights;
 use App\Services\Metrics\OwnerPanel;
 use App\Services\Metrics\Period;
 use Carbon\CarbonImmutable;
@@ -57,6 +58,15 @@ class OwnerPanelController extends Controller
         [$period, $filters] = $this->scope($request);
 
         return response()->json($panel->losses($period, $filters));
+    }
+
+    /** El análisis con IA de los motivos de cancelación ("force" lo rehace aunque ya esté guardado). */
+    public function lossesInsights(Request $request, CancellationInsights $insights): JsonResponse
+    {
+        [$period, $filters] = $this->scope($request);
+        @set_time_limit(130);
+
+        return response()->json($insights->analyze($period, $filters, $request->boolean('force')));
     }
 
     /** @return array{0: Period, 1: Filters} */

@@ -71,6 +71,8 @@ return [
         'receipt_fallback_model' => env('OPENAI_RECEIPT_FALLBACK_MODEL', 'gpt-6-sol'),
         // Cierres de las agencias (Módulo 3): leer el archivo y proponer coincidencias, nunca decidir montos (§48)
         'closure_model' => env('OPENAI_CLOSURE_MODEL', 'gpt-6-luna'),
+        // Panel del dueño (2026-10-29): el análisis de los motivos de cancelación (Metrics\Insights\CancellationInsights)
+        'insights_model' => env('OPENAI_INSIGHTS_MODEL', 'gpt-6-luna'),
     ],
     'receipt_checks' => [
         'mode' => env('RECEIPT_CHECKS_MODE', 'off'),
