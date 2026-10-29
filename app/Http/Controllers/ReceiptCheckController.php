@@ -6,6 +6,7 @@ use App\Jobs\AnalyzePaymentReceipt;
 use App\Models\Order;
 use App\Models\OrderUpdate;
 use App\Models\ReceiptCheck;
+use App\Services\Payments\ApprovalQueues;
 use App\Services\Payments\ReceiptChecker;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -33,11 +34,8 @@ class ReceiptCheckController extends Controller
     /** Lo que Fran tiene que revisar: no cuadra, no se lee, dudoso o no se pudo revisar, de las últimas 2 semanas. */
     public function index(Request $request)
     {
-        $statuses = [ReceiptCheck::FAIL, ReceiptCheck::UNREADABLE, ReceiptCheck::WARNING, ReceiptCheck::ERROR];
-        $checks = ReceiptCheck::whereIn('status', $statuses)
-            ->whereNull('reviewed_at')
-            ->where('created_at', '>=', now()->subDays(14))
-            ->whereHas('order', fn ($q) => $q->whereDoesntHave('status', fn ($s) => $s->whereIn('description', ['Cancelado', 'Rechazado'])))
+        // La misma cola que cuenta el calendario del dueño (ApprovalQueues)
+        $checks = app(ApprovalQueues::class)->receipts()
             ->with(['order:id,name,status_id,agent_id,agency_id,current_total_price', 'order.status:id,description', 'order.agent:id,names', 'order.agency:id,names', 'receipt'])
             ->orderByRaw("FIELD(status, 'fail', 'unreadable', 'error', 'warning')")
             ->orderByDesc('id')

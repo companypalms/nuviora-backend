@@ -5,7 +5,9 @@ namespace App\Services\Calendar;
 use App\Models\CalendarMark;
 use App\Models\CalendarNote;
 use App\Models\User;
+use App\Services\Calendar\Readers\ReminderFacts;
 use App\Services\Calendar\Rules\NoteRules;
+use App\Services\Calendar\Rules\ReminderRules;
 use App\Services\Calendar\Rules\Schedule;
 use App\Services\Metrics\PersonName;
 use Carbon\CarbonImmutable;
@@ -14,15 +16,17 @@ use Illuminate\Validation\ValidationException;
 /**
  * El calendario del dueño (Etapa 3): junta lo que hay que hacer cada día y lo que ya se hizo. Solo el Admin (la ruta).
  *
- * Cada cosa del calendario es una "aparición" con la misma forma, venga de una nota del dueño o (en los próximos pasos) de
- * un recordatorio del sistema. Es la misma forma que leerá el asistente de IA (guias/CALENDARIO.md):
- *   item_key   de quién es: "note:12" (y después "rule:…", "expense:…")
+ * Cada cosa del calendario es una "aparición" con la misma forma, venga de una nota del dueño o de un recordatorio del
+ * sistema (ReminderRules; los pagos llegan en el paso 3). Es la misma forma que leerá el asistente de IA
+ * (guias/CALENDARIO.md):
+ *   item_key   de quién es: "note:12", "rule:rate" (y en el paso 3, "expense:…")
  *   date       el día en que se muestra; due_date el día que le tocaba de verdad (distinto si se corrió por un domingo)
- *   type       payment | task | review
+ *   type       payment | task | review;  group "daily" = la rutina de todos los días
  *   source     owner | assistant | system
- *   title, details, time, repeat_label, text (todo en una frase)
- *   status     pending | done | dismissed | overdue (atrasada) | missed (pasó y no se acumula)
- *   mark       quién la marcó, cuándo y con qué nota
+ *   title, details, time, repeat_label, help (por qué importa), text (todo en una frase), link, actions (botones)
+ *   status     pending | done | dismissed | overdue (atrasada)
+ *   auto       si se tilda sola; mark: quién la marcó (source "auto": se tildó sola), cuándo y con qué nota
+ * Las de todos los días que pasaron sin hacerse no se muestran: no se acumulan.
  */
 class Calendar
 {
@@ -34,7 +38,7 @@ class Calendar
 
     private const TYPE_ORDER = ['payment' => 0, 'task' => 1, 'review' => 2];
 
-    public function __construct(private CalendarSettings $settings)
+    public function __construct(private CalendarSettings $settings, private ReminderFacts $facts)
     {
     }
 
@@ -46,7 +50,7 @@ class Calendar
         for ($d = $from->startOfDay(); $d->lte($to); $d = $d->addDay()) {
             $days[$d->toDateString()] = [];
         }
-        foreach ($this->withStatus($this->occurrences($from, $to), $today) as $item) {
+        foreach ($this->withStatus($this->occurrences($from, $to, $now), $today) as $item) {
             $days[$item['date']][] = $item;
         }
 
@@ -63,7 +67,7 @@ class Calendar
     public function today(CarbonImmutable $now): array
     {
         $today = $now->startOfDay();
-        $items = $this->withStatus($this->occurrences($today, $today), $today->toDateString());
+        $items = $this->withStatus($this->occurrences($today, $today, $now), $today->toDateString());
         $overdue = $this->overdue($now);
         $pending = count(array_filter($items, fn ($i) => $i['status'] === 'pending'));
         $done = count(array_filter($items, fn ($i) => $i['status'] === 'done'));
@@ -87,10 +91,37 @@ class Calendar
         if ($from->gt($to)) {
             return [];
         }
-        $items = array_filter($this->withStatus($this->occurrences($from, $to), $now->toDateString()), fn ($i) => $i['status'] === 'overdue');
+        $items = array_filter($this->withStatus($this->occurrences($from, $to, $now), $now->toDateString()), fn ($i) => $i['status'] === 'overdue');
         usort($items, fn ($a, $b) => strcmp($a['date'], $b['date']));
 
         return array_values($items);
+    }
+
+    /** Los recordatorios del sistema, con lo que hacen y si están encendidos (la ventana "Recordatorios fijos"). */
+    public function settings(): array
+    {
+        $rules = $this->settings->rules();
+
+        return [
+            'rules' => array_map(fn (string $key) => [
+                'key' => $key,
+                'title' => ReminderRules::RULES[$key]['title'],
+                'help' => ReminderRules::RULES[$key]['help'],
+                'type' => ReminderRules::RULES[$key]['type'],
+                'schedule' => Schedule::label(ReminderRules::pattern($key, $rules)),
+                'auto' => ReminderRules::RULES[$key]['auto'],
+                'on' => $rules[$key]['on'],
+                'weekday' => $rules[$key]['weekday'] ?? null,
+            ], array_keys(ReminderRules::RULES)),
+            'weekdays' => array_slice(Schedule::WEEKDAYS, 0, 6, true),
+        ];
+    }
+
+    public function saveSettings(array $rules, User $by, CarbonImmutable $now): array
+    {
+        $this->settings->saveRules($rules, $by, $now);
+
+        return $this->settings();
     }
 
     /** Marca una aparición como hecha o descartada (con una nota si se quiere). Solo un día que le toca. */
@@ -105,7 +136,7 @@ class Calendar
         );
     }
 
-    /** "Deshacer": la aparición vuelve a quedar pendiente. */
+    /** "Deshacer": la aparición vuelve a quedar pendiente (si se había tildado sola, sigue tildada). */
     public function unmark(string $itemKey, string $due): void
     {
         CalendarMark::where('item_key', $itemKey)->whereDate('occurs_on', $due)->delete();
@@ -168,17 +199,29 @@ class Calendar
 
             return $note !== null && Schedule::isDue($note->pattern(), $due);
         }
+        if (preg_match('/^rule:(\w+)$/', $itemKey, $m) && isset(ReminderRules::RULES[$m[1]])) {
+            $rules = $this->settings->rules();
+
+            return $rules[$m[1]]['on'] && $due >= $this->settings->startedOn(CarbonImmutable::now())
+                && Schedule::isDue(ReminderRules::pattern($m[1], $rules), $due);
+        }
 
         return false;
     }
 
     /**
-     * Las apariciones que se muestran entre dos días, todavía sin estado. Por ahora, las notas; los recordatorios del
-     * sistema (pagos, tareas de todos los días, revisiones) llegan en los próximos pasos.
+     * Las apariciones que se muestran entre dos días, todavía sin estado: las notas del dueño y los recordatorios del
+     * sistema que están encendidos.
      *
      * @return list<array>
      */
-    private function occurrences(CarbonImmutable $from, CarbonImmutable $to): array
+    private function occurrences(CarbonImmutable $from, CarbonImmutable $to, CarbonImmutable $now): array
+    {
+        return array_merge($this->noteOccurrences($from, $to), $this->ruleOccurrences($from, $to, $now));
+    }
+
+    /** @return list<array> */
+    private function noteOccurrences(CarbonImmutable $from, CarbonImmutable $to): array
     {
         // Un día de más a cada lado: lo que cae domingo se corre al sábado o al lunes
         $lo = $from->subDay()->toDateString();
@@ -199,15 +242,20 @@ class Calendar
                     'date' => $d['date'],
                     'due_date' => $d['due'],
                     'type' => $fields['kind'],
+                    'group' => null,
                     'source' => $note->source,
                     'title' => $fields['title'],
                     'details' => $fields['details'],
                     'time' => $fields['time'],
                     'repeat_label' => Schedule::label($pattern),
+                    'help' => null,
                     'base_text' => NoteRules::text($fields),
                     'accumulates' => true,
                     'auto' => false,
+                    'auto_done' => false,
+                    'auto_note' => null,
                     'link' => null,
+                    'actions' => [],
                     'note_id' => $note->id,
                     'note_fields' => $fields,
                 ];
@@ -217,7 +265,62 @@ class Calendar
         return $items;
     }
 
-    /** Les suma a las apariciones cómo están (hecha, descartada, pendiente, atrasada) y su frase, y las ordena. */
+    /** @return list<array> */
+    private function ruleOccurrences(CarbonImmutable $from, CarbonImmutable $to, CarbonImmutable $now): array
+    {
+        $rules = $this->settings->rules();
+        $today = $now->toDateString();
+        // Los recordatorios del sistema existen desde que existe el calendario: antes no hay nada que hacer ni atrasado
+        $started = $this->settings->startedOn($now);
+        $facts = $this->facts->forRange($from->subDay(), $to->addDay());
+        // Lo de ahora (conciliación, por aprobar, inventario) solo hace falta si hoy está en el rango
+        if ($today >= $from->toDateString() && $today <= $to->toDateString()) {
+            $facts += $this->facts->now($now);
+        }
+
+        $items = [];
+        foreach (ReminderRules::RULES as $key => $rule) {
+            if (!$rules[$key]['on']) {
+                continue;
+            }
+            $pattern = ReminderRules::pattern($key, $rules);
+            foreach (Schedule::dates($pattern, $from, $to) as $d) {
+                if ($d['due'] < $started) {
+                    continue;
+                }
+                $o = ReminderRules::occurrence($key, $d['due'], $today, $facts);
+                $items[] = [
+                    'item_key' => "rule:{$key}",
+                    'date' => $d['date'],
+                    'due_date' => $d['due'],
+                    'type' => $rule['type'],
+                    'group' => $rule['group'],
+                    'source' => 'system',
+                    'title' => $o['title'],
+                    'details' => $o['details'],
+                    'time' => null,
+                    'repeat_label' => Schedule::label($pattern),
+                    'help' => $rule['help'],
+                    'base_text' => Schedule::TYPES[$rule['type']] . ': ' . $o['title'] . '. ' . $o['details'],
+                    'accumulates' => $rule['accumulates'],
+                    'auto' => $rule['auto'],
+                    'auto_done' => $o['auto_done'],
+                    'auto_note' => $o['auto_note'],
+                    'link' => $o['link'],
+                    'actions' => $o['actions'],
+                    'note_id' => null,
+                    'note_fields' => null,
+                ];
+            }
+        }
+
+        return $items;
+    }
+
+    /**
+     * Les suma a las apariciones cómo están (hecha, descartada, pendiente, atrasada) y su frase, y las ordena. Lo que se
+     * tildó solo cuenta como hecho; lo de todos los días que pasó sin hacerse no se muestra.
+     */
     private function withStatus(array $items, string $today): array
     {
         if ($items === []) {
@@ -229,9 +332,14 @@ class Calendar
             ->get()
             ->keyBy(fn (CalendarMark $m) => $m->item_key . '|' . $m->occurs_on->toDateString());
 
-        foreach ($items as &$item) {
+        $out = [];
+        foreach ($items as $item) {
             $mark = $marks->get($item['item_key'] . '|' . $item['due_date']);
-            $item['status'] = Schedule::status($mark?->status, $item['date'], $today, $item['accumulates']);
+            $status = $mark?->status ?? ($item['auto_done'] ? 'done' : null);
+            $item['status'] = Schedule::status($status, $item['date'], $today, $item['accumulates']);
+            if ($item['status'] === 'missed') {
+                continue;
+            }
             $item['text'] = Schedule::sentence($item['base_text'], $item['date'], $item['due_date'], $item['status']);
             $item['mark'] = $mark ? [
                 'status' => $mark->status,
@@ -239,16 +347,16 @@ class Calendar
                 'source' => $mark->source,
                 'by' => $mark->marker ? PersonName::of($mark->marker->names, $mark->marker->surnames) : null,
                 'at' => $mark->updated_at?->format('Y-m-d H:i'),
-            ] : null;
-            unset($item['base_text']);
+            ] : ($item['auto_done'] ? ['status' => 'done', 'note' => $item['auto_note'], 'source' => 'auto', 'by' => null, 'at' => null] : null);
+            unset($item['base_text'], $item['auto_done'], $item['auto_note']);
+            $out[] = $item;
         }
-        unset($item);
 
-        // Primero lo pendiente; después por hora (lo que no tiene hora al final), tipo y título
-        usort($items, fn ($a, $b) => [self::closed($a), $a['time'] ?? '99:99', self::TYPE_ORDER[$a['type']] ?? 9, $a['title']]
-            <=> [self::closed($b), $b['time'] ?? '99:99', self::TYPE_ORDER[$b['type']] ?? 9, $b['title']]);
+        // Primero lo pendiente; después lo propio del día antes que la rutina, por hora (sin hora al final), tipo y título
+        usort($out, fn ($a, $b) => [self::closed($a), $a['group'] === 'daily' ? 1 : 0, $a['time'] ?? '99:99', self::TYPE_ORDER[$a['type']] ?? 9, $a['title']]
+            <=> [self::closed($b), $b['group'] === 'daily' ? 1 : 0, $b['time'] ?? '99:99', self::TYPE_ORDER[$b['type']] ?? 9, $b['title']]);
 
-        return $items;
+        return $out;
     }
 
     private static function closed(array $item): int

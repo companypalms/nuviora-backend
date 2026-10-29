@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Order;
 use App\Services\Orders\ChangeRules;
+use App\Services\Payments\ApprovalQueues;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -13,16 +14,10 @@ use Illuminate\Support\Facades\Auth;
  */
 class OrderChangeApprovalController extends Controller
 {
-    private const CLOSED = ['Entregado', 'Cancelado', 'Rechazado'];
-
     public function index()
     {
-        $orders = Order::query()
-            ->whereIn('change_covered_by', ['agency', 'partial'])
-            ->where('change_amount_agency', '>', 0)
-            ->whereHas('payments', fn ($q) => $q->whereIn('method', ChangeRules::CASH_METHODS))
-            ->whereHas('payments', fn ($q) => $q->whereNotIn('method', ChangeRules::CASH_METHODS))
-            ->whereDoesntHave('status', fn ($q) => $q->whereIn('description', self::CLOSED))
+        // La misma cola que cuenta el calendario del dueño (ApprovalQueues)
+        $orders = app(ApprovalQueues::class)->changesToValidate()
             ->with(['status:id,description', 'agent:id,names,surnames', 'agency:id,names', 'client:id,first_name,last_name', 'payments:id,order_id,method,amount', 'shop:id,name'])
             ->orderBy('updated_at')
             ->get()

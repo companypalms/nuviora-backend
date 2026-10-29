@@ -653,11 +653,13 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::put('/goals', [\App\Http\Controllers\OwnerPanelController::class, 'saveGoals']);
     });
 
-    // Calendario del dueño (Etapa 3): sus notas y lo que marca como hecho. Solo el Admin
+    // Calendario del dueño (Etapa 3): sus notas, los recordatorios del sistema y lo que marca como hecho. Solo el Admin
     Route::middleware('role:Admin')->prefix('calendar')->group(function () {
         Route::get('/', [\App\Http\Controllers\CalendarController::class, 'index']);
         Route::get('/today', [\App\Http\Controllers\CalendarController::class, 'today']);
         Route::get('/options', [\App\Http\Controllers\CalendarController::class, 'options']);
+        Route::get('/settings', [\App\Http\Controllers\CalendarController::class, 'settings']);
+        Route::put('/settings', [\App\Http\Controllers\CalendarController::class, 'saveSettings']);
         Route::post('/notes', [\App\Http\Controllers\CalendarController::class, 'storeNote']);
         Route::put('/notes/{note}', [\App\Http\Controllers\CalendarController::class, 'updateNote']);
         Route::post('/notes/{note}/archive', [\App\Http\Controllers\CalendarController::class, 'archiveNote']);

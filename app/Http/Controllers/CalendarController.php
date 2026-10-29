@@ -43,6 +43,21 @@ class CalendarController extends Controller
         return response()->json(['kinds' => NoteRules::KINDS, 'repeats' => Schedule::REPEATS]);
     }
 
+    /** Los recordatorios del sistema: qué hace cada uno, cuándo toca y si está encendido. */
+    public function settings(Calendar $calendar): JsonResponse
+    {
+        return response()->json($calendar->settings());
+    }
+
+    /** Enciende o apaga recordatorios y cambia el día de la revisión semanal ("rules": clave => {on, weekday}). */
+    public function saveSettings(Request $request, Calendar $calendar): JsonResponse
+    {
+        $data = $request->validate(['rules' => 'required|array', 'rules.*.on' => 'sometimes|boolean', 'rules.*.weekday' => 'sometimes|nullable']);
+        $result = $calendar->saveSettings($data['rules'], $request->user(), CarbonImmutable::now());
+
+        return response()->json(['message' => 'Recordatorios guardados.'] + $result);
+    }
+
     public function storeNote(Request $request, Calendar $calendar): JsonResponse
     {
         $source = $request->validate(['source' => ['nullable', Rule::in(NoteRules::SOURCES)]])['source'] ?? 'owner';

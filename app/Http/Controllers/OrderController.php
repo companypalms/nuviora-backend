@@ -3028,20 +3028,8 @@ class OrderController extends Controller
             return response()->json(['status' => false, 'message' => 'Solo administración o la líder de un grupo ven los vueltos.'], 403);
         }
 
-        $orders = Order::whereHas('status', function($q) {
-                $q->where('description', 'Entregado');
-            })
-            ->whereIn('change_covered_by', ['company', 'partial'])
-            ->where('change_amount_company', '>', 0)
-            ->where(function($q) {
-                // No tiene extra o tiene extra pero sin recibo
-                $q->whereDoesntHave('changeExtra')
-                  ->orWhereHas('changeExtra', function($sq) {
-                      $sq->whereNull('change_receipt')
-                         ->orWhere('change_receipt', '');
-                  });
-            })
-            ->when($group, fn ($q) => $q->whereIn('agent_id', $group->openMembers()->pluck('user_id')))
+        // La misma cola que cuenta el calendario del dueño (ApprovalQueues)
+        $orders = app(\App\Services\Payments\ApprovalQueues::class)->vueltosToPay($group)
             ->with(['client', 'agent', 'agency', 'changeExtra'])
             ->orderBy('updated_at', 'desc')
             ->get();
