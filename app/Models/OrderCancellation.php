@@ -13,6 +13,7 @@ class OrderCancellation extends Model
         'order_id',
         'user_id',
         'reason',
+        'category', // el motivo de la lista (Orders\Cancellations::CATEGORIES); vacío en las de antes del 2026-10-29
         'source', // 'user' o 'system' (cierre de la jornada)
         'status',
         'reviewed_by',

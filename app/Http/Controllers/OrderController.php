@@ -355,8 +355,13 @@ class OrderController extends Controller
             // Dueño (2026-10-29): quien cancela escribe el motivo; se guarda para analizarlo (Orders\Cancellations)
             $isCancelling = $newStatusRaw === OrderStatus::CANCELADO && $order->status?->description !== OrderStatus::CANCELADO;
             $cancelReason = $isCancelling ? Cancellations::reason($request->input('cancel_reason')) : null;
+            $cancelCategory = $isCancelling ? Cancellations::category($request->input('cancel_category')) : null;
             if ($isCancelling && !$cancelReason) {
                 return response()->json(['status' => false, 'message' => Cancellations::missingReasonMessage(), 'cancel_reason_required' => true], 422);
+            }
+            // Y el motivo de la lista (dueño, 2026-10-29), para agruparlos en el panel del dueño
+            if ($isCancelling && !$cancelCategory) {
+                return response()->json(['status' => false, 'message' => Cancellations::missingCategoryMessage(), 'cancel_reason_required' => true], 422);
             }
 
             // Actualizar request con el ID resuelto para compatibilidad con código legacy abajo
@@ -753,7 +758,7 @@ class OrderController extends Controller
         if ($isCancelling) {
             // La orden ya quedó cancelada: si guardar el motivo falla, no se devuelve error (queda en el log)
             try {
-                Cancellations::recordByUser($order, (int) $oldStatusId, $cancelReason, (int) Auth::id());
+                Cancellations::recordByUser($order, (int) $oldStatusId, $cancelReason, (int) Auth::id(), $cancelCategory);
             } catch (\Throwable $e) {
                 \Log::error("No se guardó el motivo de cancelación de la orden {$order->id} ({$cancelReason}): " . $e->getMessage());
             }

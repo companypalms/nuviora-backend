@@ -47,8 +47,12 @@ class OrderCancellationController extends Controller
         if (!$reason) {
             return response()->json(['status' => false, 'message' => Cancellations::missingReasonMessage()], 422);
         }
+        $category = Cancellations::category($request->input('category'));
+        if (!$category) {
+            return response()->json(['status' => false, 'message' => Cancellations::missingCategoryMessage()], 422);
+        }
 
-        $change = Request::create($request->url(), 'PUT', ['status' => OrderStatus::CANCELADO, 'cancel_reason' => $reason]);
+        $change = Request::create($request->url(), 'PUT', ['status' => OrderStatus::CANCELADO, 'cancel_reason' => $reason, 'cancel_category' => $category]);
         $response = app(OrderController::class)->updateStatus($change, $order, $commissionService);
         $data = $response->getData(true);
         if (empty($data['status'])) {
