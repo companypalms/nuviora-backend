@@ -6,10 +6,14 @@ use App\Models\Setting;
 use App\Services\Finance\OrderEconomics;
 use App\Services\Metrics\Readers\MoneyReader;
 use App\Services\Metrics\Readers\OrderFactsReader;
+use App\Services\Metrics\Readers\TeamReader;
 use App\Services\Metrics\Rules\FunnelRules;
 use App\Services\Metrics\Rules\LossRules;
 use App\Services\Metrics\Rules\MoneyRules;
 use App\Services\Metrics\Rules\SalesRules;
+use App\Services\Metrics\Rules\TeamRules;
+use App\Services\Metrics\Team\TeamCatalog;
+use App\Services\Metrics\Team\TeamRole;
 use Carbon\CarbonImmutable;
 
 /**
@@ -24,8 +28,85 @@ class OwnerPanel
     /** Con menos entregas que estas, el promedio de un filtro no es confiable: se usa el de todo el negocio. */
     private const ESTIMATE_MIN_DELIVERED = 10;
 
-    public function __construct(private OrderFactsReader $orders, private MoneyReader $money)
+    public function __construct(private OrderFactsReader $orders, private MoneyReader $money, private TeamReader $team)
     {
+    }
+
+    /**
+     * Equipo: los KPIs de cada persona de un rol (el catálogo de Metrics\Team), su ranking y las tarjetas del rol. Avisa
+     * de los roles del sistema que todavía no tienen KPIs.
+     */
+    public function team(Period $period, Filters $filters, string $roleKey): array
+    {
+        $now = CarbonImmutable::now();
+        $previous = $period->previous();
+        $maturityDays = (int) Setting::get(OrderEconomics::SETTING_MATURITY_LAG, 4);
+        $maturing = $period->isMaturing($now, $maturityDays);
+        $roles = TeamCatalog::roles();
+        $role = $roles[$roleKey] ?? reset($roles);
+
+        $current = $role->compute($role->facts($this->team, $period, $filters), $period);
+        $before = $role->compute($role->facts($this->team, $previous, $filters), $previous);
+        $built = TeamRules::build($role, $current, $before, $maturing);
+        $counts = $this->team->roleCounts();
+        $groups = count($this->team->salesGroups($period));
+
+        return [
+            'period' => $period->toArray() + ['compare_label' => $period->compareLabel],
+            'previous' => $previous->toArray(),
+            'filters' => $filters->toArray(),
+            'maturing' => $maturing,
+            'maturity_days' => $maturityDays,
+            'pending' => $this->orders->pending($period, $filters),
+            'cards' => $built['cards'],
+            'roles' => array_values(array_map(fn (TeamRole $r) => [
+                'key' => $r->key(),
+                'label' => $r->label(),
+                'people' => $r->systemRoles() === [] ? $groups : array_sum(array_map(fn ($d) => $counts[$d] ?? 0, $r->systemRoles())),
+            ], $roles)),
+            'coverage' => TeamCatalog::coverage(array_keys($counts)),
+            'role' => array_diff_key($built, ['cards' => true]),
+            'updated_at' => $now->format('H:i'),
+        ];
+    }
+
+    /** El detalle de una persona de Equipo: todos sus KPIs como tarjetas y los bloques de su rol. */
+    public function teamPerson(Period $period, Filters $filters, string $roleKey, int $id): ?array
+    {
+        $role = TeamCatalog::find($roleKey);
+        if (!$role) {
+            return null;
+        }
+        $now = CarbonImmutable::now();
+        $previous = $period->previous();
+        $maturing = $period->isMaturing($now, (int) Setting::get(OrderEconomics::SETTING_MATURITY_LAG, 4));
+        $current = $role->compute($role->facts($this->team, $period, $filters), $period);
+        $before = $role->compute($role->facts($this->team, $previous, $filters), $previous);
+        $person = $current['people'][$id] ?? null;
+        if (!$person) {
+            return null;
+        }
+
+        $blocks = [];
+        foreach ($role->blocks($id, $current, $before) as $block) {
+            if ($block['type'] === 'table') {
+                $inner = TeamCatalog::find($block['role']);
+                $block = ['type' => 'table', 'title' => $block['title'], 'help' => $block['help'],
+                    'columns' => TeamRules::columns($inner), 'rank_by' => $inner->rankBy(), 'base' => $inner->base(),
+                    'rows' => TeamRules::rows($inner, $block['people'], $block['previous'] ?? [])];
+            }
+            $blocks[] = $block;
+        }
+
+        return [
+            'id' => $id,
+            'name' => $person['name'],
+            'group' => $person['group'] ?? null,
+            'role' => $role->label(),
+            'compare_label' => $previous->label,
+            'cards' => TeamRules::personCards($role, $person, $before['people'][$id] ?? null, $maturing),
+            'blocks' => $blocks,
+        ];
     }
 
     /** Ventas y pedidos: las tarjetas, qué pasó con los pedidos y los pedidos de cada día. */

@@ -9,6 +9,7 @@ use App\Services\Metrics\Filters;
 use App\Services\Metrics\Insights\CancellationInsights;
 use App\Services\Metrics\OwnerPanel;
 use App\Services\Metrics\Period;
+use App\Services\Metrics\Team\TeamCatalog;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -58,6 +59,27 @@ class OwnerPanelController extends Controller
         [$period, $filters] = $this->scope($request);
 
         return response()->json($panel->losses($period, $filters));
+    }
+
+    /** Equipo: los KPIs de las personas de un rol del catálogo (por defecto, las vendedoras). */
+    public function team(Request $request, OwnerPanel $panel): JsonResponse
+    {
+        [$period, $filters] = $this->scope($request);
+        $data = $request->validate(['role' => ['nullable', Rule::in(array_keys(TeamCatalog::roles()))]]);
+
+        return response()->json($panel->team($period, $filters, $data['role'] ?? 'sellers'));
+    }
+
+    /** El detalle de una persona (o de un grupo, en las líderes) de Equipo. */
+    public function teamPerson(Request $request, OwnerPanel $panel): JsonResponse
+    {
+        [$period, $filters] = $this->scope($request);
+        $data = $request->validate(['role' => ['required', Rule::in(array_keys(TeamCatalog::roles()))], 'id' => 'required|integer']);
+        $person = $panel->teamPerson($period, $filters, $data['role'], (int) $data['id']);
+
+        return $person
+            ? response()->json($person)
+            : response()->json(['message' => 'No tiene actividad en este período.'], 404);
     }
 
     /** El análisis con IA de los motivos de cancelación ("force" lo rehace aunque ya esté guardado). */
