@@ -122,7 +122,9 @@ class MoneyReader
             $key = $a['agency_id'] ?? 0;
             $by[$key] = ($by[$key] ?? 0) + (float) ($a['balance_usd'] ?? 0);
         }
-        $names = User::whereIn('id', array_filter(array_keys($by)))->pluck('names', 'id');
+        // El nombre completo, como en Equipo y en las alertas ("Agencia Centro", no solo "Agencia")
+        $names = User::whereIn('id', array_filter(array_keys($by)))->get(['id', 'names', 'surnames'])
+            ->mapWithKeys(fn ($u) => [$u->id => trim($u->names . ' ' . $u->surnames)]);
 
         return collect($by)->map(fn ($usd, $id) => [
             'agency_id' => $id ?: null,

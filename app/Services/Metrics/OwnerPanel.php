@@ -313,6 +313,9 @@ class OwnerPanel
         $all = new Filters();
         $a = $config['alerts'];
         $alerts = [];
+        // Al tocar una alerta, el panel muestra los mismos días que miró (sin período: lo de ahora mismo, no cambia)
+        $at = fn (?array $alert, ?Period $p) => $alert === null ? null
+            : $alert + ['period' => $p === null ? null : ($p->preset === 'today' ? ['preset' => 'today'] : ['preset' => 'custom', 'from' => $p->fromDate(), 'to' => $p->toDate()])];
 
         // Vendedoras y agencias: los pedidos que les entraron en los 7 días que ya terminaron de entregarse
         $windowEnd = $now->startOfDay()->subDays($maturityDays + 1);
@@ -326,12 +329,12 @@ class OwnerPanel
             }
             $role = TeamCatalog::find($def['role']);
             $computed[$def['role']] ??= $role->compute($role->facts($this->team, $window, $all), $window);
-            $alerts[] = AlertRules::team($key, $goal, $computed[$def['role']]['people'], $role->base(), $windowText);
+            $alerts[] = $at(AlertRules::team($key, $goal, $computed[$def['role']]['people'], $role->base(), $windowText), $window);
         }
 
         // El dinero que tienen ahora mismo
         if ($a['agency_cash']['on'] && $a['agency_cash']['yellow'] !== null) {
-            $alerts[] = AlertRules::cash('agency_cash', $a['agency_cash'], $this->agencyCash());
+            $alerts[] = $at(AlertRules::cash('agency_cash', $a['agency_cash'], $this->agencyCash()), null);
         }
         if ($a['rider_cash']['on'] && $a['rider_cash']['yellow'] !== null) {
             $riders = $this->team->people(TeamCatalog::find('riders')->systemRoles());
@@ -339,7 +342,7 @@ class OwnerPanel
             foreach ($this->team->riderCash(array_keys($riders)) as $id => $usd) {
                 $holders[] = ['id' => (int) $id, 'name' => $riders[$id]['name'], 'usd' => $usd];
             }
-            $alerts[] = AlertRules::cash('rider_cash', $a['rider_cash'], $holders);
+            $alerts[] = $at(AlertRules::cash('rider_cash', $a['rider_cash'], $holders), null);
         }
 
         // La publicidad de los últimos 3 días completos
@@ -348,14 +351,14 @@ class OwnerPanel
             $days = Period::fromPreset('custom', $yesterday->subDays(AlertRules::AD_DAYS - 1)->toDateString(), $yesterday->toDateString(), $now);
             $t = MoneyRules::compute($this->orders->facts($days, $all), $days, $all, $this->money->adSpend($days), [])['totals'];
             [$estimate] = $this->estimate($all, $now, $maturityDays);
-            $alerts[] = AlertRules::adCost($a['ad_cost'], (float) $t['ads'], (int) $t['delivered'], (int) $t['open'], $estimate['rate'], self::range($days));
+            $alerts[] = $at(AlertRules::adCost($a['ad_cost'], (float) $t['ads'], (int) $t['delivered'], (int) $t['open'], $estimate['rate'], self::range($days)), $days);
         }
 
         // Las cancelaciones de hoy
         if ($a['cancellations']['on'] && $a['cancellations']['yellow'] !== null) {
             $today = Period::fromPreset('today', null, null, $now);
             $t = LossRules::compute($this->orders->losses($today, $all), $today)['totals'];
-            $alerts[] = AlertRules::cancellations($a['cancellations'], $t['created'], $t['cancelled']);
+            $alerts[] = $at(AlertRules::cancellations($a['cancellations'], $t['created'], $t['cancelled']), $today);
         }
 
         return ['configured' => true, 'alerts' => AlertRules::sort($alerts), 'window' => $windowText, 'updated_at' => $now->format('H:i')];
