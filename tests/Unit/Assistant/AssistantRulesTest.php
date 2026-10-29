@@ -6,6 +6,7 @@ use App\Services\Assistant\Ai\OpenAiModel;
 use App\Services\Assistant\Instructions;
 use App\Services\Assistant\Lookup;
 use App\Services\Assistant\Present;
+use App\Services\Assistant\Tools\OrderHistoryTool;
 use App\Services\Assistant\Tools\PeriodArgs;
 use App\Services\Assistant\Tools\ToolProblem;
 use App\Services\Assistant\Turn;
@@ -83,6 +84,12 @@ describe('Los números en palabras', function () {
         expect($cards[1])->toBe(['dato' => 'En camino', 'valor' => '$100,00', 'nota' => 'Ganancia esperada']);
     });
 
+    it('tapa teléfonos y correos, pero no fechas, horas ni montos', function () {
+        expect(Present::mask("Actualizó 'shipped_at' de '' a '2026-10-29 07:37:00'"))->toBe("Actualizó 'shipped_at' de '' a '2026-10-29 07:37:00'");
+        expect(Present::mask('Llamar al 0414-123.45.67 o a ana@correo.com'))->toBe('Llamar al [teléfono] o a [correo]');
+        expect(Present::mask('Pagó Bs 1.250.000,00 y $1.234.567 el 29/10/2026 07:37'))->toBe('Pagó Bs 1.250.000,00 y $1.234.567 el 29/10/2026 07:37');
+    });
+
     it('el nombre de cada punto de una gráfica', function () {
         expect(Present::bucket('2026-10-05', 'day'))->toBe('5/10');
         expect(Present::bucket('2026-10-19', 'week'))->toBe('sem. 19/10');
@@ -109,6 +116,16 @@ describe('El modo ejemplo entiende frases simples', function () {
         expect(ExampleModel::understand('Hola, ¿cómo estás?'))->toBeNull();
     });
 
+    it('órdenes, inventario y lo demás del paso 3', function () {
+        expect(ExampleModel::understand('¿Qué pasó con la orden #P9010?'))->toBe(['name' => 'historial_orden', 'arguments' => ['numero' => 'P9010', 'id' => null]]);
+        expect(ExampleModel::understand('¿Qué productos se están acabando?')['name'])->toBe('stock_bajo');
+        expect(ExampleModel::understand('¿Cuánto stock queda?')['name'])->toBe('stock');
+        expect(ExampleModel::understand('Comisiones de la semana pasada')['arguments']['periodo'])->toBe('semana_pasada');
+        expect(ExampleModel::understand('¿Cómo van los cierres de las agencias?')['name'])->toBe('cierres_agencias');
+        expect(ExampleModel::understand('¿Cuánto hay en caja?')['name'])->toBe('caja');
+        expect(ExampleModel::understand('¿Cuál es la tasa de hoy?')['name'])->toBe('tasas');
+    });
+
     it('sin herramientas que pedir, explica qué puede preguntar', function () {
         $reply = (new ExampleModel())->next(new Turn('', [], 'Hola', []));
         expect($reply->calls)->toBe([]);
@@ -126,6 +143,17 @@ describe('El modo ejemplo entiende frases simples', function () {
         $second = $model->next($turn->withStep($first, ['ejemplo_1' => json_encode($data)]));
         expect($second->calls)->toBe([]);
         expect($second->text)->toContain('**Esta semana**')->toContain('- Entregados: **12** (antes 10, +20 %)');
+    });
+});
+
+describe('El historial de una orden para la IA', function () {
+    it('no pasa los datos de contacto ni la ubicación del cliente, solo que cambiaron', function () {
+        $text = OrderHistoryTool::text("Estado cambió de 'Nuevo' a 'Confirmado' | Actualizó 'phone' de '04141234567' a '04241234567' | Actualizó 'location' de 'Calle 1' a 'Calle 2'");
+        expect($text)->toBe("Estado cambió de 'Nuevo' a 'Confirmado' | Cambió datos de contacto o de ubicación del cliente");
+    });
+
+    it('corta los textos largos', function () {
+        expect(mb_strlen(OrderHistoryTool::text(str_repeat('a', 500), 100)))->toBe(100);
     });
 });
 

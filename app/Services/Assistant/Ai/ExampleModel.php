@@ -55,6 +55,43 @@ class ExampleModel implements AssistantModel
         $panel = $period + ['tienda' => null, 'ciudad' => null, 'producto' => null];
 
         $name = self::name($message);
+        // Paso 3: órdenes, inventario, comisiones, cierres, caja, gastos, tasas, usuarios, agencias y ciudades
+        if ($has('orden') && preg_match('/#?\s?([a-z]{0,6}-?\d{3,})/i', $message, $m)) {
+            return ['name' => 'historial_orden', 'arguments' => ['numero' => $m[1], 'id' => null]];
+        }
+        if ($has('se esta acabando', 'se acaba', 'stock bajo', 'se estan acabando')) {
+            return ['name' => 'stock_bajo', 'arguments' => []];
+        }
+        if ($has('reabastec')) {
+            return ['name' => 'reabastecimiento', 'arguments' => []];
+        }
+        if ($has('en camino', 'por recibir', 'compras')) {
+            return ['name' => 'en_camino', 'arguments' => []];
+        }
+        if ($has('stock', 'inventario', 'cuanto queda', 'cuantas unidades')) {
+            return ['name' => 'stock', 'arguments' => ['producto' => null, 'ciudad' => null]];
+        }
+        if ($has('comision')) {
+            return ['name' => 'comisiones', 'arguments' => $period + ['grafico' => true]];
+        }
+        if ($has('cierre')) {
+            return ['name' => 'cierres_agencias', 'arguments' => ['agencia' => null, 'estado' => null, 'semana' => null]];
+        }
+        if ($has('caja', 'saldo', 'cuentas')) {
+            return ['name' => 'caja', 'arguments' => []];
+        }
+        if ($has('gasto')) {
+            return ['name' => 'gastos', 'arguments' => $period + ['categoria' => null]];
+        }
+        if ($has('tasa')) {
+            return ['name' => 'tasas', 'arguments' => []];
+        }
+        if ($has('usuario')) {
+            return ['name' => 'usuarios', 'arguments' => ['rol' => null, 'nombre' => null]];
+        }
+        if ($has('ciudades', 'agencias trabajando', 'horario')) {
+            return ['name' => 'agencias_ciudades', 'arguments' => ['agencia' => null, 'ciudad' => null]];
+        }
         if ($has('calendario', 'pendiente', 'tengo hoy', 'que tengo', 'tareas')) {
             return ['name' => 'calendario', 'arguments' => ['cuando' => 'hoy', 'desde' => null, 'hasta' => null]];
         }
@@ -147,11 +184,35 @@ class ExampleModel implements AssistantModel
         if (isset($d['alertas'])) {
             $lines[] = is_array($d['alertas']) ? count($d['alertas']) . ' alertas.' : $d['alertas'];
         }
-        foreach (array_slice($d['encontradas'] ?? [], 0, 8) as $p) {
-            $lines[] = "- {$p['nombre']} ({$p['rol']})";
+        // Lo demás, tal cual: cada dato en una línea y cada lista con sus primeros elementos
+        $done = ['periodo', 'persona', 'equipo', 'mes', 'metas_puestas', 'resumen', 'tarjetas', 'personas', 'lo_de_hoy', 'atrasado', 'alertas', 'hoy', 'aviso'];
+        foreach (array_diff_key($d, array_flip($done)) as $key => $value) {
+            $label = ucfirst(str_replace('_', ' ', (string) $key));
+            if (is_scalar($value)) {
+                $lines[] = "{$label}: **{$value}**";
+            } elseif (is_array($value) && array_is_list($value)) {
+                $lines[] = "**{$label}**";
+                foreach (array_slice($value, 0, 8) as $item) {
+                    $lines[] = '- ' . (is_array($item) ? self::flat($item) : $item);
+                }
+            } elseif (is_array($value)) {
+                $lines[] = "**{$label}**: " . self::flat($value);
+            }
         }
 
         return $lines !== [] ? implode("\n", $lines) : 'No encontré datos para eso.';
+    }
+
+    /** "estado: Pagado · carreras: 20". */
+    private static function flat(array $item): string
+    {
+        $parts = [];
+        foreach ($item as $k => $v) {
+            $v = is_array($v) ? (array_is_list($v) ? implode(', ', array_map(fn ($x) => is_array($x) ? self::flat($x) : $x, $v)) : self::flat($v)) : $v;
+            $parts[] = is_int($k) ? $v : str_replace('_', ' ', (string) $k) . ": {$v}";
+        }
+
+        return implode(' · ', $parts);
     }
 
     private static function say(string $text): ModelReply

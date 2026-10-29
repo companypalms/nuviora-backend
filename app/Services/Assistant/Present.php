@@ -99,9 +99,21 @@ final class Present
         };
     }
 
-    /** Texto escrito por personas, antes de mandarlo a la IA: sin teléfonos, correos ni números largos. */
+    /**
+     * Texto escrito por personas o por el historial, antes de mandarlo a la IA: sin teléfonos, correos ni números largos
+     * (el mismo filtro del análisis de cancelaciones). Las fechas, las horas y los montos no son teléfonos: se respetan.
+     */
     public static function mask(string $text): string
     {
-        return CancellationInsights::mask($text);
+        $kept = [];
+        $keep = '/\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?Z?)?|\d{1,2}\/\d{1,2}\/\d{2,4}(?: \d{1,2}:\d{2})?|(?:\$|Bs\.?)\s?\d[\d.,]*/u';
+        $text = preg_replace_callback($keep, function ($m) use (&$kept) {
+            $kept[] = $m[0];
+
+            return "\u{E000}" . (count($kept) - 1) . "\u{E001}";
+        }, $text);
+        $text = CancellationInsights::mask($text);
+
+        return preg_replace_callback('/\x{E000}(\d+)\x{E001}/u', fn ($m) => $kept[(int) $m[1]], $text);
     }
 }

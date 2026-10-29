@@ -22,6 +22,20 @@ class ToolCatalog
         GoalsTool::class,
         AlertsTool::class,
         CalendarTool::class,
+        // Paso 3: órdenes, inventario, comisiones, cierres, caja, gastos, tasas, usuarios, agencias y ciudades
+        FindOrderTool::class,
+        OrderHistoryTool::class,
+        StockTool::class,
+        LowStockTool::class,
+        IncomingTool::class,
+        ReplenishmentTool::class,
+        CommissionsTool::class,
+        ClosuresTool::class,
+        CashTool::class,
+        ExpensesTool::class,
+        RatesTool::class,
+        UsersTool::class,
+        RoutingTool::class,
     ];
 
     /** @var array<string, Tool>|null */

@@ -3159,14 +3159,9 @@ class OrderController extends Controller
             ], 403);
         }
 
-        $logs = $order->activityLogs()
-            ->with('user:id,names,surnames,email')
-            ->latest()
-            ->get();
-
         return response()->json([
             'status' => true,
-            'data' => $logs
+            'data' => app(\App\Services\Orders\OrderHistory::class)->activityLogs($order)
         ]);
     }
     public function toggleChangeNotification(Order $order)

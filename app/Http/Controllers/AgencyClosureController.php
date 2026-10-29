@@ -10,6 +10,7 @@ use App\Models\AgencyTrip;
 use App\Models\AgencyWeeklyClosure;
 use App\Models\DeliveryAuditLog;
 use App\Models\User;
+use App\Services\Delivery\Closures\ClosureList;
 use App\Services\Delivery\Closures\ClosureMatcher;
 use App\Services\Delivery\Closures\ClosureProcessor;
 use App\Services\Delivery\Closures\ClosureReview;
@@ -29,20 +30,13 @@ use RuntimeException;
 class AgencyClosureController extends Controller
 {
     /** §31: la lista de cierres con su resultado. */
-    public function index(Request $request)
+    public function index(Request $request, ClosureList $list)
     {
-        $query = AgencyWeeklyClosure::with(['agency:id,names', 'currentFile'])
-            ->orderByDesc('period_start')->orderBy('agency_id');
-        if ($request->filled('agency_id')) {
-            $query->where('agency_id', (int) $request->input('agency_id'));
-        }
-        if ($request->filled('status')) {
-            $query->where('status', $request->input('status'));
-        }
-        $settings = AgencyClosureSetting::all()->keyBy('agency_id');
-
         return response()->json([
-            'closures' => $query->limit(200)->get()->map(fn (AgencyWeeklyClosure $c) => $this->present($c, $settings->get($c->agency_id) ?? AgencyClosureSetting::for($c->agency_id))),
+            'closures' => $list->list(
+                $request->filled('agency_id') ? (int) $request->input('agency_id') : null,
+                $request->filled('status') ? (string) $request->input('status') : null,
+            ),
             'agencies' => $this->agencies(),
             'statuses' => AgencyWeeklyClosure::STATUS_LABEL,
         ]);
@@ -68,7 +62,7 @@ class AgencyClosureController extends Controller
     }
 
     /** §31 a §33: el resumen, las discrepancias, todas las filas y las versiones del archivo. */
-    public function show(AgencyWeeklyClosure $closure)
+    public function show(AgencyWeeklyClosure $closure, ClosureList $list)
     {
         $closure->load(['agency:id,names', 'approver:id,names', 'payer:id,names']);
         $setting = AgencyClosureSetting::for($closure->agency_id);
@@ -81,7 +75,7 @@ class AgencyClosureController extends Controller
         ])->get();
 
         return response()->json([
-            'closure' => $this->present($closure, $setting) + [
+            'closure' => $list->present($closure, $setting) + [
                 'approved_by' => $closure->approver?->names,
                 'approved_at' => $closure->approved_at?->toDateTimeString(),
                 'paid_by' => $closure->payer?->names,
@@ -361,36 +355,7 @@ class AgencyClosureController extends Controller
         return response()->json(['status' => true, 'message' => 'Configuración guardada.', 'settings' => $this->presentSetting($setting)]);
     }
 
-    // --- Presentación ---
-
-    private function present(AgencyWeeklyClosure $c, AgencyClosureSetting $setting): array
-    {
-        return [
-            'id' => $c->id,
-            'agency_id' => $c->agency_id,
-            'agency' => $c->agency?->names,
-            'period_start' => $c->period_start->toDateString(),
-            'period_end' => $c->period_end->toDateString(),
-            'week' => $c->weekLabel(),
-            'status' => $c->status,
-            'status_label' => AgencyWeeklyClosure::STATUS_LABEL[$c->status] ?? $c->status,
-            'trips_count' => $c->trips_count,
-            'expected_total' => $c->expected_total,
-            'reported_total' => $c->reported_total,
-            'difference' => $c->expected_total !== null && $c->reported_total !== null ? round($c->reported_total - $c->expected_total, 2) : null,
-            'final_approved_total' => $c->final_approved_total,
-            'manual_total' => $c->manual_total,
-            'manual_reason' => $c->manual_reason,
-            'summary' => $c->summary,
-            'processing_error' => $c->processing_error,
-            'uploaded_at' => $c->uploaded_at?->toDateTimeString(),
-            'processed_at' => $c->processed_at?->toDateTimeString(),
-            'paid_at' => $c->paid_at?->toDateTimeString(),
-            'file' => $c->relationLoaded('currentFile') && $c->currentFile ? ['name' => $c->currentFile->original_name, 'version' => $c->currentFile->version] : null,
-            'reminder_at' => $c->reminderAt($setting)->toDateTimeString(),
-            'reminder_due' => $c->reminderDue($setting),
-        ];
-    }
+    // --- Presentación (cada cierre de la lista: Delivery\Closures\ClosureList, que también usa el asistente) ---
 
     private function presentRow(AgencyClosureRow $r): array
     {
