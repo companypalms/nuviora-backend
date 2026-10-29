@@ -35,13 +35,16 @@ class TeamReader
 {
     public const LOOKBACK_DAYS = 30;
 
+    /** Cuántos pedidos se leen por consulta. */
+    private const CHUNK = 1000;
+
     public function __construct(private MoneyReader $money, private LogisticsSettings $logistics, private RiderCash $riderCash)
     {
     }
 
     /**
-     * Las personas de esos roles, con lo que se muestra debajo de su nombre: el grupo de venta de la vendedora, la
-     * agencia del repartidor (o "Logística propia") y el centro de la operadora.
+     * Las personas de esos roles, con lo que se muestra debajo de su nombre: el grupo de venta de la vendedora, el
+     * nombre de la agencia del repartidor (o "Logística propia") y el centro de la operadora.
      *
      * @return array<int, array{name: string, group: ?string}>
      */
@@ -49,7 +52,7 @@ class TeamReader
     {
         $users = DB::table('users as u')->join('roles as r', 'r.id', '=', 'u.role_id')->whereIn('r.description', $roles)
             ->leftJoin('users as ag', 'ag.id', '=', 'u.agency_id')
-            ->get(['u.id', 'u.names', 'u.surnames', 'r.description as role', 'ag.names as agency']);
+            ->get(['u.id', 'u.names', 'u.surnames', 'r.description as role', 'ag.names as agency', 'ag.surnames as agency_surnames']);
         $ids = $users->pluck('id');
         $groups = DB::table('sales_group_members as m')->join('sales_groups as g', 'g.id', '=', 'm.sales_group_id')
             ->whereIn('m.user_id', $ids)->whereNull('m.ended_at')->pluck('g.name', 'm.user_id');
@@ -62,7 +65,7 @@ class TeamReader
         foreach ($users as $u) {
             $group = match ($u->role) {
                 'Vendedor' => $groups[$u->id] ?? null,
-                'Repartidor' => $u->agency ? "Agencia {$u->agency}" : ($riders->has($u->id) ? 'Logística propia' : null),
+                'Repartidor' => $u->agency ? trim($u->agency . ' ' . $u->agency_surnames) : ($riders->has($u->id) ? 'Logística propia' : null),
                 'Operador logístico' => isset($centers[$u->id]) ? $centers[$u->id]->pluck('name')->implode(', ') : null,
                 default => null,
             };
@@ -118,24 +121,22 @@ class TeamReader
      */
     public function sellerJourneys(Period $period, Filters $filters, array $entry, array $stage): LazyCollection
     {
-        $entryIds = $this->statusIds($entry);
-        $since = $period->start->subDays(self::LOOKBACK_DAYS)->format('Y-m-d H:i:s');
-        $until = $period->end->format('Y-m-d H:i:s');
-        $candidates = DB::table('order_tracking_comprehensive_logs')->whereIn('to_status_id', $entryIds)
-            ->whereBetween('created_at', [$since, $until])->select('order_id')
-            ->union(DB::table('order_status_logs')->whereIn('to_status_id', $entryIds)->whereBetween('created_at', [$since, $until])->select('order_id'));
+        return $this->chunked($this->reached($period, $entry), fn (array $ids) => $this->sellerChunk($ids, $filters));
+    }
 
+    private function sellerChunk(array $ids, Filters $filters): LazyCollection
+    {
         $logs = DB::table('order_tracking_comprehensive_logs')->where('created_at', '>=', StatusChangeLog::CUTOFF)
-            ->whereIn('order_id', $candidates)
+            ->whereIn('order_id', $ids)
             ->selectRaw('order_id, created_at AS at, to_status_id, seller_id AS seller, 0 AS old, id AS seq')
             ->selectRaw('(from_status_id IS NULL OR from_status_id <> to_status_id) AS changed')
             // Se lo pasaron de otra vendedora, o se lo dieron a ella sin vendedora antes (no la creación del pedido)
             ->selectRaw('(was_reassigned = 1 OR (previous_seller_id IS NULL AND seller_id IS NOT NULL AND from_status_id IS NOT NULL)) AS reassigned')
-            ->unionAll(DB::table('order_status_logs')->where('created_at', '<', StatusChangeLog::CUTOFF)->whereIn('order_id', clone $candidates)
+            ->unionAll(DB::table('order_status_logs')->where('created_at', '<', StatusChangeLog::CUTOFF)->whereIn('order_id', $ids)
                 ->selectRaw('order_id, created_at AS at, to_status_id, NULL AS seller, 1 AS old, id AS seq')
                 ->selectRaw('(from_status_id IS NULL OR from_status_id <> to_status_id) AS changed, 0 AS reassigned'));
 
-        $rows = $this->orders($filters)
+        $rows = $this->orders($filters)->whereIn('o.id', $ids)
             ->joinSub($logs, 'l', 'l.order_id', '=', 'o.id')
             ->join('statuses as ls', 'ls.id', '=', 'l.to_status_id')
             ->select('o.id as order_id', 'o.agent_id', 's.description as status', 'l.at', 'ls.description as log_status', 'l.changed', 'l.reassigned')
@@ -165,16 +166,20 @@ class TeamReader
      */
     public function agencyJourneys(Period $period, Filters $filters, array $stage): LazyCollection
     {
-        $candidates = $this->reached($period, [OrderStatus::ASIGNAR_A_AGENCIA]);
+        return $this->chunked($this->reached($period, [OrderStatus::ASIGNAR_A_AGENCIA]), fn (array $ids) => $this->agencyChunk($ids, $filters));
+    }
+
+    private function agencyChunk(array $ids, Filters $filters): LazyCollection
+    {
         $status = DB::table('order_tracking_comprehensive_logs')->where('created_at', '>=', StatusChangeLog::CUTOFF)
-            ->whereIn('order_id', $candidates)->where(fn ($q) => $q->whereNull('from_status_id')->orWhereColumn('from_status_id', '<>', 'to_status_id'))
+            ->whereIn('order_id', $ids)->where(fn ($q) => $q->whereNull('from_status_id')->orWhereColumn('from_status_id', '<>', 'to_status_id'))
             ->selectRaw("order_id, created_at AS at, 1 AS kind_order, 'status' AS kind, to_status_id, NULL AS new_value, NULL AS old_value, id AS seq")
-            ->unionAll(DB::table('order_status_logs')->where('created_at', '<', StatusChangeLog::CUTOFF)->whereIn('order_id', clone $candidates)
+            ->unionAll(DB::table('order_status_logs')->where('created_at', '<', StatusChangeLog::CUTOFF)->whereIn('order_id', $ids)
                 ->whereColumn('from_status_id', '<>', 'to_status_id')
                 ->selectRaw("order_id, created_at AS at, 1 AS kind_order, 'status' AS kind, to_status_id, NULL AS new_value, NULL AS old_value, id AS seq"))
-            ->unionAll($this->changes('agency_id', clone $candidates));
+            ->unionAll($this->changes('agency_id', $ids));
 
-        $rows = $this->orders($filters)
+        $rows = $this->orders($filters)->whereIn('o.id', $ids)
             ->joinSub($status, 'ev', 'ev.order_id', '=', 'o.id')
             ->leftJoin('statuses as es', 'es.id', '=', 'ev.to_status_id')
             ->leftJoin('cities as ci', 'ci.id', '=', 'f.city_id')
@@ -208,10 +213,15 @@ class TeamReader
      */
     public function riderJourneys(Period $period, Filters $filters): LazyCollection
     {
-        $candidates = $this->reached($period, [OrderStatus::ASIGNAR_A_AGENCIA, OrderStatus::ASIGNADO_A_REPARTIDOR, OrderStatus::ASIGNAR_REPARTIDOR, OrderStatus::EN_RUTA]);
+        $ids = $this->reached($period, [OrderStatus::ASIGNAR_A_AGENCIA, OrderStatus::ASIGNADO_A_REPARTIDOR, OrderStatus::ASIGNAR_REPARTIDOR, OrderStatus::EN_RUTA]);
 
-        $rows = $this->orders($filters)
-            ->joinSub($this->changes('deliverer_id', $candidates), 'ev', 'ev.order_id', '=', 'o.id')
+        return $this->chunked($ids, fn (array $chunk) => $this->riderChunk($chunk, $filters));
+    }
+
+    private function riderChunk(array $ids, Filters $filters): LazyCollection
+    {
+        $rows = $this->orders($filters)->whereIn('o.id', $ids)
+            ->joinSub($this->changes('deliverer_id', $ids), 'ev', 'ev.order_id', '=', 'o.id')
             ->select('o.id as order_id', 'o.deliverer_id', 's.description as status', 'o.delivered_at', 'ev.at', 'ev.new_value')
             ->selectRaw("COALESCE((SELECT SUM(e.amount_usd) FROM earnings e WHERE e.order_id = o.id AND e.user_id = o.deliverer_id AND e.role_type = 'repartidor'), 0)
                 + COALESCE((SELECT SUM(t.amount_usd) FROM rider_trips t WHERE t.order_id = o.id AND t.rider_id = o.deliverer_id), 0) AS earning")
@@ -349,18 +359,36 @@ class TeamReader
             ->when($filters->productId, fn ($q, $id) => $q->where('f.product_id', $id));
     }
 
-    /** Los pedidos que llegaron a alguno de esos estados en el período o hasta LOOKBACK_DAYS antes (subconsulta). */
-    private function reached(Period $period, array $statuses): Builder
+    /**
+     * Los pedidos (de menor a mayor) que llegaron a alguno de esos estados en el período o hasta LOOKBACK_DAYS antes. Se
+     * buscan por el estado (tiene índice) y después se lee el historial de cada uno por su número de pedido.
+     *
+     * @return int[]
+     */
+    private function reached(Period $period, array $statuses): array
     {
         $ids = $this->statusIds($statuses);
         $range = [$period->start->subDays(self::LOOKBACK_DAYS)->format('Y-m-d H:i:s'), $period->end->format('Y-m-d H:i:s')];
+        $read = fn (string $table) => DB::table($table)->whereIn('to_status_id', $ids)->whereBetween('created_at', $range)->distinct()->pluck('order_id');
 
-        return DB::table('order_tracking_comprehensive_logs')->whereIn('to_status_id', $ids)->whereBetween('created_at', $range)->select('order_id')
-            ->union(DB::table('order_status_logs')->whereIn('to_status_id', $ids)->whereBetween('created_at', $range)->select('order_id'));
+        return $read('order_tracking_comprehensive_logs')->merge($read('order_status_logs'))
+            ->map(fn ($id) => (int) $id)->unique()->sort()->values()->all();
+    }
+
+    /** Lee los recorridos de a CHUNK pedidos (en orden), para que cada consulta busque por número de pedido. */
+    private function chunked(array $ids, callable $read): LazyCollection
+    {
+        return LazyCollection::make(function () use ($ids, $read) {
+            foreach (array_chunk($ids, self::CHUNK) as $chunk) {
+                foreach ($read($chunk) as $journey) {
+                    yield $journey;
+                }
+            }
+        });
     }
 
     /** Los cambios de un campo de la orden (agency_id o deliverer_id) que registró order_activity_logs. */
-    private function changes(string $field, Builder $orders): Builder
+    private function changes(string $field, array $orders): Builder
     {
         return DB::table('order_activity_logs')->where('action', 'updated')->whereIn('order_id', $orders)
             ->whereRaw("JSON_CONTAINS_PATH(properties, 'one', ?)", ["$.{$field}"])

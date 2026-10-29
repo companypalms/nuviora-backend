@@ -35,6 +35,10 @@ final class TeamRules
             'base' => $role->base(),
             'cards' => $cards,
             'rows' => self::rows($role, $current['people'], $before['people'] ?? []),
+            // Todo el rol junto (un pedido que pasó por dos personas cuenta una vez), para comparar a cada una
+            'totals' => array_intersect_key($current['totals']['values'], $metrics),
+            'totals_previous' => array_map(fn ($key) => empty($metrics[$key]['now']) ? ($before['totals']['values'][$key] ?? null) : null,
+                array_combine(array_keys($metrics), array_keys($metrics))),
         ];
     }
 

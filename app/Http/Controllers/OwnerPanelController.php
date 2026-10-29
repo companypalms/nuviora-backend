@@ -65,7 +65,8 @@ class OwnerPanelController extends Controller
     public function team(Request $request, OwnerPanel $panel): JsonResponse
     {
         [$period, $filters] = $this->scope($request);
-        $data = $request->validate(['role' => ['nullable', Rule::in(array_keys(TeamCatalog::roles()))]]);
+        // Un rol que ya no está en el catálogo (lo recordaba el navegador) muestra las vendedoras
+        $data = $request->validate(['role' => 'nullable|string|max:40']);
 
         return response()->json($panel->team($period, $filters, $data['role'] ?? 'sellers'));
     }
