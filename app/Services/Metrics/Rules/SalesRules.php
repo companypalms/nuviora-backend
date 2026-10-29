@@ -146,6 +146,7 @@ final class SalesRules
                 'key' => $key,
                 'label' => $m['label'],
                 'help' => $m['help'],
+                'detail' => self::detail($key, $current),
                 'format' => $m['format'],
                 'value' => $value,
                 'previous' => $before,
@@ -157,6 +158,21 @@ final class SalesRules
         }
 
         return $cards;
+    }
+
+    /** La cuenta con los números del período, para que el dueño vea de dónde sale cada tarjeta. */
+    private static function detail(string $key, array $t): ?string
+    {
+        $money = fn (float $v) => '$' . number_format($v, 2, ',', '.');
+        $orders = fn (int $n, string $one, string $many) => $n . ' ' . ($n === 1 ? $one : $many);
+
+        return match ($key) {
+            'delivered' => $orders($t['delivered'], 'entregado', 'entregados') . ' de ' . $orders($t['created'], 'pedido creado', 'pedidos creados'),
+            'revenue' => 'Suma de ' . $orders($t['delivered'], 'pedido entregado', 'pedidos entregados'),
+            'effectiveness' => $t['created'] > 0 ? $orders($t['delivered'], 'entregado', 'entregados') . ' ÷ ' . $orders($t['created'], 'creado', 'creados') : null,
+            'ticket' => $t['delivered'] > 0 ? $money($t['revenue']) . ' ÷ ' . $orders($t['delivered'], 'entregado', 'entregados') : null,
+            default => null,
+        };
     }
 
     /** Por día hasta 45 días, por semana (de lunes a domingo) hasta 200, y si no, por mes. */

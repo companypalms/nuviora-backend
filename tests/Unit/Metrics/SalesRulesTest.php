@@ -116,6 +116,14 @@ describe('Tarjetas y comparación con el período anterior', function () {
         expect($cards['ticket']['change'])->toBe(0.0); // 40 y 40
     });
 
+    it('cada tarjeta muestra su cuenta con los números del período', function () use ($totals) {
+        $cards = array_column(SalesRules::cards($totals(120, 66, 2640), $totals(100, 50, 2000), false), 'detail', 'key');
+        expect($cards['delivered'])->toBe('66 entregados de 120 pedidos creados');
+        expect($cards['effectiveness'])->toBe('66 entregados ÷ 120 creados');
+        expect($cards['ticket'])->toBe('$2.640,00 ÷ 66 entregados');
+        expect(SalesRules::cards($totals(0, 0, 0), $totals(0, 0, 0), false)[3]['detail'])->toBeNull();
+    });
+
     it('si antes no hubo nada, no inventa un porcentaje', function () use ($totals) {
         $cards = array_column(SalesRules::cards($totals(10, 5, 200), $totals(0, 0, 0), false), null, 'key');
         expect($cards['created']['change'])->toBeNull();
