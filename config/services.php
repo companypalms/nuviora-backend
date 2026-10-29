@@ -76,6 +76,8 @@ return [
         // El asistente del dueño (Etapa 4): usa herramientas, por eso un modelo de los fuertes en razonamiento
         'assistant_model' => env('OPENAI_ASSISTANT_MODEL', 'gpt-6.1-sol'),
         'assistant_effort' => env('OPENAI_ASSISTANT_EFFORT', 'low'),
+        // El micrófono del asistente: convierte la voz en texto
+        'transcribe_model' => env('OPENAI_TRANSCRIBE_MODEL', 'gpt-transcribe'),
     ],
     // El asistente del dueño (Etapa 4): se puede apagar sin publicar y tiene un límite de mensajes por día
     'assistant' => [

@@ -51,6 +51,9 @@ Route::get('/orders/receipt/{receipt}', [OrderController::class, 'getReceipt'])-
 Route::get('/orders/{order}/change-receipt', [OrderController::class, 'getChangeReceipt'])->name('receipts.change');
 // 🔒 Archivos del chat interno: igual, con el enlace firmado que entrega el chat (12 h)
 Route::get('/internal-chat/attachments/{message}', [\App\Http\Controllers\InternalChatController::class, 'attachment'])->name('internal-chat.attachment');
+// 🔒 Archivos del chat del asistente (solo los ve el Admin): igual, con el enlace firmado que entrega su chat (12 h)
+Route::get('/assistant/attachments/{message}/{file}', [\App\Http\Controllers\AssistantController::class, 'attachment'])
+    ->whereNumber(['message', 'file'])->name('assistant.attachment');
 
 // --- WhatsApp Webhook (Meta) ---
 Route::get('whatsapp/webhook', [WhatsAppWebhookController::class, 'verify']);
@@ -674,6 +677,7 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::get('/messages/{message}', [\App\Http\Controllers\AssistantController::class, 'show'])->whereNumber('message');
         Route::post('/messages', [\App\Http\Controllers\AssistantController::class, 'store'])->middleware('throttle:30,1');
         Route::delete('/', [\App\Http\Controllers\AssistantController::class, 'clear'])->middleware('throttle:30,1');
+        Route::post('/transcribe', [\App\Http\Controllers\AssistantController::class, 'transcribe'])->middleware('throttle:20,1');
     });
 
     // Finanzas (Módulo 4 de Fran): solo el Admin (§81). Gastos manuales y recurrentes (§24 a §33) y su historial (§82)

@@ -55,7 +55,7 @@ class OpenAiModel implements AssistantModel
         foreach ($turn->history as $m) {
             $input[] = ['role' => $m['role'], 'content' => $m['text']];
         }
-        $input[] = ['role' => 'user', 'content' => $turn->message];
+        $input[] = ['role' => 'user', 'content' => $turn->files === [] ? $turn->message : self::withFiles($turn)];
         foreach ($turn->steps as $step) {
             foreach ($step['reply']->carry as $item) {
                 $input[] = $item;
@@ -66,6 +66,30 @@ class OpenAiModel implements AssistantModel
         }
 
         return $input;
+    }
+
+    /**
+     * La pregunta con sus archivos: primero el texto y la lista de los archivos; después cada foto (input_image), cada PDF
+     * escaneado (input_file) y el texto de cada PDF o Excel, entre <archivo> y </archivo>.
+     */
+    private static function withFiles(Turn $turn): array
+    {
+        $list = [];
+        foreach ($turn->files as $i => $file) {
+            $list[] = ($i + 1) . ". {$file['name']} ({$file['label']})";
+        }
+        $question = trim($turn->message) !== '' ? $turn->message : '(El dueño mandó solo archivos, sin texto.)';
+        $content = [['type' => 'input_text', 'text' => $question . "\n\nArchivos que mandó, en este orden:\n" . implode("\n", $list)]];
+        foreach ($turn->files as $file) {
+            $content[] = match ($file['type']) {
+                // high: en una factura o un comprobante hay que leer los dígitos chicos
+                'image' => ['type' => 'input_image', 'image_url' => "data:{$file['mime']};base64,{$file['data']}", 'detail' => 'high'],
+                'file' => ['type' => 'input_file', 'filename' => $file['name'], 'file_data' => "data:{$file['mime']};base64,{$file['data']}"],
+                default => ['type' => 'input_text', 'text' => (string) $file['text']],
+            };
+        }
+
+        return $content;
     }
 
     /** Lee la respuesta de OpenAI. Público para probarlo. */

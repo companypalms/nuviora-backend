@@ -19,6 +19,9 @@ class ExampleModel implements AssistantModel
 
     public function next(Turn $turn): ModelReply
     {
+        if ($turn->steps === [] && $turn->files !== []) {
+            return self::say(self::files($turn->files));
+        }
         if ($turn->steps === []) {
             $call = self::understand($turn->message);
             if ($call === null) {
@@ -146,6 +149,28 @@ class ExampleModel implements AssistantModel
         }
 
         return null;
+    }
+
+    /** Qué archivos llegaron (sin IA no se pueden leer de verdad): el nombre, qué son y cómo empieza el texto. */
+    public static function files(array $files): string
+    {
+        $lines = ["**Modo ejemplo**: recibí tus archivos, pero en esta PC no hay IA para leerlos. Esto es lo que llegó:"];
+        foreach ($files as $file) {
+            $line = "- **{$file['name']}**: {$file['label']}.";
+            if (($file['type'] ?? null) === 'text') {
+                // El texto viene entre <archivo …> y </archivo>: las primeras líneas de adentro
+                $first = array_values(array_filter(array_slice(explode("\n", (string) $file['text']), 1, 4), fn ($l) => trim($l) !== '' && !str_starts_with(trim($l), '</archivo')));
+                if ($first !== [] && str_starts_with($first[0], 'No se pudo leer: ')) {
+                    $line .= ' ' . $first[0];
+                } elseif ($first !== []) {
+                    $line .= ' Empieza así: ' . implode(' / ', array_map(fn ($l) => mb_strimwidth(trim($l), 0, 120, '…'), array_slice($first, 0, 3)));
+                }
+            }
+            $lines[] = $line;
+        }
+        $lines[] = "\nCon la IA conectada (en el sistema real) te diría qué dicen y contestaría tu pregunta.";
+
+        return implode("\n", $lines);
     }
 
     /** Los datos de la herramienta, tal cual, en una lista corta. */

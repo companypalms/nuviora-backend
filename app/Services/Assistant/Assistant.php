@@ -7,8 +7,15 @@ use App\Models\User;
 use App\Services\Assistant\Ai\AssistantModel;
 use App\Services\Assistant\Ai\ExampleModel;
 use App\Services\Assistant\Ai\OpenAiModel;
+use App\Services\Assistant\Files\Attachments;
+use App\Services\Assistant\Files\FileRules;
 use App\Services\Assistant\Tools\ToolCatalog;
+use App\Services\Assistant\Voice\ExampleTranscriber;
+use App\Services\Assistant\Voice\OpenAiTranscriber;
+use App\Services\Assistant\Voice\Transcriber;
 use Carbon\CarbonImmutable;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Validation\ValidationException;
 use Throwable;
 
 /**
@@ -34,7 +41,13 @@ class Assistant
 
     public const MAX_TEXT = 4000;
 
-    public function __construct(private ToolCatalog $tools)
+    /** El audio del micrófono que entiende la IA, según su contenido (Chrome graba webm; Safari, mp4). */
+    public const AUDIO_FORMATS = [
+        'audio/webm' => 'webm', 'video/webm' => 'webm', 'audio/mp4' => 'mp4', 'video/mp4' => 'mp4', 'audio/x-m4a' => 'm4a',
+        'audio/m4a' => 'm4a', 'audio/mpeg' => 'mp3', 'audio/wav' => 'wav', 'audio/x-wav' => 'wav', 'audio/wave' => 'wav',
+    ];
+
+    public function __construct(private ToolCatalog $tools, private Attachments $files)
     {
     }
 
@@ -79,12 +92,13 @@ class Assistant
     }
 
     /**
-     * Guarda la pregunta y la respuesta "pensando". Si el navegador reintenta con el mismo client_id, devuelve las que ya
-     * existen (no pregunta dos veces).
+     * Guarda la pregunta (con sus archivos) y la respuesta "pensando". Si el navegador reintenta con el mismo client_id,
+     * devuelve las que ya existen (no pregunta dos veces).
      *
+     * @param array<int, UploadedFile> $files
      * @return array{0: AssistantMessage, 1: AssistantMessage} la pregunta y la respuesta
      */
-    public function send(User $user, string $text, ?string $clientId): array
+    public function send(User $user, string $text, ?string $clientId, array $files = []): array
     {
         if ($clientId !== null && ($question = AssistantMessage::where('user_id', $user->id)->where('client_id', $clientId)->where('role', 'user')->first())) {
             $reply = AssistantMessage::where('reply_to_id', $question->id)->first();
@@ -100,14 +114,53 @@ class Assistant
         $this->expireStale($user);
         abort_if(AssistantMessage::where('user_id', $user->id)->where('status', AssistantMessage::THINKING)->exists(), 409, 'Espera a que termine la respuesta anterior.');
 
-        $question = AssistantMessage::create([
-            'user_id' => $user->id, 'role' => 'user', 'text' => trim($text), 'status' => AssistantMessage::DONE, 'client_id' => $clientId,
-        ]);
-        $reply = AssistantMessage::create([
-            'user_id' => $user->id, 'role' => 'assistant', 'status' => AssistantMessage::THINKING, 'progress' => 'Pensando…', 'reply_to_id' => $question->id,
-        ]);
+        $this->files->validate($files);
+        $stored = $this->files->store($user, $files);
+        try {
+            $question = AssistantMessage::create([
+                'user_id' => $user->id, 'role' => 'user', 'text' => trim($text), 'status' => AssistantMessage::DONE, 'client_id' => $clientId,
+                'attachments' => $stored ?: null,
+            ]);
+            $reply = AssistantMessage::create([
+                'user_id' => $user->id, 'role' => 'assistant', 'status' => AssistantMessage::THINKING, 'progress' => $stored ? 'Mirando tus archivos…' : 'Pensando…',
+                'reply_to_id' => $question->id,
+            ]);
+        } catch (Throwable $e) {
+            $this->files->delete($stored);
+            throw $e;
+        }
 
         return [$question, $reply];
+    }
+
+    /**
+     * Lo que dijo el dueño al micrófono, en texto, para la caja del chat. El audio no se guarda: es el archivo temporal de
+     * la petición, que se borra al terminar.
+     *
+     * @return array{text: string, example: bool} example: en modo ejemplo es una pregunta de muestra, no lo que dijo
+     */
+    public function transcribe(UploadedFile $audio): array
+    {
+        $mode = $this->mode();
+        abort_if($mode === 'off', 503, 'El asistente está apagado.');
+        abort_if($mode === 'unavailable', 503, 'La IA no está configurada en este servidor (falta OPENAI_API_KEY).');
+        $format = self::AUDIO_FORMATS[(string) $audio->getMimeType()] ?? null;
+        if ($format === null) {
+            throw ValidationException::withMessages(['audio' => 'Ese audio no se puede convertir en texto. Prueba de nuevo o escribe tu pregunta.']);
+        }
+
+        $transcriber = $this->transcriber();
+        try {
+            $text = $transcriber->transcribe($audio->getRealPath(), $format);
+        } catch (Throwable $e) {
+            report($e);
+            abort(502, 'No se pudo convertir la voz en texto ahora. Intenta de nuevo en un momento o escribe tu pregunta.');
+        }
+        if (trim($text) === '') {
+            throw ValidationException::withMessages(['audio' => 'No se escuchó nada. Prueba de nuevo, más cerca del micrófono.']);
+        }
+
+        return ['text' => mb_substr(trim($text), 0, self::MAX_TEXT), 'example' => $transcriber instanceof ExampleTranscriber];
     }
 
     /** Arma la respuesta (después de contestarle al navegador). */
@@ -121,11 +174,22 @@ class Assistant
             return;
         }
         $user = User::find($reply->user_id);
+        $progress = fn (string $progress) => $reply->forceFill(['progress' => mb_strimwidth($progress, 0, 150)])->save();
 
         try {
+            $files = [];
+            if ($question->attachments) {
+                // Un PDF o un Excel grande necesita memoria para leerlo, y las fotos van enteras a la IA
+                if (self::bytes((string) ini_get('memory_limit')) < 512 * 1024 * 1024) {
+                    @ini_set('memory_limit', '512M');
+                }
+                $read = $this->files->read($question->attachments, $progress);
+                $question->forceFill(['attachments' => $read])->save();
+                $files = $this->files->parts($read);
+            }
             $outcome = (new Conversation($this->model(), $this->tools))->run(
-                new Turn(Instructions::build((string) $user?->names, CarbonImmutable::now()), $this->history($question), (string) $question->text, $this->tools->definitions()),
-                fn (string $progress) => $reply->forceFill(['progress' => mb_strimwidth($progress, 0, 150)])->save(),
+                new Turn(Instructions::build((string) $user?->names, CarbonImmutable::now()), $this->history($question), (string) $question->text, $this->tools->definitions(), files: $files),
+                $progress,
             );
             $reply->forceFill([
                 'text' => $outcome['text'],
@@ -159,13 +223,49 @@ class Assistant
         return $this->mode() === 'openai' ? new OpenAiModel() : new ExampleModel();
     }
 
-    /** Lo que se habló antes de la pregunta (solo el texto, de los mensajes terminados que se ven). */
+    private function transcriber(): Transcriber
+    {
+        return $this->mode() === 'openai' ? new OpenAiTranscriber() : new ExampleTranscriber();
+    }
+
+    /**
+     * Lo que se habló antes de la pregunta (el texto de los mensajes terminados que se ven). De los archivos, el texto de
+     * los PDF y Excel más recientes mientras quepa; de las fotos, solo que se mandaron.
+     */
     private function history(AssistantMessage $question): array
     {
-        return AssistantMessage::where('user_id', $question->user_id)->visible()->where('id', '<', $question->id)
+        $budget = FileRules::HISTORY_TOTAL_CHARS;
+        $items = [];
+        // Del más nuevo al más viejo, así el espacio para los archivos es para los últimos
+        $messages = AssistantMessage::where('user_id', $question->user_id)->visible()->where('id', '<', $question->id)
             ->where('status', AssistantMessage::DONE)->whereNotNull('text')
-            ->orderByDesc('id')->limit(self::HISTORY)->get(['role', 'text'])
-            ->reverse()->map(fn ($m) => ['role' => $m->role === 'assistant' ? 'assistant' : 'user', 'text' => (string) $m->text])->values()->all();
+            ->orderByDesc('id')->limit(self::HISTORY)->get(['role', 'text', 'attachments']);
+        foreach ($messages as $m) {
+            $text = (string) $m->text;
+            if ($m->role === 'user' && $m->attachments) {
+                $text = trim(($text !== '' ? $text : '(Mandó archivos, sin texto.)') . "\n\n" . $this->files->remembered($m->attachments, $budget));
+            }
+            $items[] = ['role' => $m->role === 'assistant' ? 'assistant' : 'user', 'text' => $text];
+        }
+
+        return array_reverse($items);
+    }
+
+    /** "512M" => bytes. */
+    private static function bytes(string $limit): int
+    {
+        $limit = trim($limit);
+        if ($limit === '' || $limit === '-1') {
+            return PHP_INT_MAX;
+        }
+        $number = (int) $limit;
+
+        return match (strtoupper(substr($limit, -1))) {
+            'G' => $number * 1024 ** 3,
+            'M' => $number * 1024 ** 2,
+            'K' => $number * 1024,
+            default => $number,
+        };
     }
 
     private function expireStale(User $user): void

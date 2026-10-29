@@ -40,19 +40,26 @@ class StatementReader
     /**
      * Las celdas de la primera hoja, fila por fila (la clave es el número de fila del archivo, desde 1). Cada celda
      * trae el texto que se ve y, si es un número, también el número.
+     * $maxRows: solo las primeras filas del archivo (el asistente lee las primeras 300 sin cargar el resto). Null: todas.
      * @return array<int, array<int, array{text: string, number: ?float}>>
      */
-    public function cells(string $path, string $extension): array
+    public function cells(string $path, string $extension, ?int $maxRows = null): array
     {
         $extension = strtolower($extension);
         if (!in_array($extension, self::EXTENSIONS, true)) {
             throw new RuntimeException('Formato de archivo no soportado: sube el extracto en Excel (.xlsx o .xls), CSV o TXT.');
         }
         if (in_array($extension, ['csv', 'txt'], true)) {
-            return $this->delimited((string) file_get_contents($path));
+            return $this->delimited((string) file_get_contents($path), $maxRows);
         }
         try {
-            $sheet = IOFactory::load($path)->getSheet(0);
+            if ($maxRows === null) {
+                $sheet = IOFactory::load($path)->getSheet(0);
+            } else {
+                $reader = IOFactory::createReaderForFile($path);
+                $reader->setReadFilter(new FirstRows($maxRows));
+                $sheet = $reader->load($path)->getSheet(0);
+            }
         } catch (Throwable $e) {
             throw new RuntimeException('No se pudo abrir el archivo como hoja de cálculo.');
         }
@@ -171,7 +178,7 @@ class StatementReader
     // --- Lectura de valores ---
 
     /** CSV o TXT con separadores: ; , tabulador o |. Si no está en UTF-8, se pasa desde Windows-1252. */
-    private function delimited(string $content): array
+    private function delimited(string $content, ?int $maxRows = null): array
     {
         if (!mb_check_encoding($content, 'UTF-8')) {
             $content = mb_convert_encoding($content, 'UTF-8', 'Windows-1252');
@@ -184,6 +191,9 @@ class StatementReader
         foreach ($lines as $i => $line) {
             if (trim($line) === '') {
                 continue;
+            }
+            if ($maxRows !== null && $i + 1 > $maxRows) {
+                break;
             }
             $rows[$i + 1] = array_map(fn ($v) => ['text' => trim((string) $v), 'number' => null], str_getcsv($line, $delimiter, '"', '\\'));
         }
