@@ -1,5 +1,6 @@
 <?php
 
+use App\Services\Metrics\Buckets;
 use App\Services\Metrics\Period;
 use App\Services\Metrics\Rules\SalesRules;
 use Carbon\CarbonImmutable;
@@ -79,14 +80,14 @@ describe('Ventas y pedidos', function () use ($now, $monday, $order) {
 
     it('en períodos largos agrupa por semana (de lunes a domingo) o por mes', function () use ($now, $order) {
         $twoMonths = Period::fromPreset('custom', '2026-09-01', '2026-10-26', $now);
-        expect(SalesRules::granularity($twoMonths))->toBe('week');
+        expect(Buckets::granularity($twoMonths))->toBe('week');
         $r = SalesRules::compute([$order('2026-10-28 09:00:00'), $order('2026-10-22 09:00:00'), $order('2026-10-25 09:00:00')], $twoMonths);
         $byWeek = array_column($r['series']['points'], 'created', 'date');
         expect($byWeek['2026-10-19'])->toBe(2); // el jueves 22 y el domingo 25 son de la semana del lunes 19
         expect($r['totals']['created'])->toBe(2);  // el 28 está fuera del período
 
-        expect(SalesRules::granularity(Period::fromPreset('custom', '2026-01-01', '2026-10-26', $now)))->toBe('month');
-        expect(SalesRules::bucket('2026-10-28', 'month'))->toBe('2026-10-01');
+        expect(Buckets::granularity(Period::fromPreset('custom', '2026-01-01', '2026-10-26', $now)))->toBe('month');
+        expect(Buckets::key('2026-10-28', 'month'))->toBe('2026-10-01');
     });
 });
 

@@ -2,6 +2,7 @@
 
 namespace App\Services\Metrics\Rules;
 
+use App\Services\Metrics\Buckets;
 use App\Services\Metrics\Period;
 
 /**
@@ -90,12 +91,12 @@ final class SalesRules
      */
     public static function compute(iterable $facts, Period $period): array
     {
-        $granularity = self::granularity($period);
+        $granularity = Buckets::granularity($period);
         $start = $period->start->format('Y-m-d H:i:s');
         $end = $period->end->format('Y-m-d H:i:s');
 
         $series = [];
-        foreach (self::bucketKeys($period, $granularity) as $key) {
+        foreach (array_keys(Buckets::ranges($period, $granularity)) as $key) {
             $series[$key] = self::emptyPoint($key);
         }
         $totals = self::emptyPoint(null);
@@ -114,7 +115,7 @@ final class SalesRules
             }
             $outcome = in_array($f['outcome'], [self::DELIVERED, self::NOT_DELIVERED], true) ? $f['outcome'] : self::OPEN;
             $revenue = $outcome === self::DELIVERED ? (float) $f['revenue'] : 0.0;
-            $key = self::bucket(substr($createdAt, 0, 10), $granularity);
+            $key = Buckets::key(substr($createdAt, 0, 10), $granularity);
             $series[$key] ??= self::emptyPoint($key);
             self::add($series[$key], $outcome, $revenue);
             self::add($totals, $outcome, $revenue);
@@ -127,34 +128,12 @@ final class SalesRules
         ];
     }
 
-    /**
-     * Las tarjetas con su comparación contra el período anterior. Cantidades y dinero: cuánto % cambió. Efectividad:
-     * cuántos puntos subió o bajó (de 50 % a 55 % son 5 puntos, no un 10 %).
-     */
+    /** Las tarjetas con su comparación contra el período anterior (ver Card). */
     public static function cards(array $current, array $previous, bool $maturing): array
     {
         $cards = [];
         foreach (self::METRICS as $key => $m) {
-            $value = $current[$key];
-            $before = $previous[$key];
-            $points = $m['format'] === 'percent';
-            $change = null;
-            if ($value !== null && $before !== null) {
-                $change = $points ? round($value - $before, 1) : ($before != 0 ? round(($value - $before) / abs($before) * 100, 1) : null);
-            }
-            $cards[] = [
-                'key' => $key,
-                'label' => $m['label'],
-                'help' => $m['help'],
-                'detail' => self::detail($key, $current),
-                'format' => $m['format'],
-                'value' => $value,
-                'previous' => $before,
-                'change' => $change,
-                'change_unit' => $points ? 'points' : 'percent',
-                // Un período que todavía se está entregando no se puede comparar justo con uno terminado
-                'neutral' => $maturing && $m['matures'],
-            ];
+            $cards[] = Card::make($key, $m, $current[$key], $previous[$key], self::detail($key, $current), $maturing);
         }
 
         return $cards;
@@ -163,8 +142,8 @@ final class SalesRules
     /** La cuenta con los números del período, para que el dueño vea de dónde sale cada tarjeta. */
     private static function detail(string $key, array $t): ?string
     {
-        $money = fn (float $v) => '$' . number_format($v, 2, ',', '.');
-        $orders = fn (int $n, string $one, string $many) => $n . ' ' . ($n === 1 ? $one : $many);
+        $money = fn (float $v) => Card::money($v);
+        $orders = fn (int $n, string $one, string $many) => Card::plural($n, $one, $many);
 
         return match ($key) {
             'delivered' => $orders($t['delivered'], 'entregado', 'entregados') . ' de ' . $orders($t['created'], 'pedido creado', 'pedidos creados'),
@@ -173,30 +152,6 @@ final class SalesRules
             'ticket' => $t['delivered'] > 0 ? $money($t['revenue']) . ' ÷ ' . $orders($t['delivered'], 'entregado', 'entregados') : null,
             default => null,
         };
-    }
-
-    /** Por día hasta 45 días, por semana (de lunes a domingo) hasta 200, y si no, por mes. */
-    public static function granularity(Period $period): string
-    {
-        $days = $period->days();
-
-        return $days <= 45 ? 'day' : ($days <= 200 ? 'week' : 'month');
-    }
-
-    public static function bucket(string $date, string $granularity): string
-    {
-        $ts = strtotime($date);
-
-        return match ($granularity) {
-            'week' => date('Y-m-d', strtotime('-' . ((int) date('N', $ts) - 1) . ' days', $ts)),
-            'month' => date('Y-m-01', $ts),
-            default => $date,
-        };
-    }
-
-    private static function bucketKeys(Period $period, string $granularity): array
-    {
-        return array_values(array_unique(array_map(fn ($d) => self::bucket($d, $granularity), $period->dates())));
     }
 
     private static function emptyPoint(?string $date): array

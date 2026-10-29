@@ -38,6 +38,13 @@ class OwnerPanelController extends Controller
         return response()->json($panel->sales($period, $filters));
     }
 
+    public function money(Request $request, OwnerPanel $panel): JsonResponse
+    {
+        [$period, $filters] = $this->scope($request);
+
+        return response()->json($panel->money($period, $filters));
+    }
+
     /** @return array{0: Period, 1: Filters} */
     private function scope(Request $request): array
     {
