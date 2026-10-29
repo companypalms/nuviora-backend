@@ -7,6 +7,7 @@ use App\Services\Finance\OrderEconomics;
 use App\Services\Metrics\Readers\MoneyReader;
 use App\Services\Metrics\Readers\OrderFactsReader;
 use App\Services\Metrics\Rules\FunnelRules;
+use App\Services\Metrics\Rules\LossRules;
 use App\Services\Metrics\Rules\MoneyRules;
 use App\Services\Metrics\Rules\SalesRules;
 use Carbon\CarbonImmutable;
@@ -82,6 +83,34 @@ class OwnerPanel
             'steps' => $current['steps'],
             'previous_steps' => array_map(fn ($s) => ['key' => $s['key'], 'of_created' => $s['of_created']], $before['steps']),
             'help' => FunnelRules::HELP,
+            'updated_at' => $now->format('H:i'),
+        ];
+    }
+
+    /** Pérdidas: cancelaciones y sus motivos, rechazos en puerta, devoluciones y cambios, y lo que costaron. */
+    public function losses(Period $period, Filters $filters): array
+    {
+        $now = CarbonImmutable::now();
+        $previous = $period->previous();
+        $maturityDays = (int) Setting::get(OrderEconomics::SETTING_MATURITY_LAG, 4);
+        $maturing = $period->isMaturing($now, $maturityDays);
+
+        $current = LossRules::compute($this->orders->losses($period, $filters), $period);
+        $before = LossRules::compute($this->orders->losses($previous, $filters), $previous);
+
+        return [
+            'period' => $period->toArray() + ['compare_label' => $period->compareLabel],
+            'previous' => $previous->toArray(),
+            'filters' => $filters->toArray(),
+            'maturing' => $maturing,
+            'maturity_days' => $maturityDays,
+            'pending' => $this->orders->pending($period, $filters),
+            'cards' => LossRules::cards($current['totals'], $before['totals'], $maturing),
+            'reasons' => ['rows' => $current['reasons'], 'help' => LossRules::REASONS_HELP],
+            'stages' => ['rows' => $current['stages'], 'help' => LossRules::STAGES_HELP],
+            'who' => ['rows' => $current['who'], 'help' => LossRules::WHO_HELP],
+            'novelties' => ['rows' => $current['novelties'], 'help' => LossRules::REJECTED_HELP],
+            'latest' => ['rows' => $current['latest'], 'help' => LossRules::LATEST_HELP],
             'updated_at' => $now->format('H:i'),
         ];
     }

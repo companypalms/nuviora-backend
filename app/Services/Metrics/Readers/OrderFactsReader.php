@@ -70,6 +70,34 @@ class OrderFactsReader
     }
 
     /**
+     * Cada pedido creado en el período con lo que hace falta para las pérdidas: su estado de hoy, la última novedad, el
+     * envío, lo devuelto al cliente y su última cancelación (order_cancellations, solo las aplicadas): el motivo de la
+     * lista y el escrito, el estado de antes y quién canceló.
+     *
+     * @return LazyCollection<int, object>
+     */
+    public function losses(Period $period, Filters $filters): LazyCollection
+    {
+        $orders = DB::table('order_financials')->whereBetween('created_date', [$period->fromDate(), $period->toDate()])->select('order_id');
+        $last = DB::table('order_cancellations')->where('status', 'approved')->whereIn('order_id', $orders)
+            ->groupBy('order_id')->selectRaw('order_id, MAX(id) AS id');
+
+        return $this->base($period, $filters)
+            ->whereNotNull('f.computed_at')
+            ->join('statuses as s', 's.id', '=', 'o.status_id')
+            ->leftJoinSub($last, 'lc', 'lc.order_id', '=', 'o.id')
+            ->leftJoin('order_cancellations as c', 'c.id', '=', 'lc.id')
+            ->leftJoin('statuses as ps', 'ps.id', '=', 'c.previous_status_id')
+            ->leftJoin('users as u', 'u.id', '=', 'c.user_id')
+            ->leftJoin('roles as r', 'r.id', '=', 'u.role_id')
+            ->select('o.created_at', 'o.order_number', 'o.novedad_type', 'f.kind', 'f.outcome', 's.description as status',
+                'c.category', 'c.source', 'c.reason', 'c.created_at as cancelled_at', 'ps.description as previous_status',
+                'u.names as user_name', 'r.description as user_role', 'f.revenue_refunded as refunded')
+            ->selectRaw('(f.delivery_cost + f.commission_deliverer) AS shipping')
+            ->cursor();
+    }
+
+    /**
      * Pedidos normales creados cada día por producto y ciudad, de todas las tiendas. Con el filtro de tienda, la
      * publicidad de cada producto y ciudad se reparte según cuántos de esos pedidos son de la tienda.
      *
