@@ -637,6 +637,12 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::post('/closure-discrepancies/{discrepancy}/notes', [\App\Http\Controllers\AgencyClosureController::class, 'note']);
     });
 
+    // Panel del dueño (Etapa 2, guias/DICCIONARIO-METRICAS.md): solo el Admin y solo lectura
+    Route::middleware('role:Admin')->prefix('owner-panel')->group(function () {
+        Route::get('/options', [\App\Http\Controllers\OwnerPanelController::class, 'options']);
+        Route::get('/sales', [\App\Http\Controllers\OwnerPanelController::class, 'sales']);
+    });
+
     // Finanzas (Módulo 4 de Fran): solo el Admin (§81). Gastos manuales y recurrentes (§24 a §33) y su historial (§82)
     Route::middleware('role:Admin')->prefix('finance')->group(function () {
         Route::get('/options', [\App\Http\Controllers\FinanceExpenseController::class, 'options']);
