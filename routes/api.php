@@ -667,6 +667,15 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::delete('/marks', [\App\Http\Controllers\CalendarController::class, 'unmark']);
     });
 
+    // El asistente del dueño (Etapa 4): su chat. Solo el Admin. Preguntar y limpiar tienen un límite por minuto; la
+    // respuesta se consulta seguido mientras se arma, por eso esa no lo tiene
+    Route::middleware('role:Admin')->prefix('assistant')->group(function () {
+        Route::get('/', [\App\Http\Controllers\AssistantController::class, 'index']);
+        Route::get('/messages/{message}', [\App\Http\Controllers\AssistantController::class, 'show'])->whereNumber('message');
+        Route::post('/messages', [\App\Http\Controllers\AssistantController::class, 'store'])->middleware('throttle:30,1');
+        Route::delete('/', [\App\Http\Controllers\AssistantController::class, 'clear'])->middleware('throttle:30,1');
+    });
+
     // Finanzas (Módulo 4 de Fran): solo el Admin (§81). Gastos manuales y recurrentes (§24 a §33) y su historial (§82)
     Route::middleware('role:Admin')->prefix('finance')->group(function () {
         Route::get('/options', [\App\Http\Controllers\FinanceExpenseController::class, 'options']);

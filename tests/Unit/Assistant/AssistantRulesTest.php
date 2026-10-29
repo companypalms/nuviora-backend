@@ -1,0 +1,171 @@
+<?php
+
+use App\Services\Assistant\Ai\ExampleModel;
+use App\Services\Assistant\Ai\ModelReply;
+use App\Services\Assistant\Ai\OpenAiModel;
+use App\Services\Assistant\Instructions;
+use App\Services\Assistant\Lookup;
+use App\Services\Assistant\Present;
+use App\Services\Assistant\Tools\PeriodArgs;
+use App\Services\Assistant\Tools\ToolProblem;
+use App\Services\Assistant\Turn;
+use Carbon\CarbonImmutable;
+
+// El asistente del dueño (Etapa 4, paso 2): las partes que no tocan la base ni la IA.
+
+$jueves = fn () => CarbonImmutable::parse('2026-10-29 18:00:00');
+
+describe('El período en palabras del dueño', function () use ($jueves) {
+    it('"la semana pasada" es de lunes a domingo y "esta semana" desde el lunes', function () use ($jueves) {
+        $p = PeriodArgs::period(['periodo' => 'semana_pasada'], $jueves());
+        expect([$p->fromDate(), $p->toDate()])->toBe(['2026-10-19', '2026-10-25']);
+        $p = PeriodArgs::period(['periodo' => 'esta_semana'], $jueves());
+        expect([$p->fromDate(), $p->toDate()])->toBe(['2026-10-26', '2026-10-29']);
+    });
+
+    it('sin período, este mes; y los presets del panel', function () use ($jueves) {
+        expect(PeriodArgs::period([], $jueves())->preset)->toBe('month');
+        expect(PeriodArgs::period(['periodo' => 'mes_pasado'], $jueves())->fromDate())->toBe('2026-09-01');
+        expect(PeriodArgs::period(['periodo' => 'ayer'], $jueves())->fromDate())->toBe('2026-10-28');
+    });
+
+    it('fechas: las valida y explica el problema', function () use ($jueves) {
+        $p = PeriodArgs::period(['periodo' => 'fechas', 'desde' => '2026-10-01', 'hasta' => '2026-10-15'], $jueves());
+        expect([$p->fromDate(), $p->toDate()])->toBe(['2026-10-01', '2026-10-15']);
+        expect(fn () => PeriodArgs::period(['periodo' => 'fechas', 'desde' => '2026-13-01', 'hasta' => '2026-10-15'], $jueves()))->toThrow(ToolProblem::class, 'no es válida');
+        expect(fn () => PeriodArgs::period(['periodo' => 'fechas', 'desde' => '2026-10-15', 'hasta' => '2026-10-01'], $jueves()))->toThrow(ToolProblem::class, 'no puede ser antes');
+        expect(fn () => PeriodArgs::period(['periodo' => 'fechas', 'desde' => null, 'hasta' => null], $jueves()))->toThrow(ToolProblem::class, 'Elige las dos fechas');
+    });
+});
+
+describe('Buscar por nombre', function () {
+    it('sin acentos ni mayúsculas', function () {
+        expect(Lookup::normalize('  José   PÉREZ-Núñez '))->toBe('jose perez nunez');
+    });
+
+    it('el nombre exacto o el que empieza igual gana solo', function () {
+        $people = [1 => 'Fabiola Demo', 2 => 'Fabián Pérez', 3 => 'Carla Demo'];
+        expect(Lookup::match('fabiola', $people))->toBe([['id' => 1, 'name' => 'Fabiola Demo']]);
+        expect(Lookup::match('Carla Demo', $people))->toBe([['id' => 3, 'name' => 'Carla Demo']]);
+    });
+
+    it('si hay varias parecidas, devuelve todas para preguntar', function () {
+        $people = [1 => 'Fabiola Demo', 2 => 'Fabiola Ruiz', 3 => 'Carla Demo'];
+        expect(array_column(Lookup::match('Fabiola', $people), 'id'))->toBe([1, 2]);
+        expect(array_column(Lookup::match('demo', $people), 'id'))->toBe([3, 1]);
+        expect(Lookup::match('Nadie', $people))->toBe([]);
+    });
+});
+
+describe('Los números en palabras', function () {
+    it('con el formato del panel', function () {
+        expect(Present::value(1234.5, 'money'))->toBe('$1.234,50');
+        expect(Present::value(57.14, 'percent'))->toBe('57,1 %');
+        expect(Present::value(12.25, 'hours_total'))->toBe('12,3 h');
+        expect(Present::value(null, 'count'))->toBe('—');
+    });
+
+    it('el cambio: los porcentajes en puntos', function () {
+        expect(Present::change(['change' => 5.0, 'change_unit' => 'points']))->toBe('+5 pts');
+        expect(Present::change(['change' => -12.5, 'change_unit' => 'percent']))->toBe('−12,5 %');
+        expect(Present::change(['change' => null]))->toBeNull();
+    });
+
+    it('las tarjetas para la IA: lo que todavía cambia, la meta y lo que no se compara', function () {
+        $cards = Present::cards([
+            ['label' => 'Efectividad', 'format' => 'percent', 'value' => 60.8, 'previous' => 58.9, 'change' => 1.9, 'change_unit' => 'points',
+                'neutral' => true, 'compare' => true, 'detail' => '93 de 153', 'note' => null, 'goal' => ['text' => 'Meta 55 %. Cumplida.']],
+            ['label' => 'En camino', 'format' => 'money', 'value' => 100.0, 'previous' => null, 'change' => null, 'change_unit' => 'percent',
+                'neutral' => false, 'compare' => false, 'detail' => null, 'note' => 'Ganancia esperada'],
+        ]);
+        expect($cards[0])->toBe(['dato' => 'Efectividad', 'valor' => '60,8 %', 'antes' => '58,9 %', 'cambio' => '+1,9 pts',
+            'todavia_puede_cambiar' => true, 'detalle' => '93 de 153', 'meta' => 'Meta 55 %. Cumplida.']);
+        expect($cards[1])->toBe(['dato' => 'En camino', 'valor' => '$100,00', 'nota' => 'Ganancia esperada']);
+    });
+
+    it('el nombre de cada punto de una gráfica', function () {
+        expect(Present::bucket('2026-10-05', 'day'))->toBe('5/10');
+        expect(Present::bucket('2026-10-19', 'week'))->toBe('sem. 19/10');
+        expect(Present::bucket('2026-10-01', 'month'))->toBe('oct 26');
+    });
+});
+
+describe('El modo ejemplo entiende frases simples', function () {
+    it('la efectividad de una persona', function () {
+        $c = ExampleModel::understand('¿Cuál es la efectividad de Fabiola este mes?');
+        expect($c['name'])->toBe('persona');
+        expect($c['arguments'])->toMatchArray(['rol' => 'vendedoras', 'nombre' => 'Fabiola', 'periodo' => 'este_mes']);
+        expect(ExampleModel::understand('Cómo va la agencia Rápido Demo la semana pasada')['arguments'])
+            ->toMatchArray(['rol' => 'agencias', 'nombre' => 'Rápido Demo', 'periodo' => 'semana_pasada']);
+    });
+
+    it('rankings, ventas, dinero, metas y el calendario', function () {
+        expect(ExampleModel::understand('Ranking de agencias del mes pasado'))->toMatchArray(['name' => 'equipo']);
+        expect(ExampleModel::understand('Ranking de agencias del mes pasado')['arguments'])->toMatchArray(['rol' => 'agencias', 'periodo' => 'mes_pasado']);
+        expect(ExampleModel::understand('¿Cuánto vendimos esta semana?')['name'])->toBe('ventas');
+        expect(ExampleModel::understand('¿Cuánto gané ayer?')['arguments']['periodo'])->toBe('ayer');
+        expect(ExampleModel::understand('¿Cómo voy con mis metas?')['name'])->toBe('metas');
+        expect(ExampleModel::understand('¿Qué tengo pendiente hoy?')['name'])->toBe('calendario');
+        expect(ExampleModel::understand('Hola, ¿cómo estás?'))->toBeNull();
+    });
+
+    it('sin herramientas que pedir, explica qué puede preguntar', function () {
+        $reply = (new ExampleModel())->next(new Turn('', [], 'Hola', []));
+        expect($reply->calls)->toBe([]);
+        expect($reply->text)->toContain('Modo ejemplo')->toContain('Prueba con');
+    });
+
+    it('pide la herramienta y después muestra sus datos tal cual', function () {
+        $model = new ExampleModel();
+        $turn = new Turn('', [], '¿Cuánto vendimos esta semana?', []);
+        $first = $model->next($turn);
+        expect($first->calls[0]['name'])->toBe('ventas');
+
+        $data = ['periodo' => ['nombre' => 'Esta semana', 'desde' => '26/10/2026', 'hasta' => '29/10/2026'],
+            'tarjetas' => [['dato' => 'Entregados', 'valor' => '12', 'antes' => '10', 'cambio' => '+20 %']]];
+        $second = $model->next($turn->withStep($first, ['ejemplo_1' => json_encode($data)]));
+        expect($second->calls)->toBe([]);
+        expect($second->text)->toContain('**Esta semana**')->toContain('- Entregados: **12** (antes 10, +20 %)');
+    });
+});
+
+describe('Las instrucciones', function () use ($jueves) {
+    it('llevan las reglas y, al final, quién es el dueño y la fecha de Venezuela', function () use ($jueves) {
+        $text = Instructions::build('Francisco', $jueves());
+        expect($text)->toContain('Nunca inventes números')->toContain('Venta = pedido entregado');
+        expect($text)->toEndWith('El dueño se llama Francisco. Hoy es jueves 29 de octubre de 2026, 18:00 (hora de Venezuela).');
+    });
+});
+
+describe('Lo que se manda y se lee de OpenAI', function () {
+    it('lee el razonamiento, las llamadas y el texto, y guarda lo que hay que devolverle', function () {
+        $reply = OpenAiModel::reply(['model' => 'm', 'output' => [
+            ['type' => 'reasoning', 'id' => 'rs_1', 'encrypted_content' => 'xyz', 'summary' => []],
+            ['type' => 'function_call', 'id' => 'fc_1', 'call_id' => 'call_1', 'name' => 'ventas', 'arguments' => '{"periodo":"hoy"}'],
+        ], 'usage' => ['input_tokens' => 100, 'output_tokens' => 20, 'input_tokens_details' => ['cached_tokens' => 60]]], 'otro');
+
+        expect($reply->text)->toBeNull();
+        expect($reply->calls)->toBe([['call_id' => 'call_1', 'name' => 'ventas', 'arguments' => ['periodo' => 'hoy']]]);
+        expect($reply->carry)->toBe([
+            ['type' => 'reasoning', 'id' => 'rs_1', 'encrypted_content' => 'xyz', 'summary' => []],
+            ['type' => 'function_call', 'call_id' => 'call_1', 'name' => 'ventas', 'arguments' => '{"periodo":"hoy"}'],
+        ]);
+        expect($reply->usage)->toBe(['input' => 100, 'cached' => 60, 'output' => 20]);
+        expect($reply->model)->toBe('m');
+    });
+
+    it('arma la entrada: lo que se habló, la pregunta y, de cada vuelta, lo de la IA y lo de las herramientas', function () {
+        $step = new ModelReply(null, [['call_id' => 'call_1', 'name' => 'ventas', 'arguments' => []]],
+            [['type' => 'function_call', 'call_id' => 'call_1', 'name' => 'ventas', 'arguments' => '{}']], ['input' => 0, 'cached' => 0, 'output' => 0], 'm');
+        $turn = (new Turn('instrucciones', [['role' => 'user', 'text' => 'antes'], ['role' => 'assistant', 'text' => 'respuesta']], 'ahora', []))
+            ->withStep($step, ['call_1' => '{"ok":1}']);
+
+        expect(OpenAiModel::input($turn))->toBe([
+            ['role' => 'user', 'content' => 'antes'],
+            ['role' => 'assistant', 'content' => 'respuesta'],
+            ['role' => 'user', 'content' => 'ahora'],
+            ['type' => 'function_call', 'call_id' => 'call_1', 'name' => 'ventas', 'arguments' => '{}'],
+            ['type' => 'function_call_output', 'call_id' => 'call_1', 'output' => '{"ok":1}'],
+        ]);
+    });
+});

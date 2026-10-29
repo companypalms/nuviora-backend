@@ -73,6 +73,14 @@ return [
         'closure_model' => env('OPENAI_CLOSURE_MODEL', 'gpt-6-luna'),
         // Panel del dueño (2026-10-29): el análisis de los motivos de cancelación (Metrics\Insights\CancellationInsights)
         'insights_model' => env('OPENAI_INSIGHTS_MODEL', 'gpt-6-luna'),
+        // El asistente del dueño (Etapa 4): usa herramientas, por eso un modelo de los fuertes en razonamiento
+        'assistant_model' => env('OPENAI_ASSISTANT_MODEL', 'gpt-6.1-sol'),
+        'assistant_effort' => env('OPENAI_ASSISTANT_EFFORT', 'low'),
+    ],
+    // El asistente del dueño (Etapa 4): se puede apagar sin publicar y tiene un límite de mensajes por día
+    'assistant' => [
+        'enabled' => env('ASSISTANT_ENABLED', true),
+        'daily_limit' => (int) env('ASSISTANT_DAILY_LIMIT', 150),
     ],
     'receipt_checks' => [
         'mode' => env('RECEIPT_CHECKS_MODE', 'off'),
