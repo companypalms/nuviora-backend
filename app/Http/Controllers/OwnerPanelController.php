@@ -6,6 +6,7 @@ use App\Models\City;
 use App\Models\Product;
 use App\Models\Shop;
 use App\Services\Metrics\Filters;
+use App\Services\Metrics\GoalSettings;
 use App\Services\Metrics\Insights\CancellationInsights;
 use App\Services\Metrics\OwnerPanel;
 use App\Services\Metrics\Period;
@@ -18,7 +19,8 @@ use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 
 /**
- * Panel del dueño (Etapa 2, diccionario de métricas). Solo el Admin, por la ruta. Solo lee: no cambia nada.
+ * Panel del dueño (Etapa 2, diccionario de métricas). Solo el Admin, por la ruta. Solo lee, salvo las metas y los límites
+ * de las alertas que pone el dueño (§6), que son configuración: no tocan pedidos ni dinero.
  */
 class OwnerPanelController extends Controller
 {
@@ -90,6 +92,27 @@ class OwnerPanelController extends Controller
         @set_time_limit(130);
 
         return response()->json($insights->analyze($period, $filters, $request->boolean('force')));
+    }
+
+    /** Las alertas de ahora, arriba del panel. No dependen de los filtros. */
+    public function alerts(OwnerPanel $panel): JsonResponse
+    {
+        return response()->json($panel->alerts());
+    }
+
+    /** Las metas y los límites guardados, con su explicación y tus números de referencia. */
+    public function goals(OwnerPanel $panel): JsonResponse
+    {
+        return response()->json($panel->goals());
+    }
+
+    /** Guarda las metas y los límites (todo junto; una casilla vacía es "sin meta"). */
+    public function saveGoals(Request $request, GoalSettings $settings, OwnerPanel $panel): JsonResponse
+    {
+        $data = $request->validate(['business' => 'present|array', 'team' => 'present|array', 'alerts' => 'present|array']);
+        $settings->save($data, $request->user());
+
+        return response()->json($panel->goals());
     }
 
     /** @return array{0: Period, 1: Filters} */

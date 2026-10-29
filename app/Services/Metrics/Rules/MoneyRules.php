@@ -234,13 +234,16 @@ final class MoneyRules
      * cuánto deja en promedio cada entrega antes de publicidad.
      *
      * @param iterable<array|object> $facts
-     * @return array{created: int, delivered: int, rate: ?float, margin: ?float}
+     * También lo que se vende en promedio por entrega ("ticket"), para la meta de ventas.
+     *
+     * @return array{created: int, delivered: int, rate: ?float, margin: ?float, ticket: ?float}
      */
     public static function estimate(iterable $facts): array
     {
         $created = 0;
         $delivered = 0;
         $margin = 0.0;
+        $revenue = 0.0;
         foreach ($facts as $fact) {
             $f = (array) $fact;
             if ($f['kind'] !== SalesRules::NORMAL) {
@@ -249,6 +252,7 @@ final class MoneyRules
             $created++;
             if ($f['outcome'] === SalesRules::DELIVERED) {
                 $delivered++;
+                $revenue += (float) $f['revenue'];
                 $margin += (float) $f['revenue'] - (float) $f['product_cost'] - (float) $f['commissions'] - (float) $f['shipping'];
             }
         }
@@ -258,6 +262,7 @@ final class MoneyRules
             'delivered' => $delivered,
             'rate' => $created > 0 ? round($delivered / $created, 4) : null,
             'margin' => $delivered > 0 ? round($margin / $delivered, 2) : null,
+            'ticket' => $delivered > 0 ? round($revenue / $delivered, 2) : null,
         ];
     }
 

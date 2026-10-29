@@ -12,6 +12,12 @@ final class Filters
     ) {
     }
 
+    /** Si hay algún filtro puesto (las metas del negocio solo se muestran sin filtros). */
+    public function any(): bool
+    {
+        return $this->shopId !== null || $this->cityId !== null || $this->productId !== null;
+    }
+
     public function toArray(): array
     {
         return ['shop_id' => $this->shopId, 'city_id' => $this->cityId, 'product_id' => $this->productId];
