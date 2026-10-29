@@ -9,6 +9,7 @@ use App\Services\Finance\ExpenseLedger;
 use App\Services\Finance\Shrinkage;
 use App\Services\Meta\MetaAdsData;
 use App\Services\Metrics\Period;
+use App\Services\Metrics\PersonName;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -124,7 +125,7 @@ class MoneyReader
         }
         // El nombre completo, como en Equipo y en las alertas ("Agencia Centro", no solo "Agencia")
         $names = User::whereIn('id', array_filter(array_keys($by)))->get(['id', 'names', 'surnames'])
-            ->mapWithKeys(fn ($u) => [$u->id => trim($u->names . ' ' . $u->surnames)]);
+            ->mapWithKeys(fn ($u) => [$u->id => PersonName::of($u->names, $u->surnames)]);
 
         return collect($by)->map(fn ($usd, $id) => [
             'agency_id' => $id ?: null,

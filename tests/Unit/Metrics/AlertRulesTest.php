@@ -26,7 +26,27 @@ describe('Alertas › vendedoras y agencias', function () use ($person, $base) {
         expect(array_column($a['items'], 'level'))->toBe(['red', 'yellow', 'yellow']);
         expect($a['items'][2]['text'])->toBe('60 % · meta 70 %');
         expect($a['items'][2]['short'])->toBe('60 %');
-        expect($a['help'])->toContain('del 18/10 al 24/10')->toContain('al menos 10 pedidos atendidos');
+        expect($a['help'])->toContain('pedidos que les entraron del 18/10 al 24/10');
+        expect($a['help'])->toContain('al menos 10 pedidos atendidos');
+    });
+
+    it('con pedidos en camino: avisa en gris a quien todavía puede llegar, y en color a quien ya no llega', function () use ($base) {
+        $goal = GoalRules::normalize(['team' => ['sellers.effectiveness' => ['value' => 55, 'red' => 45]]])['team']['sellers.effectiveness'];
+        $seller = fn (string $name, float $eff, float $best, int $open) => ['name' => $name, 'group' => null,
+            'values' => ['attended' => 30, 'effectiveness' => $eff, 'effectiveness_best' => $best, 'open' => $open]];
+        $a = AlertRules::team('sellers.effectiveness', $goal, [
+            1 => $seller('Gigi', 19.1, 70.0, 15),   // puede llegar
+            2 => $seller('Roxi', 29.3, 40.0, 3),    // ya no llega: rojo
+            3 => $seller('Ana', 60.0, 60.0, 0),     // llega
+        ], $base, 'en este mes');
+        expect(array_column($a['items'], 'name'))->toBe(['Roxi', 'Gigi']);
+        expect(array_column($a['items'], 'level'))->toBe(['red', 'pending']);
+        expect($a['level'])->toBe('red');
+        expect($a['items'][1]['short'])->toBe('19,1 % · puede llegar');
+        expect($a['items'][1]['text'])->toBe('19,1 % · meta 55 % · todavía puede llegar (15 pedidos en camino)');
+        // Solo grises: la alerta es gris
+        $gray = AlertRules::team('sellers.effectiveness', $goal, [1 => $seller('Gigi', 19.1, 70.0, 15)], $base, 'hoy');
+        expect($gray['level'])->toBe('pending');
     });
 
     it('no avisa si nadie está abajo, si no hay meta o si la alerta está apagada', function () use ($person, $base) {
@@ -47,7 +67,7 @@ describe('Alertas › vendedoras y agencias', function () use ($person, $base) {
     });
 });
 
-describe('Alertas › dinero, publicidad y cancelaciones', function () use ($limits) {
+describe('Alertas › dinero, publicidad y cancelaciones', function () use ($limits, $base) {
     it('avisa quién tiene más dinero sin entregar que el límite, de más a menos', function () use ($limits) {
         $a = AlertRules::cash('agency_cash', $limits(500, 1000), [
             ['id' => 1, 'name' => 'Centro', 'usd' => 650.0],
@@ -75,18 +95,21 @@ describe('Alertas › dinero, publicidad y cancelaciones', function () use ($lim
         expect(AlertRules::adCost($limits(8), 0, 0, 0, null, ''))->toBeNull();
     });
 
-    it('las cancelaciones de hoy: desde 10 pedidos en el día', function () use ($limits) {
-        expect(AlertRules::cancellations($limits(15, 20), 9, 5))->toBeNull();
-        $a = AlertRules::cancellations($limits(15, 20), 40, 9);
+    it('las cancelaciones de los pedidos del período: desde 10 pedidos', function () use ($limits) {
+        expect(AlertRules::cancellations($limits(15, 20), 9, 5, 'hoy'))->toBeNull();
+        $a = AlertRules::cancellations($limits(15, 20), 40, 9, 'en este mes');
         expect($a['level'])->toBe('red');
-        expect($a['items'][0]['text'])->toBe('Hoy ya se cancelaron 9 de los 40 pedidos que entraron (22,5 %; límite 15 %).');
+        expect($a['items'][0]['text'])->toBe('Se cancelaron 9 de los 40 pedidos que entraron en este mes (22,5 %; límite 15 %).');
         expect($a['items'][0]['short'])->toBe('9 de 40 (22,5 %) · límite 15 %');
-        expect(AlertRules::cancellations($limits(15, 20), 40, 6))->toBeNull();
+        expect(AlertRules::cancellations($limits(15, 20), 40, 6, 'hoy'))->toBeNull();
     });
 
-    it('las rojas van primero', function () use ($limits) {
-        $yellow = AlertRules::cancellations($limits(15, 30), 40, 8);
+    it('las rojas van primero, después las amarillas y al final las grises', function () use ($limits, $base) {
+        $yellow = AlertRules::cancellations($limits(15, 30), 40, 8, 'hoy');
         $red = AlertRules::cash('agency_cash', $limits(100, 200), [['id' => 1, 'name' => 'Centro', 'usd' => 300.0]]);
-        expect(array_column(AlertRules::sort([$yellow, null, $red]), 'type'))->toBe(['agency_cash', 'cancellations']);
+        $goal = GoalRules::normalize(['team' => ['sellers.effectiveness' => ['value' => 55]]])['team']['sellers.effectiveness'];
+        $gray = AlertRules::team('sellers.effectiveness', $goal, [1 => ['name' => 'Gigi', 'group' => null,
+            'values' => ['attended' => 30, 'effectiveness' => 19.1, 'effectiveness_best' => 70.0, 'open' => 15]]], $base, 'hoy');
+        expect(array_column(AlertRules::sort([$gray, $yellow, null, $red]), 'type'))->toBe(['agency_cash', 'cancellations', 'sellers.effectiveness']);
     });
 });

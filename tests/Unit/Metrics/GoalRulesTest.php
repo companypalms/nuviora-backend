@@ -180,7 +180,7 @@ describe('Metas › Equipo', function () use ($config) {
 
     it('marca en amarillo o rojo a quien no llega a su meta; los de pocos datos, no', function () use ($config, $role) {
         $c = $config(['team' => ['sellers.effectiveness' => ['value' => 55, 'red' => 45, 'people' => [5 => 65]]]]);
-        $r = GoalRules::team('sellers', $role(), $c, false);
+        $r = GoalRules::team('sellers', $role(), $c);
         expect($r['columns'][1]['goal'])->toBe(['value' => 55.0, 'red' => 45.0]);
         expect(array_key_exists('goal', $r['columns'][0]))->toBeFalse();
         expect(array_column($r['rows'], 'goal_levels', 'name'))->toBe([
@@ -191,23 +191,39 @@ describe('Metas › Equipo', function () use ($config) {
             'Eli' => ['effectiveness' => 'yellow'], // su meta es 65 %
         ]);
         // Otro rol sin metas: no cambia nada
-        expect(GoalRules::team('agencies', $role(), $c, false))->toBe($role());
+        expect(GoalRules::team('agencies', $role(), $c))->toBe($role());
     });
 
-    it('mientras el período se sigue entregando, la efectividad no se marca', function () use ($config, $role) {
-        $c = $config(['team' => ['sellers.effectiveness' => ['value' => 55]]]);
-        expect(array_column(GoalRules::team('sellers', $role(), $c, true)['rows'], 'goal_levels'))->each->toBe([]);
+    it('con pedidos en camino: amarillo o rojo solo si ya no llega aunque se entreguen todos; si todavía puede, gris', function () use ($config, $role) {
+        $c = $config(['team' => ['sellers.effectiveness' => ['value' => 55, 'red' => 45]]]);
+        $r = $role();
+        $r['rows'][1]['best'] = ['effectiveness' => 70.0];   // Bea: 50 % hoy, 70 % si se entrega lo que tiene → puede llegar
+        $r['rows'][2]['best'] = ['effectiveness' => 50.0];   // Caro: 40 % hoy, como mucho 50 % → ya no llega (amarillo, no rojo)
+        $r['rows'][0]['best'] = ['effectiveness' => 80.0];   // Ana: llega
+        expect(array_column(GoalRules::team('sellers', $r, $c)['rows'], 'goal_levels', 'name'))->toBe([
+            'Ana' => ['effectiveness' => 'ok'],
+            'Bea' => ['effectiveness' => 'pending'],
+            'Caro' => ['effectiveness' => 'yellow'],
+            'Dani' => [],
+            'Eli' => ['effectiveness' => 'ok'],
+        ]);
+        expect(GoalRules::certainLevel(40, 40, 55.0, 45.0, 'higher'))->toBe('red');       // período terminado: su número
+        expect(GoalRules::certainLevel(12.0, null, 8.0, 15.0, 'lower'))->toBe('yellow');  // rechazos: solo pueden subir
     });
 
     it('las tarjetas del rol y de una persona llevan su meta', function () use ($config) {
         $c = $config(['team' => ['sellers.effectiveness' => ['value' => 55, 'red' => 45, 'people' => [5 => 65]]]]);
         $cards = [['key' => 'attended', 'value' => 40, 'neutral' => false], ['key' => 'effectiveness', 'value' => 60.0, 'neutral' => false]];
-        $all = GoalRules::teamCards('sellers', $cards, $c, false);
+        $all = GoalRules::teamCards('sellers', $cards, $c);
         expect(isset($all[0]['goal']))->toBeFalse();
         expect($all[1]['goal']['status'])->toBe('met');
-        $eli = GoalRules::teamCards('sellers', $cards, $c, false, 5);
+        $eli = GoalRules::teamCards('sellers', $cards, $c, ['effectiveness_best' => 61.0, 'open' => 1], 5);
         expect($eli[1]['goal']['value'])->toBe(65.0);
         expect($eli[1]['goal']['red'])->toBe(55.0);
-        expect($eli[1]['goal']['text'])->toStartWith('Su meta: 65 %');
+        expect($eli[1]['goal']['status'])->toBe('behind');
+        expect($eli[1]['goal']['text'])->toBe('Su meta: 65 % (rojo: 55 %). Va 5 puntos abajo. Aunque se entregue todo lo que tiene en camino (1 pedido en camino), no llega.');
+        $can = GoalRules::teamCards('sellers', $cards, $c, ['effectiveness_best' => 75.0, 'open' => 6], 5);
+        expect($can[1]['goal']['status'])->toBe('neutral');
+        expect($can[1]['goal']['text'])->toEndWith('Todavía puede llegar con lo que tiene en camino (6 pedidos en camino).');
     });
 });

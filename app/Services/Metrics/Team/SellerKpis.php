@@ -354,7 +354,7 @@ final class SellerKpis extends TeamRole
 
     private static function emptyRaw(): array
     {
-        return ['attended' => 0, 'delivered' => 0, 'revenue' => 0.0, 'with_upsell' => 0, 'commission' => 0.0, 'leader_commission' => 0.0,
+        return ['attended' => 0, 'delivered' => 0, 'open' => 0, 'revenue' => 0.0, 'with_upsell' => 0, 'commission' => 0.0, 'leader_commission' => 0.0,
             'returns' => 0, 'confirmed' => 0, 'rejected_confirmed' => 0, 'cancelled' => 0, 'rescheduled' => 0, 'rescheduled_delivered' => 0,
             'response' => [], 'reached' => [], 'reasons' => [], 'members' => []];
     }
@@ -382,6 +382,10 @@ final class SellerKpis extends TeamRole
         if (array_intersect_key($o['confirmers'], array_flip($members))) {
             $raw['confirmed']++;
             $raw['rejected_confirmed'] += $o['status'] === OrderStatus::RECHAZADO ? 1 : 0;
+        }
+        // En camino: todavía lo tiene ella y no terminó (puede entregarse y contarle)
+        if ($hers && !in_array($o['status'], [OrderStatus::ENTREGADO, OrderStatus::CANCELADO, OrderStatus::RECHAZADO], true)) {
+            $raw['open']++;
         }
         if ($hers && $o['status'] === OrderStatus::CANCELADO) {
             $raw['cancelled']++;
@@ -422,6 +426,9 @@ final class SellerKpis extends TeamRole
                 'rescheduled_delivered' => self::pct($r['rescheduled_delivered'], $r['rescheduled']),
                 'rejection_rate' => self::pct($r['rejected_confirmed'], $r['confirmed']),
                 'returns' => $r['returns'],
+                // No son KPIs de la tabla: lo que tiene en camino y la efectividad si se entregara todo eso (metas y alertas)
+                'open' => $r['open'],
+                'effectiveness_best' => self::pct($r['delivered'] + $r['open'], $r['attended']),
             ],
             'details' => [
                 'effectiveness' => $of($r['delivered'], $r['attended'], 'entregados'),

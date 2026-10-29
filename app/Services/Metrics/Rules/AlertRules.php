@@ -4,24 +4,25 @@ namespace App\Services\Metrics\Rules;
 
 /**
  * Las alertas del panel del dueño (diccionario de métricas, §6): el sistema avisa solo, arriba del panel, en amarillo o
- * rojo, con los límites que puso el dueño (GoalRules). PHP puro. No dependen de los filtros ni del período elegido: cada
- * alerta mira siempre lo mismo, para no avisar en falso:
- * - vendedoras y agencias: los pedidos que les entraron en los 7 días que ya terminaron de entregarse (la "madurez" de
- *   Finanzas › Cohortes). Solo quien tuvo al menos el mínimo de su rol (10 pedidos);
- * - el dinero sin entregar de agencias y repartidores: lo de ahora mismo;
- * - la publicidad: los últimos 3 días completos, con lo que se espera entregar de lo que sigue en camino;
- * - las cancelaciones: hoy, desde que hay al menos 10 pedidos.
+ * rojo, con los límites que puso el dueño (GoalRules). PHP puro. Miran el período y los filtros que eligió el dueño arriba
+ * (pedido del dueño, 2026-10-29), con los mismos números de Equipo, Dinero y Pérdidas:
+ * - vendedoras y agencias: los pedidos que les entraron en el período. Solo quien tuvo al menos el mínimo de su rol (10
+ *   pedidos). Para no avisar en falso, amarillo o rojo solo si ya no llega aunque se le entregue lo que tiene en camino;
+ *   si todavía puede llegar, gris ("pending");
+ * - el dinero sin entregar de agencias y repartidores: lo de ahora mismo (no depende de fechas);
+ * - la publicidad: la del período, con lo que se espera entregar de lo que sigue en camino;
+ * - las cancelaciones: de los pedidos del período, desde 10 pedidos.
  *
  * Cada alerta junta a todas las personas de un mismo tipo: {type, level (el peor), title, help, section, role, items}. Cada
  * item tiene su texto entero ("text", para el cursor) y uno corto ("short", para la línea de la alerta).
  */
 final class AlertRules
 {
-    public const TEAM_DAYS = 7;
+    /** Las cancelaciones: desde cuántos pedidos del período. */
+    public const MIN_ORDERS = 10;
 
-    public const AD_DAYS = 3;
-
-    public const MIN_TODAY = 10;
+    /** El orden de los colores: rojo, amarillo y gris (todavía puede llegar). */
+    private const RANK = ['red' => 0, 'yellow' => 1, 'pending' => 2];
 
     /**
      * Las personas de un rol que no llegan a su meta (o se pasan de su máximo).
@@ -42,26 +43,31 @@ final class AlertRules
             }
             $value = $p['values'][$def['metric']] ?? null;
             $limits = GoalRules::personLimits($goal, (int) $id);
-            $level = GoalRules::level($value, $limits['yellow'], $limits['red'], $def['better']);
-            if ($level !== null) {
-                $items[] = [
-                    'id' => (int) $id,
-                    'name' => $p['name'],
-                    'level' => $level,
-                    'value' => $value,
-                    'text' => GoalRules::fmt($value, $def['format']) . ' · ' . ($def['better'] === 'lower' ? 'máximo ' : 'meta ') . GoalRules::limit($limits['yellow'], $def['format']),
-                    'short' => GoalRules::fmt($value, $def['format']),
-                ];
+            $level = GoalRules::certainLevel($value, $p['values']["{$def['metric']}_best"] ?? null, $limits['yellow'], $limits['red'], $def['better']);
+            if ($level === 'ok') {
+                continue;
             }
+            $open = (int) ($p['values']['open'] ?? 0);
+            $limit = ($def['better'] === 'lower' ? 'máximo ' : 'meta ') . GoalRules::limit($limits['yellow'], $def['format']);
+            $items[] = [
+                'id' => (int) $id,
+                'name' => $p['name'],
+                'level' => $level,
+                'value' => $value,
+                'text' => GoalRules::fmt($value, $def['format']) . ' · ' . $limit
+                    . ($level === 'pending' ? ' · todavía puede llegar (' . Card::plural($open, 'pedido', 'pedidos') . ' en camino)' : ''),
+                'short' => GoalRules::fmt($value, $def['format']) . ($level === 'pending' ? ' · puede llegar' : ''),
+            ];
         }
         if ($items === []) {
             return null;
         }
-        // Lo peor primero
-        usort($items, fn ($a, $b) => [$a['level'] === 'red' ? 0 : 1, $def['better'] === 'lower' ? -$a['value'] : $a['value']]
-            <=> [$b['level'] === 'red' ? 0 : 1, $def['better'] === 'lower' ? -$b['value'] : $b['value']]);
+        // Lo peor primero: rojas, amarillas y al final las que todavía pueden llegar
+        usort($items, fn ($a, $b) => [self::RANK[$a['level']], $def['better'] === 'lower' ? -$a['value'] : $a['value']]
+            <=> [self::RANK[$b['level']], $def['better'] === 'lower' ? -$b['value'] : $b['value']]);
 
-        return self::make($key, $def['title'], $items, $def['help'] . " Se miran los pedidos que les entraron {$window}: ya terminaron de entregarse, así que el número no va a cambiar. "
+        return self::make($key, $def['title'], $items, $def['help'] . " Se miran los pedidos que les entraron {$window}. Si todavía tienen pedidos en camino, "
+            . 'sale en amarillo o rojo solo quien ya no llega aunque se le entreguen todos; quien todavía puede llegar, en gris. '
             . "Solo cuenta a quien tuvo al menos {$base['min']} {$base['label']}.", 'team', $def['role']);
     }
 
@@ -115,7 +121,7 @@ final class AlertRules
             'level' => $level,
             'value' => $cost,
             'text' => 'Cada venta te está costando cerca de ' . Card::money($cost) . ' (límite ' . Card::money($limits['yellow']) . '): '
-                . Card::money($ads) . " de publicidad {$window} ÷ ~{$sales} ventas ({$delivered} entregadas"
+                . Card::money($ads) . " de publicidad {$window} ÷ ~{$sales} ventas (" . Card::plural($delivered, 'entregada', 'entregadas')
                 . ($rate !== null && $open > 0 ? ' y las que se esperan de ' . $open . ' en camino' : '') . ').',
             'short' => Card::money($cost) . ' por venta · límite ' . Card::money($limits['yellow']),
         ];
@@ -123,11 +129,11 @@ final class AlertRules
         return self::make('ad_cost', $def['title'], [$item], $def['help'], $def['section'], null);
     }
 
-    /** Las cancelaciones de hoy: de los pedidos que entraron hoy, cuántos ya se cancelaron. */
-    public static function cancellations(array $limits, int $created, int $cancelled): ?array
+    /** Las cancelaciones: de los pedidos que entraron en el período, cuántos ya se cancelaron (solo puede subir). */
+    public static function cancellations(array $limits, int $created, int $cancelled, string $window): ?array
     {
         $def = GoalRules::ALERTS['cancellations'];
-        if (!$limits['on'] || $limits['yellow'] === null || $created < self::MIN_TODAY) {
+        if (!$limits['on'] || $limits['yellow'] === null || $created < self::MIN_ORDERS) {
             return null;
         }
         $pct = round($cancelled * 100 / $created, 1);
@@ -140,19 +146,19 @@ final class AlertRules
             'name' => null,
             'level' => $level,
             'value' => $pct,
-            'text' => "Hoy ya se cancelaron {$cancelled} de los {$created} pedidos que entraron (" . GoalRules::fmt($pct, 'percent') . '; límite ' . GoalRules::limit($limits['yellow'], 'percent') . ').',
+            'text' => "Se cancelaron {$cancelled} de los {$created} pedidos que entraron {$window} (" . GoalRules::fmt($pct, 'percent') . '; límite ' . GoalRules::limit($limits['yellow'], 'percent') . ').',
             'short' => "{$cancelled} de {$created} (" . GoalRules::fmt($pct, 'percent') . ') · límite ' . GoalRules::limit($limits['yellow'], 'percent'),
         ];
 
         return self::make('cancellations', $def['title'], [$item], $def['help'], $def['section'], null);
     }
 
-    /** Las rojas primero; dentro de cada color, en el orden en que se revisaron. */
+    /** Las rojas primero, después las amarillas y al final las grises; dentro de cada color, en el orden en que se revisaron. */
     public static function sort(array $alerts): array
     {
         $alerts = array_values(array_filter($alerts));
         // usort es estable (PHP 8): a igual color, queda el orden en que se revisaron
-        usort($alerts, fn ($a, $b) => ($a['level'] === 'red' ? 0 : 1) <=> ($b['level'] === 'red' ? 0 : 1));
+        usort($alerts, fn ($a, $b) => self::RANK[$a['level']] <=> self::RANK[$b['level']]);
 
         return $alerts;
     }
@@ -161,7 +167,7 @@ final class AlertRules
     {
         return [
             'type' => $type,
-            'level' => in_array('red', array_column($items, 'level'), true) ? 'red' : 'yellow',
+            'level' => array_reduce(array_column($items, 'level'), fn ($worst, $l) => self::RANK[$l] < self::RANK[$worst] ? $l : $worst, 'pending'),
             'title' => $title,
             'help' => $help,
             'section' => $section,

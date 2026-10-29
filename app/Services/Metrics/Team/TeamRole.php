@@ -61,7 +61,9 @@ abstract class TeamRole
 
     /**
      * Calcula los KPIs. Devuelve:
-     * - people: id => ['name', 'group' (o null), 'values' => clave => valor, 'details' => clave => texto];
+     * - people: id => ['name', 'group' (o null), 'values' => clave => valor, 'details' => clave => texto]. Además de los
+     *   KPIs, "values" puede traer "open" (pedidos que todavía tiene en camino) y "<kpi>_best" (lo mejor que puede llegar a
+     *   ser ese KPI si se entrega todo eso): las metas lo usan para no avisar de quien todavía puede llegar;
      * - totals: ['values', 'details'] de todo el rol;
      * - y lo que necesiten sus bloques de detalle.
      */

@@ -62,7 +62,7 @@ class OwnerPanel
         $current = $role->compute($role->facts($this->team, $period, $filters), $period);
         $before = $role->compute($role->facts($this->team, $previous, $filters), $previous);
         $config = $this->goals->get();
-        $built = GoalRules::team($role->key(), TeamRules::build($role, $current, $before, $maturing), $config, $maturing);
+        $built = GoalRules::team($role->key(), TeamRules::build($role, $current, $before, $maturing), $config);
         $counts = $this->team->roleCounts();
         $groups = count($this->team->salesGroups($period));
 
@@ -73,7 +73,7 @@ class OwnerPanel
             'maturing' => $maturing,
             'maturity_days' => $maturityDays,
             'pending' => $this->orders->pending($period, $filters),
-            'cards' => GoalRules::teamCards($role->key(), $built['cards'], $config, $maturing),
+            'cards' => GoalRules::teamCards($role->key(), $built['cards'], $config, $current['totals']['values']),
             'roles' => array_values(array_map(fn (TeamRole $r) => [
                 'key' => $r->key(),
                 'label' => $r->label(),
@@ -109,7 +109,7 @@ class OwnerPanel
                 $inner = TeamCatalog::find($block['role']);
                 $block = GoalRules::team($inner->key(), ['type' => 'table', 'title' => $block['title'], 'help' => $block['help'],
                     'columns' => TeamRules::columns($inner), 'rank_by' => $inner->rankBy(), 'base' => $inner->base(),
-                    'rows' => TeamRules::rows($inner, $block['people'], $block['previous'] ?? [])], $config, $maturing);
+                    'rows' => TeamRules::rows($inner, $block['people'], $block['previous'] ?? [])], $config);
             }
             $blocks[] = $block;
         }
@@ -120,7 +120,7 @@ class OwnerPanel
             'group' => $person['group'] ?? null,
             'role' => $role->label(),
             'compare_label' => $previous->label,
-            'cards' => GoalRules::teamCards($role->key(), TeamRules::personCards($role, $person, $before['people'][$id] ?? null, $maturing), $config, $maturing, $id),
+            'cards' => GoalRules::teamCards($role->key(), TeamRules::personCards($role, $person, $before['people'][$id] ?? null, $maturing), $config, $person['values'], $id),
             'blocks' => $blocks,
         ];
     }
@@ -279,18 +279,19 @@ class OwnerPanel
     }
 
     /**
-     * Las alertas de ahora, arriba del panel (diccionario §6). No dependen de los filtros ni del período elegido: cada
-     * una mira siempre lo mismo (AlertRules). Se guardan unos minutos; al cambiar una meta se calculan de nuevo.
+     * Las alertas arriba del panel (diccionario §6), del período y con los filtros que eligió el dueño (AlertRules), salvo
+     * el dinero sin entregar, que es lo de ahora mismo. Se guardan unos minutos; al cambiar una meta se calculan de nuevo.
      */
-    public function alerts(): array
+    public function alerts(Period $period, Filters $filters): array
     {
         $config = $this->goals->get();
+        $now = CarbonImmutable::now();
         if (!GoalRules::configured($config)) {
-            return ['configured' => false, 'alerts' => [], 'window' => null, 'updated_at' => CarbonImmutable::now()->format('H:i')];
+            return ['configured' => false, 'alerts' => [], 'period' => $period->label, 'updated_at' => $now->format('H:i')];
         }
+        $key = 'owner_panel_alerts:' . md5(json_encode([$config, $period->toArray(), $filters->toArray()]));
 
-        return Cache::remember('owner_panel_alerts:' . md5(json_encode($config)), self::ALERTS_CACHE_SECONDS,
-            fn () => $this->computeAlerts($config, CarbonImmutable::now()));
+        return Cache::remember($key, self::ALERTS_CACHE_SECONDS, fn () => $this->computeAlerts($config, $period, $filters, $now));
     }
 
     /**
@@ -353,20 +354,14 @@ class OwnerPanel
         ];
     }
 
-    private function computeAlerts(array $config, CarbonImmutable $now): array
+    private function computeAlerts(array $config, Period $period, Filters $filters, CarbonImmutable $now): array
     {
         $maturityDays = (int) Setting::get(OrderEconomics::SETTING_MATURITY_LAG, 4);
-        $all = new Filters();
         $a = $config['alerts'];
+        $during = self::during($period);
         $alerts = [];
-        // Al tocar una alerta, el panel muestra los mismos días que miró (sin período: lo de ahora mismo, no cambia)
-        $at = fn (?array $alert, ?Period $p) => $alert === null ? null
-            : $alert + ['period' => $p === null ? null : ($p->preset === 'today' ? ['preset' => 'today'] : ['preset' => 'custom', 'from' => $p->fromDate(), 'to' => $p->toDate()])];
 
-        // Vendedoras y agencias: los pedidos que les entraron en los 7 días que ya terminaron de entregarse
-        $windowEnd = $now->startOfDay()->subDays($maturityDays + 1);
-        $window = Period::fromPreset('custom', $windowEnd->subDays(AlertRules::TEAM_DAYS - 1)->toDateString(), $windowEnd->toDateString(), $now);
-        $windowText = self::range($window);
+        // Vendedoras y agencias: los pedidos que les entraron en el período, igual que Equipo
         $computed = [];
         foreach (GoalRules::TEAM as $key => $def) {
             $goal = $config['team'][$key];
@@ -374,13 +369,13 @@ class OwnerPanel
                 continue;
             }
             $role = TeamCatalog::find($def['role']);
-            $computed[$def['role']] ??= $role->compute($role->facts($this->team, $window, $all), $window);
-            $alerts[] = $at(AlertRules::team($key, $goal, $computed[$def['role']]['people'], $role->base(), $windowText), $window);
+            $computed[$def['role']] ??= $role->compute($role->facts($this->team, $period, $filters), $period);
+            $alerts[] = AlertRules::team($key, $goal, $computed[$def['role']]['people'], $role->base(), $during);
         }
 
-        // El dinero que tienen ahora mismo
+        // El dinero que tienen ahora mismo (no depende de fechas ni de filtros)
         if ($a['agency_cash']['on'] && $a['agency_cash']['yellow'] !== null) {
-            $alerts[] = $at(AlertRules::cash('agency_cash', $a['agency_cash'], $this->agencyCash()), null);
+            $alerts[] = AlertRules::cash('agency_cash', $a['agency_cash'], $this->agencyCash());
         }
         if ($a['rider_cash']['on'] && $a['rider_cash']['yellow'] !== null) {
             $riders = $this->team->people(TeamCatalog::find('riders')->systemRoles());
@@ -388,26 +383,24 @@ class OwnerPanel
             foreach ($this->team->riderCash(array_keys($riders)) as $id => $usd) {
                 $holders[] = ['id' => (int) $id, 'name' => $riders[$id]['name'], 'usd' => $usd];
             }
-            $alerts[] = $at(AlertRules::cash('rider_cash', $a['rider_cash'], $holders), null);
+            $alerts[] = AlertRules::cash('rider_cash', $a['rider_cash'], $holders);
         }
 
-        // La publicidad de los últimos 3 días completos
+        // La publicidad del período, con lo que se espera entregar de lo que sigue en camino
         if ($a['ad_cost']['on'] && $a['ad_cost']['yellow'] !== null) {
-            $yesterday = $now->startOfDay()->subDay();
-            $days = Period::fromPreset('custom', $yesterday->subDays(AlertRules::AD_DAYS - 1)->toDateString(), $yesterday->toDateString(), $now);
-            $t = MoneyRules::compute($this->orders->facts($days, $all), $days, $all, $this->money->adSpend($days), [])['totals'];
-            [$estimate] = $this->estimate($all, $now, $maturityDays);
-            $alerts[] = $at(AlertRules::adCost($a['ad_cost'], (float) $t['ads'], (int) $t['delivered'], (int) $t['open'], $estimate['rate'], self::range($days)), $days);
+            $cells = $filters->shopId !== null ? $this->orders->ordersByCell($period) : [];
+            $t = MoneyRules::compute($this->orders->facts($period, $filters), $period, $filters, $this->money->adSpend($period), [], $cells)['totals'];
+            [$estimate] = $this->estimate($filters, $now, $maturityDays);
+            $alerts[] = AlertRules::adCost($a['ad_cost'], (float) $t['ads'], (int) $t['delivered'], (int) $t['open'], $estimate['rate'], $during);
         }
 
-        // Las cancelaciones de hoy
+        // Las cancelaciones de los pedidos del período
         if ($a['cancellations']['on'] && $a['cancellations']['yellow'] !== null) {
-            $today = Period::fromPreset('today', null, null, $now);
-            $t = LossRules::compute($this->orders->losses($today, $all), $today)['totals'];
-            $alerts[] = $at(AlertRules::cancellations($a['cancellations'], $t['created'], $t['cancelled']), $today);
+            $t = LossRules::compute($this->orders->losses($period, $filters), $period)['totals'];
+            $alerts[] = AlertRules::cancellations($a['cancellations'], $t['created'], $t['cancelled'], $during);
         }
 
-        return ['configured' => true, 'alerts' => AlertRules::sort($alerts), 'window' => $windowText, 'updated_at' => $now->format('H:i')];
+        return ['configured' => true, 'alerts' => AlertRules::sort($alerts), 'period' => $period->label, 'updated_at' => $now->format('H:i')];
     }
 
     /**
@@ -548,5 +541,18 @@ class OwnerPanel
     private static function range(Period $p): string
     {
         return 'del ' . $p->start->format('d/m') . ' al ' . $p->end->format('d/m');
+    }
+
+    /** Cuándo, para los textos de las alertas: "hoy", "en este mes", "del 18/10 al 24/10". */
+    private static function during(Period $p): string
+    {
+        return match ($p->preset) {
+            'today' => 'hoy',
+            'yesterday' => 'ayer',
+            '7d' => 'en los últimos 7 días',
+            'month' => 'en este mes',
+            'last_month' => 'en el mes pasado',
+            default => self::range($p),
+        };
     }
 }

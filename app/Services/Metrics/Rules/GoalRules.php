@@ -13,6 +13,9 @@ use Carbon\CarbonImmutable;
  *   otro período se reparten por día con la meta del mes de cada día (un día de un mes de 30 días es 1/30); si algún mes
  *   del período no tiene meta, no se muestra. "Este mes" se compara con la meta del mes entero y dice si se va al ritmo.
  * - Las de vendedoras y agencias y los límites de las alertas no son por mes: quedan hasta que el dueño los cambie.
+ * - En Equipo y en las alertas, una persona sale en amarillo o rojo solo si ya no llega a su meta aunque se le entregue
+ *   todo lo que tiene en camino ("<kpi>_best" de su rol); si está abajo pero todavía puede llegar, en gris ("pending").
+ *   En un período que ya terminó de entregarse es exactamente su número (pedido del dueño, 2026-10-29).
  * - Vendedoras: efectividad mínima. Agencias: efectividad mínima, tiempo de entrega máximo y rechazos en puerta máximo.
  *   Una meta para todas y, si hace falta, excepciones por persona.
  * - Cada alerta tiene dos límites: amarillo y rojo. En las metas de personas el amarillo es la meta; en una excepción,
@@ -120,16 +123,16 @@ final class GoalRules
             'section' => 'money',
             'role' => null,
             'title' => 'Publicidad cara',
-            'help' => 'Avisa cuando cada venta te está costando más que esto en publicidad, mirando los últimos 3 días completos. Como esos pedidos todavía se están entregando, se cuentan los entregados más los que se espera entregar de los que siguen en camino (con el % que normalmente se entrega, igual que "En camino" de Dinero).',
+            'help' => 'Avisa cuando cada venta te está costando más que esto en publicidad, en el período y con los filtros que elegiste arriba. Si esos pedidos todavía se están entregando, se cuentan los entregados más los que se espera entregar de los que siguen en camino (con el % que normalmente se entrega, igual que "En camino" de Dinero).',
         ],
         'cancellations' => [
-            'label' => 'Cancelaciones de hoy',
+            'label' => 'Cancelaciones',
             'format' => 'percent',
             'better' => 'lower',
             'section' => 'losses',
             'role' => null,
-            'title' => 'Muchas cancelaciones hoy',
-            'help' => 'Avisa cuando, de los pedidos que entraron hoy, ya se canceló más que este %. Solo avisa cuando ya hay al menos 10 pedidos en el día, para no asustarte temprano con 1 de 3.',
+            'title' => 'Muchas cancelaciones',
+            'help' => 'Avisa cuando, de los pedidos que entraron en el período (y con los filtros) que elegiste arriba, ya se canceló más que este %. Solo avisa desde 10 pedidos, para no asustarte con 1 de 3.',
         ],
     ];
 
@@ -423,10 +426,11 @@ final class GoalRules
     }
 
     /**
-     * La meta de un número que no se acumula (un %, un tiempo): si la cumple, cuánto le falta, y gris mientras el
-     * período se sigue entregando (todavía puede mejorar).
+     * La meta de un número que no se acumula (un %, un tiempo): si la cumple y cuánto le falta. Con "best" (lo mejor que
+     * puede llegar a ser si se entrega lo que tiene en camino), el color sale de ahí: si todavía puede llegar, gris. Sin
+     * "best", gris mientras el período se sigue entregando ("stillChanging").
      */
-    public static function limitGoal(string $label, string $format, string $better, ?float $yellow, ?float $red, int|float|null $value, bool $stillChanging, bool $own = false): array
+    public static function limitGoal(string $label, string $format, string $better, ?float $yellow, ?float $red, int|float|null $value, bool $stillChanging, bool $own = false, int|float|null $best = null, ?int $open = null): array
     {
         $kind = $better === 'lower' ? 'máximo' : 'meta';
         $lines = [($own ? 'Su ' : 'Tu ') . $kind . ': ' . self::limit($yellow, $format) . ($red !== null ? ' (rojo: ' . self::limit($red, $format) . ')' : '') . '.'];
@@ -439,7 +443,17 @@ final class GoalRules
         } else {
             $gap = abs((float) $value - (float) $yellow);
             $lines[] = 'Va ' . self::gap($gap, $format) . ($better === 'lower' ? ' arriba.' : ' abajo.');
-            if ($stillChanging) {
+            $sure = $best !== null ? self::level($best, $yellow, $red, $better) : null;
+            $waiting = $open !== null && $open > 0 ? ' (' . Card::plural($open, 'pedido', 'pedidos') . ' en camino)' : '';
+            if ($best !== null && $sure === null) {
+                $status = 'neutral';
+                $lines[] = "Todavía puede llegar con lo que tiene en camino{$waiting}.";
+            } elseif ($best !== null) {
+                $status = $sure === 'red' ? 'below' : 'behind';
+                if ($waiting !== '') {
+                    $lines[] = "Aunque se entregue todo lo que tiene en camino{$waiting}, no llega.";
+                }
+            } elseif ($stillChanging) {
                 $status = 'neutral';
                 $lines[] = 'Todavía puede mejorar: este período se sigue entregando.';
             } else {
@@ -462,11 +476,29 @@ final class GoalRules
     }
 
     /**
-     * Las metas de un rol de Equipo sobre lo que muestra la pantalla: la meta para todas en cada columna (la rayita del
-     * ranking) y, en cada fila, qué KPIs quedaron en amarillo o rojo. Los de pocos datos no se marcan, y los KPIs que
-     * todavía pueden mejorar tampoco mientras el período se sigue entregando.
+     * El color de una persona en una meta, sin avisar en falso: amarillo o rojo solo si ya no llega aunque se le entregue
+     * lo que tiene en camino ("best"); si está abajo pero todavía puede llegar, "pending" (gris); si llega, "ok". Sin
+     * "best" (un KPI que no puede mejorar con lo que está en camino, como los rechazos), el de su número.
      */
-    public static function team(string $roleKey, array $role, array $config, bool $maturing): array
+    public static function certainLevel(int|float|null $value, int|float|null $best, ?float $yellow, ?float $red, string $better): string
+    {
+        $now = self::level($value, $yellow, $red, $better);
+        if ($now === null) {
+            return 'ok';
+        }
+        if ($best === null) {
+            return $now;
+        }
+
+        return self::level($best, $yellow, $red, $better) ?? 'pending';
+    }
+
+    /**
+     * Las metas de un rol de Equipo sobre lo que muestra la pantalla: la meta para todas en cada columna (la rayita del
+     * ranking) y, en cada fila, si cada KPI llega ("ok"), ya no llega (amarillo o rojo) o todavía puede llegar ("pending").
+     * Los de pocos datos no se marcan.
+     */
+    public static function team(string $roleKey, array $role, array $config): array
     {
         $goals = self::teamGoals($roleKey, $config);
         if ($goals === []) {
@@ -478,15 +510,15 @@ final class GoalRules
             }
         }
         unset($col);
-        $matures = array_column($role['columns'], 'matures', 'key');
         foreach ($role['rows'] as &$row) {
             $row['goal_levels'] = [];
             foreach ($goals as $metric => $goal) {
-                if ($row['low_data'] || ($maturing && !empty($matures[$metric]))) {
+                if ($row['low_data']) {
                     continue;
                 }
                 $limits = self::personLimits($goal, (int) $row['id']);
-                $row['goal_levels'][$metric] = self::level($row['values'][$metric] ?? null, $limits['yellow'], $limits['red'], $goal['better']) ?? 'ok';
+                $row['goal_levels'][$metric] = self::certainLevel($row['values'][$metric] ?? null, $row['best'][$metric] ?? null,
+                    $limits['yellow'], $limits['red'], $goal['better']);
             }
         }
         unset($row);
@@ -494,8 +526,11 @@ final class GoalRules
         return $role;
     }
 
-    /** Las tarjetas de un rol (todos juntos) o de una persona (con su excepción), con su meta. */
-    public static function teamCards(string $roleKey, array $cards, array $config, bool $maturing, ?int $personId = null): array
+    /**
+     * Las tarjetas de un rol (todos juntos) o de una persona (con su excepción), con su meta. "values": los de la persona o
+     * del rol, con lo que tiene en camino ("open") y lo mejor que puede llegar a ser cada KPI ("<kpi>_best").
+     */
+    public static function teamCards(string $roleKey, array $cards, array $config, array $values = [], ?int $personId = null): array
     {
         $goals = self::teamGoals($roleKey, $config);
         foreach ($cards as &$card) {
@@ -504,9 +539,8 @@ final class GoalRules
                 continue;
             }
             $limits = $personId !== null ? self::personLimits($goal, $personId) : ['yellow' => $goal['value'], 'red' => $goal['red'], 'own' => false];
-            // "neutral" de la tarjeta: el KPI todavía puede cambiar porque el período se sigue entregando
             $card['goal'] = self::limitGoal($goal['label'], $goal['format'], $goal['better'], $limits['yellow'], $limits['red'], $card['value'],
-                (bool) $card['neutral'], $limits['own']);
+                false, $limits['own'], $values["{$card['key']}_best"] ?? null, isset($values['open']) ? (int) $values['open'] : null);
         }
         unset($card);
 

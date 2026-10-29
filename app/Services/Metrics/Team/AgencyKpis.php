@@ -319,6 +319,9 @@ final class AgencyKpis extends TeamRole
                 'cash' => round($r['cash'], 2),
                 'closures_on_time' => self::pct($r['closures_on_time'], $r['closures']),
                 'closures_with_diff' => $r['closures'] > 0 ? $r['closures_with_diff'] : null,
+                // No son KPIs de la tabla: lo que tiene en reparto y la efectividad si entregara todo eso (metas y alertas)
+                'open' => $r['open'],
+                'effectiveness_best' => self::pct($r['delivered'] + $r['open'], $r['received']),
             ],
             'details' => [
                 'effectiveness' => number_format($r['delivered'], 0, ',', '.') . ' de ' . number_format($r['received'], 0, ',', '.') . ' entregados'

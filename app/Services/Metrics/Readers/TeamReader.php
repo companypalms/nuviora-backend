@@ -14,6 +14,7 @@ use App\Services\Logistics\LogisticsSettings;
 use App\Services\Logistics\RiderCash;
 use App\Services\Metrics\Filters;
 use App\Services\Metrics\Period;
+use App\Services\Metrics\PersonName;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -65,11 +66,11 @@ class TeamReader
         foreach ($users as $u) {
             $group = match ($u->role) {
                 'Vendedor' => $groups[$u->id] ?? null,
-                'Repartidor' => $u->agency ? trim($u->agency . ' ' . $u->agency_surnames) : ($riders->has($u->id) ? 'Logística propia' : null),
+                'Repartidor' => $u->agency ? PersonName::of($u->agency, $u->agency_surnames) : ($riders->has($u->id) ? 'Logística propia' : null),
                 'Operador logístico' => isset($centers[$u->id]) ? $centers[$u->id]->pluck('name')->implode(', ') : null,
                 default => null,
             };
-            $out[(int) $u->id] = ['name' => trim($u->names . ' ' . $u->surnames), 'group' => $group];
+            $out[(int) $u->id] = ['name' => PersonName::of($u->names, $u->surnames), 'group' => $group];
         }
 
         return $out;
@@ -104,7 +105,7 @@ class TeamReader
             $out[(int) $r->id]['members'][] = (int) $r->user_id;
             if ($r->role === 'leader') {
                 $out[(int) $r->id]['leader_id'] = (int) $r->user_id;
-                $out[(int) $r->id]['leader'] = trim($r->names . ' ' . $r->surnames);
+                $out[(int) $r->id]['leader'] = PersonName::of($r->names, $r->surnames);
             }
         }
         foreach ($out as &$g) {

@@ -94,10 +94,12 @@ class OwnerPanelController extends Controller
         return response()->json($insights->analyze($period, $filters, $request->boolean('force')));
     }
 
-    /** Las alertas de ahora, arriba del panel. No dependen de los filtros. */
-    public function alerts(OwnerPanel $panel): JsonResponse
+    /** Las alertas arriba del panel, del período y con los filtros elegidos (el dinero sin entregar es lo de ahora). */
+    public function alerts(Request $request, OwnerPanel $panel): JsonResponse
     {
-        return response()->json($panel->alerts());
+        [$period, $filters] = $this->scope($request);
+
+        return response()->json($panel->alerts($period, $filters));
     }
 
     /** Las metas del negocio de este mes, para arriba del Dashboard. */

@@ -91,6 +91,9 @@ final class TeamRules
                 'previous' => $previous,
                 'low_data' => (int) ($values[$base['key']] ?? 0) < $base['min'],
                 'flags' => [],
+                // Para las metas: lo mejor que puede llegar a ser cada KPI y cuántos pedidos tiene en camino
+                'best' => self::best($p['values'], $metrics),
+                'open' => isset($p['values']['open']) ? (int) $p['values']['open'] : null,
             ];
         }
 
@@ -109,6 +112,19 @@ final class TeamRules
         }
 
         return self::sort($rows, $role->rankBy(), $metrics[$role->rankBy()]['better'] ?? 'higher');
+    }
+
+    /** "effectiveness" => effectiveness_best, de los KPIs del rol que lo tienen. */
+    private static function best(array $values, array $metrics): array
+    {
+        $out = [];
+        foreach (array_keys($metrics) as $key) {
+            if (array_key_exists("{$key}_best", $values)) {
+                $out[$key] = $values["{$key}_best"];
+            }
+        }
+
+        return $out;
     }
 
     /** Lo mejor primero; las de pocos datos y las sin valor, al final; a igual valor, por nombre. */
