@@ -14,6 +14,7 @@ use App\Services\Calendar\Rules\ReminderRules;
 use App\Services\Calendar\Rules\Schedule;
 use App\Services\Metrics\PersonName;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -39,6 +40,9 @@ class Calendar
 
     /** El rango más largo que se pide de una vez (un mes con sus semanas de los bordes). */
     public const MAX_RANGE_DAYS = 62;
+
+    /** Cuánto se guarda lo de hoy (el número de arriba lo pide cada pantalla). */
+    public const TODAY_CACHE_SECONDS = 60;
 
     private const TYPE_ORDER = ['payment' => 0, 'task' => 1, 'review' => 2];
 
@@ -67,8 +71,33 @@ class Calendar
         ];
     }
 
-    /** Lo de hoy, las atrasadas y cuántas quedan, para el calendario, el Dashboard y el asistente. */
-    public function today(CarbonImmutable $now): array
+    /**
+     * Lo de hoy, las atrasadas y cuántas quedan, para el calendario, el Dashboard, el número de arriba y el asistente. Se
+     * guarda un minuto (el número de arriba lo pide cada pantalla); se borra al tildar, anotar o cambiar los recordatorios.
+     * "fresh" lo calcula de nuevo (el calendario, que acaba de cambiar algo).
+     */
+    public function today(CarbonImmutable $now, bool $fresh = false): array
+    {
+        $key = self::todayCacheKey($now);
+        if ($fresh) {
+            Cache::forget($key);
+        }
+
+        return Cache::remember($key, self::TODAY_CACHE_SECONDS, fn () => $this->computeToday($now));
+    }
+
+    /** Lo de hoy se vuelve a calcular la próxima vez que se pida. */
+    public static function forgetToday(): void
+    {
+        Cache::forget(self::todayCacheKey(CarbonImmutable::now()));
+    }
+
+    private static function todayCacheKey(CarbonImmutable $now): string
+    {
+        return 'calendar.today.' . $now->toDateString();
+    }
+
+    private function computeToday(CarbonImmutable $now): array
     {
         $today = $now->startOfDay();
         $items = $this->withStatus($this->occurrences($today, $today, $now), $today->toDateString());
@@ -124,6 +153,7 @@ class Calendar
     public function saveSettings(array $rules, User $by, CarbonImmutable $now): array
     {
         $this->settings->saveRules($rules, $by, $now);
+        self::forgetToday();
 
         return $this->settings();
     }
@@ -138,25 +168,30 @@ class Calendar
             ['item_key' => $itemKey, 'occurs_on' => $due],
             ['status' => $status, 'note' => $note, 'source' => $source, 'marked_by' => $by->id],
         );
+        self::forgetToday();
     }
 
     /** "Deshacer": la aparición vuelve a quedar pendiente (si se había tildado sola, sigue tildada). */
     public function unmark(string $itemKey, string $due): void
     {
         CalendarMark::where('item_key', $itemKey)->whereDate('occurs_on', $due)->delete();
+        self::forgetToday();
     }
 
     /** Anota una nota nueva (del dueño o, más adelante, del asistente). */
     public function createNote(array $input, User $by, string $source = 'owner'): CalendarNote
     {
         $fields = $this->checked($input);
+        $note = CalendarNote::create($fields + ['source' => $source, 'created_by' => $by->id, 'updated_by' => $by->id]);
+        self::forgetToday();
 
-        return CalendarNote::create($fields + ['source' => $source, 'created_by' => $by->id, 'updated_by' => $by->id]);
+        return $note;
     }
 
     public function updateNote(CalendarNote $note, array $input, User $by): CalendarNote
     {
         $note->update($this->checked($input) + ['updated_by' => $by->id]);
+        self::forgetToday();
 
         return $note;
     }
@@ -165,6 +200,7 @@ class Calendar
     public function archiveNote(CalendarNote $note, User $by): void
     {
         $note->update(['archived_at' => now(), 'archived_by' => $by->id]);
+        self::forgetToday();
     }
 
     /** Hoy en una frase: "Hoy tienes 3 cosas por hacer y 1 atrasada." */

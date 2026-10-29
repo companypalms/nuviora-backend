@@ -31,10 +31,10 @@ class CalendarController extends Controller
         return response()->json($calendar->range($from, $to, CarbonImmutable::now()));
     }
 
-    /** Lo de hoy, las atrasadas y cuántas quedan. */
-    public function today(Calendar $calendar): JsonResponse
+    /** Lo de hoy, las atrasadas y cuántas quedan ("fresh=1": recién calculado, sin lo guardado del último minuto). */
+    public function today(Request $request, Calendar $calendar): JsonResponse
     {
-        return response()->json($calendar->today(CarbonImmutable::now()));
+        return response()->json($calendar->today(CarbonImmutable::now(), $request->boolean('fresh')));
     }
 
     /** Las listas de la ventana "Anotar": tipos y cómo se repite. */
