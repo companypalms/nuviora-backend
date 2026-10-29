@@ -9,11 +9,13 @@ class OrderCancellationObserver
 {
     public function created(OrderCancellation $cancellation): void
     {
+        // Desde 2026-10-29 se cancela directo (sin aprobación): llega ya aprobada
+        $direct = $cancellation->status === 'approved';
         OrderActivityLog::create([
             'order_id' => $cancellation->order_id,
             'user_id' => auth()->id(),
-            'action' => 'cancellation_requested',
-            'description' => "Solicitó la cancelación de la orden. Razón: " . ($cancellation->reason ?? 'Sin razón'),
+            'action' => $direct ? 'cancelled' : 'cancellation_requested',
+            'description' => ($direct ? 'Canceló la orden. Motivo: ' : 'Solicitó la cancelación de la orden. Razón: ') . ($cancellation->reason ?? 'Sin razón'),
             'properties' => $cancellation->toArray()
         ]);
     }

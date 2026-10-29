@@ -209,7 +209,14 @@ class BusinessService
                         'cancelled_at' => now(),
                         'reset_count'  => 0,
                     ]);
-                    $this->logClose($toCancel, fn ($o) => "Cancelada automáticamente al cierre de la jornada: era la segunda vez que llegaba al cierre sin resolverse (estaba en '{$this->statusName($o->status_id)}'" . $this->withSeller($o) . ').', 'closing_cancelled', $canceladoId);
+                    $why = fn ($o) => "Cancelada automáticamente al cierre de la jornada: era la segunda vez que llegaba al cierre sin resolverse (estaba en '{$this->statusName($o->status_id)}'" . $this->withSeller($o) . ').';
+                    $this->logClose($toCancel, $why, 'closing_cancelled', $canceladoId);
+                    // El motivo también queda con los de las demás cancelaciones (dueño, 2026-10-29). Si falla, el cierre sigue.
+                    try {
+                        \App\Services\Orders\Cancellations::recordBySystem($toCancel, fn ($o) => 'Sistema: ' . $why($o));
+                    } catch (\Throwable $e) {
+                        Log::error("Shop $shopId: no se guardaron los motivos de las cancelaciones del cierre: " . $e->getMessage());
+                    }
                     $this->syncStock($toCancel);
                     Log::info("Shop $shopId: Canceladas {$toCancel->count()} órdenes por reincidencia.");
                 }

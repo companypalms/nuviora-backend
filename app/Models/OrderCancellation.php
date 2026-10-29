@@ -13,6 +13,7 @@ class OrderCancellation extends Model
         'order_id',
         'user_id',
         'reason',
+        'source', // 'user' o 'system' (cierre de la jornada)
         'status',
         'reviewed_by',
         'reviewed_at',
