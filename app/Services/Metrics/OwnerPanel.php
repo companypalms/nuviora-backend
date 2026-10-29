@@ -35,6 +35,9 @@ class OwnerPanel
     /** Las alertas se recalculan como mucho cada 2 minutos (lo mismo que se actualiza el panel solo). */
     private const ALERTS_CACHE_SECONDS = 120;
 
+    /** Los meses, para "Tus metas de octubre". */
+    private const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
     /** Las referencias de "Metas y límites" (tus números de los últimos 30 días): 10 minutos. */
     private const REFERENCES_CACHE_SECONDS = 600;
 
@@ -291,6 +294,36 @@ class OwnerPanel
 
         return Cache::remember('owner_panel_alerts:' . md5(json_encode($config)), self::ALERTS_CACHE_SECONDS,
             fn () => $this->computeAlerts($config, CarbonImmutable::now()));
+    }
+
+    /**
+     * Las metas del negocio de este mes, para la franja de arriba del Dashboard del Admin: las mismas tarjetas con su barra
+     * que Ventas y Dinero con "Este mes" y sin filtros. Sin metas del negocio puestas, "configured" en false.
+     */
+    public function goalsSummary(): array
+    {
+        $config = $this->goals->get();
+        $now = CarbonImmutable::now();
+        $base = ['month' => self::MONTHS[(int) $now->format('n') - 1], 'updated_at' => $now->format('H:i')];
+        if (array_filter($config['business'], fn ($v) => $v !== null) === []) {
+            return $base + ['configured' => false, 'cards' => []];
+        }
+
+        return Cache::remember('owner_panel_goals_summary:' . md5(json_encode($config['business'])), self::ALERTS_CACHE_SECONDS, function () use ($now, $base) {
+            $month = Period::fromPreset('month', null, null, $now);
+            $all = new Filters();
+            $cards = array_merge($this->sales($month, $all)['cards'], $this->money($month, $all)['cards']);
+            $out = [];
+            foreach (GoalRules::BUSINESS as $def) {
+                foreach ($cards as $c) {
+                    if ($c['key'] === $def['card'] && isset($c['goal'])) {
+                        $out[] = array_intersect_key($c, array_flip(['key', 'label', 'help', 'detail', 'format', 'value', 'neutral', 'goal']));
+                    }
+                }
+            }
+
+            return $base + ['configured' => true, 'cards' => $out];
+        });
     }
 
     /** Lo que necesita la ventana "Metas y límites": lo guardado, qué es cada cosa, las personas y tus números de referencia. */

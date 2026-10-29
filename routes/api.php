@@ -649,6 +649,7 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::get('/team/person', [\App\Http\Controllers\OwnerPanelController::class, 'teamPerson']);
         Route::get('/alerts', [\App\Http\Controllers\OwnerPanelController::class, 'alerts']);
         Route::get('/goals', [\App\Http\Controllers\OwnerPanelController::class, 'goals']);
+        Route::get('/goals/summary', [\App\Http\Controllers\OwnerPanelController::class, 'goalsSummary']);
         Route::put('/goals', [\App\Http\Controllers\OwnerPanelController::class, 'saveGoals']);
     });
 

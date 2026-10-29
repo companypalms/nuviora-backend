@@ -12,7 +12,8 @@ namespace App\Services\Metrics\Rules;
  * - la publicidad: los últimos 3 días completos, con lo que se espera entregar de lo que sigue en camino;
  * - las cancelaciones: hoy, desde que hay al menos 10 pedidos.
  *
- * Cada alerta junta a todas las personas de un mismo tipo: {type, level (el peor), title, help, section, role, items}.
+ * Cada alerta junta a todas las personas de un mismo tipo: {type, level (el peor), title, help, section, role, items}. Cada
+ * item tiene su texto entero ("text", para el cursor) y uno corto ("short", para la línea de la alerta).
  */
 final class AlertRules
 {
@@ -49,6 +50,7 @@ final class AlertRules
                     'level' => $level,
                     'value' => $value,
                     'text' => GoalRules::fmt($value, $def['format']) . ' · ' . ($def['better'] === 'lower' ? 'máximo ' : 'meta ') . GoalRules::limit($limits['yellow'], $def['format']),
+                    'short' => GoalRules::fmt($value, $def['format']),
                 ];
             }
         }
@@ -78,7 +80,8 @@ final class AlertRules
         foreach ($holders as $h) {
             $level = GoalRules::level($h['usd'], $limits['yellow'], $limits['red'], 'lower');
             if ($level !== null) {
-                $items[] = ['id' => $h['id'], 'name' => $h['name'], 'level' => $level, 'value' => $h['usd'], 'text' => Card::money($h['usd'])];
+                $items[] = ['id' => $h['id'], 'name' => $h['name'], 'level' => $level, 'value' => $h['usd'], 'text' => Card::money($h['usd']) . ' sin entregar (límite ' . Card::money($limits['yellow']) . ')',
+                    'short' => Card::money($h['usd'])];
             }
         }
         if ($items === []) {
@@ -114,6 +117,7 @@ final class AlertRules
             'text' => 'Cada venta te está costando cerca de ' . Card::money($cost) . ' (límite ' . Card::money($limits['yellow']) . '): '
                 . Card::money($ads) . " de publicidad {$window} ÷ ~{$sales} ventas ({$delivered} entregadas"
                 . ($rate !== null && $open > 0 ? ' y las que se esperan de ' . $open . ' en camino' : '') . ').',
+            'short' => Card::money($cost) . ' por venta · límite ' . Card::money($limits['yellow']),
         ];
 
         return self::make('ad_cost', $def['title'], [$item], $def['help'], $def['section'], null);
@@ -137,6 +141,7 @@ final class AlertRules
             'level' => $level,
             'value' => $pct,
             'text' => "Hoy ya se cancelaron {$cancelled} de los {$created} pedidos que entraron (" . GoalRules::fmt($pct, 'percent') . '; límite ' . GoalRules::limit($limits['yellow'], 'percent') . ').',
+            'short' => "{$cancelled} de {$created} (" . GoalRules::fmt($pct, 'percent') . ') · límite ' . GoalRules::limit($limits['yellow'], 'percent'),
         ];
 
         return self::make('cancellations', $def['title'], [$item], $def['help'], $def['section'], null);

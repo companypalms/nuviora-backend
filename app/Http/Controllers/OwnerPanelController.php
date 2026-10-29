@@ -100,6 +100,12 @@ class OwnerPanelController extends Controller
         return response()->json($panel->alerts());
     }
 
+    /** Las metas del negocio de este mes, para arriba del Dashboard. */
+    public function goalsSummary(OwnerPanel $panel): JsonResponse
+    {
+        return response()->json($panel->goalsSummary());
+    }
+
     /** Las metas y los límites guardados, con su explicación y tus números de referencia. */
     public function goals(OwnerPanel $panel): JsonResponse
     {

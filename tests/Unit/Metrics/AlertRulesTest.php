@@ -25,6 +25,7 @@ describe('Alertas › vendedoras y agencias', function () use ($person, $base) {
         expect(array_column($a['items'], 'name'))->toBe(['Caro', 'Bea', 'Dani']);
         expect(array_column($a['items'], 'level'))->toBe(['red', 'yellow', 'yellow']);
         expect($a['items'][2]['text'])->toBe('60 % · meta 70 %');
+        expect($a['items'][2]['short'])->toBe('60 %');
         expect($a['help'])->toContain('del 18/10 al 24/10')->toContain('al menos 10 pedidos atendidos');
     });
 
@@ -54,6 +55,7 @@ describe('Alertas › dinero, publicidad y cancelaciones', function () use ($lim
             ['id' => 3, 'name' => 'Moto', 'usd' => 500.0], // justo en el límite: no avisa
         ]);
         expect(array_column($a['items'], 'name'))->toBe(['Rápido', 'Centro']);
+        expect(array_column($a['items'], 'short'))->toBe(['$1.200,00', '$650,00']);
         expect($a['level'])->toBe('red');
         expect($a['role'])->toBe('agencies');
         expect(AlertRules::cash('rider_cash', $limits(500, null, false), [['id' => 1, 'name' => 'Luis', 'usd' => 900.0]]))->toBeNull();
@@ -66,6 +68,7 @@ describe('Alertas › dinero, publicidad y cancelaciones', function () use ($lim
         expect($a['section'])->toBe('money');
         expect($a['items'][0]['value'])->toBe(10.0);
         expect($a['items'][0]['text'])->toContain('$10,00')->toContain('~30 ventas');
+        expect($a['items'][0]['short'])->toBe('$10,00 por venta · límite $8,00');
         expect(AlertRules::adCost($limits(12), 300, 20, 20, 0.5, ''))->toBeNull();
         // Sin ventas esperadas, cuenta como una: lo gastado entero
         expect(AlertRules::adCost($limits(8, 12), 50, 0, 0, null, '')['items'][0]['value'])->toBe(50.0);
@@ -77,6 +80,7 @@ describe('Alertas › dinero, publicidad y cancelaciones', function () use ($lim
         $a = AlertRules::cancellations($limits(15, 20), 40, 9);
         expect($a['level'])->toBe('red');
         expect($a['items'][0]['text'])->toBe('Hoy ya se cancelaron 9 de los 40 pedidos que entraron (22,5 %; límite 15 %).');
+        expect($a['items'][0]['short'])->toBe('9 de 40 (22,5 %) · límite 15 %');
         expect(AlertRules::cancellations($limits(15, 20), 40, 6))->toBeNull();
     });
 
