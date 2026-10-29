@@ -81,6 +81,8 @@ final class MoneyRules
 
     public const EXPENSES_FILTERED_HELP = 'Solo los gastos cargados a ese producto o ciudad y la mercancía de ese producto o ciudad dada de baja. Los generales del negocio no se restan con filtros.';
 
+    public const EXPENSES_SHOP_HELP = 'Con el filtro de tienda no se resta ningún gasto: los gastos y la mercancía dada de baja no son de una tienda.';
+
     public const SERIES_HELP = 'Por cada día, lo que ya ganaste con los pedidos creados ese día (verde, o rojo si ese día vas perdiendo) y lo que todavía pueden sumar sus pedidos pendientes (claro). Los últimos días suelen empezar en rojo: la publicidad ya se gastó y los pedidos todavía se están entregando.';
 
     public const PRODUCTS_HELP = 'Lo que dejó cada producto (el principal del pedido) antes de los gastos del negocio: lo vendido menos el costo de sus pedidos y su publicidad.';
@@ -290,6 +292,9 @@ final class MoneyRules
         $defs = self::METRICS;
         if ($filtered) {
             $defs['profit'] = self::PROFIT_FILTERED + $defs['profit'];
+            if ($filters->shopId !== null) {
+                $defs['profit']['help'] .= ' ' . self::EXPENSES_SHOP_HELP . self::SHOP_ADS_NOTE;
+            }
         }
         $defs['cost_per_order']['help'] .= $shopNote;
         $defs['cost_per_sale']['help'] .= $shopNote;
@@ -341,14 +346,18 @@ final class MoneyRules
         foreach (self::STEPS as $key => $s) {
             $amount = $key === 'profit' ? $t['profit'] : $t[$key];
             $help = $s['help'];
-            if ($key === 'expenses' && $filtered) {
+            $label = $s['label'];
+            if ($key === 'expenses' && $filters->shopId !== null) {
+                $help = self::EXPENSES_SHOP_HELP;
+            } elseif ($key === 'expenses' && $filtered) {
                 $help = self::EXPENSES_FILTERED_HELP;
+                $label = 'Gastos de ese producto o ciudad';
             } elseif ($key === 'ads' && $filters->shopId !== null) {
                 $help .= self::SHOP_ADS_NOTE;
             }
             $steps[] = [
                 'key' => $key,
-                'label' => $key === 'expenses' && $filtered ? 'Gastos de ese producto o ciudad' : $s['label'],
+                'label' => $label,
                 'help' => $help,
                 'kind' => $key === 'revenue' ? 'start' : ($key === 'profit' ? 'total' : 'cost'),
                 'amount' => round($amount, 2),
