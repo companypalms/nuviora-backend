@@ -2,6 +2,7 @@
 
 namespace App\Services\Metrics\Readers;
 
+use App\Models\StatusChangeLog;
 use App\Services\Metrics\Filters;
 use App\Services\Metrics\Period;
 use Illuminate\Database\Query\Builder;
@@ -32,6 +33,39 @@ class OrderFactsReader
             ->selectRaw('(f.cogs_main + f.cogs_upsell + f.logistics_cost) AS product_cost')
             ->selectRaw('(f.commission_seller + f.commission_upsell + f.commission_leader) AS commissions')
             ->selectRaw('(f.delivery_cost + f.commission_deliverer) AS shipping')
+            ->cursor();
+    }
+
+    /**
+     * El recorrido de cada pedido creado en el período, para el embudo: su estado de hoy y la primera vez que llegó a los
+     * estados de cada paso, del historial de cambios de estado (StatusChangeLog: order_status_logs hasta su CUTOFF,
+     * order_tracking_comprehensive_logs desde ahí). El historial se lee solo de los pedidos del período.
+     *
+     * @param array<string, string[]> $steps paso => descripciones de sus estados (FunnelRules::STATUSES)
+     * @return LazyCollection<int, object>
+     */
+    public function funnel(Period $period, Filters $filters, array $steps): LazyCollection
+    {
+        $ids = DB::table('statuses')->whereIn('description', array_merge(...array_values($steps)))->pluck('id', 'description');
+        $idsOf = fn (string $step) => collect($steps[$step] ?? [])->map(fn ($d) => $ids[$d] ?? null)->filter()->values()->all() ?: [0];
+        $all = $ids->values()->all() ?: [0];
+        $orders = DB::table('order_financials')->whereBetween('created_date', [$period->fromDate(), $period->toDate()])->select('order_id');
+
+        $columns = ['order_id', 'to_status_id', 'created_at'];
+        $old = DB::table('order_status_logs')->select($columns)->where('created_at', '<', StatusChangeLog::CUTOFF)
+            ->whereIn('order_id', $orders)->whereIn('to_status_id', $all);
+        $new = DB::table('order_tracking_comprehensive_logs')->select($columns)->where('created_at', '>=', StatusChangeLog::CUTOFF)
+            ->where(fn ($q) => $q->whereNull('from_status_id')->orWhereColumn('from_status_id', '!=', 'to_status_id'))
+            ->whereIn('order_id', (clone $orders))->whereIn('to_status_id', $all);
+        $first = fn (string $step) => 'MIN(CASE WHEN l.to_status_id IN (' . implode(',', array_map('intval', $idsOf($step))) . ') THEN l.created_at END)';
+        $journey = DB::query()->fromSub($old->unionAll($new), 'l')->groupBy('l.order_id')
+            ->selectRaw("l.order_id, {$first('assigned')} AS assigned_at, {$first('confirmed')} AS confirmed_at, {$first('on_route')} AS route_at");
+
+        return $this->base($period, $filters)
+            ->whereNotNull('f.computed_at')
+            ->join('statuses as s', 's.id', '=', 'o.status_id')
+            ->leftJoinSub($journey, 'j', 'j.order_id', '=', 'o.id')
+            ->select('o.created_at', 'o.delivered_at', 'f.kind', 'f.outcome', 's.description as status', 'j.assigned_at', 'j.confirmed_at', 'j.route_at')
             ->cursor();
     }
 

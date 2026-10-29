@@ -45,6 +45,13 @@ class OwnerPanelController extends Controller
         return response()->json($panel->money($period, $filters));
     }
 
+    public function funnel(Request $request, OwnerPanel $panel): JsonResponse
+    {
+        [$period, $filters] = $this->scope($request);
+
+        return response()->json($panel->funnel($period, $filters));
+    }
+
     /** @return array{0: Period, 1: Filters} */
     private function scope(Request $request): array
     {

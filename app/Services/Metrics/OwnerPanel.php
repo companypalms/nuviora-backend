@@ -6,6 +6,7 @@ use App\Models\Setting;
 use App\Services\Finance\OrderEconomics;
 use App\Services\Metrics\Readers\MoneyReader;
 use App\Services\Metrics\Readers\OrderFactsReader;
+use App\Services\Metrics\Rules\FunnelRules;
 use App\Services\Metrics\Rules\MoneyRules;
 use App\Services\Metrics\Rules\SalesRules;
 use Carbon\CarbonImmutable;
@@ -54,6 +55,33 @@ class OwnerPanel
             'status' => $status,
             'series' => $current['series'] + ['help' => SalesRules::SERIES_HELP],
             'excluded' => $current['excluded'] + ['help' => SalesRules::EXCLUDED_HELP],
+            'updated_at' => $now->format('H:i'),
+        ];
+    }
+
+    /** Embudo: cuántos pedidos llegan a cada paso, dónde se quedan y cuánto tardan. */
+    public function funnel(Period $period, Filters $filters): array
+    {
+        $now = CarbonImmutable::now();
+        $previous = $period->previous();
+        $maturityDays = (int) Setting::get(OrderEconomics::SETTING_MATURITY_LAG, 4);
+        $maturing = $period->isMaturing($now, $maturityDays);
+
+        $current = FunnelRules::compute($this->orders->funnel($period, $filters, FunnelRules::STATUSES), $period);
+        $before = FunnelRules::compute($this->orders->funnel($previous, $filters, FunnelRules::STATUSES), $previous);
+
+        return [
+            'period' => $period->toArray() + ['compare_label' => $period->compareLabel],
+            'previous' => $previous->toArray(),
+            'filters' => $filters->toArray(),
+            'maturing' => $maturing,
+            'maturity_days' => $maturityDays,
+            'pending' => $this->orders->pending($period, $filters),
+            'cards' => FunnelRules::cards($current['totals'], $before['totals'], $maturing),
+            'relation' => FunnelRules::relation($current['totals']),
+            'steps' => $current['steps'],
+            'previous_steps' => array_map(fn ($s) => ['key' => $s['key'], 'of_created' => $s['of_created']], $before['steps']),
+            'help' => FunnelRules::HELP,
             'updated_at' => $now->format('H:i'),
         ];
     }
