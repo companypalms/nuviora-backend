@@ -653,6 +653,18 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::put('/goals', [\App\Http\Controllers\OwnerPanelController::class, 'saveGoals']);
     });
 
+    // Calendario del dueño (Etapa 3): sus notas y lo que marca como hecho. Solo el Admin
+    Route::middleware('role:Admin')->prefix('calendar')->group(function () {
+        Route::get('/', [\App\Http\Controllers\CalendarController::class, 'index']);
+        Route::get('/today', [\App\Http\Controllers\CalendarController::class, 'today']);
+        Route::get('/options', [\App\Http\Controllers\CalendarController::class, 'options']);
+        Route::post('/notes', [\App\Http\Controllers\CalendarController::class, 'storeNote']);
+        Route::put('/notes/{note}', [\App\Http\Controllers\CalendarController::class, 'updateNote']);
+        Route::post('/notes/{note}/archive', [\App\Http\Controllers\CalendarController::class, 'archiveNote']);
+        Route::post('/marks', [\App\Http\Controllers\CalendarController::class, 'mark']);
+        Route::delete('/marks', [\App\Http\Controllers\CalendarController::class, 'unmark']);
+    });
+
     // Finanzas (Módulo 4 de Fran): solo el Admin (§81). Gastos manuales y recurrentes (§24 a §33) y su historial (§82)
     Route::middleware('role:Admin')->prefix('finance')->group(function () {
         Route::get('/options', [\App\Http\Controllers\FinanceExpenseController::class, 'options']);
