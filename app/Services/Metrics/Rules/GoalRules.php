@@ -8,8 +8,11 @@ use Carbon\CarbonImmutable;
 /**
  * Metas y alertas del panel del dueño (diccionario de métricas, §6): qué metas y límites puede poner el dueño, con la
  * explicación que ve, y cómo se comparan los números con ellos. PHP puro. Lo que eligió el dueño (2026-10-29):
- * - Las metas de ventas y ganancia son por mes. Para otro período se reparten por día (un día de un mes de 30 días es
- *   1/30 de la meta); "Este mes" se compara con la meta del mes entero y dice si se va al ritmo.
+ * - Las metas del negocio (ventas, ganancia y efectividad) son de cada mes del calendario: las de octubre, las de
+ *   noviembre… Un mes nuevo empieza sin metas (el Dashboard avisa) y se pueden dejar listas las del mes siguiente. Para
+ *   otro período se reparten por día con la meta del mes de cada día (un día de un mes de 30 días es 1/30); si algún mes
+ *   del período no tiene meta, no se muestra. "Este mes" se compara con la meta del mes entero y dice si se va al ritmo.
+ * - Las de vendedoras y agencias y los límites de las alertas no son por mes: quedan hasta que el dueño los cambie.
  * - Vendedoras: efectividad mínima. Agencias: efectividad mínima, tiempo de entrega máximo y rechazos en puerta máximo.
  *   Una meta para todas y, si hace falta, excepciones por persona.
  * - Cada alerta tiene dos límites: amarillo y rojo. En las metas de personas el amarillo es la meta; en una excepción,
@@ -20,6 +23,8 @@ final class GoalRules
 {
     /** Dónde se guardan (la tabla settings, la misma de la tasa del dólar). */
     public const SETTING = 'owner_panel_goals';
+
+    public const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 
     /** Metas del negocio. "card": la tarjeta del panel que se compara con la meta. */
     public const BUSINESS = [
@@ -128,14 +133,22 @@ final class GoalRules
         ],
     ];
 
-    /** Lo guardado, completo y limpio: lo que falta queda sin meta (null), las alertas prendidas. */
+    /**
+     * Lo guardado, completo y limpio: las metas del negocio de cada mes ("2026-10" => ventas, ganancia, efectividad; los
+     * meses sin ninguna meta no se guardan), las de personas y los límites (lo que falta queda sin meta, null; las alertas,
+     * prendidas).
+     */
     public static function normalize(mixed $raw): array
     {
         $raw = is_array($raw) ? $raw : [];
-        $out = ['business' => [], 'team' => [], 'alerts' => []];
-        foreach (array_keys(self::BUSINESS) as $key) {
-            $out['business'][$key] = self::number($raw['business'][$key] ?? null);
+        $out = ['months' => [], 'team' => [], 'alerts' => []];
+        foreach (is_array($raw['months'] ?? null) ? $raw['months'] : [] as $month => $business) {
+            $business = self::business($business);
+            if (preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', (string) $month) && array_filter($business, fn ($v) => $v !== null) !== []) {
+                $out['months'][(string) $month] = $business;
+            }
         }
+        ksort($out['months']);
         foreach (array_keys(self::TEAM) as $key) {
             $g = is_array($raw['team'][$key] ?? null) ? $raw['team'][$key] : [];
             $people = [];
@@ -175,9 +188,11 @@ final class GoalRules
     public static function problems(array $config): array
     {
         $out = [];
-        foreach (self::BUSINESS as $key => $def) {
-            if ($msg = self::outOfRange($config['business'][$key], $def['format'])) {
-                $out["business.{$key}"] = $msg;
+        foreach ($config['months'] as $month => $business) {
+            foreach (self::BUSINESS as $key => $def) {
+                if ($msg = self::outOfRange($business[$key], $def['format'])) {
+                    $out["months.{$month}.{$key}"] = $msg;
+                }
             }
         }
         foreach (self::TEAM as $key => $def) {
@@ -259,18 +274,77 @@ final class GoalRules
         return ['yellow' => $own, 'red' => $goal['red'] !== null ? round($own - ($goal['value'] - $goal['red']), 2) : null, 'own' => true];
     }
 
-    /** La meta de un período a partir de la del mes: los meses enteros, la del mes; si no, se suma día por día. */
-    public static function forPeriod(float $monthly, Period $period): float
+    /** Una meta del negocio de cada mes que la tiene: "2026-10" => 6000. */
+    public static function byMonth(array $config, string $key): array
+    {
+        return array_filter(array_map(fn ($b) => $b[$key], $config['months']), fn ($v) => $v !== null);
+    }
+
+    /** "2026-10" => "octubre". */
+    public static function monthName(string $month): string
+    {
+        return self::MONTHS[(int) substr($month, 5, 2) - 1];
+    }
+
+    /** El mes de una fecha: "2026-10". */
+    public static function monthOf(CarbonImmutable|string $date): string
+    {
+        return substr(is_string($date) ? $date : $date->toDateString(), 0, 7);
+    }
+
+    /** Los meses cuyas metas se pueden poner: el que corre y el siguiente (para dejarlas listas). */
+    public static function editableMonths(CarbonImmutable $now): array
+    {
+        return [self::monthOf($now), self::monthOf($now->startOfMonth()->addMonth())];
+    }
+
+    /**
+     * La meta de un período en dinero, con la de cada mes: los meses enteros, la de su mes; si no, se suma día por día
+     * con la meta del mes de cada día. null si algún mes del período no tiene meta.
+     *
+     * @param array<string, float> $byMonth "2026-10" => meta del mes
+     */
+    public static function forPeriod(array $byMonth, Period $period): ?float
     {
         if (in_array($period->preset, ['month', 'last_month'], true)) {
-            return round($monthly, 2);
+            $goal = $byMonth[self::monthOf($period->start)] ?? null;
+
+            return $goal !== null ? round($goal, 2) : null;
         }
         $sum = 0.0;
         foreach ($period->dates() as $date) {
-            $sum += $monthly / (int) date('t', strtotime($date));
+            $goal = $byMonth[self::monthOf($date)] ?? null;
+            if ($goal === null) {
+                return null;
+            }
+            $sum += $goal / (int) date('t', strtotime($date));
         }
 
         return round($sum, 2);
+    }
+
+    /** La meta de un % en un período: la de su mes, o el promedio de cada día si cruza meses. null si falta un mes. */
+    public static function averageForPeriod(array $byMonth, Period $period): ?float
+    {
+        $dates = in_array($period->preset, ['month', 'last_month'], true) ? [$period->fromDate()] : $period->dates();
+        $sum = 0.0;
+        foreach ($dates as $date) {
+            $goal = $byMonth[self::monthOf($date)] ?? null;
+            if ($goal === null) {
+                return null;
+            }
+            $sum += $goal;
+        }
+
+        return round($sum / count($dates), 2);
+    }
+
+    /** "octubre" o "octubre y noviembre": los meses de las metas de un período. */
+    private static function monthsOf(Period $period): string
+    {
+        $names = array_values(array_unique(array_map(fn ($d) => self::monthName(self::monthOf($d)), $period->dates())));
+
+        return count($names) > 1 ? implode(', ', array_slice($names, 0, -1)) . ' y ' . end($names) : $names[0];
     }
 
     /**
@@ -280,20 +354,25 @@ final class GoalRules
      * status: met (cumplida), on_track (va bien), behind (va atrasada, todavía puede llegar), below (no llegó) o
      * neutral (todavía no se puede saber).
      */
-    public static function moneyGoal(string $key, float $monthly, ?float $value, ?float $pending, Period $period, CarbonImmutable $now, bool $maturing): array
+    public static function moneyGoal(string $key, array $byMonth, ?float $value, ?float $pending, Period $period, CarbonImmutable $now, bool $maturing): ?array
     {
-        $goal = self::forPeriod($monthly, $period);
+        $goal = self::forPeriod($byMonth, $period);
+        if ($goal === null) {
+            return null;
+        }
         $value = (float) ($value ?? 0);
         $pending = $pending !== null ? max(0.0, $pending) : null;
         $reach = $value + ($pending ?? 0.0);
         $whole = in_array($period->preset, ['month', 'last_month'], true);
+        $months = self::monthsOf($period);
         $scope = match ($period->preset) {
-            'month', 'last_month' => 'del mes',
+            'month', 'last_month' => 'de ' . $months,
             'today' => 'de hoy',
             'yesterday' => 'de ayer',
             default => 'de estos días',
         };
-        $lines = ['Meta ' . $scope . ': ' . Card::money($goal) . ($whole ? '' : ' (tu meta del mes repartida por día)') . '.'];
+        $spread = str_contains($months, ' y ') ? " (tus metas de {$months} repartidas por día)" : " (tu meta de {$months} repartida por día)";
+        $lines = ['Meta ' . $scope . ': ' . Card::money($goal) . ($whole ? '' : $spread) . '.'];
         $pace = null;
 
         if ($goal <= 0 || $value >= $goal) {
@@ -460,7 +539,7 @@ final class GoalRules
         ];
     }
 
-    /** Lo guardado, para la pantalla: las excepciones como lista. */
+    /** Lo guardado, para la pantalla: las excepciones como lista (los meses quedan "2026-10" => metas). */
     public static function forScreen(array $config): array
     {
         foreach ($config['team'] as &$g) {
@@ -502,6 +581,18 @@ final class GoalRules
     private static function worse(float $value, float $limit, string $better): bool
     {
         return $better === 'lower' ? $value > $limit : $value < $limit;
+    }
+
+    /** Las metas del negocio de un mes, limpias: ventas, ganancia y efectividad (null = sin meta). */
+    private static function business(mixed $raw): array
+    {
+        $raw = is_array($raw) ? $raw : [];
+        $out = [];
+        foreach (array_keys(self::BUSINESS) as $key) {
+            $out[$key] = self::number($raw[$key] ?? null);
+        }
+
+        return $out;
     }
 
     private static function number(mixed $v): ?float

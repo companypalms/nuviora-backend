@@ -112,11 +112,14 @@ class OwnerPanelController extends Controller
         return response()->json($panel->goals());
     }
 
-    /** Guarda las metas y los límites (todo junto; una casilla vacía es "sin meta"). */
+    /**
+     * Guarda las metas y los límites (todo junto; una casilla vacía es "sin meta"). Las del negocio, del mes que corre y
+     * del siguiente ("months": "2026-11" => metas).
+     */
     public function saveGoals(Request $request, GoalSettings $settings, OwnerPanel $panel): JsonResponse
     {
-        $data = $request->validate(['business' => 'present|array', 'team' => 'present|array', 'alerts' => 'present|array']);
-        $settings->save($data, $request->user());
+        $data = $request->validate(['months' => 'present|array', 'team' => 'present|array', 'alerts' => 'present|array']);
+        $settings->save($data, $request->user(), CarbonImmutable::now());
 
         return response()->json($panel->goals());
     }

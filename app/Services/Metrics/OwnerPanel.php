@@ -35,9 +35,6 @@ class OwnerPanel
     /** Las alertas se recalculan como mucho cada 2 minutos (lo mismo que se actualiza el panel solo). */
     private const ALERTS_CACHE_SECONDS = 120;
 
-    /** Los meses, para "Tus metas de octubre". */
-    private const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
-
     /** Las referencias de "Metas y límites" (tus números de los últimos 30 días): 10 minutos. */
     private const REFERENCES_CACHE_SECONDS = 600;
 
@@ -143,7 +140,7 @@ class OwnerPanel
         // Las metas del negocio (sin filtros): lo que todavía pueden vender los pedidos en camino
         $config = $this->goals->get();
         $pending = [];
-        if (!$filters->any() && $config['business']['sales'] !== null) {
+        if (!$filters->any() && GoalRules::byMonth($config, 'sales') !== []) {
             [$estimate] = $this->estimate($filters, $now, $maturityDays);
             $pending['sales'] = $estimate['rate'] !== null && $estimate['ticket'] !== null
                 ? round($current['totals'][SalesRules::OPEN] * $estimate['rate'] * $estimate['ticket'], 2) : null;
@@ -297,19 +294,25 @@ class OwnerPanel
     }
 
     /**
-     * Las metas del negocio de este mes, para la franja de arriba del Dashboard del Admin: las mismas tarjetas con su barra
-     * que Ventas y Dinero con "Este mes" y sin filtros. Sin metas del negocio puestas, "configured" en false.
+     * Las metas del negocio del mes que corre, para la franja de arriba del Dashboard del Admin: las mismas tarjetas con su
+     * barra que Ventas y Dinero con "Este mes" y sin filtros. Si todavía no puso las metas de este mes, "configured" en
+     * false y, de referencia, sus números del mes anterior (el Dashboard es el recordatorio hasta que exista el calendario).
      */
     public function goalsSummary(): array
     {
         $config = $this->goals->get();
         $now = CarbonImmutable::now();
-        $base = ['month' => self::MONTHS[(int) $now->format('n') - 1], 'updated_at' => $now->format('H:i')];
-        if (array_filter($config['business'], fn ($v) => $v !== null) === []) {
-            return $base + ['configured' => false, 'cards' => []];
+        $month = GoalRules::monthOf($now);
+        $business = $config['months'][$month] ?? null;
+        $base = ['month' => GoalRules::monthName($month), 'updated_at' => $now->format('H:i')];
+        if ($business === null) {
+            $reference = $this->references($month, $now);
+
+            return $base + ['configured' => false, 'cards' => [],
+                'reference' => ['label' => $reference['label'], 'business' => $reference['business']]];
         }
 
-        return Cache::remember('owner_panel_goals_summary:' . md5(json_encode($config['business'])), self::ALERTS_CACHE_SECONDS, function () use ($now, $base) {
+        return Cache::remember("owner_panel_goals_summary:{$month}:" . md5(json_encode($business)), self::ALERTS_CACHE_SECONDS, function () use ($now, $base) {
             $month = Period::fromPreset('month', null, null, $now);
             $all = new Filters();
             $cards = array_merge($this->sales($month, $all)['cards'], $this->money($month, $all)['cards']);
@@ -326,17 +329,27 @@ class OwnerPanel
         });
     }
 
-    /** Lo que necesita la ventana "Metas y límites": lo guardado, qué es cada cosa, las personas y tus números de referencia. */
+    /**
+     * Lo que necesita la ventana "Metas y límites": lo guardado, qué es cada cosa, las personas, los meses cuyas metas se
+     * pueden poner (el que corre y el siguiente) y, para cada uno, tus números del mes anterior como referencia.
+     */
     public function goals(): array
     {
+        $now = CarbonImmutable::now();
         $names = fn (string $role) => collect($this->team->people(TeamCatalog::find($role)->systemRoles()))
             ->map(fn ($p, $id) => ['id' => (int) $id, 'name' => $p['name']])->sortBy('name', SORT_NATURAL | SORT_FLAG_CASE)->values()->all();
+        $months = [];
+        foreach (GoalRules::editableMonths($now) as $k => $month) {
+            $months[] = ['key' => $month, 'name' => GoalRules::monthName($month), 'current' => $k === 0,
+                'previous' => GoalRules::monthOf(CarbonImmutable::parse("{$month}-01")->subMonth())];
+        }
 
         return [
             'config' => GoalRules::forScreen($this->goals->get()),
             'catalog' => GoalRules::catalog(),
             'people' => ['sellers' => $names('sellers'), 'agencies' => $names('agencies')],
-            'references' => Cache::remember('owner_panel_goal_references', self::REFERENCES_CACHE_SECONDS, fn () => $this->references(CarbonImmutable::now())),
+            'months' => $months,
+            'references' => array_combine(array_column($months, 'key'), array_map(fn ($m) => $this->references($m['key'], $now), $months)),
         ];
     }
 
@@ -398,64 +411,72 @@ class OwnerPanel
     }
 
     /**
-     * Tus números de referencia para poner las metas: los 30 días que ya terminaron de entregarse, y el dinero de ahora
-     * mismo. Cada uno es un texto corto que se ve debajo de su casilla.
+     * Tus números de referencia para poner las metas de un mes: los del mes anterior completo (para las de noviembre, los
+     * de octubre), y el dinero de ahora mismo. Si ese mes todavía corre o sus últimos días se siguen entregando, se avisa.
+     * Cada uno es un texto corto que se ve debajo de su casilla. Se guardan unos minutos.
      */
-    private function references(CarbonImmutable $now): array
+    private function references(string $month, CarbonImmutable $now): array
     {
-        $maturityDays = (int) Setting::get(OrderEconomics::SETTING_MATURITY_LAG, 4);
-        $end = $now->startOfDay()->subDays($maturityDays + 1);
-        $w = Period::fromPreset('custom', $end->subDays(self::ESTIMATE_DAYS - 1)->toDateString(), $end->toDateString(), $now);
-        $all = new Filters();
-        $facts = $this->orders->facts($w, $all)->all();
-        $sales = SalesRules::compute($facts, $w)['totals'];
-        $money = MoneyRules::compute($facts, $w, $all, $this->money->adSpend($w), $this->money->expenses(Buckets::ranges($w, Buckets::granularity($w))))['totals'];
-        $losses = LossRules::compute($this->orders->losses($w, $all), $w)['totals'];
-        $team = [];
-        foreach (['sellers', 'agencies'] as $key) {
-            $role = TeamCatalog::find($key);
-            $team[$key] = $role->compute($role->facts($this->team, $w, $all), $w)['totals']['values'];
-        }
-        $top = function (array $holders): string {
-            usort($holders, fn ($x, $y) => $y['usd'] <=> $x['usd']);
-            $first = $holders[0] ?? null;
+        return Cache::remember("owner_panel_goal_references:{$month}", self::REFERENCES_CACHE_SECONDS, function () use ($month, $now) {
+            $maturityDays = (int) Setting::get(OrderEconomics::SETTING_MATURITY_LAG, 4);
+            $start = CarbonImmutable::parse("{$month}-01", $now->getTimezone())->subMonth();
+            $w = Period::fromPreset('custom', $start->toDateString(), $start->endOfMonth()->toDateString(), $now);
+            $name = GoalRules::monthName(GoalRules::monthOf($start));
+            $all = new Filters();
+            $facts = $this->orders->facts($w, $all)->all();
+            $sales = SalesRules::compute($facts, $w)['totals'];
+            $money = MoneyRules::compute($facts, $w, $all, $this->money->adSpend($w), $this->money->expenses(Buckets::ranges($w, Buckets::granularity($w))))['totals'];
+            $losses = LossRules::compute($this->orders->losses($w, $all), $w)['totals'];
+            $team = [];
+            foreach (['sellers', 'agencies'] as $key) {
+                $role = TeamCatalog::find($key);
+                $team[$key] = $role->compute($role->facts($this->team, $w, $all), $w)['totals']['values'];
+            }
+            $top = function (array $holders): string {
+                usort($holders, fn ($x, $y) => $y['usd'] <=> $x['usd']);
+                $first = $holders[0] ?? null;
 
-            return $first && $first['usd'] > 0.005
-                ? 'Ahora, quien más tiene: ' . GoalRules::fmt($first['usd'], 'money') . " ({$first['name']})."
-                : 'Ahora nadie tiene dinero pendiente.';
-        };
-        $riders = $this->team->people(TeamCatalog::find('riders')->systemRoles());
-        $riderCash = [];
-        foreach ($this->team->riderCash(array_keys($riders)) as $id => $usd) {
-            $riderCash[] = ['name' => $riders[$id]['name'], 'usd' => $usd];
-        }
-        $together = fn (?float $v, string $format) => 'Todas juntas: ' . GoalRules::fmt($v, $format) . '.';
+                return $first && $first['usd'] > 0.005
+                    ? 'Ahora, quien más tiene: ' . GoalRules::fmt($first['usd'], 'money') . " ({$first['name']})."
+                    : 'Ahora nadie tiene dinero pendiente.';
+            };
+            $riders = $this->team->people(TeamCatalog::find('riders')->systemRoles());
+            $riderCash = [];
+            foreach ($this->team->riderCash(array_keys($riders)) as $id => $usd) {
+                $riderCash[] = ['name' => $riders[$id]['name'], 'usd' => $usd];
+            }
+            $together = fn (?float $v, string $format) => "En {$name}, todas juntas: " . GoalRules::fmt($v, $format) . '.';
+            $state = $w->end < $start->endOfMonth() ? " (va hasta hoy: {$name} todavía no termina)"
+                : ($w->isMaturing($now, $maturityDays) ? ' (sus últimos días todavía se están entregando: pueden subir un poco)' : ' (mes completo)');
 
-        return [
-            'label' => 'Tus números de los 30 días que ya terminaron de entregarse (' . self::range($w) . ').',
-            'business' => [
-                'sales' => 'En esos 30 días vendiste ' . GoalRules::fmt($sales['revenue'], 'money') . '.',
-                'profit' => 'En esos 30 días ganaste ' . GoalRules::fmt($money['profit'], 'money') . ' (después de publicidad y gastos).',
-                'effectiveness' => 'Tu efectividad general: ' . GoalRules::fmt($sales['effectiveness'], 'percent') . '.',
-            ],
-            'team' => [
-                'sellers.effectiveness' => $together($team['sellers']['effectiveness'] ?? null, 'percent'),
-                'agencies.effectiveness' => $together($team['agencies']['effectiveness'] ?? null, 'percent'),
-                'agencies.delivery_time' => $together($team['agencies']['delivery_time'] ?? null, 'hours'),
-                'agencies.rejection_rate' => $together($team['agencies']['rejection_rate'] ?? null, 'percent'),
-            ],
-            'alerts' => [
-                'agency_cash' => $top($this->agencyCash()),
-                'rider_cash' => $top($riderCash),
-                'ad_cost' => 'Tu costo por venta: ' . GoalRules::fmt($money['cost_per_sale'], 'money') . '.',
-                'cancellations' => 'En promedio se cancela el '
-                    . GoalRules::fmt($losses['created'] > 0 ? $losses['cancelled'] * 100 / $losses['created'] : null, 'percent') . ' de los pedidos.',
-            ],
-        ];
+            return [
+                'month' => GoalRules::monthOf($start),
+                'label' => "Tus números de {$name}{$state}.",
+                'business' => [
+                    'sales' => "En {$name} vendiste " . GoalRules::fmt($sales['revenue'], 'money') . '.',
+                    'profit' => "En {$name} ganaste " . GoalRules::fmt($money['profit'], 'money') . ' (después de publicidad y gastos).',
+                    'effectiveness' => "Tu efectividad general en {$name}: " . GoalRules::fmt($sales['effectiveness'], 'percent') . '.',
+                ],
+                'team' => [
+                    'sellers.effectiveness' => $together($team['sellers']['effectiveness'] ?? null, 'percent'),
+                    'agencies.effectiveness' => $together($team['agencies']['effectiveness'] ?? null, 'percent'),
+                    'agencies.delivery_time' => $together($team['agencies']['delivery_time'] ?? null, 'hours'),
+                    'agencies.rejection_rate' => $together($team['agencies']['rejection_rate'] ?? null, 'percent'),
+                ],
+                'alerts' => [
+                    'agency_cash' => $top($this->agencyCash()),
+                    'rider_cash' => $top($riderCash),
+                    'ad_cost' => "Tu costo por venta en {$name}: " . GoalRules::fmt($money['cost_per_sale'], 'money') . '.',
+                    'cancellations' => "En {$name} se canceló el "
+                        . GoalRules::fmt($losses['created'] > 0 ? $losses['cancelled'] * 100 / $losses['created'] : null, 'percent') . ' de los pedidos.',
+                ],
+            ];
+        });
     }
 
     /**
-     * Las metas del negocio sobre las tarjetas de Ventas y Dinero. Solo sin filtros: son del negocio entero.
+     * Las metas del negocio sobre las tarjetas de Ventas y Dinero, con la meta del mes de cada día del período (si a algún
+     * mes le falta, esa tarjeta no lleva meta). Solo sin filtros: son del negocio entero.
      *
      * @param array<string, ?float> $pending lo que todavía pueden sumar los pedidos en camino, por meta
      */
@@ -466,13 +487,20 @@ class OwnerPanel
         }
         foreach ($cards as &$card) {
             foreach (GoalRules::BUSINESS as $key => $def) {
-                $goal = $config['business'][$key];
-                if ($goal === null || $def['card'] !== $card['key']) {
+                if ($def['card'] !== $card['key']) {
                     continue;
                 }
-                $card['goal'] = !empty($def['monthly'])
-                    ? GoalRules::moneyGoal($key, $goal, $card['value'], $pending[$key] ?? null, $period, $now, $maturing)
-                    : GoalRules::limitGoal($def['label'], $def['format'], $def['better'], $goal, null, $card['value'], (bool) $card['neutral']);
+                $byMonth = GoalRules::byMonth($config, $key);
+                if (!empty($def['monthly'])) {
+                    $goal = GoalRules::moneyGoal($key, $byMonth, $card['value'], $pending[$key] ?? null, $period, $now, $maturing);
+                } else {
+                    $average = GoalRules::averageForPeriod($byMonth, $period);
+                    $goal = $average === null ? null
+                        : GoalRules::limitGoal($def['label'], $def['format'], $def['better'], $average, null, $card['value'], (bool) $card['neutral']);
+                }
+                if ($goal !== null) {
+                    $card['goal'] = $goal;
+                }
             }
         }
         unset($card);

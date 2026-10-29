@@ -8,14 +8,31 @@ use Carbon\CarbonImmutable;
 
 $now = fn (string $at = '2026-10-16 00:00:00') => CarbonImmutable::parse($at, 'America/Caracas');
 $config = fn (array $raw = []) => GoalRules::normalize($raw);
+// Meta de octubre (31 días) y de noviembre (30 días)
+$oct = ['2026-10' => 31000.0];
 
 describe('Metas › lo guardado', function () use ($config) {
     it('completa lo que falta: sin meta, con las alertas prendidas', function () use ($config) {
         $c = $config();
-        expect($c['business'])->toBe(['sales' => null, 'profit' => null, 'effectiveness' => null]);
+        expect($c['months'])->toBe([]);
         expect($c['team']['sellers.effectiveness'])->toBe(['value' => null, 'red' => null, 'alert' => true, 'people' => []]);
         expect($c['alerts']['agency_cash'])->toBe(['yellow' => null, 'red' => null, 'on' => true]);
         expect(GoalRules::configured($c))->toBeFalse();
+    });
+
+    it('las metas del negocio son de cada mes: los meses sin ninguna meta no se guardan', function () use ($config) {
+        $c = $config(['months' => [
+            '2026-11' => ['sales' => '9000', 'effectiveness' => 62],
+            '2026-10' => ['sales' => 6000, 'profit' => 1500],
+            '2026-12' => ['sales' => '', 'profit' => null],   // vacío: no se guarda
+            'octubre' => ['sales' => 1],                     // no es un mes
+        ]]);
+        expect(array_keys($c['months']))->toBe(['2026-10', '2026-11']);
+        expect($c['months']['2026-11'])->toBe(['sales' => 9000.0, 'profit' => null, 'effectiveness' => 62.0]);
+        expect(GoalRules::byMonth($c, 'sales'))->toBe(['2026-10' => 6000.0, '2026-11' => 9000.0]);
+        expect(GoalRules::byMonth($c, 'profit'))->toBe(['2026-10' => 1500.0]);
+        expect(GoalRules::monthName('2026-11'))->toBe('noviembre');
+        expect(GoalRules::editableMonths(CarbonImmutable::parse('2026-12-31 23:00')))->toBe(['2026-12', '2027-01']);
     });
 
     it('acepta las excepciones como lista (de la pantalla) o como id => meta (lo guardado)', function () use ($config) {
@@ -28,7 +45,7 @@ describe('Metas › lo guardado', function () use ($config) {
 
     it('avisa lo que no tiene sentido', function () use ($config) {
         $p = GoalRules::problems($config([
-            'business' => ['effectiveness' => 120, 'sales' => -5],
+            'months' => ['2026-10' => ['effectiveness' => 120, 'sales' => -5]],
             'team' => [
                 'sellers.effectiveness' => ['value' => 55, 'red' => 60],      // el rojo de un mínimo va más abajo
                 'agencies.delivery_time' => ['value' => 24, 'red' => 20],     // el rojo de un máximo va más arriba
@@ -37,7 +54,7 @@ describe('Metas › lo guardado', function () use ($config) {
             'alerts' => ['agency_cash' => ['yellow' => 500, 'red' => 300], 'ad_cost' => ['red' => 9]],
         ]));
         expect(array_keys($p))->toBe([
-            'business.sales', 'business.effectiveness', 'team.sellers.effectiveness.red', 'team.agencies.delivery_time.red',
+            'months.2026-10.sales', 'months.2026-10.effectiveness', 'team.sellers.effectiveness.red', 'team.agencies.delivery_time.red',
             'team.agencies.rejection_rate.value', 'alerts.agency_cash.red', 'alerts.ad_cost.yellow',
         ]);
         expect(GoalRules::problems($config(['team' => ['sellers.effectiveness' => ['value' => 55, 'red' => 45]]])))->toBe([]);
@@ -71,51 +88,70 @@ describe('Metas › amarillo y rojo', function () {
     });
 });
 
-describe('Metas › reparto del mes', function () use ($now) {
-    it('los meses enteros tienen la meta del mes; los demás períodos, la suma de cada día', function () use ($now) {
-        expect(GoalRules::forPeriod(31000, Period::fromPreset('month', null, null, $now())))->toBe(31000.0);
-        expect(GoalRules::forPeriod(31000, Period::fromPreset('last_month', null, null, $now())))->toBe(31000.0);
+describe('Metas › reparto del mes', function () use ($now, $oct) {
+    it('los meses enteros tienen la meta de su mes; los demás períodos, la suma de cada día', function () use ($now, $oct) {
+        expect(GoalRules::forPeriod($oct, Period::fromPreset('month', null, null, $now())))->toBe(31000.0);
+        // "Mes pasado" el 16/11 es octubre: su propia meta
+        expect(GoalRules::forPeriod($oct, Period::fromPreset('last_month', null, null, $now('2026-11-16 10:00'))))->toBe(31000.0);
         // 7 días de octubre (31 días): 7/31 de la meta
-        expect(GoalRules::forPeriod(31000, Period::fromPreset('7d', null, null, $now('2026-10-16 10:00'))))->toBe(7000.0);
-        expect(GoalRules::forPeriod(31000, Period::fromPreset('today', null, null, $now('2026-10-16 10:00'))))->toBe(1000.0);
-        // Del 30/10 al 02/11: 2 días de octubre (1/31 cada uno) y 2 de noviembre (1/30 cada uno)
+        expect(GoalRules::forPeriod($oct, Period::fromPreset('7d', null, null, $now('2026-10-16 10:00'))))->toBe(7000.0);
+        expect(GoalRules::forPeriod($oct, Period::fromPreset('today', null, null, $now('2026-10-16 10:00'))))->toBe(1000.0);
+    });
+
+    it('un período que cruza dos meses usa la meta del mes de cada día; si a un mes le falta, no hay meta', function () use ($now) {
+        // Del 30/10 al 02/11: 2 días de octubre (1/31 de su meta cada uno) y 2 de noviembre (1/30 de la suya)
         $p = Period::fromPreset('custom', '2026-10-30', '2026-11-02', $now('2026-11-05 10:00'));
-        expect(GoalRules::forPeriod(9300, $p))->toBe(round(2 * 9300 / 31 + 2 * 9300 / 30, 2));
+        expect(GoalRules::forPeriod(['2026-10' => 9300.0, '2026-11' => 6000.0], $p))->toBe(round(2 * 9300 / 31 + 2 * 6000 / 30, 2));
+        expect(GoalRules::forPeriod(['2026-10' => 9300.0], $p))->toBeNull();
+        // Un mes nuevo sin metas: no hay meta
+        expect(GoalRules::forPeriod(['2026-10' => 9300.0], Period::fromPreset('month', null, null, $now('2026-11-05 10:00'))))->toBeNull();
+        // Un %: el promedio de cada día (2 días con 60 % y 2 con 70 %)
+        expect(GoalRules::averageForPeriod(['2026-10' => 60.0, '2026-11' => 70.0], $p))->toBe(65.0);
+        expect(GoalRules::averageForPeriod(['2026-10' => 60.0], Period::fromPreset('month', null, null, $now())))->toBe(60.0);
+        expect(GoalRules::averageForPeriod(['2026-10' => 60.0], $p))->toBeNull();
     });
 });
 
-describe('Metas › tarjetas de ventas y ganancia', function () use ($now) {
-    it('en "Este mes" dice cuánto falta y si va al ritmo, contando lo que está en camino', function () use ($now) {
+describe('Metas › tarjetas de ventas y ganancia', function () use ($now, $oct) {
+    it('en "Este mes" dice cuánto falta y si va al ritmo, contando lo que está en camino', function () use ($now, $oct) {
         // El 16 a las 00:00 pasaron 15 de los 31 días de octubre
         $p = Period::fromPreset('month', null, null, $now());
-        $g = GoalRules::moneyGoal('sales', 31000, 10000, 2000, $p, $now(), true);
+        $g = GoalRules::moneyGoal('sales', $oct, 10000, 2000, $p, $now(), true);
         expect($g['value'])->toBe(31000.0);
         expect($g['progress'])->toBe(32.3);
         expect($g['status'])->toBe('behind');
         expect($g['pace']['projection'])->toBe(24800.0); // 12.000 ÷ 15/31
-        expect($g['text'])->toContain('faltan $21.000,00')->toContain('terminarías el mes cerca de $24.800,00');
+        expect($g['text'])->toStartWith('Meta de octubre: $31.000,00.')->toContain('faltan $21.000,00')->toContain('terminarías el mes cerca de $24.800,00');
 
-        $ok = GoalRules::moneyGoal('sales', 31000, 14000, 2000, $p, $now(), true);
+        $ok = GoalRules::moneyGoal('sales', $oct, 14000, 2000, $p, $now(), true);
         expect($ok['status'])->toBe('on_track');
         expect($ok['text'])->toContain('vas bien');
     });
 
-    it('cumplida en cuanto llega; muy pronto en el mes, sin ritmo; hoy, sin color', function () use ($now) {
+    it('cumplida en cuanto llega; muy pronto en el mes, sin ritmo; hoy, sin color; sin meta del mes, nada', function () use ($now, $oct) {
         $month = Period::fromPreset('month', null, null, $now('2026-10-02 10:00'));
-        expect(GoalRules::moneyGoal('sales', 31000, 31000, 0, Period::fromPreset('month', null, null, $now()), $now(), true)['status'])->toBe('met');
-        expect(GoalRules::moneyGoal('sales', 31000, 500, 0, $month, $now('2026-10-02 10:00'), true)['status'])->toBe('neutral');
+        expect(GoalRules::moneyGoal('sales', $oct, 31000, 0, Period::fromPreset('month', null, null, $now()), $now(), true)['status'])->toBe('met');
+        expect(GoalRules::moneyGoal('sales', $oct, 500, 0, $month, $now('2026-10-02 10:00'), true)['status'])->toBe('neutral');
         $today = Period::fromPreset('today', null, null, $now('2026-10-16 10:00'));
-        expect(GoalRules::moneyGoal('profit', 31000, 200, 100, $today, $now('2026-10-16 10:00'), true)['status'])->toBe('neutral');
+        expect(GoalRules::moneyGoal('profit', $oct, 200, 100, $today, $now('2026-10-16 10:00'), true)['status'])->toBe('neutral');
+        expect(GoalRules::moneyGoal('sales', $oct, 500, 0, Period::fromPreset('month', null, null, $now('2026-11-10 10:00')), $now('2026-11-10 10:00'), true))->toBeNull();
     });
 
-    it('un período que se sigue entregando va bien si con lo que está en camino llega; uno terminado, no llegó', function () use ($now) {
+    it('un período que se sigue entregando va bien si con lo que está en camino llega; uno terminado, no llegó', function () use ($now, $oct) {
         $yesterday = Period::fromPreset('yesterday', null, null, $now('2026-10-16 10:00'));
-        expect(GoalRules::moneyGoal('sales', 31000, 700, 400, $yesterday, $now('2026-10-16 10:00'), true)['status'])->toBe('on_track');
-        expect(GoalRules::moneyGoal('sales', 31000, 500, 100, $yesterday, $now('2026-10-16 10:00'), true)['status'])->toBe('behind');
+        expect(GoalRules::moneyGoal('sales', $oct, 700, 400, $yesterday, $now('2026-10-16 10:00'), true)['status'])->toBe('on_track');
+        $behind = GoalRules::moneyGoal('sales', $oct, 500, 100, $yesterday, $now('2026-10-16 10:00'), true);
+        expect($behind['status'])->toBe('behind');
+        expect($behind['text'])->toStartWith('Meta de ayer: $1.000,00 (tu meta de octubre repartida por día).');
+        // "Mes pasado" en noviembre: octubre con su propia meta, no la de noviembre
         $last = Period::fromPreset('last_month', null, null, $now('2026-11-20 10:00'));
-        $g = GoalRules::moneyGoal('profit', 6000, 4500, null, $last, $now('2026-11-20 10:00'), false);
+        $g = GoalRules::moneyGoal('profit', ['2026-10' => 6000.0, '2026-11' => 9000.0], 4500, null, $last, $now('2026-11-20 10:00'), false);
         expect($g['status'])->toBe('below');
-        expect($g['text'])->toContain('Meta del mes: $6.000,00.')->toContain('faltan $1.500,00');
+        expect($g['text'])->toContain('Meta de octubre: $6.000,00.')->toContain('faltan $1.500,00');
+        // Cruzando dos meses
+        $p = Period::fromPreset('custom', '2026-10-30', '2026-11-02', $now('2026-11-20 10:00'));
+        expect(GoalRules::moneyGoal('sales', ['2026-10' => 9300.0, '2026-11' => 6000.0], 100, null, $p, $now('2026-11-20 10:00'), false)['text'])
+            ->toContain('(tus metas de octubre y noviembre repartidas por día)');
     });
 
     it('un % o un tiempo: cumplida, cuánto le falta, y gris si todavía puede mejorar', function () {
