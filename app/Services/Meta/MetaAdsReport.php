@@ -35,7 +35,7 @@ class MetaAdsReport
         'last_week_mon_sun' => 'Semana pasada', 'this_month' => 'Este mes', 'last_month' => 'Mes pasado', 'custom' => 'Personalizado',
     ];
 
-    private const SUMS = 'SUM(d.spend) spend, SUM(d.impressions) impressions, SUM(d.reach) reach, SUM(d.clicks) clicks,
+    public const SUMS = 'SUM(d.spend) spend, SUM(d.impressions) impressions, SUM(d.reach) reach, SUM(d.clicks) clicks,
         SUM(d.link_clicks) link_clicks, SUM(d.unique_link_clicks) unique_link_clicks, SUM(d.outbound_clicks) outbound_clicks, SUM(d.landing_page_views) landing_page_views,
         SUM(d.purchases) purchases, SUM(d.purchase_value) purchase_value, SUM(d.video_plays) video_plays,
         SUM(d.video_3s_plays) video_3s_plays, SUM(d.thruplays) thruplays, SUM(d.video_p25) video_p25, SUM(d.video_p50) video_p50,
@@ -368,6 +368,17 @@ class MetaAdsReport
         return ['target_cpa' => $manual['target_cpa'], 'break_even_cpa' => $manual['break_even_cpa'], 'source' => 'manual', 'financial' => null];
     }
 
+    /** Etapa 5, paso 2: el CPA objetivo y el break-even que valen para un producto en una ciudad, los mismos de la pantalla. */
+    public function targetFor(?int $productId, ?int $cityId): array
+    {
+        if ($productId === null) {
+            return ['target_cpa' => null, 'break_even_cpa' => null, 'source' => null, 'financial' => null];
+        }
+        $manual = $this->targets([$productId], $this->to)[$productId] ?? ['target_cpa' => null, 'break_even_cpa' => null];
+
+        return $this->effectiveTarget($manual, $productId, $cityId);
+    }
+
     /** Target CPA y Break-even vigentes en una fecha, por producto (§34, §49). */
     public function targets(array $productIds, string $date): array
     {
@@ -419,6 +430,7 @@ class MetaAdsReport
         $reach = $this->presetReach($level, ['d.meta_id'], null);
         $productIds = $level === 'campaign' ? $entities->pluck('product_id') : $entities->pluck('campaign.product_id');
         $targets = $this->targets($productIds->filter()->unique()->values()->all(), $this->to);
+        $decisions = $this->decisions($productIds->filter()->unique()->values()->all());
 
         $rows = [];
         foreach ($entities as $e) {
@@ -461,6 +473,13 @@ class MetaAdsReport
             } else {
                 $row += ['campaign_meta_id' => $e->campaign_meta_id, 'campaign' => $e->campaign?->name];
             }
+            // Etapa 5, paso 2a: lo que dicen las reglas del dueño (3 días cerrados, sin importar el rango elegido)
+            $decided = $decisions[$campaign?->product_id] ?? null;
+            if ($level === 'campaign') {
+                $row['decision_notes'] = $decided['campaigns'][$e->meta_id]['notes'] ?? [];
+            } else {
+                $row['verdict'] = $decided[$level === 'adset' ? 'adsets' : 'ads'][$e->meta_id] ?? null;
+            }
             if ($level === 'adset') {
                 $row['attribution_spec'] = $e->attribution_spec;
                 $row += ['batch_code' => $e->batch_code, 'angle_code' => $e->angle_code, 'concept' => $e->concept, 'stage' => $e->stage];
@@ -486,6 +505,18 @@ class MetaAdsReport
         return $rows;
     }
 
+    /** Etapa 5, paso 2a: los veredictos de las reglas del dueño de los productos que se ven. Nunca rompen la pantalla. */
+    private function decisions(array $productIds): array
+    {
+        try {
+            return (new Decisions\MetaDecisions())->forProducts($productIds);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return [];
+        }
+    }
+
     /** §33 B: cada creativo con los totales de todos sus anuncios, de cualquier campaña, ad set o cuenta. */
     private function creativeRows(bool $compare): array
     {
@@ -501,6 +532,7 @@ class MetaAdsReport
         $creatives = MetaCreative::withCount('ads')->whereIn('id', $cur->keys()->merge($prev->keys())->unique())->get();
         $productOf = $this->creativeProducts($creatives->pluck('id')->all());
         $targets = $this->targets(collect($productOf)->filter()->unique()->values()->all(), $this->to);
+        $decisions = $this->decisions($creatives->pluck('product_id')->filter()->unique()->values()->all());
 
         $rows = [];
         foreach ($creatives as $cr) {
@@ -516,7 +548,9 @@ class MetaAdsReport
             $rows[] = $packed + [
                 'level' => 'creative', 'id' => $cr->id, 'tracking_id' => $cr->tracking_id, 'name' => $cr->displayName(),
                 'angle_code' => $cr->angle_code, 'batch_code' => $cr->batch_code, 'iteration_of' => $cr->iteration_of,
-                'type' => $cr->type, 'status' => $cr->status, 'ads' => $cr->ads_count,
+                'type' => $cr->type, 'status' => $cr->status, 'status_source' => $cr->status_source, 'ads' => $cr->ads_count,
+                'verdict' => $decisions[$cr->product_id]['creatives'][$cr->id]['verdict'] ?? null,
+                'funnel' => $decisions[$cr->product_id]['creatives'][$cr->id]['funnel'] ?? null,
                 'accounts' => (int) ($cur->get((string) $cr->id)['accounts'] ?? 0),
                 'target_cpa' => $target['target_cpa'], 'break_even_cpa' => $target['break_even_cpa'],
             ];

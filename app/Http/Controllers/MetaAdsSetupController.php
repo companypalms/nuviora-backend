@@ -11,6 +11,8 @@ use App\Models\MetaInsightDaily;
 use App\Models\Product;
 use App\Models\ProductAdTarget;
 use App\Services\Meta\CampaignSuggester;
+use App\Services\Meta\Decisions\DecisionSettings;
+use App\Services\Meta\Decisions\MetaDecisions;
 use App\Services\Meta\MetaCreativeLinker;
 use App\Services\Meta\MetaVisibility;
 use Illuminate\Http\Request;
@@ -113,15 +115,47 @@ class MetaAdsSetupController extends Controller
         return response()->json(['creative_tracking_id' => $ad->creative_tracking_id, 'tracking_id_source' => $ad->tracking_id_source]);
     }
 
-    /** §41: estados del creativo asignados a mano, nunca por IA. */
-    public function setCreativeStatus(Request $request, MetaCreative $creative)
+    /**
+     * El estado de un creativo puesto a mano (§41). Etapa 5, paso 2a: lo pone el sistema con las reglas del dueño; si el
+     * dueño elige uno, queda "a mano" y no se pisa; "auto" (o vacío) lo devuelve a automático y se calcula enseguida.
+     */
+    public function setCreativeStatus(Request $request, MetaCreative $creative, MetaDecisions $decisions)
     {
-        $data = $request->validate(['status' => ['nullable', 'string', Rule::in(MetaCreative::STATUSES)]]);
-        $creative->forceFill([
-            'status' => $data['status'] ?? null, 'status_changed_by' => Auth::id(), 'status_changed_at' => now(),
-        ])->save();
+        $data = $request->validate(['status' => ['nullable', 'string', Rule::in([...MetaCreative::STATUSES, 'auto'])]]);
+        $status = $data['status'] ?? 'auto';
+        if ($status === 'auto') {
+            $creative->forceFill(['status' => null, 'status_source' => 'auto', 'status_reason' => null])->save();
+            if ($creative->product_id) {
+                $decisions->applyStatuses([$creative->product_id], [$creative->id]);
+            }
+        } else {
+            $creative->forceFill([
+                'status' => $status, 'status_source' => 'manual', 'status_reason' => null,
+                'status_changed_by' => Auth::id(), 'status_changed_at' => now(),
+            ])->save();
+        }
+        $creative->refresh();
 
-        return response()->json(['status' => $creative->status]);
+        return response()->json(['status' => $creative->status, 'status_source' => $creative->status_source, 'status_reason' => $creative->status_reason]);
+    }
+
+    /** Etapa 5, paso 2: los números con los que deciden las reglas del dueño. */
+    public function decisionSettings(DecisionSettings $settings)
+    {
+        return response()->json(['values' => $settings->get(), 'defaults' => DecisionSettings::defaults(), 'limits' => DecisionSettings::FIELDS]);
+    }
+
+    public function updateDecisionSettings(Request $request, DecisionSettings $settings)
+    {
+        $rules = [];
+        foreach (DecisionSettings::FIELDS as $key => [, $min, $max]) {
+            $rules[$key] = "sometimes|numeric|min:{$min}|max:{$max}";
+        }
+        foreach (DecisionSettings::SWITCHES as $key => $default) {
+            $rules[$key] = 'sometimes|boolean';
+        }
+
+        return response()->json(['values' => $settings->save($request->validate($rules))]);
     }
 
     /** §39 y §40: las reglas de las señales, para cambiarlas sin tocar código. */

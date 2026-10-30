@@ -83,9 +83,21 @@ class MetaReportController extends Controller
                 ->first(['id', 'label', 'tracking_id'])
             : null;
 
+        // Paso 2a: lo que dicen las reglas del dueño (cada ciudad, entre ciudades, embudo y video)
+        $decision = null;
+        if ($creative->product_id) {
+            try {
+                $decision = (new \App\Services\Meta\Decisions\MetaDecisions())->forProducts([$creative->product_id])[$creative->product_id]['creatives'][$creative->id] ?? null;
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
         return $this->json([
+            'decision' => $decision,
             'creative' => ['id' => $creative->id, 'tracking_id' => $creative->tracking_id, 'label' => $creative->displayName(),
-                'type' => $creative->type, 'status' => $creative->status,
+                'type' => $creative->type, 'status' => $creative->status, 'status_source' => $creative->status_source,
+                'status_reason' => $creative->status_reason,
                 'status_changed_at' => $creative->status_changed_at?->toIso8601String(),
                 'product' => $creative->product ? ($creative->product->showable_name ?: $creative->product->title) : null,
                 'angle_code' => $creative->angle_code, 'angle' => $angle?->only(['code', 'name', 'hypothesis', 'status']),

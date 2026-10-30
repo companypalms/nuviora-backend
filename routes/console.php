@@ -66,6 +66,8 @@ try {
     Schedule::command('finance:cash --resync')->dailyAt('03:45')->withoutOverlapping(60);
     // CPA objetivo y break-even reales, cada día antes del análisis de campañas de las 07:00 (pedido del dueño, 2026-10-30)
     Schedule::command('finance:cpa')->dailyAt('06:30')->withoutOverlapping();
+    // Etapa 5, paso 2a: los estados automáticos de los creativos, con días cerrados y el CPA del día ya calculado
+    Schedule::command('meta:creative-statuses')->dailyAt('06:45')->withoutOverlapping();
     // Reportes (entrega 4): los automáticos (diario D-3, semanal, mensual, §53 a §55) se generan solos cuando les toca;
     // cada noche, después de recalcular las órdenes, los recientes sacan versión nueva si cambiaron sus cifras (§20, §21)
     Schedule::command('finance:reports')->everyTenMinutes()->withoutOverlapping(30)->runInBackground();

@@ -9,15 +9,17 @@ use Illuminate\Database\Eloquent\Model;
  * y cuentas (§33). Su estado (Testing, Winner, Fatigued, Loser, Archived…) se asigna a mano (§41).
  * Etapa 5, paso 1b: la identidad es "{producto}:{código}" (el C004 de un producto no se junta con el de otro), con el
  * nombre que se muestra (label) y el ángulo, el batch y el padre (iteración) que dicen sus anuncios.
+ * Etapa 5, paso 2a: el estado lo pone el sistema con las reglas del dueño (status_source = auto) salvo que él lo ponga
+ * a mano (manual), que no se pisa.
  */
 class MetaCreative extends Model
 {
     public const STATUSES = ['testing', 'winner', 'fatigued', 'loser', 'archived'];
 
     protected $fillable = ['tracking_id', 'product_id', 'label', 'creative_code', 'angle_code', 'batch_code', 'iteration_of', 'type',
-        'status', 'status_changed_by', 'status_changed_at'];
+        'status', 'status_source', 'status_reason', 'status_changed_by', 'status_changed_at', 'status_auto_at'];
 
-    protected $casts = ['status_changed_at' => 'datetime'];
+    protected $casts = ['status_changed_at' => 'datetime', 'status_auto_at' => 'datetime'];
 
     public function ads()
     {

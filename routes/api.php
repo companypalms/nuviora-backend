@@ -599,6 +599,9 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::put('/campaigns/{campaign}', [\App\Http\Controllers\MetaAdsSetupController::class, 'classify']);
         Route::put('/ads/{ad}/tracking-id', [\App\Http\Controllers\MetaAdsSetupController::class, 'setTrackingId']);
         Route::put('/creatives/{creative}/status', [\App\Http\Controllers\MetaAdsSetupController::class, 'setCreativeStatus']);
+        // Etapa 5, paso 2: los números de las reglas del dueño
+        Route::get('/decisions/settings', [\App\Http\Controllers\MetaAdsSetupController::class, 'decisionSettings']);
+        Route::put('/decisions/settings', [\App\Http\Controllers\MetaAdsSetupController::class, 'updateDecisionSettings']);
         Route::get('/targets', [\App\Http\Controllers\MetaAdsSetupController::class, 'targets']);
         Route::post('/targets', [\App\Http\Controllers\MetaAdsSetupController::class, 'storeTarget']);
         Route::get('/rules', [\App\Http\Controllers\MetaAdsSetupController::class, 'rules']);
