@@ -624,6 +624,7 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         // Etapa 5, paso 6b: los encargos de landing (por ahora las hace el dueño: también empieza, entrega y publica)
         Route::get('/landing-tasks', [\App\Http\Controllers\LandingTasksController::class, 'index']);
         Route::post('/landing-tasks', [\App\Http\Controllers\LandingTasksController::class, 'store']);
+        Route::post('/landing-tasks/propose', [\App\Http\Controllers\LandingTasksController::class, 'propose'])->middleware('throttle:5,1'); // paso 6c
         Route::put('/landing-tasks/{task}', [\App\Http\Controllers\LandingTasksController::class, 'update'])->whereNumber('task');
         Route::post('/landing-tasks/{task}/approve', [\App\Http\Controllers\LandingTasksController::class, 'approve'])->whereNumber('task');
         Route::put('/landing-tasks/{task}/editor', [\App\Http\Controllers\LandingTasksController::class, 'assign'])->whereNumber('task');
@@ -659,6 +660,7 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
     Route::middleware('role:Editor de landings')->prefix('landing-editor')->group(function () {
         Route::get('/tasks', [\App\Http\Controllers\LandingTasksController::class, 'mine']);
         Route::get('/summary', [\App\Http\Controllers\LandingTasksController::class, 'summary']);
+        Route::get('/results', [\App\Http\Controllers\LandingTasksController::class, 'results']); // paso 6c
         Route::post('/tasks/{task}/start', [\App\Http\Controllers\LandingTasksController::class, 'start'])->whereNumber('task');
         Route::post('/tasks/{task}/deliver', [\App\Http\Controllers\LandingTasksController::class, 'deliver'])->whereNumber('task')->middleware('throttle:30,1');
         Route::post('/tasks/{task}/publish', [\App\Http\Controllers\LandingTasksController::class, 'publish'])->whereNumber('task');

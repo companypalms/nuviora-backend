@@ -54,6 +54,7 @@ class ExampleModel implements AssistantModel
             $has('repartidor') => 'repartidores',
             $has('lider', 'grupo') => 'lideres',
             $has('operadora') => 'operadoras',
+            $has('editor') && $has('landing') => 'editores_landing',
             $has('editor') => 'editores',
             default => 'vendedoras',
         };
@@ -67,6 +68,10 @@ class ExampleModel implements AssistantModel
         }
         // Etapa 5: Meta Ads ("¿cómo van las campañas?", "cómo va la campaña de FlexiStep", "creativos de FlexiStep", "ángulos de Cervimax",
         // "¿qué hay en la cola?", "¿cómo le fue al B0100?")
+        // Paso 6c: "¿cómo van las landings de FlexiStep?", "¿cómo le fue al L0100?" (el editor de landings va con el equipo)
+        if (($has('landing') && !$has('editor')) || preg_match('/\bL\d{4,}\b/', $message)) {
+            return ['name' => 'landings', 'arguments' => ['producto' => $name]];
+        }
         if ($has('cola', 'banca', 'encargo') || preg_match('/\bB\d{3,}\b/', $message, $b)) {
             return ['name' => 'cola_produccion', 'arguments' => ['producto' => $name, 'estado' => $has('aprobar') ? 'para_aprobar' : null, 'numero' => $b[0] ?? null]];
         }
@@ -134,6 +139,10 @@ class ExampleModel implements AssistantModel
         // Paso 5b: "¿cómo van los editores?"
         if ($role === 'editores') {
             return ['name' => 'equipo', 'arguments' => ['rol' => 'editores'] + $panel + ['grafico' => false]];
+        }
+        // Paso 6c: "¿cómo va el editor de landings?"
+        if ($role === 'editores_landing') {
+            return ['name' => 'equipo', 'arguments' => ['rol' => 'editores_landing'] + $panel + ['grafico' => false]];
         }
         if ($has('ganancia', 'gane', 'ganamos', 'dinero', 'rentab', 'publicidad', 'cobrar')) {
             return ['name' => 'dinero', 'arguments' => $panel + ['grafico' => $chart]];

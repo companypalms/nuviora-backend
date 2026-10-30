@@ -4,11 +4,17 @@ namespace App\Http\Controllers;
 
 use App\Models\Landing;
 use App\Models\LandingTask;
+use App\Models\Setting;
 use App\Services\Meta\Decisions\DecisionSettings;
+use App\Services\Meta\Landings\LandingEditorFacts;
+use App\Services\Meta\Landings\LandingProposer;
 use App\Services\Meta\Landings\LandingReport;
 use App\Services\Meta\Landings\LandingTaskRules;
 use App\Services\Meta\Landings\LandingTaskWork;
 use App\Services\Meta\Queue\EditorWork;
+use App\Services\Metrics\Period;
+use App\Services\Metrics\Team\LandingEditorKpis;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -45,8 +51,15 @@ class LandingTasksController extends Controller
             'landings' => Landing::whereNotNull('product_id')->orderBy('id')->get()->map(fn (Landing $l) => ['id' => $l->id, 'product_id' => $l->product_id,
                 'label' => $l->label(), 'url' => $l->url, 'angle_code' => $l->angle_code])->values()->all(),
             'test' => array_intersect_key($s, array_flip(['landing_test_before_days', 'landing_test_min_days', 'landing_test_max_days',
-                'landing_test_min_purchases', 'landing_test_min_visits', 'landing_test_win_pct', 'landing_due_days'])),
+                'landing_test_min_purchases', 'landing_test_min_visits', 'landing_test_win_pct', 'landing_due_days', 'landing_proposals_max'])),
+            'last_run' => Setting::get(LandingProposer::LAST_RUN), // paso 6c
         ]);
+    }
+
+    /** Paso 6c: "Proponer ahora" (lo mismo que hace el análisis de cada mañana). */
+    public function propose(Request $request, LandingProposer $proposer)
+    {
+        return response()->json(['run' => $proposer->run($request->user()->id)]);
     }
 
     /** "Mis encargos de landing": los del editor que mira. */
@@ -60,6 +73,26 @@ class LandingTasksController extends Controller
             'me' => ['id' => $user->id, 'name' => trim($user->names . ' ' . ($user->surnames ?? ''))],
             'tasks' => LandingTaskWork::present($tasks, $who),
             'pending' => LandingTaskRules::pending($who, LandingTaskWork::states($tasks)),
+        ]);
+    }
+
+    /** Paso 6c: "Mis resultados" del editor de landings: sus indicadores del período y sus landings publicadas, sin dinero. */
+    public function results(Request $request)
+    {
+        $data = $request->validate(['periodo' => 'nullable|in:7d,month,last_month']);
+        $user = $request->user();
+        $period = Period::fromPreset($data['periodo'] ?? 'month', null, null, CarbonImmutable::now(config('app.timezone')));
+        $facts = (new LandingEditorFacts())->read($period, [$user->id]);
+        $facts['people'] = [(int) $user->id => ['name' => trim($user->names . ' ' . ($user->surnames ?? '')), 'group' => null]];
+        $computed = (new LandingEditorKpis())->compute($facts, $period);
+        $metrics = LandingEditorKpis::METRICS;
+
+        return response()->json([
+            'period' => $period->toArray(),
+            'metrics' => array_map(fn ($key, $m) => ['key' => $key, 'label' => $m['label'], 'format' => $m['format'], 'better' => $m['better'], 'help' => $m['help']],
+                array_keys($metrics), $metrics),
+            'me' => $computed['people'][$user->id] ?? ['values' => [], 'details' => []],
+            'tasks' => LandingEditorKpis::tasks($facts, [(int) $user->id]),
         ]);
     }
 

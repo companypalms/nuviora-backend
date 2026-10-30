@@ -4,6 +4,7 @@ namespace App\Services\Meta\Analysis;
 
 use App\Models\MetaAnalysis;
 use App\Services\Meta\Decisions\MetaDecisions;
+use App\Services\Meta\Landings\LandingProposer;
 use App\Services\Meta\Queue\QueueProposer;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -15,6 +16,7 @@ use RuntimeException;
  * 3. La IA explica y redacta (AnalysisWriter); si escribe un monto que no está en los datos, queda un aviso (MoneyCheck).
  * 4. Se guarda como una versión del día; lo que el dueño ya marcó en la versión anterior se conserva.
  * 5. Paso 4b: las reglas proponen los encargos que faltan y la IA los redacta (QueueProposer).
+ * 6. Paso 6c: lo mismo con los encargos de landing (LandingProposer).
  * Nada se cambia en Meta ni se manda a nadie.
  */
 class MetaAnalyzer
@@ -68,6 +70,12 @@ class MetaAnalyzer
         // Paso 4b: los encargos que faltan quedan en la cola para aprobar (si algo falla, el análisis queda igual)
         try {
             (new QueueProposer($this->decisions))->run($userId);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+        // Paso 6c: y los encargos de landing (lo más grave de cada landing)
+        try {
+            (new LandingProposer())->run($userId);
         } catch (\Throwable $e) {
             report($e);
         }

@@ -12,6 +12,7 @@ use App\Services\Meta\Decisions\Rules\AdRules;
  *   más debajo del producto: la landing no habla de ese ángulo.
  * - Con el mismo ángulo en dos landings, la que compra `winners_gap_pct` o más debajo de la mejor, pierde contra ella.
  * - No se opina con menos de `landing_min_clicks` clics (la visita) ni de `landing_min_visits` visitas (la compra).
+ * Paso 6c: lo de un ángulo trae su código (`angle`), y "compra mejor" la otra landing (`best`), para proponer el encargo.
  */
 final class LandingRules
 {
@@ -109,9 +110,9 @@ final class LandingRules
                 if ($clicksLikeProduct && $buysLess) {
                     $less = AdRules::num((1 - $am['conversion'] / $pm['conversion']) * 100);
                     $numbers = AdRules::num($am['conversion']) . ' % contra ' . AdRules::num($pm['conversion']) . ' % de las visitas';
-                    $f[] = $l['angle_code'] === $code
+                    $f[] = ($l['angle_code'] === $code
                         ? ['key' => 'angle_weak', 'level' => 'orange', 'text' => "Es la landing del ángulo {$angle($code)} y compra {$less} % menos que el producto ({$numbers}), aunque los anuncios hacen clic como siempre: revisar la oferta o lo que dice la página."]
-                        : ['key' => 'angle_mismatch', 'level' => 'orange', 'text' => "Con el ángulo {$angle($code)} hacen clic como siempre, pero compran {$less} % menos que el producto ({$numbers}): esta landing no habla de ese ángulo. Probar una landing del ángulo, sin cambiar los creativos."];
+                        : ['key' => 'angle_mismatch', 'level' => 'orange', 'text' => "Con el ángulo {$angle($code)} hacen clic como siempre, pero compran {$less} % menos que el producto ({$numbers}): esta landing no habla de ese ángulo. Probar una landing del ángulo, sin cambiar los creativos."]) + ['angle' => (string) $code];
                 }
             }
             $out[$id] = $f;
@@ -139,7 +140,8 @@ final class LandingRules
                 if ($id !== $bestId && $best > 0 && $rate <= $best * (1 - $gap / 100)) {
                     $beaten = true;
                     $out[$id][] = ['key' => 'beaten', 'level' => 'yellow', 'text' => "Con el ángulo {$angle($code)}, «{$landings[$bestId]['label']}» compra mejor: "
-                        . AdRules::num($best) . ' % contra ' . AdRules::num($rate) . ' % de esta. Conviene llevar esos anuncios a «' . $landings[$bestId]['label'] . '».'];
+                        . AdRules::num($best) . ' % contra ' . AdRules::num($rate) . ' % de esta. Conviene llevar esos anuncios a «' . $landings[$bestId]['label'] . '».',
+                        'angle' => (string) $code, 'best' => $landings[$bestId]['label']];
                 }
             }
             if ($beaten) {

@@ -41,6 +41,16 @@ describe('El modo ejemplo entiende las preguntas de Meta', function () {
         expect(App\Services\Assistant\Lookup::ROLES['editores'])->toBe('editors');
     });
 
+    it('las landings (paso 6c): las de un producto, un encargo por su número y el editor de landings con el equipo', function () {
+        expect(ExampleModel::understand('¿Cómo van las landings de FlexiStep?'))->toBe(['name' => 'landings', 'arguments' => ['producto' => 'FlexiStep']]);
+        expect(ExampleModel::understand('¿Qué landing está lenta?')['name'])->toBe('landings');
+        expect(ExampleModel::understand('¿Cómo le fue al L0100?')['name'])->toBe('landings');
+        expect(ExampleModel::understand('¿Cómo va el editor de landings este mes?'))->toMatchArray(['name' => 'equipo'])
+            ->and(ExampleModel::understand('¿Cómo va el editor de landings este mes?')['arguments']['rol'])->toBe('editores_landing');
+        expect(ExampleModel::understand('¿Cómo van los editores este mes?')['arguments']['rol'])->toBe('editores');
+        expect(App\Services\Assistant\Lookup::ROLES['editores_landing'])->toBe('landing_editors');
+    });
+
     it('lo de antes sigue igual: las metas no son Meta y una persona sigue siendo una persona', function () {
         expect(ExampleModel::understand('¿Cómo voy con mis metas?')['name'])->toBe('metas');
         expect(ExampleModel::understand('¿Cuál es la efectividad de Fabiola este mes?')['name'])->toBe('persona');

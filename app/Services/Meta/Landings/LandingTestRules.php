@@ -30,7 +30,9 @@ final class LandingTestRules
         $enough = fn (array $t) => $t['purchases'] >= $s['landing_test_min_purchases'] && $t['landing_page_views'] >= $s['landing_test_min_visits'];
         $mb = LandingRules::metrics($before);
         $ma = LandingRules::metrics($after);
-        $change = $mb['conversion'] && $ma['conversion'] !== null ? round(($ma['conversion'] / $mb['conversion'] - 1) * 100, 1) : null;
+        // Con los números exactos, no con los porcentajes redondeados (lo mismo que suma LandingEditorKpis)
+        $change = $before['purchases'] > 0 && $before['landing_page_views'] > 0 && $after['landing_page_views'] > 0
+            ? round((($after['purchases'] / $after['landing_page_views']) / ($before['purchases'] / $before['landing_page_views']) - 1) * 100, 1) : null;
         $visitChange = $mb['visit'] && $ma['visit'] !== null ? round($ma['visit'] - $mb['visit'], 1) : null;
         $max = (int) $s['landing_test_max_days'];
 

@@ -23,7 +23,7 @@ function candadoLanding(string $role, string $method, string $path): int
 describe('El candado del editor de landings', function () {
     it('llega a sus encargos de landing, a su sesión y a su perfil', function () {
         foreach ([['GET', '/api/landing-editor/tasks'], ['GET', '/api/landing-editor/summary'], ['POST', '/api/landing-editor/tasks/5/deliver'],
-            ['POST', '/api/landing-editor/tasks/5/publish'], ['GET', '/api/user/data'], ['POST', '/api/logout'], ['PUT', '/api/user/7/change/theme']] as [$method, $path]) {
+            ['POST', '/api/landing-editor/tasks/5/publish'], ['GET', '/api/landing-editor/results'], ['GET', '/api/user/data'], ['POST', '/api/logout'], ['PUT', '/api/user/7/change/theme']] as [$method, $path]) {
             expect(candadoLanding('Editor de landings', $method, $path))->toBe(200, "{$method} {$path}");
         }
     });
@@ -49,12 +49,12 @@ describe('Las rutas de los encargos de landing', function () {
 
     it('las del editor piden su rol; las del dueño, el Admin', function () use ($routes) {
         $editor = $routes('api/landing-editor/');
-        expect($editor)->toHaveCount(5);
+        expect($editor)->toHaveCount(6); // con /landing-editor/results del paso 6c
         foreach ($editor as $r) {
             expect($r->gatherMiddleware())->toContain('role:Editor de landings')->toContain('limited.roles');
         }
         $owner = $routes('api/meta/landing');
-        expect($owner)->toHaveCount(12);
+        expect($owner)->toHaveCount(13); // con /meta/landing-tasks/propose del paso 6c
         foreach ($owner as $r) {
             expect($r->gatherMiddleware())->toContain('role:Admin');
         }

@@ -5,7 +5,7 @@ namespace App\Services\Assistant\Tools;
 use App\Services\Assistant\Lookup;
 use App\Services\Assistant\Present;
 
-/** Equipo del Panel del dueño: el ranking de un rol (vendedoras, líderes, agencias, repartidores, operadoras o editores de video). */
+/** Equipo del Panel del dueño: el ranking de un rol (vendedoras, líderes, agencias, repartidores, operadoras, editores de video o de landings). */
 class TeamTool extends PanelTool
 {
     /** Las personas que lee la IA (el ranking entero se ve en la tabla de la pantalla). */
@@ -22,7 +22,7 @@ class TeamTool extends PanelTool
 
     public function description(): string
     {
-        return 'El ranking de un equipo en un período, con los números de cada persona (efectividad, pedidos, tiempos, etc., según el rol) y los del equipo entero. Úsala para "ranking", "quién vende más", "mejores agencias", "cómo van las vendedoras", "cómo van los editores". Para una sola persona, usa "persona". Quien tiene menos del mínimo de pedidos tiene "pocos datos" y no se compara.';
+        return 'El ranking de un equipo en un período, con los números de cada persona (efectividad, pedidos, tiempos, etc., según el rol) y los del equipo entero. Úsala para "ranking", "quién vende más", "mejores agencias", "cómo van las vendedoras", "cómo van los editores", "cómo va el editor de landings". Para una sola persona, usa "persona". Quien tiene menos del mínimo de pedidos tiene "pocos datos" y no se compara.';
     }
 
     public function parameters(): array
@@ -43,6 +43,7 @@ class TeamTool extends PanelTool
             'lideres' => 'los grupos de venta',
             'operadoras' => 'las operadoras',
             'editores' => 'los editores de video',
+            'editores_landing' => 'los editores de landings',
             default => 'las vendedoras',
         } . '…';
     }

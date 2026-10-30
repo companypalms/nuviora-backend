@@ -81,6 +81,8 @@ class DecisionSettings
         'landing_test_min_purchases' => [10, 1, 1000], // muestra de cada lado
         'landing_test_min_visits' => [300, 1, 1000000],
         'landing_test_win_pct' => [15, 1, 100],       // gana o pierde si la compra cambia 15 % o más
+        // Paso 6c — cuántos encargos de landing proponen las reglas por día (uno por landing, lo más grave primero)
+        'landing_proposals_max' => [3, 0, 20],
     ];
 
     /** Se puede apagar sin publicar: los estados vuelven a quedar como estén. */

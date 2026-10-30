@@ -19,7 +19,7 @@ class Lookup
 {
     /** El rol en palabras del dueño => la clave del catálogo de Equipo. */
     public const ROLES = ['vendedoras' => 'sellers', 'lideres' => 'leaders', 'agencias' => 'agencies', 'repartidores' => 'riders', 'operadoras' => 'operators',
-        'editores' => 'editors'];
+        'editores' => 'editors', 'editores_landing' => 'landing_editors'];
 
     public function __construct(private TeamReader $team)
     {
