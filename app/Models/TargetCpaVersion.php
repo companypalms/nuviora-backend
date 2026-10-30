@@ -22,6 +22,9 @@ class TargetCpaVersion extends Model
         'spend' => 'float',
         'meta_cpa' => 'float',
         'target_pct' => 'float',
+        'fixed_pct' => 'float',
+        'window_days' => 'integer',
+        'detail' => 'array',
         'break_even' => 'float',
         'target' => 'float',
         'fully_loaded' => 'float',
@@ -39,6 +42,7 @@ class TargetCpaVersion extends Model
             'cogs' => $this->cogs, 'purchases' => $this->purchases, 'spend' => $this->spend, 'meta_cpa' => $this->meta_cpa,
             'target_type' => $this->target_type, 'target_pct' => $this->target_pct, 'break_even' => $this->break_even, 'target' => $this->target,
             'fully_loaded' => $this->fully_loaded, 'viable' => $this->viable, 'trigger' => $this->trigger,
+            'fixed_pct' => $this->fixed_pct, 'fixed_source' => $this->fixed_source, 'window_days' => $this->window_days, 'detail' => $this->detail,
             'computed_at' => $this->computed_at?->format('Y-m-d H:i'),
         ];
     }

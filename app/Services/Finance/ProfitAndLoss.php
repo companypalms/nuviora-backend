@@ -30,7 +30,7 @@ class ProfitAndLoss
 
     private const ORDER_SUMS = [
         'revenue_main', 'revenue_upsell', 'revenue_refunded', 'cogs_main', 'cogs_upsell', 'logistics_cost', 'delivery_cost', 'delivery_legacy_cost',
-        'commission_seller', 'commission_upsell', 'commission_leader', 'commission_deliverer', 'cogs_missing_lines',
+        'commission_seller', 'commission_upsell', 'commission_leader', 'commission_deliverer', 'commission_other', 'cogs_missing_lines',
         'delivery_trips', 'delivery_final_trips', 'delivery_missing_trips',
     ];
 
@@ -158,9 +158,9 @@ class ProfitAndLoss
         $sellers = round($s['commission_seller'] + $s['commission_upsell'], 2);
         $leaders = round($s['commission_leader'], 2);
         $advertising = round($s['advertising'], 2);
-        // Otros variables atribuibles: los gastos de un producto o una ciudad, más la merma
+        // Otros variables atribuibles: los gastos de un producto o una ciudad, la merma y las comisiones de otros roles
         $shrinkage = round($s['shrinkage'], 2);
-        $other = round($s['other_variable'] + $s['shrinkage'], 2);
+        $other = round($s['other_variable'] + $s['shrinkage'] + $s['commission_other'], 2);
         $contribution = round($revenue - $cogs - $logistics - $delivery - $sellers - $leaders - $advertising - $other, 2);
 
         return [

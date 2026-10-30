@@ -130,7 +130,7 @@ class ReportExcel
                 foreach ($chunk as $f) {
                     $net = $f->revenue_main + $f->revenue_upsell - $f->revenue_refunded;
                     $cost = $f->cogs_main + $f->cogs_upsell + $f->logistics_cost + $f->delivery_cost + $f->commission_seller + $f->commission_upsell
-                        + $f->commission_leader + $f->commission_deliverer;
+                        + $f->commission_leader + $f->commission_deliverer + $f->commission_other;
                     $rows[] = [
                         $f->order_name, ['normal' => 'Normal', 'exchange' => 'Cambio', 'return' => 'Devolución'][$f->kind] ?? $f->kind, $f->created_date, $f->delivered_date,
                         $f->cost_date, ['delivered' => 'Entregada', 'not_delivered' => 'No entregada', 'open' => 'Abierta'][$f->outcome] ?? $f->outcome,

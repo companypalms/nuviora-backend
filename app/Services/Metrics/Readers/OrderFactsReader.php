@@ -31,7 +31,7 @@ class OrderFactsReader
                 'f.cogs_missing_lines', 'f.delivery_trips', 'f.delivery_final_trips', 'f.delivery_missing_trips')
             ->selectRaw('(f.revenue_main + f.revenue_upsell - f.revenue_refunded) AS revenue')
             ->selectRaw('(f.cogs_main + f.cogs_upsell + f.logistics_cost) AS product_cost')
-            ->selectRaw('(f.commission_seller + f.commission_upsell + f.commission_leader) AS commissions')
+            ->selectRaw('(f.commission_seller + f.commission_upsell + f.commission_leader + f.commission_other) AS commissions')
             ->selectRaw('(f.delivery_cost + f.commission_deliverer) AS shipping')
             ->cursor();
     }

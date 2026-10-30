@@ -77,7 +77,7 @@ class FinanceReportController extends Controller
                 'logistics' => round((float) $f->logistics_cost, 2),
                 'cogs_source' => $f->cogs_source,
                 'delivery' => round($f->delivery_cost + $f->commission_deliverer, 2),
-                'commissions' => round($f->commission_seller + $f->commission_upsell + $f->commission_leader, 2),
+                'commissions' => round($f->commission_seller + $f->commission_upsell + $f->commission_leader + $f->commission_other, 2),
                 'result' => round($f->netRevenue() - $f->totalCost(), 2),
                 'cogs_missing_lines' => $f->cogs_missing_lines,
                 'delivery_missing_trips' => $f->delivery_missing_trips,

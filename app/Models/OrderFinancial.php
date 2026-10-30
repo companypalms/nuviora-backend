@@ -43,6 +43,7 @@ class OrderFinancial extends Model
         'commission_seller' => 'float',
         'commission_upsell' => 'float',
         'commission_leader' => 'float',
+        'commission_other' => 'float',
         'commission_deliverer' => 'float',
         'stale_at' => 'datetime',
         'computed_at' => 'datetime',
@@ -63,6 +64,6 @@ class OrderFinancial extends Model
     public function totalCost(): float
     {
         return round($this->cogs_main + $this->cogs_upsell + $this->logistics_cost + $this->delivery_cost + $this->commission_seller
-            + $this->commission_upsell + $this->commission_leader + $this->commission_deliverer, 2);
+            + $this->commission_upsell + $this->commission_leader + $this->commission_deliverer + $this->commission_other, 2);
     }
 }

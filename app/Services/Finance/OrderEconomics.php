@@ -29,11 +29,15 @@ use Illuminate\Support\Facades\DB;
  * - Delivery (§5, §18, §19): todas las carreras no anuladas, entregada o no. El costo aprobado en un cierre listo para
  *   pago o pagado; si no, el esperado de su ruta si está calculada; si no, 0 y se cuenta como "sin costo". Antes del
  *   Módulo 3 no había carreras: se toma lo que se le pagaba a la agencia por esa orden (earnings "agencia").
- * - Comisiones (§22, §23, R9): las de la vendedora, el upsell, la líder y el repartidor propio, solo si se entregó.
+ * - Comisiones (§22, §23, R9): las de la vendedora, el upsell, la líder y el repartidor propio, solo si se entregó. Las de
+ *   cualquier otro rol (los que vengan) van juntas en commission_other, para que el CPA real las cuente solas.
  */
 class OrderEconomics
 {
     private const CHUNK = 500;
+
+    /** Los roles de earnings que tienen su propia columna; "agencia" es el envío de antes del Módulo 3. */
+    private const OWN_COLUMN_ROLES = ['vendedor', 'upsell', 'repartidor', 'agencia'];
 
     /** §60: los últimos días todavía no son una cohorte madura (por defecto, 4). */
     public const SETTING_MATURITY_LAG = 'finance.maturity_lag_days';
@@ -290,6 +294,8 @@ class OrderEconomics
             'commission_upsell' => $sum('upsell'),
             'commission_leader' => $delivered ? round($leader, 2) : 0.0,
             'commission_deliverer' => $sum('repartidor'),
+            'commission_other' => $delivered ? round($earnings->reject(fn ($e) => in_array($e->role_type, self::OWN_COLUMN_ROLES, true))
+                ->sum(fn ($e) => (float) $e->amount_usd), 2) : 0.0,
             'computed_at' => now(),
         ];
     }

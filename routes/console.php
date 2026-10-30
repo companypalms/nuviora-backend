@@ -64,8 +64,8 @@ try {
     Schedule::command('finance:lots')->everyMinute()->withoutOverlapping(10)->runInBackground();
     // Caja (entrega 3): los movimientos automáticos se cuadran solos con su origen; cada noche se revisan todos
     Schedule::command('finance:cash --resync')->dailyAt('03:45')->withoutOverlapping(60);
-    // CPA financiero con la ventana madura, los miércoles después del recordatorio de cierres de las 11:00 (§61)
-    Schedule::command('finance:cpa')->wednesdays()->at('12:00')->withoutOverlapping();
+    // CPA objetivo y break-even reales, cada día antes del análisis de campañas de las 07:00 (pedido del dueño, 2026-10-30)
+    Schedule::command('finance:cpa')->dailyAt('06:30')->withoutOverlapping();
     // Reportes (entrega 4): los automáticos (diario D-3, semanal, mensual, §53 a §55) se generan solos cuando les toca;
     // cada noche, después de recalcular las órdenes, los recientes sacan versión nueva si cambiaron sus cifras (§20, §21)
     Schedule::command('finance:reports')->everyTenMinutes()->withoutOverlapping(30)->runInBackground();

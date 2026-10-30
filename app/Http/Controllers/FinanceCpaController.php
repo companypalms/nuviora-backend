@@ -45,9 +45,13 @@ class FinanceCpaController extends Controller
         $products = Product::whereIn('id', $latest->pluck('product_id')->unique())->get(['id', 'title', 'showable_name'])->keyBy('id');
         $cities = City::whereIn('id', $latest->pluck('city_id')->filter()->unique())->pluck('name', 'id');
         [$from, $to] = FinancialCpa::window();
+        [$longFrom] = FinancialCpa::window(null, FinancialCpa::longDays());
 
         return response()->json([
-            'window' => ['from' => $from->toDateString(), 'to' => $to->toDateString()],
+            'window' => ['from' => $from->toDateString(), 'to' => $to->toDateString(), 'long_from' => $longFrom->toDateString(),
+                'days' => FinancialCpa::shortDays(), 'long_days' => FinancialCpa::longDays()],
+            'fixed' => $cpa->fixedShare(),
+            'city_min_purchases' => FinancialCpa::cityMinPurchases(),
             'last_computed_at' => $latest->max(fn ($v) => $v->computed_at)?->format('Y-m-d H:i'),
             'rows' => $latest->sortBy(fn ($v) => [$v->product_id, $v->city_id === null ? 0 : 1, $cities[$v->city_id] ?? ''])->values()
                 ->map(fn (TargetCpaVersion $v) => $v->toPayload() + [
@@ -81,6 +85,9 @@ class FinanceCpaController extends Controller
         return response()->json([
             'maturity_lag_days' => (int) Setting::get(OrderEconomics::SETTING_MATURITY_LAG, 4),
             'analysis_window_days' => (int) Setting::get(FinancialCpa::SETTING_WINDOW, 7),
+            'analysis_long_window_days' => FinancialCpa::longDays(),
+            'fixed_cost_min_pct' => FinancialCpa::minFixedPct(),
+            'cpa_city_min_purchases' => FinancialCpa::cityMinPurchases(),
             'commissions' => CommissionService::amounts(),
             // §15: la regla de desgaste de los viajes de traslado
             'vehicle_wear' => TransferTrips::wearRule(),
@@ -99,6 +106,9 @@ class FinanceCpaController extends Controller
         $data = $request->validate([
             'maturity_lag_days' => 'required|integer|min:0|max:60',
             'analysis_window_days' => 'required|integer|min:1|max:90',
+            'analysis_long_window_days' => 'sometimes|integer|min:1|max:180|gte:analysis_window_days',
+            'fixed_cost_min_pct' => 'sometimes|numeric|min:0|max:90',
+            'cpa_city_min_purchases' => 'sometimes|integer|min:0|max:10000',
             'commission_order' => 'required|numeric|min:0|max:1000',
             'commission_upsell_unit' => 'required|numeric|min:0|max:1000',
             'commission_deliverer' => 'required|numeric|min:0|max:1000',
@@ -110,6 +120,14 @@ class FinanceCpaController extends Controller
         $before = $this->currentSettings();
         Setting::set(OrderEconomics::SETTING_MATURITY_LAG, (int) $data['maturity_lag_days']);
         Setting::set(FinancialCpa::SETTING_WINDOW, (int) $data['analysis_window_days']);
+        foreach (['analysis_long_window_days' => FinancialCpa::SETTING_LONG_WINDOW, 'cpa_city_min_purchases' => FinancialCpa::SETTING_CITY_MIN_PURCHASES] as $field => $key) {
+            if (isset($data[$field])) {
+                Setting::set($key, (int) $data[$field]);
+            }
+        }
+        if (isset($data['fixed_cost_min_pct'])) {
+            Setting::set(FinancialCpa::SETTING_FIXED_MIN, round((float) $data['fixed_cost_min_pct'], 2));
+        }
         Setting::set(CommissionService::SETTING_ORDER, round((float) $data['commission_order'], 2));
         Setting::set(CommissionService::SETTING_UPSELL_UNIT, round((float) $data['commission_upsell_unit'], 2));
         Setting::set(CommissionService::SETTING_DELIVERER, round((float) $data['commission_deliverer'], 2));
@@ -123,7 +141,7 @@ class FinanceCpaController extends Controller
             FinancialAuditLog::record('finance_settings_updated', 'finance_settings', null, $before, $after, $data['reason'] ?? null);
         }
 
-        return response()->json(['message' => 'Configuración guardada. Las comisiones nuevas valen para las próximas entregas.']);
+        return response()->json(['message' => 'Configuración guardada. Las comisiones nuevas valen para las próximas entregas; el CPA usa lo nuevo desde su próximo cálculo.']);
     }
 
     /** §66, R13: el margen objetivo de un producto. */
@@ -150,6 +168,9 @@ class FinanceCpaController extends Controller
         return [
             'maturity_lag_days' => (int) Setting::get(OrderEconomics::SETTING_MATURITY_LAG, 4),
             'analysis_window_days' => (int) Setting::get(FinancialCpa::SETTING_WINDOW, 7),
+            'analysis_long_window_days' => FinancialCpa::longDays(),
+            'fixed_cost_min_pct' => FinancialCpa::minFixedPct(),
+            'cpa_city_min_purchases' => FinancialCpa::cityMinPurchases(),
         ] + array_map(fn ($v) => round((float) $v, 2), CommissionService::amounts())
             + ['vehicle_wear' => TransferTrips::wearLabel(TransferTrips::wearRule()['mode'], TransferTrips::wearRule()['value'])];
     }
