@@ -21,7 +21,7 @@ class FindPersonTool implements Tool
 
     public function description(): string
     {
-        return 'Busca a alguien del equipo por su nombre (sin importar acentos ni mayúsculas): vendedoras, grupos de venta (líderes), agencias, repartidores u operadoras. Devuelve su id, su rol y su grupo. Úsala cuando no sepas de qué rol es una persona o haya que distinguir entre varias con el mismo nombre.';
+        return 'Busca a alguien del equipo por su nombre (sin importar acentos ni mayúsculas): vendedoras, grupos de venta (líderes), agencias, repartidores, operadoras o editores de video. Devuelve su id, su rol y su grupo. Úsala cuando no sepas de qué rol es una persona o haya que distinguir entre varias con el mismo nombre.';
     }
 
     public function parameters(): array

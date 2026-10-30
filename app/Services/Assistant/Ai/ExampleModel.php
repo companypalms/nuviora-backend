@@ -54,6 +54,7 @@ class ExampleModel implements AssistantModel
             $has('repartidor') => 'repartidores',
             $has('lider', 'grupo') => 'lideres',
             $has('operadora') => 'operadoras',
+            $has('editor') => 'editores',
             default => 'vendedoras',
         };
         $chart = $has('grafic');
@@ -129,6 +130,10 @@ class ExampleModel implements AssistantModel
         }
         if ($has('ranking', 'mejores', 'peores', 'quien vende')) {
             return ['name' => 'equipo', 'arguments' => ['rol' => $role] + $panel + ['grafico' => true]];
+        }
+        // Paso 5b: "¿cómo van los editores?"
+        if ($role === 'editores') {
+            return ['name' => 'equipo', 'arguments' => ['rol' => 'editores'] + $panel + ['grafico' => false]];
         }
         if ($has('ganancia', 'gane', 'ganamos', 'dinero', 'rentab', 'publicidad', 'cobrar')) {
             return ['name' => 'dinero', 'arguments' => $panel + ['grafico' => $chart]];
@@ -260,7 +265,7 @@ class ExampleModel implements AssistantModel
     /** El nombre propio de la frase: "efectividad de Fabiola este mes" => "Fabiola". */
     private static function name(string $message): ?string
     {
-        if (preg_match('/\b(?:de|va|a)\s+(?:la\s+|el\s+)?(?:agencia\s+|vendedora\s+|repartidor\s+)?(\p{Lu}[\p{L}]+(?:\s+\p{Lu}[\p{L}]+)*)/u', $message, $m)) {
+        if (preg_match('/\b(?:de|va|a)\s+(?:la\s+|el\s+)?(?:agencia\s+|vendedora\s+|repartidor\s+|editora?\s+)?(\p{Lu}[\p{L}]+(?:\s+\p{Lu}[\p{L}]+)*)/u', $message, $m)) {
             return $m[1];
         }
 

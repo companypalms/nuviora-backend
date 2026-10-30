@@ -16,7 +16,7 @@ namespace App\Services\Metrics\Team;
 final class TeamCatalog
 {
     /** @var array<int, class-string<TeamRole>> en el orden de los botones */
-    public const ROLES = [SellerKpis::class, LeaderKpis::class, AgencyKpis::class, RiderKpis::class, OperatorKpis::class];
+    public const ROLES = [SellerKpis::class, LeaderKpis::class, AgencyKpis::class, RiderKpis::class, OperatorKpis::class, EditorKpis::class];
 
     public const UNMEASURED = [
         'Gerente' => 'Decidiste no medirlo por ahora (29/10/2026).',

@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\DB;
 class UsersTool implements Tool
 {
     private const ROLES = ['admin' => 'Admin', 'gerente' => 'Gerente', 'master' => 'Master', 'vendedoras' => 'Vendedor', 'repartidores' => 'Repartidor',
-        'agencias' => 'Agencia', 'operadoras' => 'Operador logístico'];
+        'agencias' => 'Agencia', 'operadoras' => 'Operador logístico', 'editor_lider' => 'Editor líder', 'editores' => 'Editor de video'];
 
     public function name(): string
     {

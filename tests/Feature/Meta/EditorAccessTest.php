@@ -56,7 +56,7 @@ describe('Las rutas', function () {
 
     it('las de los editores piden uno de los dos roles de editor', function () use ($routes) {
         $editor = $routes('api/editor/');
-        expect($editor)->toHaveCount(6);
+        expect($editor)->toHaveCount(7); // con /editor/results del paso 5b
         foreach ($editor as $r) {
             expect($r->gatherMiddleware())->toContain('role:Editor líder,Editor de video')->toContain('limited.roles');
         }

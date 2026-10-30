@@ -3,6 +3,7 @@
 namespace App\Services\Assistant\Tools;
 
 use App\Models\CreativeBatch;
+use App\Services\Meta\Queue\EditorWork;
 use App\Services\Meta\Queue\QueueRules;
 
 /**
@@ -51,7 +52,7 @@ class MetaQueueTool extends MetaTool
 
     public function run(array $args): ToolResult
     {
-        $q = CreativeBatch::with(['pieces', 'product:id,title,showable_name', 'reference:id,label', 'learningCity:id,name']);
+        $q = CreativeBatch::with(['pieces', 'product:id,title,showable_name', 'reference:id,label', 'learningCity:id,name', 'editor:id,names,surnames', 'deliveries']);
         if (($args['numero'] ?? null) !== null) {
             if (!preg_match('/(\d+)/', $args['numero'], $m)) {
                 throw new ToolProblem('El número de un batch es como "B0123".');
@@ -89,6 +90,10 @@ class MetaQueueTool extends MetaTool
                 'ciudad' => $b->learningCity?->name,
                 'piezas' => $b->pieces->map(fn ($p) => implode(': ', array_filter([$p->code(), trim((string) $p->change)])))->filter()->values()->all() ?: null,
                 'plazo' => $b->due_date?->format('d/m'),
+                // Paso 5a: quién lo hace y sus entregas
+                'editor' => $b->editor ? trim($b->editor->names . ' ' . $b->editor->surnames) : null,
+                'entregas' => $b->deliveries->isNotEmpty() ? $b->deliveries->map(fn ($d) => $d->label() . ' ' . (EditorWork::REVIEWS[$d->review] ?? $d->review)
+                    . ($d->review === 'returned' && $d->comment ? " ({$d->comment})" : ''))->implode('; ') : null,
                 'resultado' => $b->result ? implode('; ', array_map(fn ($v) => ($v['city'] ?? 'Meta') . ": {$v['label']}", $b->result['verdicts'] ?? []))
                     . ' · gasto ' . self::money((float) ($b->result['spend'] ?? 0)) . ', ' . self::purchases((float) ($b->result['purchases'] ?? 0))
                     . (isset($b->result['cpa']) ? ', CPA ' . self::money((float) $b->result['cpa']) : '') : null,

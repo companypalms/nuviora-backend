@@ -3,14 +3,20 @@
 namespace App\Http\Controllers;
 
 use App\Models\CreativeBatch;
+use App\Services\Meta\Queue\EditorFacts;
 use App\Services\Meta\Queue\EditorRules;
 use App\Services\Meta\Queue\EditorWork;
+use App\Services\Metrics\Period;
+use App\Services\Metrics\Readers\TeamReader;
+use App\Services\Metrics\Team\EditorKpis;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 
 /**
  * Las pantallas de los editores (Etapa 5, paso 5a): "Mis encargos" para los dos y, para el editor líder, "Encargos del
- * equipo" (asignar y revisar). Solo entran los roles "Editor líder" y "Editor de video", y RestrictLimitedRoles no les
- * deja llegar a ninguna otra parte de la API. Los permisos de cada encargo son los de EditorRules. Sin dinero.
+ * equipo" (asignar y revisar); y "Mis resultados" (paso 5b). Solo entran los roles "Editor líder" y "Editor de video", y
+ * RestrictLimitedRoles no les deja llegar a ninguna otra parte de la API. Los permisos de cada encargo son los de
+ * EditorRules. Sin dinero.
  */
 class EditorQueueController extends Controller
 {
@@ -81,6 +87,38 @@ class EditorQueueController extends Controller
         $work->review($batch, $request->user(), (bool) $data['approve'], $data['comment'] ?? null);
 
         return $this->one($request, $batch);
+    }
+
+    /**
+     * "Mis resultados" (paso 5b): sus indicadores y cómo les fue a sus batches, sin dinero (decisión del dueño). El líder
+     * ve además los de cada editor y el total del equipo. El editor solo lee lo suyo: ni siquiera se leen los demás.
+     */
+    public function results(Request $request, TeamReader $reader)
+    {
+        $data = $request->validate(['periodo' => 'nullable|in:7d,month,last_month']);
+        $user = $request->user();
+        $leader = $user->role?->description === EditorRules::LEADER;
+        $period = Period::fromPreset($data['periodo'] ?? 'month', null, null, CarbonImmutable::now(config('app.timezone')));
+        $people = $reader->people(EditorRules::ROLES);
+        $facts = (new EditorFacts())->read($period, $leader ? null : [$user->id]) + ['people' => $people];
+        $computed = (new EditorKpis())->compute($facts, $period);
+        $metrics = EditorKpis::withoutMoney(EditorKpis::METRICS);
+        $strip = fn (?array $p) => ['values' => array_intersect_key($p['values'] ?? [], $metrics), 'details' => array_intersect_key($p['details'] ?? [], $metrics)];
+        $names = array_map(fn ($p) => $p['name'], $people);
+
+        return response()->json([
+            'period' => $period->toArray(),
+            'leader' => $leader,
+            'metrics' => array_map(fn ($key, $m) => ['key' => $key, 'label' => $m['label'], 'format' => $m['format'], 'better' => $m['better'], 'help' => $m['help']],
+                array_keys($metrics), $metrics),
+            'me' => $strip($computed['people'][$user->id] ?? null),
+            'team' => $leader ? [
+                'totals' => $strip($computed['totals']),
+                'people' => array_values(array_map(fn ($id, $p) => ['id' => $id, 'name' => $p['name'], 'group' => $p['group']] + $strip($p),
+                    array_keys($computed['people']), $computed['people'])),
+            ] : null,
+            'batches' => array_map(fn ($b) => $b + ['editor' => $names[$b['editor_id']] ?? null], EditorKpis::batches($facts, $leader ? null : [$user->id])),
+        ]);
     }
 
     /** Lo que ve: el editor, lo suyo; el líder, todo lo aprobado. Lo terminado, solo lo reciente. */

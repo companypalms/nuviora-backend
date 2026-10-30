@@ -645,6 +645,7 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
     Route::middleware('role:Editor líder,Editor de video')->prefix('editor')->group(function () {
         Route::get('/queue', [\App\Http\Controllers\EditorQueueController::class, 'index']);
         Route::get('/summary', [\App\Http\Controllers\EditorQueueController::class, 'summary']);
+        Route::get('/results', [\App\Http\Controllers\EditorQueueController::class, 'results']); // paso 5b
         Route::post('/queue/{batch}/start', [\App\Http\Controllers\EditorQueueController::class, 'start'])->whereNumber('batch');
         Route::post('/queue/{batch}/deliver', [\App\Http\Controllers\EditorQueueController::class, 'deliver'])->whereNumber('batch')->middleware('throttle:30,1');
         Route::put('/queue/{batch}/editor', [\App\Http\Controllers\EditorQueueController::class, 'assign'])->whereNumber('batch');

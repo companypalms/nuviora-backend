@@ -68,6 +68,7 @@ class TeamReader
                 'Vendedor' => $groups[$u->id] ?? null,
                 'Repartidor' => $u->agency ? PersonName::of($u->agency, $u->agency_surnames) : ($riders->has($u->id) ? 'Logística propia' : null),
                 'Operador logístico' => isset($centers[$u->id]) ? $centers[$u->id]->pluck('name')->implode(', ') : null,
+                'Editor líder' => 'Líder',
                 default => null,
             };
             $out[(int) $u->id] = ['name' => PersonName::of($u->names, $u->surnames), 'group' => $group];
