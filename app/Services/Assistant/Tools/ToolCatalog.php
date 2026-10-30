@@ -47,6 +47,15 @@ class ToolCatalog
         Change\ExpenseTool::class,
         Change\RecurringExpenseTool::class,
         Change\RecurringPaymentTool::class,
+        // Paso 7: compras, ciudades y agencias, y cuentas
+        Change\PurchaseTool::class,
+        Change\PendingPurchaseTool::class,
+        Change\ReceivePurchaseTool::class,
+        Change\CityWorkingTool::class,
+        Change\AgencyWorkingTool::class,
+        Change\UserCreateTool::class,
+        Change\UserDeactivateTool::class,
+        Change\UserReactivateTool::class,
     ];
 
     /** @var array<string, Tool>|null */

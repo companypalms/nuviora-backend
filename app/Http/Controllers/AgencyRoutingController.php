@@ -11,6 +11,7 @@ use App\Models\Status;
 use App\Models\User;
 use App\Notifications\OrderAssignedNotification;
 use App\Services\Agencies\AgencyRouter;
+use App\Services\Agencies\AgencySwitch;
 use App\Services\Agencies\RoutingOverview;
 use App\Services\Agencies\WorkingHours;
 use Illuminate\Http\JsonResponse;
@@ -30,7 +31,7 @@ class AgencyRoutingController extends Controller
     /** Estados que se pueden pasar de una agencia a otra: todavía no salieron a la calle. */
     private const MOVABLE = [OrderStatus::ASIGNAR_A_AGENCIA, OrderStatus::ASIGNAR_REPARTIDOR, OrderStatus::ASIGNADO_A_REPARTIDOR];
 
-    public function __construct(private AgencyRouter $router, private WorkingHours $hours, private RoutingOverview $overview) {}
+    public function __construct(private AgencyRouter $router, private WorkingHours $hours, private RoutingOverview $overview, private AgencySwitch $switch) {}
 
     /** GET /agency-routing */
     public function index(): JsonResponse
@@ -104,8 +105,7 @@ class AgencyRoutingController extends Controller
     {
         $data = $request->validate(['is_working' => 'required|boolean']);
         $data = ['is_working' => (bool) $data['is_working'], 'works_from' => null, 'works_until' => null];
-        $city->forceFill(['is_working' => $data['is_working']])->save();
-        Log::info('Ciudad ' . $city->name . ': ' . ($data['is_working'] ? 'encendida' : 'apagada') . ' (por ' . Auth::user()?->names . ').');
+        $this->switch->setCity($city, $data['is_working'], Auth::user());
 
         return response()->json(['status' => true, 'message' => $this->hoursMessage($city->name, $data, $this->hours->cityStop($city)), 'data' => $this->payload()]);
     }
@@ -118,8 +118,7 @@ class AgencyRoutingController extends Controller
     {
         $this->ensureAgency($agency);
         $data = $this->validateHours($request);
-        $agency->forceFill(['agency_is_working' => $data['is_working'], 'agency_works_from' => $data['works_from'], 'agency_works_until' => $data['works_until']])->save();
-        Log::info('Agencia ' . $agency->names . ': ' . ($data['is_working'] ? 'encendida' : 'apagada') . ', horario ' . WorkingHours::hoursLabel($data['works_from'], $data['works_until']) . ' (por ' . Auth::user()?->names . ').');
+        $this->switch->setAgency($agency, $data, Auth::user());
         $stop = $this->hours->agencyStop($agency);
 
         return response()->json(['status' => true, 'message' => $this->hoursMessage($agency->names, $data, $stop ? "{$agency->names} {$stop}" : null), 'data' => $this->payload()]);
@@ -133,13 +132,8 @@ class AgencyRoutingController extends Controller
             'works_from' => 'nullable|date_format:H:i',
             'works_until' => 'nullable|date_format:H:i',
         ], ['works_from.date_format' => 'La hora de inicio tiene que ser HH:MM.', 'works_until.date_format' => 'La hora de cierre tiene que ser HH:MM.']);
-        $from = ($data['works_from'] ?? null) ?: null;
-        $until = ($data['works_until'] ?? null) ?: null;
-        if ($from && $until && $from === $until) {
-            throw ValidationException::withMessages(['works_until' => 'La hora de cierre no puede ser igual a la de inicio.']);
-        }
 
-        return ['is_working' => (bool) $data['is_working'], 'works_from' => $from, 'works_until' => $until];
+        return AgencySwitch::hours((bool) $data['is_working'], $data['works_from'] ?? null, $data['works_until'] ?? null);
     }
 
     private function hoursMessage(string $name, array $data, ?string $stop): string

@@ -67,6 +67,9 @@ class ActionDesk
         if ($proposal->warnings !== []) {
             $data['avisos'] = $proposal->warnings;
         }
+        if ($proposal->notes !== []) {
+            $data['notas'] = $proposal->notes;
+        }
 
         return new ToolResult($data, [['type' => 'action', 'id' => $action->id]]);
     }
@@ -75,8 +78,9 @@ class ActionDesk
     public function confirm(User $user, int $id): AssistantAction
     {
         $action = AssistantAction::where('user_id', $user->id)->findOrFail($id);
+        $secret = null;
         try {
-            DB::transaction(function () use ($user, $id) {
+            DB::transaction(function () use ($user, $id, &$secret) {
                 $locked = AssistantAction::whereKey($id)->lockForUpdate()->first();
                 if ($locked->status !== AssistantAction::PROPOSED) {
                     return; // ya se decidió (un segundo clic)
@@ -107,6 +111,7 @@ class ActionDesk
                 }
                 $outcome = $tool->execute($fresh->payload, $context);
                 $locked->update(['status' => AssistantAction::DONE, 'result' => $outcome->toArray(), 'decided_by' => $user->id, 'decided_at' => now()]);
+                $secret = $outcome->secret; // solo para esta respuesta: no se guarda
             });
         } catch (ValidationException|ToolProblem $e) {
             $this->fail($id, $user, 'No se pudo hacer: ' . self::reason($e) . ' No se guardó nada.');
@@ -114,8 +119,10 @@ class ActionDesk
             report($e);
             $this->fail($id, $user, 'No se pudo hacer: falló el sistema. No se guardó nada; intenta de nuevo en un momento.');
         }
+        $done = $action->fresh();
+        $done->oneTimeSecret = $done->status === AssistantAction::DONE ? $secret : null;
 
-        return $action->fresh();
+        return $done;
     }
 
     /** "Cancelar". */

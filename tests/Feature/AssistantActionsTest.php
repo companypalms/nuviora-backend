@@ -28,6 +28,11 @@ function cambioFalso(): ChangeTool
 
         public static ?Throwable $falla = null;
 
+        public static ?string $secreto = null;
+
+        /** Lo que cambia a cada rato (va en las notas, no en la huella). */
+        public static string $nota = 'Tiene 1 orden';
+
         public function name(): string
         {
             return 'proponer_prueba';
@@ -54,7 +59,7 @@ function cambioFalso(): ChangeTool
                 throw new ToolProblem('Falta el valor.');
             }
 
-            return new Proposal('Cambiar el valor', "Cambiar a {$args['valor']}", [Proposal::line('Valor', (string) $args['valor'], self::$estado)], ['valor' => $args['valor']]);
+            return new Proposal('Cambiar el valor', "Cambiar a {$args['valor']}", [Proposal::line('Valor', (string) $args['valor'], self::$estado)], ['valor' => $args['valor']], [], [self::$nota]);
         }
 
         public function execute(array $payload, ActionContext $context): Outcome
@@ -64,7 +69,8 @@ function cambioFalso(): ChangeTool
             }
             self::$hechos++;
 
-            return new Outcome("Listo: " . $payload['valor'] . ".", ['label' => 'Ver', 'to' => '/x']);
+            return new Outcome("Listo: " . $payload['valor'] . ".", ['label' => 'Ver', 'to' => '/x'],
+                self::$secreto ? ['label' => 'Contraseña', 'value' => self::$secreto, 'note' => 'Una sola vez'] : null);
         }
     };
 }
@@ -84,6 +90,8 @@ beforeEach(function () {
     $this->tool::$hechos = 0;
     $this->tool::$estado = 'A';
     $this->tool::$falla = null;
+    $this->tool::$secreto = null;
+    $this->tool::$nota = 'Tiene 1 orden';
     $this->desk = new ActionDesk(ToolCatalog::of($this->tool));
     $this->contexto = fn () => new ActionContext($this->dueno, null, [], CarbonImmutable::now());
     $this->proponer = function (string|float $valor, ?ActionContext $c = null) {
@@ -119,6 +127,24 @@ describe('Las tarjetas de cambios', function () {
         [, $a] = ($this->proponer)(5.0);
         expect($this->desk->confirm($this->dueno, $a->id)->status)->toBe('done');
         expect($this->tool::$hechos)->toBe(1);
+    });
+
+    it('lo que cambia a cada rato (las notas) se ve, pero no hace vencer la tarjeta', function () {
+        [, $a] = ($this->proponer)('B');
+        expect($a->toCard()['notes'])->toBe(['Tiene 1 orden']);
+        $this->tool::$nota = 'Tiene 2 órdenes'; // le llegó otra orden mientras tanto
+        expect($this->desk->confirm($this->dueno, $a->id)->status)->toBe('done');
+    });
+
+    it('la contraseña de una cuenta nueva se ve una sola vez: no queda guardada en ningún lado', function () {
+        $this->tool::$secreto = 'Clave-De-Prueba-1';
+        [, $a] = ($this->proponer)('B');
+        $hecha = $this->desk->confirm($this->dueno, $a->id);
+        expect($hecha->toCard()['secret']['value'])->toBe('Clave-De-Prueba-1');
+        expect(json_encode(DB::table('assistant_actions')->get()))->not->toContain('Clave-De-Prueba-1');
+        expect($a->fresh()->toCard())->not->toHaveKey('secret');
+        expect(json_encode($this->desk->history($this->dueno)))->not->toContain('Clave-De-Prueba-1');
+        expect($this->desk->confirm($this->dueno, $a->id)->toCard())->not->toHaveKey('secret'); // un segundo clic ya no la muestra
     });
 
     it('Cancelar: ya no se puede confirmar', function () {
@@ -197,7 +223,7 @@ describe('Las tarjetas de cambios', function () {
 });
 
 describe('Lo que ve OpenAI de las herramientas', function () {
-    it('todas son estrictas: cada objeto con todo requerido y nada de más (si no, OpenAI rechaza todas las preguntas)', function () {
+    it('las 38 son estrictas: cada objeto con todo requerido y nada de más (si no, OpenAI rechaza todas las preguntas)', function () {
         $check = function (array $schema, string $where) use (&$check) {
             if (isset($schema['anyOf'])) {
                 foreach ($schema['anyOf'] as $i => $branch) {
@@ -220,11 +246,13 @@ describe('Lo que ve OpenAI de las herramientas', function () {
             }
         };
         $definitions = app(ToolCatalog::class)->definitions();
-        expect(count($definitions))->toBe(30);
+        expect(count($definitions))->toBe(38);
         foreach ($definitions as $d) {
             expect($d['strict'])->toBeTrue();
             $check($d['parameters'], $d['name']);
         }
-        expect(array_column($definitions, 'name'))->toContain('proponer_gasto', 'proponer_tasas', 'proponer_banco', 'proponer_pago_gasto_fijo');
+        expect(array_column($definitions, 'name'))->toContain('proponer_gasto', 'proponer_tasas', 'proponer_banco', 'proponer_pago_gasto_fijo',
+            'proponer_compra', 'proponer_compra_por_recibir', 'proponer_recibir_compra', 'proponer_ciudad_trabajando', 'proponer_agencia_trabajando',
+            'proponer_usuario', 'proponer_desactivar_usuario', 'proponer_reactivar_usuario');
     });
 });

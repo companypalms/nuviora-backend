@@ -12,6 +12,8 @@ final class Proposal
      * @param array<int, array{label: string, value: string, before?: ?string}> $lines
      * @param array<int, string> $warnings
      * @param array $payload lo que usa ChangeTool::execute (ya validado)
+     * @param array<int, string> $notes avisos de lo que cambia a cada rato (cuántas órdenes tiene, cuántas esperan): se
+     *        muestran, pero no cuentan para la huella (si no, la tarjeta vencería con cada orden nueva). Paso 7.
      */
     public function __construct(
         public readonly string $title,
@@ -19,12 +21,13 @@ final class Proposal
         public readonly array $lines,
         public readonly array $payload,
         public readonly array $warnings = [],
+        public readonly array $notes = [],
     ) {
     }
 
     /**
      * Si al confirmar la propuesta da distinto (algo cambió en el sistema), la tarjeta vence. 5 y 5.0 son lo mismo (al
-     * guardarse en la base, 5.0 vuelve como 5).
+     * guardarse en la base, 5.0 vuelve como 5). Las notas no cuentan.
      */
     public function fingerprint(): string
     {
@@ -33,7 +36,7 @@ final class Proposal
 
     public function card(): array
     {
-        return ['title' => $this->title, 'lines' => $this->lines, 'warnings' => $this->warnings];
+        return ['title' => $this->title, 'lines' => $this->lines, 'warnings' => $this->warnings] + ($this->notes !== [] ? ['notes' => $this->notes] : []);
     }
 
     /** Una línea de la tarjeta; sin valor no se muestra. */

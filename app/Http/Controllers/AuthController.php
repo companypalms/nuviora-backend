@@ -26,18 +26,9 @@ class AuthController extends Controller
     }
 
     // POST /users (la ruta ya exige Admin, Gerente o Master)
-    public function store(Request $request)
+    public function store(Request $request, UserAccounts $accounts)
     {
-        $request->validate([
-            'names'    => 'required|string|max:100',
-            'surnames' => 'nullable|string|max:100',
-            'email'    => 'required|email|unique:users,email',
-            'password' => 'required|string|min:6',
-            'role_id'  => 'required|exists:roles,id',
-            'phone'    => 'nullable|string|max:100',
-            'address'  => 'nullable|string|max:255',
-            'delivery_cost' => 'nullable|numeric|min:0',
-        ]);
+        $request->validate(UserAccounts::CREATE_RULES + ['password' => 'required|string|min:6', 'role_id' => 'required|exists:roles,id']);
 
         // 🔒 Un Gerente no puede crear cuentas de Admin o Master
         $newRole = Role::find($request->role_id);
@@ -49,40 +40,8 @@ class AuthController extends Controller
             return response()->json(['status' => false, 'message' => 'No tienes permisos para crear usuarios con ese rol'], 403);
         }
 
-        $user = User::create([
-            'names'     => $request->names,
-            'surnames'  => $request->surnames,
-            'email'     => $request->email,
-            'phone'     => $request->phone,
-            'address'   => $request->address,
-            'password'  => Hash::make($request->password),
-            'role_id'   => $request->role_id,
-            'delivery_cost' => $request->delivery_cost ?? 0,
-            'color'     => '#0073ff', // Default color
-            'theme'     => 'light',    // Default theme
-        ]);
-
-        // Ensure active status exists or create it
-        $status = Status::firstOrNew(['description' => 'Activo']);
-        $status->save();
-        $user->status()->associate($status);
-        $user->save();
-
-        // Create warehouse for Agency
-        $role = Role::find($request->role_id);
-        if ($role && $role->description === 'Agencia') {
-            $type = WarehouseType::where('code', '=', 'AGENCY')->first();
-            if ($type) {
-                Warehouse::create([
-                    'warehouse_type_id' => $type->id,
-                    'user_id' => $user->id,
-                    'code' => 'WH-AG-' . $user->id . '-' . time(),
-                    'name' => 'Bodega Agencia: ' . $user->names,
-                    'is_active' => true,
-                    'is_main' => false
-                ]);
-            }
-        }
+        // Crear la cuenta (con su almacén si es Agencia) lo comparte con el asistente (paso 7)
+        $user = $accounts->create($request->only(['names', 'surnames', 'email', 'phone', 'address', 'delivery_cost', 'role_id']), $request->password);
 
         return response()->json([
             'status' => true,

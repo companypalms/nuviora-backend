@@ -151,6 +151,44 @@ class ExampleModel implements AssistantModel
             default => $now->toDateString(),
         };
 
+        // Paso 7: compras, ciudades y agencias, y cuentas
+        if (preg_match('/^(compre|pedi)\s+(\d+)\s+(.+?)\s+a\s+(.+?)\s+por\s+\d/u', $t, $m) && $amount) {
+            $purchase = ['producto' => $m[3], 'tallas' => null, 'almacen' => null, 'cantidad' => (int) $m[2], 'proveedor' => $m[4],
+                'total' => $amount['monto'], 'moneda' => $amount['moneda'], 'tasa' => null, 'notas' => null];
+            if ($m[1] === 'pedi') {
+                return ['name' => 'proponer_compra_por_recibir', 'arguments' => $purchase + ['llega' => str_contains($t, 'manana') ? $date : $now->addDays(7)->toDateString()]];
+            }
+            $credit = str_contains($t, 'a credito');
+
+            return ['name' => 'proponer_compra', 'arguments' => $purchase + ['pago' => $credit ? 'credito' : 'contado', 'cuenta' => $credit ? null : $account,
+                'vence' => $credit ? $now->addDays(30)->toDateString() : null, 'condiciones' => null]];
+        }
+        if (preg_match('/^(?:recibi|llego)\s+la compra\s+(.+?)(?:\s+(?:desde|con)\s+.+)?$/u', $t, $m)) {
+            return ['name' => 'proponer_recibir_compra', 'arguments' => ['compra' => $m[1], 'cantidad' => null, 'tallas' => null, 'total' => null, 'moneda' => null,
+                'tasa' => null, 'almacen' => null, 'pago' => 'contado', 'cuenta' => $account, 'vence' => null, 'condiciones' => null, 'notas' => null]];
+        }
+        if (preg_match('/^(apaga|prende|enciende)\s+la ciudad\s+(.+)$/u', $t, $m)) {
+            return ['name' => 'proponer_ciudad_trabajando', 'arguments' => ['ciudad' => $m[2], 'trabajando' => $m[1] !== 'apaga']];
+        }
+        if (preg_match('/^(apaga|prende|enciende)\s+la agencia\s+(.+?)(?:\s+de\s+(\d{1,2})(?:\s(\d{2}))?\s+a\s+(\d{1,2})(?:\s(\d{2}))?)?$/u', $t, $m)) {
+            $hour = fn ($h, $min) => sprintf('%02d:%02d', (int) $h, (int) ($min ?: 0));
+
+            return ['name' => 'proponer_agencia_trabajando', 'arguments' => ['agencia' => $m[2], 'trabajando' => $m[1] !== 'apaga',
+                'horario' => isset($m[5]) && $m[5] !== '' ? ['desde' => $hour($m[3], $m[4] ?? null), 'hasta' => $hour($m[5], $m[6] ?? null)] : null]];
+        }
+        if (preg_match('/^crea\s+(?:la cuenta de\s+|a\s+)(.+?)\s+como\s+(vendedora|agencia|repartidor|operadora)\b/u', $t, $m)
+            && preg_match('/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/u', $message, $email)) {
+            $names = explode(' ', ucwords($m[1]), 2);
+
+            return ['name' => 'proponer_usuario', 'arguments' => ['nombre' => $names[0], 'apellido' => $names[1] ?? null, 'correo' => $email[0], 'rol' => $m[2], 'telefono' => null]];
+        }
+        if (preg_match('/^(?:desactiva|elimina|da de baja)\s+(?:a\s+)?(.+?)(?:\s+(?:porque|por que)\s+(.+))?$/u', $t, $m)) {
+            return ['name' => 'proponer_desactivar_usuario', 'arguments' => ['persona' => $m[1], 'motivo' => isset($m[2]) ? ucfirst($m[2]) : null]];
+        }
+        if (preg_match('/^reactiva\s+(?:a\s+)?(.+)$/u', $t, $m)) {
+            return ['name' => 'proponer_reactivar_usuario', 'arguments' => ['persona' => $m[1]]];
+        }
+
         if (preg_match('/\b(tasa|binance|bcv)\b.*?\b(?:a|en)\s+(\d+(?:[.,]\d+)?)/u', $t, $m) && preg_match('/cambi|pon|actualiz|esta en|subio|bajo/u', $t)) {
             $key = str_contains($t, 'binance') ? 'binance_usd' : (str_contains($t, 'euro') ? 'bcv_eur' : 'bcv_usd');
 

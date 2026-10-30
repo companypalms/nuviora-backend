@@ -10,8 +10,12 @@ use App\Models\Order;
 use App\Models\RiderProfile;
 use App\Models\RosterChange;
 use App\Models\SalesGroupMember;
+use App\Models\Role;
+use App\Models\Status;
 use App\Models\User;
 use App\Models\UserAccountChange;
+use App\Models\Warehouse;
+use App\Models\WarehouseType;
 use App\Models\WhatsappConversation;
 use App\Services\Agencies\AgencyRouter;
 use App\Services\Assignment\BulkReassignService;
@@ -19,6 +23,7 @@ use App\Services\Logistics\Candidates;
 use App\Services\Metrics\PersonName;
 use App\Services\Metrics\Readers\TeamReader;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -35,6 +40,64 @@ class UserAccounts
     public const PROTECTED_ROLES = ['Admin', 'Master', 'Shopify'];
 
     public const REASON_MIN = 5;
+
+    /** Los datos de una cuenta nueva (los mismos de Usuarios › Agregar). */
+    public const CREATE_RULES = [
+        'names' => 'required|string|max:100',
+        'surnames' => 'nullable|string|max:100',
+        'email' => 'required|email|unique:users,email',
+        'phone' => 'nullable|string|max:100',
+        'address' => 'nullable|string|max:255',
+        'delivery_cost' => 'nullable|numeric|min:0',
+    ];
+
+    /** Los roles que puede crear el asistente (paso 7; Admin, Master y Gerente solo desde la pantalla). */
+    public const ASSISTANT_ROLES = ['vendedora' => 'Vendedor', 'agencia' => 'Agencia', 'repartidor' => 'Repartidor', 'operadora' => 'Operador logístico'];
+
+    /**
+     * Crear la cuenta, activa (con el estado viejo "Activo" para las pantallas que todavía lo miran) y, si es Agencia, con
+     * su almacén. Quién puede crear qué rol lo revisa quien llama.
+     *
+     * @param array{names: string, surnames?: ?string, email: string, phone?: ?string, address?: ?string, delivery_cost?: mixed, role_id: int} $data
+     */
+    public function create(array $data, string $password): User
+    {
+        return DB::transaction(function () use ($data, $password) {
+            $user = User::create([
+                'names' => $data['names'],
+                'surnames' => $data['surnames'] ?? null,
+                'email' => $data['email'],
+                'phone' => $data['phone'] ?? null,
+                'address' => $data['address'] ?? null,
+                'password' => Hash::make($password),
+                'role_id' => $data['role_id'],
+                'delivery_cost' => $data['delivery_cost'] ?? 0,
+                'color' => '#0073ff',
+                'theme' => 'light',
+            ]);
+
+            $status = Status::firstOrNew(['description' => 'Activo']);
+            $status->save();
+            $user->status()->associate($status);
+            $user->save();
+
+            if (Role::whereKey($data['role_id'])->value('description') === 'Agencia') {
+                $type = WarehouseType::where('code', '=', 'AGENCY')->first();
+                if ($type) {
+                    Warehouse::create([
+                        'warehouse_type_id' => $type->id,
+                        'user_id' => $user->id,
+                        'code' => 'WH-AG-' . $user->id . '-' . time(),
+                        'name' => 'Bodega Agencia: ' . $user->names,
+                        'is_active' => true,
+                        'is_main' => false,
+                    ]);
+                }
+            }
+
+            return $user;
+        });
+    }
 
     /** Órdenes en manos de un repartidor. */
     private const RIDER_STATUSES = [OrderStatus::ASIGNADO_A_REPARTIDOR, OrderStatus::EN_RUTA];

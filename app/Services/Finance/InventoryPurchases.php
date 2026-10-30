@@ -27,6 +27,29 @@ use Illuminate\Validation\ValidationException;
  */
 class InventoryPurchases
 {
+    /**
+     * Cuánto costó y cómo se paga: las mismas reglas en Inventario › Ingreso con compra, Compras › Recibir y el asistente
+     * (paso 7).
+     */
+    public const PAYMENT_RULES = [
+        'total_amount' => 'required|numeric|min:0.01|max:9999999999',
+        'currency' => 'required|in:USD,USDT,VES',
+        'rate' => 'nullable|required_if:currency,VES|numeric|min:0.0001',
+        'payment_type' => 'required|in:cash,credit',
+        'due_date' => 'nullable|required_if:payment_type,credit|date|after_or_equal:today',
+        'terms' => 'nullable|string|max:500',
+        'financial_account_id' => 'nullable|integer|exists:financial_accounts,id',
+    ];
+
+    public const MESSAGES = [
+        'supplier_id.required' => 'Elige el proveedor de la compra.',
+        'total_amount.min' => 'El costo total tiene que ser mayor que 0.',
+        'rate.required_if' => 'En bolívares, escribe la tasa (bolívares por dólar) de esta compra.',
+        'payment_type.required' => 'Elige si la compra es al contado o a crédito.',
+        'due_date.required_if' => 'A crédito, elige la fecha de vencimiento.',
+        'due_date.after_or_equal' => 'El vencimiento no puede ser anterior a hoy.',
+    ];
+
     public function __construct(private InventoryService $inventory, private Payables $payables)
     {
     }

@@ -36,22 +36,7 @@ class FinancePurchaseController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        $data = $request->validate([
-            'supplier_id' => 'required|integer|exists:suppliers,id',
-            'product_id' => 'required|integer|exists:products,id',
-            'warehouse_id' => 'required|integer|exists:warehouses,id',
-            'quantity' => 'required|integer|min:1',
-            'variants' => 'nullable|array',
-            'total_amount' => 'required|numeric|min:0.01|max:9999999999',
-            'currency' => 'required|in:USD,USDT,VES',
-            'rate' => 'nullable|required_if:currency,VES|numeric|min:0.0001',
-            'expected_at' => 'required|date|after_or_equal:today',
-            'notes' => 'nullable|string|max:500',
-        ], $this->messages() + [
-            'expected_at.required' => 'Elige la fecha en que debería llegar.',
-            'expected_at.after_or_equal' => 'La fecha en que llega no puede ser anterior a hoy.',
-            'total_amount.required' => 'Escribe cuánto debería costar la compra en total.',
-        ]);
+        $data = $request->validate(self::PENDING_RULES, self::pendingMessages());
 
         $purchase = $this->guard(fn () => $this->purchases->createPending($data));
         if ($purchase instanceof JsonResponse) {
@@ -66,24 +51,7 @@ class FinancePurchaseController extends Controller
 
     public function receive(Request $request, InventoryPurchase $purchase): JsonResponse
     {
-        $data = $request->validate([
-            'quantity' => 'required|integer|min:1',
-            'variants' => 'nullable|array',
-            'warehouse_id' => 'nullable|integer|exists:warehouses,id',
-            'total_amount' => 'required|numeric|min:0.01|max:9999999999',
-            'currency' => 'required|in:USD,USDT,VES',
-            'rate' => 'nullable|required_if:currency,VES|numeric|min:0.0001',
-            'payment_type' => 'required|in:cash,credit',
-            'due_date' => 'nullable|required_if:payment_type,credit|date|after_or_equal:today',
-            'terms' => 'nullable|string|max:500',
-            'financial_account_id' => 'nullable|integer|exists:financial_accounts,id',
-            'notes' => 'nullable|string|max:500',
-        ], $this->messages() + [
-            'total_amount.required' => 'Escribe cuánto costó de verdad la compra.',
-            'payment_type.required' => 'Elige si la compra es al contado o a crédito.',
-            'due_date.required_if' => 'A crédito, elige la fecha de vencimiento.',
-            'due_date.after_or_equal' => 'El vencimiento no puede ser anterior a hoy.',
-        ]);
+        $data = $request->validate(self::RECEIVE_RULES, self::receiveMessages());
 
         $received = $this->guard(fn () => $this->purchases->receive($purchase, $data));
         if ($received instanceof JsonResponse) {
@@ -123,10 +91,42 @@ class FinancePurchaseController extends Controller
 
     private function messages(): array
     {
-        return [
-            'supplier_id.required' => 'Elige el proveedor de la compra.',
-            'total_amount.min' => 'El costo total tiene que ser mayor que 0.',
-            'rate.required_if' => 'En bolívares, escribe la tasa (bolívares por dólar) de esta compra.',
+        return InventoryPurchases::MESSAGES;
+    }
+
+    /** Una compra por recibir: las reglas de la pantalla, que usa también el asistente (paso 7). */
+    public const PENDING_RULES = [
+        'supplier_id' => 'required|integer|exists:suppliers,id',
+        'product_id' => 'required|integer|exists:products,id',
+        'warehouse_id' => 'required|integer|exists:warehouses,id',
+        'quantity' => 'required|integer|min:1',
+        'variants' => 'nullable|array',
+        'total_amount' => 'required|numeric|min:0.01|max:9999999999',
+        'currency' => 'required|in:USD,USDT,VES',
+        'rate' => 'nullable|required_if:currency,VES|numeric|min:0.0001',
+        'expected_at' => 'required|date|after_or_equal:today',
+        'notes' => 'nullable|string|max:500',
+    ];
+
+    public static function pendingMessages(): array
+    {
+        return InventoryPurchases::MESSAGES + [
+            'expected_at.required' => 'Elige la fecha en que debería llegar.',
+            'expected_at.after_or_equal' => 'La fecha en que llega no puede ser anterior a hoy.',
+            'total_amount.required' => 'Escribe cuánto debería costar la compra en total.',
         ];
+    }
+
+    /** Recibir una compra: las reglas de la pantalla, que usa también el asistente (paso 7). */
+    public const RECEIVE_RULES = [
+        'quantity' => 'required|integer|min:1',
+        'variants' => 'nullable|array',
+        'warehouse_id' => 'nullable|integer|exists:warehouses,id',
+        'notes' => 'nullable|string|max:500',
+    ] + InventoryPurchases::PAYMENT_RULES;
+
+    public static function receiveMessages(): array
+    {
+        return InventoryPurchases::MESSAGES + ['total_amount.required' => 'Escribe cuánto costó de verdad la compra.'];
     }
 }

@@ -48,6 +48,9 @@ class AssistantAction extends Model
     }
 
     /** La tarjeta para el chat. */
+    /** Lo que se muestra una sola vez al confirmar (Outcome::$secret). Nunca se guarda. */
+    public ?array $oneTimeSecret = null;
+
     public function toCard(): array
     {
         $status = $this->currentStatus();
@@ -57,12 +60,13 @@ class AssistantAction extends Model
             'title' => $this->card['title'] ?? $this->summary,
             'lines' => $this->card['lines'] ?? [],
             'warnings' => $this->card['warnings'] ?? [],
+            'notes' => $this->card['notes'] ?? [],
             'status' => $status,
             'status_label' => self::STATUS_LABEL[$status] ?? $status,
             'error' => $status === self::EXPIRED && !$this->error ? 'Pasaron más de ' . self::EXPIRES_HOURS . ' horas. Si todavía lo quieres, pídemelo de nuevo.' : $this->error,
             'result' => $this->result,
             'created' => $this->created_at?->format('d/m H:i'),
             'decided' => $this->decided_at?->format('d/m H:i'),
-        ];
+        ] + ($this->oneTimeSecret ? ['secret' => $this->oneTimeSecret] : []);
     }
 }
