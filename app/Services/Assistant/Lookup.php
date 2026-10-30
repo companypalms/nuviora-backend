@@ -5,6 +5,7 @@ namespace App\Services\Assistant;
 use App\Models\City;
 use App\Models\Product;
 use App\Models\Shop;
+use App\Models\User;
 use App\Services\Assistant\Tools\ToolProblem;
 use App\Services\Metrics\Period;
 use App\Services\Metrics\Readers\TeamReader;
@@ -121,6 +122,13 @@ class Lookup
     {
         return $this->one('producto', $name, fn () => Product::orderBy('title')->get(['id', 'title', 'showable_name'])
             ->mapWithKeys(fn ($p) => [$p->id => $p->showable_name ?: $p->title])->all());
+    }
+
+    /** Las agencias, también las desactivadas (sus fechas viejas siguen contando). @throws ToolProblem si no hay ninguna o hay varias */
+    public function agencyId(?string $name): ?int
+    {
+        return $this->one('agencia', $name, fn () => User::whereHas('role', fn ($q) => $q->where('description', 'Agencia'))
+            ->orderBy('names')->pluck('names', 'id')->all());
     }
 
     private function one(string $what, ?string $name, callable $list): ?int

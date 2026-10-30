@@ -35,6 +35,7 @@ class ToolCatalog
         CommissionsTool::class,
         ClosuresTool::class,
         CashTool::class,
+        AgencyCashTool::class, // el efectivo de las agencias por fechas (Liquidación de Agencias)
         ExpensesTool::class,
         RatesTool::class,
         UsersTool::class,

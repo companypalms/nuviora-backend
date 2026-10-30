@@ -21,7 +21,7 @@ class CashTool implements Tool
 
     public function description(): string
     {
-        return 'Cuánto dinero hay ahora en cada cuenta de la empresa (bancos, billeteras, efectivo; lo mismo de Finanzas › Caja), en su moneda y en dólares, con lo pendiente de confirmar; y cuánto efectivo de entregas tiene todavía cada agencia. Los bolívares se pasan a dólares con la tasa de hoy (aproximado).';
+        return 'Cuánto dinero hay ahora en cada cuenta de la empresa (bancos, billeteras, efectivo; lo mismo de Finanzas › Caja), en su moneda y en dólares, con lo pendiente de confirmar; y cuánto efectivo de entregas tiene todavía cada agencia. Los bolívares se pasan a dólares con la tasa de hoy (aproximado). Para lo que cobraron las agencias en unas fechas (en dólares y en bolívares), usa efectivo_agencias.';
     }
 
     public function parameters(): array

@@ -79,6 +79,9 @@ class ExampleModel implements AssistantModel
         if ($has('comision')) {
             return ['name' => 'comisiones', 'arguments' => $period + ['grafico' => true]];
         }
+        if ($has('agencia') && $has('efectivo', 'deben', 'liquidacion', 'cobraron')) {
+            return ['name' => 'efectivo_agencias', 'arguments' => $period + ['agencia' => null, 'grafico' => $chart]];
+        }
         if ($has('cierre')) {
             return ['name' => 'cierres_agencias', 'arguments' => ['agencia' => null, 'estado' => null, 'semana' => null]];
         }

@@ -6,6 +6,7 @@ use App\Services\Assistant\Ai\OpenAiModel;
 use App\Services\Assistant\Instructions;
 use App\Services\Assistant\Lookup;
 use App\Services\Assistant\Present;
+use App\Services\Assistant\Tools\AgencyCashTool;
 use App\Services\Assistant\Tools\OrderHistoryTool;
 use App\Services\Assistant\Tools\PeriodArgs;
 use App\Services\Assistant\Tools\ToolProblem;
@@ -122,6 +123,8 @@ describe('El modo ejemplo entiende frases simples', function () {
         expect(ExampleModel::understand('¿Cuánto stock queda?')['name'])->toBe('stock');
         expect(ExampleModel::understand('Comisiones de la semana pasada')['arguments']['periodo'])->toBe('semana_pasada');
         expect(ExampleModel::understand('¿Cómo van los cierres de las agencias?')['name'])->toBe('cierres_agencias');
+        expect(ExampleModel::understand('¿Cuánto efectivo me deben las agencias de la semana pasada?'))
+            ->toBe(['name' => 'efectivo_agencias', 'arguments' => ['periodo' => 'semana_pasada', 'desde' => null, 'hasta' => null, 'agencia' => null, 'grafico' => false]]);
         expect(ExampleModel::understand('¿Cuánto hay en caja?')['name'])->toBe('caja');
         expect(ExampleModel::understand('¿Cuál es la tasa de hoy?')['name'])->toBe('tasas');
     });
@@ -195,5 +198,60 @@ describe('Lo que se manda y se lee de OpenAI', function () {
             ['type' => 'function_call', 'call_id' => 'call_1', 'name' => 'ventas', 'arguments' => '{}'],
             ['type' => 'function_call_output', 'call_id' => 'call_1', 'output' => '{"ok":1}'],
         ]);
+    });
+});
+
+describe('El efectivo de las agencias (como Liquidación de Agencias)', function () {
+    $agencia = fn (int $id, string $name, array $o) => $o + [
+        'agency_id' => $id, 'agency_name' => $name, 'count_delivered' => 0, 'count_trips' => 0, 'total_shipping_cost' => 0,
+        'total_collected_usd' => 0, 'total_collected_ves' => 0, 'total_change_usd' => 0, 'total_change_ves' => 0,
+        'balance_usd' => 0, 'balance_ves' => 0, 'order_details' => [],
+    ];
+
+    it('dólares y bolívares por separado, de mayor a menor saldo, con el total y lo que tienen hoy', function () use ($agencia) {
+        $s = AgencyCashTool::summarize([
+            $agencia(7, 'Rápido', ['count_delivered' => 2, 'total_collected_usd' => 50, 'total_collected_ves' => 1000, 'total_change_usd' => 5,
+                'total_change_ves' => 100, 'balance_usd' => 45, 'balance_ves' => 900, 'count_trips' => 3, 'total_shipping_cost' => 9,
+                'order_details' => [['order_id' => 1], ['order_id' => 2]]]),
+            $agencia(8, 'Centro', ['count_delivered' => 4, 'total_collected_usd' => 120, 'balance_usd' => 120, 'order_details' => [['order_id' => 3]]]),
+        ], [], [
+            ['agency_id' => 8, 'currency' => 'USD', 'balance' => 80.5],
+            ['agency_id' => 8, 'currency' => 'VES', 'balance' => 1200],
+            ['agency_id' => 7, 'currency' => 'VES', 'balance' => 0],
+            ['agency_id' => null, 'currency' => 'USD', 'balance' => 85],
+        ]);
+
+        expect(array_column($s['agencies'], 'agencia'))->toBe(['Centro', 'Rápido']);
+        expect($s['agencies'][1])->toMatchArray([
+            'entregadas' => 2,
+            'efectivo_cobrado' => '$50,00 y Bs 1.000,00',
+            'vueltos_que_dio' => '$5,00 y Bs 100,00',
+            'saldo_del_periodo' => '$45,00 y Bs 900,00',
+            'carreras' => 3,
+            'se_le_paga_por_carreras' => '$9,00',
+        ]);
+        expect($s['agencies'][1])->not->toHaveKey('tiene_hoy_sin_entregar'); // su cuenta en Bs está en cero
+        expect($s['agencies'][0]['tiene_hoy_sin_entregar'])->toBe('$80,50 y Bs 1.200,00');
+        expect($s['total'])->toMatchArray(['entregadas' => 6, 'saldo_del_periodo' => '$165,00 y Bs 900,00', 'carreras' => 3]);
+        expect($s['today'])->toBe(['todas_las_agencias' => '$80,50 y Bs 1.200,00', 'repartidores_propios' => '$85,00']);
+        expect($s['rows'][0])->toMatchArray(['name' => 'Centro', 'group' => 'Hoy tiene $80,50 y Bs 1.200,00']);
+        expect($s['rows'][1]['values'])->toBe(['delivered' => 2, 'usd' => 45.0, 'ves' => 900.0, 'trips' => 9.0]);
+    });
+
+    it('los euros en efectivo van aparte, con su aviso, y sin ellos no se mencionan', function () use ($agencia) {
+        $s = AgencyCashTool::summarize([
+            $agencia(7, 'Rápido', ['count_delivered' => 2, 'order_details' => [['order_id' => 1], ['order_id' => 2]]]),
+            $agencia(8, 'Centro', ['count_delivered' => 1, 'order_details' => [['order_id' => 3]]]),
+        ], [2 => 20.0, 9 => 99.0], []);
+
+        expect($s['agencies'][0]['euros_en_efectivo'])->toStartWith('$20,00 registrados como "Euros efectivo"');
+        expect($s['agencies'][1])->not->toHaveKey('euros_en_efectivo');
+        expect($s['total']['euros_en_efectivo'])->toStartWith('$20,00');
+        expect($s['today'])->toBe([]);
+    });
+
+    it('sin agencias en esas fechas, nada que mostrar', function () {
+        expect(AgencyCashTool::summarize([], [], []))->toBe(['agencies' => [], 'total' => ['entregadas' => 0, 'efectivo_cobrado' => '$0,00 y Bs 0,00',
+            'vueltos_que_dieron' => '$0,00 y Bs 0,00', 'saldo_del_periodo' => '$0,00 y Bs 0,00'], 'rows' => [], 'today' => []]);
     });
 });
