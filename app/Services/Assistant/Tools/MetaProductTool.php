@@ -79,7 +79,8 @@ class MetaProductTool extends MetaTool
         ] + self::targetWords($target) + [
             'c_y_be_salen_de' => match ($target['source']) { 'financial' => 'Finanzas › CPA (calculados)', 'manual' => 'puestos a mano', default => null },
             'ultimos_7_dias' => self::window(array_sum(array_column($week, 'spend')), array_sum(array_column($week, 'purchases')), $c, $be),
-            'urgencia' => $u ? $u['label'] . ' · batches nuevos a pedir: ' . $u['batches'] . ($u['reasons'] ? ' · ' . implode('; ', $u['reasons']) : '') : null,
+            'urgencia' => $u ? $u['label'] . ' · batches nuevos a pedir: ' . $u['batches'] . (($u['bank'] ?? []) ? ' (ya hay en la banca: ' . implode(', ', $u['bank']) . ')' : '')
+                . ($u['reasons'] ? ' · ' . implode('; ', $u['reasons']) : '') : null,
             'dinero_en_riesgo_3_dias' => $p['money_at_risk'] > 0 ? self::money($p['money_at_risk']) : null,
             'ciudades' => $cities ?: 'Ninguna campaña activa.',
             'creativos_principales' => array_map(fn ($cr) => "{$cr['label']}: {$cr['verdict']}" . ($cr['cross'] ? " ({$cr['cross']})" : ''),

@@ -62,6 +62,14 @@ class DecisionSettings
         'mins_review_pct' => [50, 0, 100],       // hasta 50 % revisar; más, no
         'price_step' => [2, 0.1, 100],           // probar bajar el precio de a $2
         'stock_days_min' => [7, 1, 90],          // escalar solo con stock para 7 días de ventas en la ciudad
+        // Paso 4 — la cola de producción y la banca (el manual: 1–2 batches aprobados sin testear por producto)
+        'bank_min' => [1, 0, 10],
+        'bank_max' => [2, 0, 10],
+        'batch_pieces' => [3, 1, 10],            // piezas (anuncios) por batch
+        'video_editors' => [2, 0, 50],
+        'batches_per_editor' => [2, 0.5, 20],    // por editor por día…
+        'corrections_pct' => [30, 0, 100],       // …más ≈30 % de correcciones
+        'due_days' => [1, 0, 30],                // plazo de un encargo al aprobarlo
     ];
 
     /** Se puede apagar sin publicar: los estados vuelven a quedar como estén. */

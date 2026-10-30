@@ -6,6 +6,7 @@ use App\Models\MetaAd;
 use App\Models\MetaAdAccount;
 use App\Models\MetaAdset;
 use App\Models\MetaCampaign;
+use App\Services\Meta\Queue\BatchTracker;
 use Illuminate\Support\Arr;
 
 /**
@@ -136,6 +137,12 @@ class MetaHierarchySync
         }
         $this->markMissing(MetaAd::class, $account, $seenAds, $now);
         $this->linker->run(['account' => $account->id]);
+        // Paso 4a: los encargos de la cola que ya aparecen en Meta pasan a "En test" (un error aquí no frena la sincronización)
+        try {
+            (new BatchTracker())->run(null, false);
+        } catch (\Throwable $e) {
+            report($e);
+        }
         $this->videoLengths($account, $client);
 
         foreach ($states as $level => $byId) {

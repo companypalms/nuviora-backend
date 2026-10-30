@@ -74,7 +74,8 @@ final class AnalysisFacts
             $u = $p['urgency'];
             $lines[] = "== PRODUCTO: {$p['product']}" . ($p['mode'] !== 'normal' ? " (modo {$p['mode']})" : '');
             if ($u) {
-                $lines[] = "Urgencia: {$u['label']} · batches a pedir: {$u['batches']}" . ($u['reasons'] ? ' · ' . implode('; ', $u['reasons']) : '');
+                $lines[] = "Urgencia: {$u['label']} · batches a pedir: {$u['batches']}" . (($u['bank'] ?? []) ? ' (ya hay en la banca: ' . implode(', ', $u['bank']) . ')' : '')
+                    . ($u['reasons'] ? ' · ' . implode('; ', $u['reasons']) : '');
             }
             foreach ($p['cities'] as $c) {
                 $a = $c['action'];

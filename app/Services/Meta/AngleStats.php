@@ -3,11 +3,13 @@
 namespace App\Services\Meta;
 
 use App\Models\AdAngle;
+use App\Models\Product;
+use App\Models\ProductAdSetting;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Los ángulos de un producto con sus números (Etapa 5): lo que se ve en Meta Ads › Ángulos y lo que lee el asistente.
- * Solo lee.
+ * Los ángulos de un producto con sus números (Etapa 5): lo que se ve en Meta Ads › Ángulos y lo que lee el asistente, y
+ * los productos que se trabajan en Meta (también para la cola de producción). Solo lee.
  */
 final class AngleStats
 {
@@ -50,5 +52,22 @@ final class AngleStats
                 'sample' => $sample ? trim(($sample->ad_title ? $sample->ad_title . ' — ' : '') . mb_strimwidth((string) $sample->ad_body, 0, 280, '…')) : null,
             ];
         })->sortBy([['active_ads', 'desc'], ['spend', 'desc']])->values()->all();
+    }
+
+    /**
+     * Los productos con campañas de Meta, ángulos o modo puesto; primero los que tienen más campañas activas.
+     *
+     * @return array<int, array{id: int, name: string, campaigns: int, active_campaigns: int}>
+     */
+    public static function products(): array
+    {
+        $campaigns = DB::table('meta_campaigns')->whereNotNull('product_id')->groupBy('product_id')
+            ->selectRaw("product_id, COUNT(*) n, SUM(effective_status = 'ACTIVE' AND missing_since IS NULL) active")->get()->keyBy('product_id');
+        $ids = $campaigns->keys()->merge(AdAngle::distinct()->pluck('product_id'))->merge(ProductAdSetting::pluck('product_id'))->unique();
+
+        return Product::whereIn('id', $ids)->get(['id', 'title', 'showable_name'])
+            ->map(fn ($p) => ['id' => $p->id, 'name' => $p->showable_name ?: $p->title,
+                'campaigns' => (int) ($campaigns[$p->id]->n ?? 0), 'active_campaigns' => (int) ($campaigns[$p->id]->active ?? 0)])
+            ->sortBy([['active_campaigns', 'desc'], ['name', 'asc']])->values()->all();
     }
 }

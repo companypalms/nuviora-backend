@@ -606,6 +606,14 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::get('/analysis', [\App\Http\Controllers\MetaAnalysisController::class, 'index']);
         Route::post('/analysis/run', [\App\Http\Controllers\MetaAnalysisController::class, 'run'])->middleware('throttle:5,1');
         Route::put('/analysis/{analysis}/marks', [\App\Http\Controllers\MetaAnalysisController::class, 'mark']);
+        // Etapa 5, paso 4a: la cola de producción y la banca
+        Route::get('/queue', [\App\Http\Controllers\MetaQueueController::class, 'index']);
+        Route::get('/queue/options', [\App\Http\Controllers\MetaQueueController::class, 'options']);
+        Route::post('/queue', [\App\Http\Controllers\MetaQueueController::class, 'store']);
+        Route::put('/queue/order', [\App\Http\Controllers\MetaQueueController::class, 'order']);
+        Route::put('/queue/{batch}', [\App\Http\Controllers\MetaQueueController::class, 'update'])->whereNumber('batch');
+        Route::post('/queue/{batch}/approve', [\App\Http\Controllers\MetaQueueController::class, 'approve'])->whereNumber('batch');
+        Route::put('/queue/{batch}/status', [\App\Http\Controllers\MetaQueueController::class, 'status'])->whereNumber('batch');
         Route::get('/targets', [\App\Http\Controllers\MetaAdsSetupController::class, 'targets']);
         Route::post('/targets', [\App\Http\Controllers\MetaAdsSetupController::class, 'storeTarget']);
         Route::get('/rules', [\App\Http\Controllers\MetaAdsSetupController::class, 'rules']);

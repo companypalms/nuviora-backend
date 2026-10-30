@@ -8,6 +8,7 @@ use App\Services\Meta\Decisions\Readers\OpsFacts;
 use App\Services\Meta\Decisions\Rules\AdRules;
 use App\Services\Meta\Decisions\Rules\CampaignRules;
 use App\Services\Meta\MetaMetrics;
+use App\Services\Meta\Queue\QueueRules;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
@@ -45,7 +46,8 @@ class MetaDecisions
         }
         $s = $this->settings->get();
         $synced = DB::table('meta_insights_daily')->max('updated_at');
-        $key = 'meta-decisions:' . md5(json_encode([$productIds, $s, $synced, now()->toDateString()]));
+        $bank = DB::table('creative_batches')->max('updated_at'); // paso 4a: la banca cambia lo que se pide
+        $key = 'meta-decisions:' . md5(json_encode([$productIds, $s, $synced, $bank, now()->toDateString()]));
 
         return Cache::remember($key, 600, fn () => $this->compute($productIds, $s));
     }
@@ -371,6 +373,7 @@ class MetaDecisions
                 'streak_days' => $streak['days'], 'intervention' => $intervention, 'closed_since_intervention' => $closed,
                 'decreased_since_intervention' => $intervention !== null && collect($h['budget_events'])->contains(fn ($e) => $e['to'] < $e['from'] && $e['date'] >= $intervention),
                 'history_since' => $history['history_since'], 'last_test' => $lastTest, 'prune' => $prune,
+                'bank_ready' => $ops['bank']['ready'] ?? [],
             ]);
             $out['campaigns'][$id]['action'] = $action;
             $out['campaigns'][$id]['budget_notes'] = $cr->budgetNotes($budget, (float) $h['mins'], $newBatches, $c['target']);
@@ -417,6 +420,11 @@ class MetaDecisions
         $activeCities = array_filter($f['campaigns'], fn ($c) => $c['active']);
         $stockAllOut = $ops && $activeCities && !array_filter($activeCities, fn ($c) => ($ops['cities'][$c['city_id']]['stock'] ?? 1) > 0);
         $urgency = $cr->urgency(['mode' => $mode, 'cities' => array_values($actions), 'healthy' => $healthy, 'failing' => $failing, 'stock_all_out' => $stockAllOut]);
+        // Paso 4a: lo que ya está en la banca (aprobado sin testear) se resta de lo que hay que pedir
+        $bank = $ops['bank']['codes'] ?? [];
+        $urgency['needed'] = $urgency['batches'];
+        $urgency['bank'] = $bank;
+        $urgency['batches'] = QueueRules::minusBank($urgency['batches'], count($bank));
         $angleSpend = [];
         foreach ($f['adsets'] as $setId => $set) {
             if ($set['angle_code']) {
@@ -441,7 +449,7 @@ class MetaDecisions
         $out['plan'] = [
             'urgency' => $urgency,
             'next_work' => $cr->nextWork(['mode' => $mode, 'winner' => $winner, 'saturated' => $saturated, 'main_angle' => $mainAngle,
-                'failed_batches_in_angle' => $failedBatches], $urgency['batches']),
+                'failed_batches_in_angle' => $failedBatches, 'bank' => $bank, 'needed' => $urgency['needed']], $urgency['batches']),
             'price' => $prices,
             'price_watch' => $cr->priceWatch($ops['price_change'] ?? null, $mainCampaign !== null ? ($minFor[$mainCampaign] ?? null) : null),
             'alarms' => array_values(array_unique($alarms)),

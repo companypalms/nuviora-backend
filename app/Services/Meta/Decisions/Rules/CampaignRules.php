@@ -41,7 +41,8 @@ class CampaignRules
      * @param array $in c, be, mode, budget, spend3, purchases3, cpa3, cpa7, freq3, stock_ok, stock_note,
      *                  increased_24h, budget_changed_today, new_ads_today, streak_days, intervention (fecha o null),
      *                  closed_since_intervention, decreased_since_intervention, history_since, last_test (null o
-     *                  ['days' => n, 'cpa' => x]), prune (nombres de anuncios perdedores), new_batches
+     *                  ['days' => n, 'cpa' => x]), prune (nombres de anuncios perdedores), new_batches, bank_ready (los B####
+     *                  en banca, listos para lanzar)
      * @return array{key: string, label: string, tone: string, data: string, reading: string, proposal: ?string, from: ?float, to: ?float}
      */
     public function action(array $in): array
@@ -93,7 +94,7 @@ class CampaignRules
                 }
 
                 return $this->out('intervene', $data, 'En el break-even o encima' . ($streak ? " hace {$streak} " . ($streak === 1 ? 'día' : 'días') : '') . $history . '.',
-                    'Intervenir: podar y lanzar un batch nuevo. No tocar el presupuesto hoy.' . $pruneText);
+                    'Intervenir: podar y lanzar ' . (($in['bank_ready'] ?? []) ? $in['bank_ready'][0] . ' de la banca' : 'un batch nuevo') . '. No tocar el presupuesto hoy.' . $pruneText);
             }
             if ($days >= $this->s['pause_after_days']) {
                 $test = $c * $this->s['last_test_budget_cpa'];
@@ -311,13 +312,19 @@ class CampaignRules
      * Qué producir: iteraciones de un ganador, un concepto nuevo o un ángulo nuevo, y creativos de arriba del embudo si
      * las campañas están saturadas.
      *
-     * @param array $p mode, winner (['label', 'iterate']|null), saturated (ciudades), main_angle, failed_batches_in_angle
+     * @param array $p mode, winner (['label', 'iterate']|null), saturated (ciudades), main_angle, failed_batches_in_angle,
+     *                 bank (los B#### aprobados sin testear), needed (lo que se pedía antes de restar la banca)
      * @return string[]
      */
     public function nextWork(array $p, string $batches): array
     {
+        $bank = $p['bank'] ?? [];
         if ($batches === '0') {
-            return [($p['mode'] ?? '') === 'liquidation' ? 'En liquidación: sin creativos nuevos.' : 'Sin trabajo para este producto.'];
+            return [match (true) {
+                ($p['mode'] ?? '') === 'liquidation' => 'En liquidación: sin creativos nuevos.',
+                $bank !== [] && ($p['needed'] ?? '0') !== '0' => 'La banca alcanza: ' . implode(', ', $bank) . ' ' . (count($bank) === 1 ? 'está aprobado' : 'están aprobados') . ' sin testear.',
+                default => 'Sin trabajo para este producto.',
+            }];
         }
         $out = [];
         if ($w = $p['winner'] ?? null) {

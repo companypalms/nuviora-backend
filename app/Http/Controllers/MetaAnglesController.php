@@ -27,7 +27,7 @@ class MetaAnglesController extends Controller
     /** Los productos con campañas o ángulos, y los ángulos del elegido con lo que se gastó y vendió en 30 días. */
     public function index(Request $request)
     {
-        $products = $this->products();
+        $products = AngleStats::products();
         $productId = $request->filled('product_id') ? (int) $request->get('product_id') : ($products[0]['id'] ?? null);
         $angles = $productId ? AngleStats::forProduct($productId) : [];
 
@@ -102,7 +102,7 @@ class MetaAnglesController extends Controller
 
         return response()->json([
             'modes' => ProductAdSetting::MODES,
-            'products' => collect($this->products())->map(function ($p) use ($settings) {
+            'products' => collect(AngleStats::products())->map(function ($p) use ($settings) {
                 $s = $settings->get($p['id']); // sin fila, el producto está en modo normal
 
                 return $p + ['mode' => $s->mode ?? 'normal', 'note' => $s?->note, 'updated_by' => $s?->updater?->names,
@@ -120,18 +120,5 @@ class MetaAnglesController extends Controller
         ProductAdSetting::updateOrCreate(['product_id' => $product->id], $data + ['updated_by' => Auth::id()]);
 
         return response()->json(['status' => true]);
-    }
-
-    /** @return array<int, array{id: int, name: string, campaigns: int, active_campaigns: int}> */
-    private function products(): array
-    {
-        $campaigns = DB::table('meta_campaigns')->whereNotNull('product_id')->groupBy('product_id')
-            ->selectRaw("product_id, COUNT(*) n, SUM(effective_status = 'ACTIVE' AND missing_since IS NULL) active")->get()->keyBy('product_id');
-        $ids = $campaigns->keys()->merge(AdAngle::distinct()->pluck('product_id'))->merge(ProductAdSetting::pluck('product_id'))->unique();
-
-        return Product::whereIn('id', $ids)->get(['id', 'title', 'showable_name'])
-            ->map(fn ($p) => ['id' => $p->id, 'name' => $p->showable_name ?: $p->title,
-                'campaigns' => (int) ($campaigns[$p->id]->n ?? 0), 'active_campaigns' => (int) ($campaigns[$p->id]->active ?? 0)])
-            ->sortBy([['active_campaigns', 'desc'], ['name', 'asc']])->values()->all();
     }
 }
