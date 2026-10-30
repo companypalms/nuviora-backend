@@ -157,12 +157,23 @@ final class QueueRules
                     . ($p['format'] && $p['format'] !== $b['format'] ? ' (' . mb_strtolower(self::FORMATS[$p['format']] ?? $p['format']) . ')' : '');
             }
         }
+        // Paso 5a: los enlaces de Drive de la última entrega, para subirlos a Meta
+        $files = array_filter($b['pieces'] ?? [], fn ($p) => !empty($p['link']));
+        if ($files) {
+            $lines[] = 'Archivos (Drive):';
+            foreach ($files as $p) {
+                $lines[] = '- ' . ($p['code'] ?? 'Pieza') . ': ' . $p['link'] . (!empty($p['hook']) ? " — hook: {$p['hook']}" : '');
+            }
+        }
         if (trim((string) ($b['deliverables'] ?? '')) !== '') {
             $lines[] = 'Entregables: ' . trim((string) $b['deliverables']);
         }
         if ($b['due_date']) {
             $d = CarbonImmutable::parse($b['due_date']);
             $lines[] = 'Plazo: ' . self::DAYS[$d->dayOfWeek] . ' ' . $d->format('d/m');
+        }
+        if (!empty($b['editor'])) {
+            $lines[] = "Editor: {$b['editor']}";
         }
         $names = $b['meta_names'] ?? ['adset' => null, 'ads' => []];
         if ($names['adset']) {

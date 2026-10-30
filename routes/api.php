@@ -615,6 +615,9 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::put('/queue/{batch}', [\App\Http\Controllers\MetaQueueController::class, 'update'])->whereNumber('batch');
         Route::post('/queue/{batch}/approve', [\App\Http\Controllers\MetaQueueController::class, 'approve'])->whereNumber('batch');
         Route::put('/queue/{batch}/status', [\App\Http\Controllers\MetaQueueController::class, 'status'])->whereNumber('batch');
+        // Etapa 5, paso 5a: el dueño también asigna el editor y revisa las entregas (las del editor líder, solo él)
+        Route::put('/queue/{batch}/editor', [\App\Http\Controllers\MetaQueueController::class, 'assign'])->whereNumber('batch');
+        Route::post('/queue/{batch}/review', [\App\Http\Controllers\MetaQueueController::class, 'review'])->whereNumber('batch');
         Route::get('/targets', [\App\Http\Controllers\MetaAdsSetupController::class, 'targets']);
         Route::post('/targets', [\App\Http\Controllers\MetaAdsSetupController::class, 'storeTarget']);
         Route::get('/rules', [\App\Http\Controllers\MetaAdsSetupController::class, 'rules']);
@@ -633,6 +636,19 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::get('/report/series', [\App\Http\Controllers\MetaReportController::class, 'series']);
         Route::get('/report/filters', [\App\Http\Controllers\MetaReportController::class, 'filters']);
         Route::get('/report/creatives/{creative}', [\App\Http\Controllers\MetaReportController::class, 'creative']);
+    });
+
+    /**---------------------
+     * EDITORES (Etapa 5, paso 5a): "Mis encargos" y, para el editor líder, asignar y revisar. RestrictLimitedRoles no
+     * los deja salir de /editor/*; cada encargo tiene además sus permisos (EditorRules).
+     * ---------------------**/
+    Route::middleware('role:Editor líder,Editor de video')->prefix('editor')->group(function () {
+        Route::get('/queue', [\App\Http\Controllers\EditorQueueController::class, 'index']);
+        Route::get('/summary', [\App\Http\Controllers\EditorQueueController::class, 'summary']);
+        Route::post('/queue/{batch}/start', [\App\Http\Controllers\EditorQueueController::class, 'start'])->whereNumber('batch');
+        Route::post('/queue/{batch}/deliver', [\App\Http\Controllers\EditorQueueController::class, 'deliver'])->whereNumber('batch')->middleware('throttle:30,1');
+        Route::put('/queue/{batch}/editor', [\App\Http\Controllers\EditorQueueController::class, 'assign'])->whereNumber('batch');
+        Route::post('/queue/{batch}/review', [\App\Http\Controllers\EditorQueueController::class, 'review'])->whereNumber('batch');
     });
 
     /**---------------------

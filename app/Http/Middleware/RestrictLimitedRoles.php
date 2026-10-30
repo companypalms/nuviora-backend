@@ -13,7 +13,8 @@ use Symfony\Component\HttpFoundation\Response;
  * reprogramarla, pasársela a otro, tocar el catálogo… Aquí se invierte: todo les da 403 salvo esta lista.
  * - Rider: su app (/rider/*) y las dos llamadas de la entrega (§12.1): subir el comprobante y marcar "Entregado".
  * - Operador: su torre de control (/logistics/*).
- * - Los dos: su sesión y su perfil.
+ * - Los editores (Etapa 5, paso 5a): sus encargos (/editor/*).
+ * - Todos: su sesión y su perfil.
  * Cada ruta de la lista sigue con sus propios controles (rol, orden suya, centro suyo).
  */
 class RestrictLimitedRoles
@@ -26,11 +27,13 @@ class RestrictLimitedRoles
 
     private const RIDER = 'repartidor';
     private const OPERATOR = 'operador logístico';
+    private const EDITORS = ['editor líder', 'editor de video'];
 
     public function handle(Request $request, Closure $next): Response
     {
         $role = strtolower((string) $request->user()?->role?->description);
-        if ($role !== self::RIDER && $role !== self::OPERATOR) {
+        $editor = in_array($role, self::EDITORS, true);
+        if ($role !== self::RIDER && $role !== self::OPERATOR && !$editor) {
             return $next($request);
         }
 
@@ -39,6 +42,9 @@ class RestrictLimitedRoles
         }
         if ($role === self::OPERATOR && $request->is('api/logistics/*')) {
             return $next($request);
+        }
+        if ($editor) {
+            return $request->is('api/editor/*') ? $next($request) : $this->deny('Tu usuario solo tiene acceso a tus encargos de video.');
         }
         if ($role === self::RIDER) {
             if ($request->is('api/rider/*')) {

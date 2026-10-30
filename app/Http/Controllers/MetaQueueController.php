@@ -13,6 +13,7 @@ use App\Services\Meta\Decisions\DecisionSettings;
 use App\Services\Meta\Decisions\MetaDecisions;
 use App\Services\Meta\Queue\BatchQueue;
 use App\Services\Meta\Queue\BatchTracker;
+use App\Services\Meta\Queue\EditorWork;
 use App\Services\Meta\Queue\QueueProposer;
 use App\Services\Meta\Queue\QueueRules;
 use Illuminate\Http\Request;
@@ -22,11 +23,12 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 /**
- * Meta Ads › Cola y banca (Etapa 5, paso 4a). Solo el Administrador, como todo Meta Ads (hasta el Paso 5 no entran los
- * editores). Cada encargo es un batch con sus piezas:
+ * Meta Ads › Cola y banca (Etapa 5, paso 4a). Solo el Administrador, como todo Meta Ads (los editores tienen sus propias
+ * pantallas desde el paso 5a: EditorQueueController). Cada encargo es un batch con sus piezas:
  * - se crea a mano, o lo proponen las reglas cada mañana y lo redacta la IA (paso 4b, QueueProposer), y queda "Propuesto";
  * - al aprobarlo, el sistema le da su B#### y a cada pieza su C####, y entra al final de la cola;
- * - el dueño lo mueve (En producción, En revisión, En banca) o lo descarta con un motivo;
+ * - el dueño lo mueve (En producción, En revisión, En banca) o lo descarta con un motivo; desde el paso 5a, el editor
+ *   líder lo asigna, el editor lo entrega y el líder lo revisa (el dueño también puede asignar y revisar desde aquí);
  * - "En test" y "Testeado" se ponen solos cuando aparece en Meta y cuando las reglas le dan un veredicto (BatchTracker).
  * Nada de esto toca Meta.
  */
@@ -34,6 +36,8 @@ class MetaQueueController extends Controller
 {
     /** Los testeados y descartados que se muestran (los más nuevos). */
     private const HISTORY = 60;
+
+    private const WITH = [...EditorWork::WITH, 'approver:id,names', 'statusUser:id,names'];
 
     public function index(DecisionSettings $settings, MetaDecisions $decisions)
     {
@@ -45,7 +49,7 @@ class MetaQueueController extends Controller
         $open = CreativeBatch::whereNotIn('status', ['tested', 'discarded'])->get();
         $closed = CreativeBatch::whereIn('status', ['tested', 'discarded'])->orderByDesc('status_at')->limit(self::HISTORY)->get();
         $batches = $open->merge($closed);
-        $batches->load(['pieces', 'product:id,title,showable_name', 'reference:id,label', 'learningCity:id,name', 'approver:id,names', 'statusUser:id,names']);
+        $batches->load(self::WITH);
         $s = $settings->get();
 
         return response()->json([
@@ -59,7 +63,26 @@ class MetaQueueController extends Controller
             ],
             'statuses' => QueueRules::STATUSES, 'kinds' => QueueRules::KINDS, 'formats' => QueueRules::FORMATS,
             'last_run' => Setting::get(QueueProposer::LAST_RUN),
+            'editors' => EditorWork::editors(),
         ]);
+    }
+
+    /** Asignar el editor (paso 5a): lo mismo que hace el editor líder. */
+    public function assign(Request $request, CreativeBatch $batch, EditorWork $work)
+    {
+        $data = $request->validate(['editor_id' => 'present|nullable|integer']);
+        $work->assign($batch, $data['editor_id'] !== null ? (int) $data['editor_id'] : null, Auth::user());
+
+        return response()->json(['batch' => $this->presentOne($batch)]);
+    }
+
+    /** Aprobar (a la banca) o devolver con un comentario la entrega que espera revisión (paso 5a). Las del líder, solo aquí. */
+    public function review(Request $request, CreativeBatch $batch, EditorWork $work)
+    {
+        $data = $request->validate(['approve' => 'required|boolean', 'comment' => 'nullable|string|max:2000']);
+        $work->review($batch, Auth::user(), (bool) $data['approve'], $data['comment'] ?? null);
+
+        return response()->json(['batch' => $this->presentOne($batch)]);
     }
 
     /** "Proponer ahora": lo mismo que corre con el análisis de la mañana (no repite lo ya propuesto hoy). */
@@ -134,6 +157,15 @@ class MetaQueueController extends Controller
         }
         if ($data['status'] === 'discarded' && trim((string) ($data['reason'] ?? '')) === '') {
             throw ValidationException::withMessages(['reason' => 'Escribe por qué se descarta.']);
+        }
+        // Paso 5a: una entrega que espera revisión se aprueba o se devuelve (así el editor sabe qué cambiar)
+        if ($batch->status === 'review' && $batch->deliveries()->where('review', 'pending')->exists()) {
+            if ($data['status'] === 'bank') {
+                return $this->review(new Request(['approve' => true]), $batch, app(EditorWork::class));
+            }
+            if ($data['status'] !== 'discarded') {
+                throw ValidationException::withMessages(['status' => 'Tiene una entrega por revisar: usa "Devolver" para que el editor sepa qué cambiar.']);
+            }
         }
         $now = now();
         $batch->forceFill(['status' => $data['status'], 'status_at' => $now, 'status_by' => Auth::id(),
@@ -241,7 +273,8 @@ class MetaQueueController extends Controller
 
     private function presentOne(CreativeBatch $batch): array
     {
-        $batch->load(['pieces', 'product:id,title,showable_name', 'reference:id,label', 'learningCity:id,name', 'approver:id,names', 'statusUser:id,names']);
+        $batch = $batch->fresh() ?? $batch;
+        $batch->load(self::WITH);
 
         return self::presentAll(collect([$batch]))[0];
     }
@@ -252,9 +285,11 @@ class MetaQueueController extends Controller
         $angles = AdAngle::whereIn('product_id', $batches->pluck('product_id')->unique())->whereNotNull('name')->get(['product_id', 'code', 'name'])
             ->mapWithKeys(fn ($a) => ["{$a->product_id}:{$a->code}" => $a->name]);
 
-        return $batches->sortBy(fn ($b) => [array_search($b->status, array_keys(QueueRules::STATUSES), true), $b->position ?? PHP_INT_MAX, $b->id])
-            ->values()->map(function (CreativeBatch $b) use ($angles) {
-                $pieces = $b->pieces->map(fn (CreativeBatchPiece $p) => ['id' => $p->id, 'code' => $p->code(), 'change' => $p->change, 'format' => $p->format])->values()->all();
+        $who = ['id' => (int) Auth::id(), 'role' => 'Admin'];
+
+        return EditorWork::sorted($batches)->map(function (CreativeBatch $b) use ($angles, $who) {
+                $pieces = $b->pieces->map(fn (CreativeBatchPiece $p) => ['id' => $p->id, 'code' => $p->code(), 'change' => $p->change, 'format' => $p->format,
+                    'link' => $p->link, 'hook' => $p->hook])->values()->all();
                 $out = [
                     'id' => $b->id, 'code' => $b->code(), 'product_id' => $b->product_id, 'product' => $b->product?->showable_name ?: $b->product?->title,
                     'status' => $b->status, 'status_label' => QueueRules::STATUSES[$b->status] ?? $b->status, 'status_at' => $b->status_at?->toIso8601String(),
@@ -268,7 +303,7 @@ class MetaQueueController extends Controller
                     'discard_reason' => $b->discard_reason, 'testing_at' => $b->testing_at?->toIso8601String(), 'tested_at' => $b->tested_at?->toIso8601String(),
                     'result' => $b->result, 'learning' => $b->learning, 'pieces' => $pieces,
                     'meta_names' => QueueRules::metaNames($b->number, $b->angle_code, $b->pieces->pluck('number')->all()),
-                ];
+                ] + EditorWork::fields($b, $who);
 
                 return $out + ['brief' => QueueRules::brief($out)];
             })->all();
