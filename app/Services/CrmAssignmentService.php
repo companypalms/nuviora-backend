@@ -20,11 +20,20 @@ class CrmAssignmentService
             ->exists();
     }
 
+    /** La vendedora del cliente ya no trabaja (cuenta desactivada, paso 6): el lead se vuelve a asignar. */
+    public static function agentIsGone(?int $agentId): bool
+    {
+        return $agentId !== null && User::whereKey($agentId)->whereNotNull('deactivated_at')->exists();
+    }
+
     public static function assignNextAgent($client)
     {
-        // If already assigned, do nothing
+        // If already assigned, do nothing (salvo que su vendedora esté desactivada: entonces va a otra del turno)
         if ($client->agent_id) {
-            return User::find($client->agent_id);
+            $current = User::find($client->agent_id);
+            if ($current && !$current->isDeactivated()) {
+                return $current;
+            }
         }
 
         // 🛑 NO ASIGNAR SI TODAS LAS TIENDAS ESTÁN CERRADAS
@@ -42,7 +51,7 @@ class CrmAssignmentService
             
         // Extraer los agentes únicos con su rol permitido
         $activeAgents = $activeRosters->pluck('agent')->filter(function ($agent) {
-            if (!$agent || !$agent->role) return false;
+            if (!$agent || !$agent->role || $agent->isDeactivated()) return false;
             return in_array($agent->role->description, ['Vendedor', 'Gerente', 'Admin', 'Master']);
         })->unique('id')->values();
 

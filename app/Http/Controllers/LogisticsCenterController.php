@@ -34,7 +34,7 @@ class LogisticsCenterController extends Controller
         return response()->json([
             'status' => true,
             'centers' => $centers,
-            'operator_candidates' => User::whereHas('role', fn ($q) => $q->where('description', 'Operador logístico'))
+            'operator_candidates' => User::active()->whereHas('role', fn ($q) => $q->where('description', 'Operador logístico'))
                 ->orderBy('names')->get(['id', 'names', 'email']),
             'warehouses' => Warehouse::where('is_active', true)->orderBy('id')->get(['id', 'name', 'city_id', 'user_id', 'latitude', 'longitude']),
         ]);

@@ -201,7 +201,7 @@ class WhatsAppWebhookController extends Controller
                         ->orWhere('id', $orderNum)
                         ->first();
                     
-                    if ($foundOrder && $foundOrder->agent_id) {
+                    if ($foundOrder && $foundOrder->agent_id && !\App\Services\CrmAssignmentService::agentIsGone($foundOrder->agent_id)) {
                         $client->update(['agent_id' => $foundOrder->agent_id]);
                         
                         // Sync active conversation
@@ -215,7 +215,8 @@ class WhatsAppWebhookController extends Controller
             }
 
             // assignNextAgent() internamente también verifica si hay tiendas abiertas.
-            if (!$client->agent_id) { 
+            // Si su vendedora está desactivada (paso 6), el lead pasa a otra del turno.
+            if (!$client->agent_id || \App\Services\CrmAssignmentService::agentIsGone($client->agent_id)) {
                 \App\Services\CrmAssignmentService::assignNextAgent($client); 
             }
 

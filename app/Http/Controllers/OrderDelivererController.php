@@ -31,6 +31,10 @@ class OrderDelivererController extends Controller
             ], 422);
         }
 
+        if ($deliverer->isDeactivated()) {
+            return response()->json(['status' => false, 'message' => "La cuenta de {$deliverer->names} está desactivada: elige otro repartidor."], 422);
+        }
+
         // Un repartidor de una agencia solo lleva órdenes de esa agencia (tarea 6)
         if ($deliverer->agency_id && $order->agency_id && (int) $deliverer->agency_id !== (int) $order->agency_id) {
             return response()->json([

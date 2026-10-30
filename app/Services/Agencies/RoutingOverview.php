@@ -23,7 +23,7 @@ class RoutingOverview
     public function payload(): array
     {
         $agencies = User::whereHas('role', fn ($q) => $q->where('description', 'Agencia'))
-            ->orderBy('names')->get(['id', 'names', 'color', 'delivery_cost', 'max_active_orders', 'agency_is_working', 'agency_works_from', 'agency_works_until']);
+            ->orderBy('names')->get(['id', 'names', 'color', 'delivery_cost', 'max_active_orders', 'agency_is_working', 'agency_works_from', 'agency_works_until', 'deactivated_at']);
         $waiting = $this->hours->waitingByCity();
         $active = $this->router->activeCounts($agencies->pluck('id')->all());
         $pendingId = Status::where('description', OrderStatus::PENDIENTE_AGENCIA)->value('id');

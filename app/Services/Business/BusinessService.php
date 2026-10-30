@@ -148,7 +148,8 @@ class BusinessService
 
         if (!$shop) return;
 
-        $agents = $shop->sellers;
+        // Las desactivadas no entran (siguen marcadas en la tienda: al reactivarlas vuelven a su roster, paso 6)
+        $agents = $shop->sellers->reject(fn ($agent) => $agent->isDeactivated());
         $today = now()->toDateString();
 
         foreach ($agents as $agent) {

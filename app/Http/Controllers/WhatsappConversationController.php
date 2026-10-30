@@ -499,7 +499,10 @@ class WhatsappConversationController extends Controller
     public function assignAgent(Request $request, $conversationId)
     {
         $request->validate(['agent_id' => 'required|exists:users,id']);
-        
+        if (\App\Services\CrmAssignmentService::agentIsGone((int) $request->agent_id)) {
+            return response()->json(['status' => false, 'message' => 'Esa cuenta está desactivada: elige otra vendedora.'], 422);
+        }
+
         $conv = WhatsappConversation::findOrFail($conversationId);
         $conv->update(['agent_id' => $request->agent_id]);
 

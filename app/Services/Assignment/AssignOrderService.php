@@ -416,7 +416,8 @@ class AssignOrderService
 
         $rows = $query->get();
 
-        return $rows->pluck('agent')->filter();
+        // Una cuenta desactivada no recibe órdenes aunque quedara en el roster (paso 6)
+        return $rows->pluck('agent')->filter(fn ($agent) => $agent && !$agent->isDeactivated());
     }
 
     protected function isWithinWindow($now, string $open, string $close): bool

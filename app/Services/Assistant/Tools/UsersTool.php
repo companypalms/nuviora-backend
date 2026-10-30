@@ -46,7 +46,7 @@ class UsersTool implements Tool
         $users = User::with(['role:id,description', 'status:id,description'])->orderBy('names')
             ->when(isset(self::ROLES[$args['rol'] ?? '']), fn ($q) => $q->whereHas('role', fn ($r) => $r->where('description', self::ROLES[$args['rol']])))
             ->whereHas('role', fn ($r) => $r->where('description', '!=', 'Shopify'))
-            ->get(['id', 'names', 'surnames', 'role_id', 'status_id']);
+            ->get(['id', 'names', 'surnames', 'role_id', 'status_id', 'deactivated_at']);
         $name = trim((string) ($args['nombre'] ?? ''));
         if ($name !== '') {
             $ids = array_column(Lookup::match($name, $users->mapWithKeys(fn ($u) => [$u->id => "{$u->names} {$u->surnames}"])->all(), 20), 'id');
@@ -60,7 +60,7 @@ class UsersTool implements Tool
             'nombre' => PersonName::of($u->names, $u->surnames),
             'rol' => $groups->get($u->id)?->role === 'leader' ? 'Líder' : $u->role?->description,
             'grupo' => $groups->get($u->id)?->name,
-            'estado' => $u->status?->description ?? 'Activo',
+            'estado' => $u->isDeactivated() ? 'Desactivada (no entra ni recibe trabajo)' : 'Activa',
         ]))->all();
 
         return new ToolResult(array_filter([

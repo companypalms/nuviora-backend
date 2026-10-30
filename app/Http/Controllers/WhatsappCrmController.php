@@ -644,7 +644,10 @@ class WhatsappCrmController extends Controller
         }
 
         $request->validate(['agent_id' => 'required|exists:users,id']);
-        
+        if (\App\Services\CrmAssignmentService::agentIsGone((int) $request->agent_id)) {
+            return response()->json(['status' => false, 'message' => 'Esa cuenta está desactivada: elige otra vendedora.'], 422);
+        }
+
         $conv = WhatsappConversation::firstOrCreate(
             ['client_id' => $clientId, 'status' => 'open'],
             ['agent_id' => $request->agent_id]

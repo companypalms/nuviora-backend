@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use App\Models\Warehouse;
 use App\Models\WarehouseType;
+use App\Services\Users\UserAccounts;
 
 class AuthController extends Controller
 {
@@ -90,21 +91,41 @@ class AuthController extends Controller
         ], 201);
     }
 
+    /**
+     * GET /users?estado=activos|desactivados&q=&rol= — todas las cuentas (menos la del sistema de Shopify), 20 por página.
+     * Antes solo salían las que tenían el estado viejo "Activo", que muchas no tienen (por ejemplo, los repartidores
+     * creados desde su pestaña). Paso 6.
+     */
     public function get_all_users(Request $request)
     {
+        $search = trim((string) $request->query('q', ''));
+        $role = trim((string) $request->query('rol', ''));
 
-        $users = User::with('role')->whereHas('status', function ($query) {
-            $query->where('description', '=', 'Activo');
-        })->paginate(20);
+        $users = User::with(['role', 'deactivator:id,names,surnames'])
+            ->where(fn ($q) => $q->whereNull('role_id')->orWhereHas('role', fn ($r) => $r->where('description', '!=', 'Shopify')))
+            ->when($request->query('estado') === 'desactivados', fn ($q) => $q->whereNotNull('deactivated_at'), fn ($q) => $q->whereNull('deactivated_at'))
+            ->when($role !== '', fn ($q) => $q->whereHas('role', fn ($r) => $r->where('description', $role)))
+            ->when($search !== '', fn ($q) => $q->where(fn ($w) => $w->where('names', 'like', "%{$search}%")
+                ->orWhere('surnames', 'like', "%{$search}%")->orWhere('email', 'like', "%{$search}%")->orWhere('phone', 'like', "%{$search}%")))
+            ->orderBy('id')
+            ->paginate(20)
+            ->withQueryString();
+        $users->getCollection()->each->makeVisible('deactivation_reason');
 
         return response()->json(['status' => true, 'data' => $users]);
+    }
+
+    /** Las listas para elegir a quién asignar no traen cuentas desactivadas; los filtros del historial piden ?include_inactive=1. */
+    private function onlyActive($query, Request $request)
+    {
+        return $request->boolean('include_inactive') ? $query : $query->active();
     }
     public function deliverers(Request $request)
     {
         $roleId = Role::where('description', '=', 'Repartidor')->value('id');
         $q = trim((string) $request->get('search', ''));
 
-        $users = User::query()
+        $users = $this->onlyActive(User::query(), $request)
             ->where('role_id', '=', $roleId)
             ->when(Auth::user()->role?->description === 'Agencia', function ($query) {
                 $query->where('agency_id', '=', Auth::id());
@@ -117,7 +138,7 @@ class AuthController extends Controller
                 });
             })
             ->orderBy('names')
-            ->select('id', 'names', 'surnames', 'email', 'created_at')
+            ->select('id', 'names', 'surnames', 'email', 'created_at', 'deactivated_at')
             ->paginate(20);
 
         return response()->json([
@@ -193,18 +214,21 @@ class AuthController extends Controller
         ]);
     }
 
-    // DELETE /users/deliverers/{user}
-    public function destroyDeliverer(User $user)
+    /**
+     * DELETE /users/deliverers/{user} — ahora desactiva (paso 6). Antes borraba la cuenta de verdad, y con ella sus
+     * ganancias, su stock y sus registros (o fallaba si ya tenía pagos). La pantalla usa POST /users/{id}/deactivate.
+     */
+    public function destroyDeliverer(Request $request, User $user, UserAccounts $accounts)
     {
         if ($user->role?->description !== 'Repartidor') {
             return response()->json(['status' => false, 'message' => 'No es un repartidor'], 422);
         }
 
-        $user->delete();
+        $accounts->deactivate($user, Auth::user(), (string) $request->input('reason', 'Eliminado desde Repartidores'));
 
         return response()->json([
             'status'  => true,
-            'message' => 'Repartidor eliminado',
+            'message' => 'Repartidor desactivado',
         ]);
     }
     /**
@@ -216,6 +240,9 @@ class AuthController extends Controller
             return response()->json(['status' => false, 'message' => 'Unauthorized'], 401);
         }
         $user = User::with('role')->where('email', '=', $request['email'])->firstOrFail();
+        if ($user->isDeactivated()) {
+            return response()->json(['status' => false, 'message' => 'Tu cuenta está desactivada. Habla con el administrador.'], 403);
+        }
         $token = $user->createToken('auth_token')->plainTextToken;
         $user->token = $token;
         $user->leader_group = $this->leaderGroupRef($user);
@@ -252,9 +279,9 @@ class AuthController extends Controller
             'message' => 'Has cerrado sesion exitosamente'
         ];
     }
-    public function agents()
+    public function agents(Request $request)
     {
-        $agents = User::whereHas('role', function ($q) {
+        $agents = $this->onlyActive(User::query(), $request)->whereHas('role', function ($q) {
             $q->where('description', '=', 'Vendedor');
         })->get();
 
@@ -264,11 +291,11 @@ class AuthController extends Controller
         ]);
     }
 
-    public function usersByRole($roleDescription)
+    public function usersByRole(Request $request, $roleDescription)
     {
         $isAgency = strtolower(trim($roleDescription)) === 'agencia';
 
-        $users = User::whereHas('role', function ($q) use ($roleDescription) {
+        $users = $this->onlyActive(User::query(), $request)->whereHas('role', function ($q) use ($roleDescription) {
             $q->where('description', '=', $roleDescription);
         })
         // Para Agencias incluimos sus ciudades para poder etiquetar "Agencia: Ciudad X".

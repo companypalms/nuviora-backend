@@ -46,6 +46,9 @@ class WorkingHours
     /** Por qué la agencia no trabaja ahora ("está apagada", "trabaja de 08:00 a 17:00"), o null si trabaja. */
     public function agencyStop(User $agency, ?Carbon $at = null): ?string
     {
+        if ($agency->isDeactivated()) {
+            return 'está desactivada'; // paso 6: la cuenta ya no trabaja
+        }
         if ($agency->agency_is_working === false) {
             return 'está apagada';
         }

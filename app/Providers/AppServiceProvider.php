@@ -27,5 +27,7 @@ class AppServiceProvider extends ServiceProvider
         \App\Models\Order::observe(\App\Observers\LogisticsOrderObserver::class);
         // Módulo 4 de Fran: la fecha de entrega y la economía de cada orden (order_financials) al día
         \App\Services\Finance\FinanceTriggers::register();
+        // Paso 6: una cuenta desactivada no entra con ninguna sesión vieja (además, al desactivarla se borran sus sesiones)
+        \Laravel\Sanctum\Sanctum::authenticateAccessTokensUsing(fn ($token, bool $isValid) => $isValid && $token->tokenable?->deactivated_at === null);
     }
 }

@@ -162,7 +162,7 @@ class AgencyRoutingController extends Controller
         $counts = Order::where('agency_id', $agency->id)->whereIn('status_id', $statuses->pluck('id'))
             ->groupBy('status_id')->selectRaw('status_id, COUNT(*) as c')->pluck('c', 'status_id');
         $cityIds = DB::table('city_agency')->where('agency_id', $agency->id)->pluck('city_id');
-        $targets = User::whereHas('role', fn ($q) => $q->where('description', 'Agencia'))
+        $targets = User::active()->whereHas('role', fn ($q) => $q->where('description', 'Agencia'))
             ->where('id', '!=', $agency->id)
             ->whereIn('id', DB::table('city_agency')->whereIn('city_id', $cityIds)->where('is_active', true)->pluck('agency_id'))
             ->orderBy('names')->get(['id', 'names']);

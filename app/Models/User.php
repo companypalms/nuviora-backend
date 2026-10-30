@@ -154,6 +154,26 @@ class User extends Authenticatable
             ->first();
     }
 
+    /**
+     * Las cuentas que trabajan (paso 6): una desactivada no entra, no recibe trabajo y no sale en las listas para elegir
+     * a quién asignar. Su historial queda y se puede reactivar (Users\UserAccounts).
+     */
+    public function scopeActive($query)
+    {
+        return $query->whereNull($query->getModel()->getTable() . '.deactivated_at');
+    }
+
+    public function isDeactivated(): bool
+    {
+        return $this->deactivated_at !== null;
+    }
+
+    /** Quién la desactivó. */
+    public function deactivator()
+    {
+        return $this->belongsTo(User::class, 'deactivated_by');
+    }
+
     public function deliverers()
     {
         return $this->hasMany(User::class, 'agency_id');
@@ -172,6 +192,9 @@ class User extends Authenticatable
     protected $hidden = [
         'password',
         'remember_token',
+        // El motivo de una desactivación lo ve solo quien administra los usuarios (makeVisible en la lista)
+        'deactivated_by',
+        'deactivation_reason',
     ];
 
     /**
@@ -189,6 +212,7 @@ class User extends Authenticatable
             'can_handle_no_stock' => 'boolean',
             'max_active_orders' => 'integer',
             'agency_is_working' => 'boolean',
+            'deactivated_at' => 'datetime',
         ];
     }
 }

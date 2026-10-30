@@ -350,6 +350,9 @@ class MyGroupController extends Controller
         $today = now()->toDateString();
 
         if ($active) {
+            if ($member->user->isDeactivated()) {
+                throw ValidationException::withMessages(['user_id' => 'La cuenta de ' . $this->name($member->user) . ' está desactivada: no puede entrar al roster.']);
+            }
             if (!$member->user->shops()->where('shops.id', $shopId)->exists()) {
                 throw ValidationException::withMessages(['shop_id' => $this->name($member->user) . ' no trabaja en esa tienda.']);
             }
@@ -537,15 +540,15 @@ class MyGroupController extends Controller
     private function members(SalesGroup $group): Collection
     {
         return $group->openMembers()
-            ->with('user:id,names,surnames,max_active_orders')
+            ->with('user:id,names,surnames,max_active_orders,deactivated_at')
             ->get()
             ->keyBy('user_id');
     }
 
-    /** A quién se le pueden pasar órdenes: las vendedoras del grupo, nunca la Líder. */
+    /** A quién se le pueden pasar órdenes: las vendedoras del grupo, nunca la Líder ni una desactivada (paso 6). */
     private function targets(Collection $members): Collection
     {
-        return $members->where('role', SalesGroupMember::ROLE_SELLER);
+        return $members->where('role', SalesGroupMember::ROLE_SELLER)->reject(fn ($m) => $m->user?->isDeactivated());
     }
 
     private function openShopIds(): Collection

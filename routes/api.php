@@ -92,6 +92,12 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
     Route::get('users', [AuthController::class, 'get_all_users'])->middleware('role:Admin,Gerente,Master');
     // Crear usuario
     Route::post('users', [AuthController::class, 'store'])->middleware('role:Admin,Gerente,Master');
+    // Desactivar y reactivar cuentas (paso 6): solo el Admin
+    Route::middleware('role:Admin')->group(function () {
+        Route::get('users/{user}/deactivation', [\App\Http\Controllers\UserAccountController::class, 'show'])->whereNumber('user');
+        Route::post('users/{user}/deactivate', [\App\Http\Controllers\UserAccountController::class, 'deactivate'])->whereNumber('user');
+        Route::post('users/{user}/reactivate', [\App\Http\Controllers\UserAccountController::class, 'reactivate'])->whereNumber('user');
+    });
     // Editar datos del usuario
     Route::put('user/{user}', [AuthController::class, 'edit_user_data']);
     // Validar token y obtener datos del usuario logueado
@@ -177,7 +183,7 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
     Route::get('/users/deliverers', [AuthController::class, 'deliverers']);       // listar + buscar
     Route::post('/users/deliverers', [AuthController::class, 'storeDeliverer'])->middleware('role:Admin,Master');  // crear
     Route::put('/users/deliverers/{user}', [AuthController::class, 'updateDeliverer'])->middleware('role:Admin,Master'); // editar
-    Route::delete('/users/deliverers/{user}', [AuthController::class, 'destroyDeliverer'])->middleware('role:Admin,Master'); // eliminar
+    Route::delete('/users/deliverers/{user}', [AuthController::class, 'destroyDeliverer'])->middleware('role:Admin'); // desactivar (paso 6: ya no borra)
 
     Route::get('/products', [ProductController::class, 'index']);
 

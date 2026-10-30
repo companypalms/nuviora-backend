@@ -104,7 +104,7 @@ class AssignmentController extends Controller
         $sellers = User::where('role_id', Role::where('description', 'Vendedor')->value('id'))
             ->with('salesGroupMembership.group:id,name,is_active')
             ->orderBy('names')
-            ->get(['id', 'names', 'surnames']);
+            ->get(['id', 'names', 'surnames', 'deactivated_at']);
         $sellerActive = $assigner->activeCounts($sellers->pluck('id')->all());
 
         return response()->json([
@@ -119,6 +119,8 @@ class AssignmentController extends Controller
                         'name' => trim($u->names . ' ' . $u->surnames),
                         'group' => $group?->is_active ? ['id' => $group->id, 'name' => $group->name] : null,
                         'active_orders' => $sellerActive[$u->id] ?? 0,
+                        // Se puede pasar sus órdenes a otras, pero no recibe (paso 6)
+                        'deactivated' => $u->isDeactivated(),
                     ];
                 })->values(),
                 'load_balanced' => Setting::get('assignment_strategy', 'round_robin') === 'load_balanced',
@@ -162,6 +164,7 @@ class AssignmentController extends Controller
                 ->where('sales_group_id', $membership->sales_group_id)
                 ->where('role', SalesGroupMember::ROLE_SELLER)
                 ->where('user_id', '!=', $fromId)
+                ->whereHas('user', fn ($q) => $q->whereNull('deactivated_at')) // las desactivadas no reciben (paso 6)
                 ->pluck('user_id')
             : collect();
 
@@ -188,8 +191,8 @@ class AssignmentController extends Controller
 
         $sellerRoleId = Role::where('description', 'Vendedor')->value('id');
         $targets = array_values(array_diff(array_map('intval', $data['to_agent_ids']), [(int) $data['from_agent_id']]));
-        if ($targets === [] || User::whereIn('id', $targets)->where('role_id', $sellerRoleId)->count() !== count($targets)) {
-            throw ValidationException::withMessages(['to_agent_ids' => 'Elige al menos una vendedora de destino distinta de la de origen.']);
+        if ($targets === [] || User::active()->whereIn('id', $targets)->where('role_id', $sellerRoleId)->count() !== count($targets)) {
+            throw ValidationException::withMessages(['to_agent_ids' => 'Elige al menos una vendedora de destino activa y distinta de la de origen.']);
         }
 
         ['moved' => $result, 'kept' => $kept] = $service->reassign((int) $data['from_agent_id'], $targets, $data['status_ids'], Auth::id());

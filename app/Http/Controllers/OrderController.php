@@ -1642,6 +1642,9 @@ class OrderController extends Controller
                 'message' => 'El usuario seleccionado no es un vendedor válido'
             ], 422);
         }
+        if ($agent->isDeactivated()) {
+            return response()->json(['status' => false, 'message' => "La cuenta de {$agent->names} está desactivada: elige otra vendedora."], 422);
+        }
 
         // [CAMBIO POR SOLICITUD DEL CLIENTE - 2026-03-11]
         // Al reasignar manualmente un vendedor, el status de la orden debe
@@ -1715,6 +1718,9 @@ class OrderController extends Controller
         // Debe existir al menos un destino válido (agencia o almacén).
         if (!$agencyUser && !$warehouse) {
             return response()->json(['status' => false, 'message' => 'Agencia no válida.'], 422);
+        }
+        if ($agencyUser?->isDeactivated()) {
+            return response()->json(['status' => false, 'message' => "La cuenta de {$agencyUser->names} está desactivada: elige otra agencia."], 422);
         }
 
         // ✅ Mantener consistencia: agency_id (usuario) <-> warehouse_id.

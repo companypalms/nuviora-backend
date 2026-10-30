@@ -37,7 +37,7 @@ class RosterController extends Controller
         // lista de todos los vendedores
         // Filtramos por tienda si se especifica, para mostrar solo los vinculados a esa tienda
         $roleId = Role::where('description', 'Vendedor')->value('id');
-        $agentsQuery = User::where('role_id', $roleId);
+        $agentsQuery = User::active()->where('role_id', $roleId); // las desactivadas no se eligen (paso 6)
         
         if ($shopId) {
             $agentsQuery->whereHas('shops', function($q) use ($shopId) {
@@ -65,6 +65,12 @@ class RosterController extends Controller
             'agent_ids' => 'required|array',
             'agent_ids.*' => 'integer|exists:users,id'
         ]);
+
+        // Una cuenta desactivada no entra al roster (paso 6)
+        $gone = User::whereIn('id', $request->agent_ids)->whereNotNull('deactivated_at')->pluck('names');
+        if ($gone->isNotEmpty()) {
+            return response()->json(['status' => false, 'message' => 'No pueden entrar al roster porque su cuenta está desactivada: ' . $gone->implode(', ') . '.'], 422);
+        }
 
         $today = now()->toDateString();
         $shopId = $request->shop_id;
