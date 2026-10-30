@@ -14,7 +14,7 @@ class MetaDecisionsReport extends Command
 {
     protected $signature = 'meta:decisions {--product= : ID del producto (sin esto, los que tienen campañas activas)} {--all : también lo inactivo}';
 
-    protected $description = 'Muestra los veredictos de las reglas del dueño por producto, ciudad, batch, anuncio y creativo (solo lectura)';
+    protected $description = 'Muestra lo que dicen las reglas del dueño: qué hacer con cada campaña, la urgencia de cada producto y el veredicto de cada batch, anuncio y creativo (solo lectura)';
 
     public function handle(MetaDecisions $decisions): int
     {
@@ -32,6 +32,19 @@ class MetaDecisionsReport extends Command
                 $this->line("   Tracking 3 días: Meta {$p['tracking']['meta_purchases']} compras / {$p['tracking']['orders']} pedidos reales"
                     . ($p['tracking']['ratio'] !== null ? " ({$p['tracking']['ratio']} %)" : ''));
             }
+            // Paso 2b: urgencia, trabajo siguiente, precio y alarmas
+            if ($plan = $p['plan'] ?? null) {
+                $this->line("   {$plan['urgency']['label']} · batches a pedir: {$plan['urgency']['batches']}" . ($plan['urgency']['reasons'] ? ' · ' . implode('; ', $plan['urgency']['reasons']) : ''));
+                foreach ($plan['next_work'] as $t) {
+                    $this->line("   Trabajo: {$t}");
+                }
+                foreach (array_merge($plan['price'], array_filter([$plan['price_watch']])) as $t) {
+                    $this->line("   Precio: {$t}");
+                }
+                foreach ($plan['alarms'] as $t) {
+                    $this->line("   ! {$t}");
+                }
+            }
             $campaigns = $names('meta_campaigns', array_map('strval', array_keys($p['campaigns'])));
             foreach ($p['campaigns'] as $id => $c) {
                 $row = $campaigns->get($id);
@@ -39,8 +52,14 @@ class MetaDecisionsReport extends Command
                     continue;
                 }
                 $this->line("-- {$c['city']} · {$row?->name}" . ($c['frequency'] !== null ? ' · frecuencia 3d ' . round($c['frequency'], 2) : ''));
+                if ($a = $c['action'] ?? null) {
+                    $this->line("   → {$a['label']} · {$a['reading']}" . ($a['proposal'] ? " {$a['proposal']}" : ''));
+                }
                 foreach ($c['notes'] as $n) {
                     $this->line("   ! {$n['label']}: {$n['text']}");
+                }
+                foreach ($c['budget_notes'] ?? [] as $n) {
+                    $this->line("   ! {$n}");
                 }
             }
             $this->line('-- Batches');

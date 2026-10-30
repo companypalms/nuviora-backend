@@ -45,6 +45,23 @@ class DecisionSettings
         'winners_gap_pct' => [20, 1, 100],      // 20 % o más debajo de la mediana de los ganadores del producto = flojo
         // Estados automáticos de los creativos
         'archive_days' => [14, 1, 365],
+        // Paso 2b — qué hacer con cada campaña (producto × ciudad)
+        'scale_min_purchases' => [10, 1, 1000],  // escalar con 10+ compras en los 3 días
+        'scale_big_below_pct' => [25, 1, 90],    // +20 % si el CPA de 3 días está un 25 % o más debajo de C
+        'scale_big_pct' => [20, 1, 100],
+        'scale_small_pct' => [10, 1, 100],
+        'decrease_pct' => [20, 1, 90],           // −20 % si sigue en el BE o encima…
+        'decrease_after_days' => [2, 1, 30],     // …2 días cerrados después de intervenir
+        'pause_after_days' => [5, 1, 60],        // pausar la ciudad a los 5 días cerrados
+        'last_test_budget_cpa' => [1.5, 0.5, 20], // último test: 1,5×C por día…
+        'last_test_days' => [3, 1, 30],          // …durante 3 días
+        'startup_min_mult' => [2.5, 1, 10],      // presupuesto de arranque = C × batches nuevos × 2,5 a 3
+        'startup_max_mult' => [3, 1, 10],
+        'mins_low_pct' => [25, 0, 100],          // los mínimos de los ad sets: menos del 25 % del presupuesto = bajos
+        'mins_ok_pct' => [40, 0, 100],           // hasta 40 % bien
+        'mins_review_pct' => [50, 0, 100],       // hasta 50 % revisar; más, no
+        'price_step' => [2, 0.1, 100],           // probar bajar el precio de a $2
+        'stock_days_min' => [7, 1, 90],          // escalar solo con stock para 7 días de ventas en la ciudad
     ];
 
     /** Se puede apagar sin publicar: los estados vuelven a quedar como estén. */

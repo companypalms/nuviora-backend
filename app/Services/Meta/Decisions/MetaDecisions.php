@@ -4,7 +4,9 @@ namespace App\Services\Meta\Decisions;
 
 use App\Models\MetaCreative;
 use App\Services\Meta\Decisions\Readers\AdFacts;
+use App\Services\Meta\Decisions\Readers\OpsFacts;
 use App\Services\Meta\Decisions\Rules\AdRules;
+use App\Services\Meta\Decisions\Rules\CampaignRules;
 use App\Services\Meta\MetaMetrics;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -19,8 +21,15 @@ class MetaDecisions
     /** Con menos impresiones que esto, la ventana no alcanza para leer el video. */
     public const MIN_IMPRESSIONS = 1000;
 
-    public function __construct(private AdFacts $facts = new AdFacts(), private DecisionSettings $settings = new DecisionSettings())
-    {
+    /** Qué iterar primero, en palabras del dueño. */
+    private const ITERATE = ['hook' => 'el hook (los primeros segundos)', 'duration' => 'la duración o el ritmo', 'cta' => 'el cierre (CTA)',
+        'landing' => 'la landing', 'format' => 'el formato'];
+
+    public function __construct(
+        private AdFacts $facts = new AdFacts(),
+        private DecisionSettings $settings = new DecisionSettings(),
+        private ?OpsFacts $ops = null,
+    ) {
     }
 
     /**
@@ -46,9 +55,25 @@ class MetaDecisions
     {
         $s ??= $this->settings->get();
         $rules = new AdRules($s);
+        $facts = $this->facts->load($productIds);
+        // Paso 2b: el historial de cada campaña y lo del producto (stock, precio, finanzas)
+        $ops = $this->ops ??= new OpsFacts();
+        $campaignIds = [];
+        $cityIds = [];
+        foreach ($facts as $f) {
+            foreach ($f['campaigns'] as $id => $c) {
+                $campaignIds[] = (string) $id;
+                if ($c['city_id'] !== null) {
+                    $cityIds[] = $c['city_id'];
+                }
+            }
+        }
+        $history = $ops->campaigns($campaignIds);
+        $products = $ops->products(array_keys($facts), array_values(array_unique($cityIds)));
         $out = [];
-        foreach ($this->facts->load($productIds) as $pid => $f) {
+        foreach ($facts as $pid => $f) {
             $out[$pid] = $this->product($f, $rules, $s);
+            $out[$pid] = $this->plan($f, $out[$pid], $history, $products[$pid] ?? null, new CampaignRules($s), $s);
         }
 
         return $out;
@@ -239,6 +264,187 @@ class MetaDecisions
                 'status' => $cr['status'], 'status_source' => $cr['status_source'],
             ];
         }
+
+        return $out;
+    }
+
+    /**
+     * Paso 2b: qué hacer con cada campaña (con montos), el precio, la urgencia del producto, el trabajo siguiente y las
+     * alarmas de tracking y stock.
+     */
+    private function plan(array $f, array $out, array $history, ?array $ops, CampaignRules $cr, array $s): array
+    {
+        $mode = $f['product']['mode'];
+        $today = $history['today'];
+        $yesterday = $history['yesterday'];
+        $actions = [];
+        $prices = [];
+        $alarms = [];
+        $minFor = [];
+        foreach ($f['campaigns'] as $id => $c) {
+            $h = $history['campaigns'][$id] ?? ['daily' => [], 'budget_events' => [], 'status_events' => [], 'ad_pauses' => [], 'new_ads' => [], 'mins' => 0.0];
+            $city = $c['city_id'] !== null ? ($ops['cities'][$c['city_id']] ?? null) : null;
+            $w3 = $c['windows']['3d'] ?? null;
+            $w7 = $c['windows']['7d'] ?? null;
+            $cpa7 = $w7['metrics']['cpa'] ?? null;
+            $budget = $c['daily_budget'];
+            $out['campaigns'][$id]['action'] = null;
+            $out['campaigns'][$id]['budget_notes'] = [];
+            if (!$c['active']) {
+                // Una ciudad pausada hace poco porque perdía: el último test
+                $paused = collect($h['status_events'])->last(fn ($e) => $e['from'] === 'ACTIVE' && $e['to'] !== 'ACTIVE');
+                if ($paused && $c['target'] && $c['break_even'] && $mode === 'normal' && ($cpa7 === null || $cpa7 >= $c['break_even'])
+                    && strtotime($paused['date']) >= strtotime("{$today} -14 days")) {
+                    $test = $c['target'] * $s['last_test_budget_cpa'];
+                    $out['campaigns'][$id]['action'] = ['key' => 'last_test', 'label' => CampaignRules::ACTIONS['last_test']['label'], 'tone' => 'warning',
+                        'data' => 'Pausada el ' . $paused['date'] . '.', 'reading' => 'La ciudad se pausó por estar en el break-even o encima.',
+                        'proposal' => 'Si quieres, el último test: un batch nuevo con ' . AdRules::money($test) . ' por día durante ' . (int) $s['last_test_days']
+                            . ' días. Si también falla, dejar el producto en esta ciudad.', 'from' => null, 'to' => null];
+                    $actions[$id] = 'last_test';
+                }
+                continue;
+            }
+            if ($city && !$city['available']) {
+                $out['campaigns'][$id]['action'] = ['key' => 'none', 'label' => 'No se vende aquí', 'tone' => 'error', 'data' => '',
+                    'reading' => 'El producto está marcado como no disponible en esta ciudad.', 'proposal' => 'Pausar la campaña.', 'from' => null, 'to' => null];
+                $actions[$id] = 'pause_city';
+                continue;
+            }
+            $streak = $c['break_even'] ? CampaignRules::streak($h['daily'], (float) $c['break_even'], $yesterday) : ['days' => 0, 'start' => null];
+            $intervention = null;
+            if ($streak['days'] > 0) {
+                $events = array_merge(array_map(fn ($e) => $e['date'], array_filter($h['budget_events'], fn ($e) => $e['to'] < $e['from'])), $h['ad_pauses'], $h['new_ads']);
+                $events = array_filter($events, fn ($d) => $d >= $streak['start']);
+                sort($events);
+                $intervention = $events[0] ?? null;
+            }
+            $closed = $intervention ? max(0, (int) round((strtotime($yesterday) - strtotime($intervention)) / 86400)) : 0;
+            $lastTest = null;
+            $reactivated = collect($h['status_events'])->last(fn ($e) => $e['to'] === 'ACTIVE' && $e['from'] !== 'ACTIVE');
+            if ($reactivated && $c['target'] && $reactivated['budget'] !== null && $reactivated['budget'] <= $c['target'] * $s['last_test_budget_cpa'] * 1.15) {
+                $days = max(0, (int) round((strtotime($yesterday) - strtotime($reactivated['date'])) / 86400));
+                $sum = ['spend' => 0.0, 'purchases' => 0.0];
+                foreach ($h['daily'] as $date => $row) {
+                    if ($date > $reactivated['date'] && $date <= $yesterday) {
+                        $sum['spend'] += $row['spend'];
+                        $sum['purchases'] += $row['purchases'];
+                    }
+                }
+                $lastTest = ['days' => $days, 'cpa' => $sum['purchases'] > 0 ? $sum['spend'] / $sum['purchases'] : null];
+            }
+            $stockOk = null;
+            $stockNote = null;
+            if ($city) {
+                $stockOk = $city['days_of_stock'] === null ? $city['stock'] > 0 : $city['days_of_stock'] >= $s['stock_days_min'];
+                $stockNote = 'quedan ' . $city['stock'] . ' unidades' . ($city['days_of_stock'] !== null ? ' (≈' . AdRules::num($city['days_of_stock']) . ' días de ventas)' : '');
+                if ($city['stock'] <= 0) {
+                    $alarms[] = 'Sin stock en ' . ($c['city'] ?? 'una ciudad') . ' y la campaña sigue activa.';
+                } elseif ($stockOk === false) {
+                    $alarms[] = 'Poco stock en ' . ($c['city'] ?? 'una ciudad') . ': ' . $stockNote . '.';
+                }
+                if ($city['sizes_out']) {
+                    $alarms[] = 'Sin stock en ' . ($c['city'] ?? 'una ciudad') . ' de: ' . implode(', ', $city['sizes_out']) . '.';
+                }
+            }
+            $prune = [];
+            foreach ($f['ads'] as $adId => $ad) {
+                if ($ad['campaign_meta_id'] === $id && $ad['active'] && ($out['ads'][$adId]['key'] ?? null) === 'loser') {
+                    $prune[] = $ad['name'];
+                }
+            }
+            $newBatches = 0;
+            foreach ($f['adsets'] as $setId => $set) {
+                if ($set['campaign_meta_id'] === $id && $set['active'] && $c['target'] && in_array($out['adsets'][$setId]['key'] ?? null, ['no_data'], true)) {
+                    $newBatches++;
+                }
+            }
+            $action = $cr->action([
+                'c' => $c['target'], 'be' => $c['break_even'], 'mode' => $mode, 'budget' => $budget,
+                'spend3' => $w3['totals']['spend'] ?? 0, 'purchases3' => $w3['totals']['purchases'] ?? 0, 'cpa7' => $cpa7, 'freq3' => $w3['metrics']['frequency'] ?? null,
+                'stock_ok' => $stockOk, 'stock_note' => $stockNote,
+                'increased_24h' => collect($h['budget_events'])->contains(fn ($e) => $e['to'] > $e['from'] && strtotime($e['at']) >= strtotime('-24 hours')),
+                'budget_changed_today' => collect($h['budget_events'])->contains(fn ($e) => $e['date'] === $today),
+                'new_ads_today' => in_array($today, $h['new_ads'], true),
+                'streak_days' => $streak['days'], 'intervention' => $intervention, 'closed_since_intervention' => $closed,
+                'decreased_since_intervention' => $intervention !== null && collect($h['budget_events'])->contains(fn ($e) => $e['to'] < $e['from'] && $e['date'] >= $intervention),
+                'history_since' => $history['history_since'], 'last_test' => $lastTest, 'prune' => $prune,
+            ]);
+            $out['campaigns'][$id]['action'] = $action;
+            $out['campaigns'][$id]['budget_notes'] = $cr->budgetNotes($budget, (float) $h['mins'], $newBatches, $c['target']);
+            $actions[$id] = $action['key'];
+
+            // El precio: el mínimo con el CPA de 7 días; se ofrece junto al escalado
+            $version = $city['version'] ?? null;
+            if (!$version || (float) $version->purchases <= 0 || (int) $version->orders_delivered <= 0) {
+                $version = $ops['version'] ?? null;
+            }
+            if ($version && ($ops['price'] ?? null) && $cpa7) {
+                $min = CampaignRules::minPrice($version->toArray(), (float) $ops['price'], (float) $cpa7);
+                $minFor[$id] = $min;
+                $option = $cr->priceOption((float) $ops['price'], $min, $action['key'] === 'scale' && $cpa7 <= $c['target']);
+                if ($option) {
+                    $out['campaigns'][$id]['price_option'] = $option;
+                    $prices[] = ($c['city'] ?? '') . ': ' . $option['text'];
+                }
+            }
+        }
+
+        // Urgencia y trabajo siguiente
+        $healthy = 0;
+        $failing = 0;
+        $winner = null;
+        foreach ($out['creatives'] as $cid => $cr2) {
+            if (!$cr2['active']) {
+                continue;
+            }
+            $key = $cr2['verdict']['key'];
+            if ($key === 'failing') {
+                $failing++;
+            } elseif (in_array($key, ['proven', 'promising'], true)) {
+                $healthy++;
+            }
+            $p7 = 0.0;
+            foreach ($f['creatives'][$cid]['ads'] ?? [] as $m) {
+                $p7 += (float) ($f['ads'][$m]['windows']['7d']['totals']['purchases'] ?? 0);
+            }
+            if ($key === 'proven' && $p7 >= $s['proven_purchases'] && (!$winner || $p7 > $winner['p7'])) {
+                $winner = ['label' => $cr2['label'], 'p7' => $p7, 'iterate' => self::ITERATE[$cr2['video']['iterate'] ?? ''] ?? null];
+            }
+        }
+        $activeCities = array_filter($f['campaigns'], fn ($c) => $c['active']);
+        $stockAllOut = $ops && $activeCities && !array_filter($activeCities, fn ($c) => ($ops['cities'][$c['city_id']]['stock'] ?? 1) > 0);
+        $urgency = $cr->urgency(['mode' => $mode, 'cities' => array_values($actions), 'healthy' => $healthy, 'failing' => $failing, 'stock_all_out' => $stockAllOut]);
+        $angleSpend = [];
+        foreach ($f['adsets'] as $setId => $set) {
+            if ($set['angle_code']) {
+                $angleSpend[$set['angle_code']] = ($angleSpend[$set['angle_code']] ?? 0) + (float) ($set['windows']['max']['totals']['spend'] ?? 0);
+            }
+        }
+        arsort($angleSpend);
+        $mainAngle = array_key_first($angleSpend);
+        $failedBatches = $mainAngle ? count(array_unique(array_map(fn ($set) => $set['batch_code'] ?? $set['meta_id'], array_filter($f['adsets'],
+            fn ($set) => $set['angle_code'] === $mainAngle && ($out['adsets'][$set['meta_id']]['key'] ?? null) === 'loser')))) : 0;
+        $saturated = [];
+        foreach ($activeCities as $id => $c) {
+            if (($c['windows']['3d']['metrics']['frequency'] ?? null) !== null && $c['windows']['3d']['metrics']['frequency'] >= $s['saturation_from']) {
+                $saturated[] = $c['city'] ?? $id;
+            }
+        }
+        $tracking = $f['tracking']['ratio'] ?? null;
+        if ($tracking !== null && ($tracking < $s['tracking_low_pct'] || $tracking > $s['tracking_high_pct'])) {
+            array_unshift($alarms, 'Tracking: Meta ve el ' . AdRules::num($tracking) . ' % de los pedidos reales de los últimos 3 días. Revisar el píxel o la API de conversiones.');
+        }
+        $mainCampaign = collect($activeCities)->sortByDesc(fn ($c) => $c['windows']['7d']['totals']['spend'] ?? 0)->keys()->first();
+        $out['plan'] = [
+            'urgency' => $urgency,
+            'next_work' => $cr->nextWork(['mode' => $mode, 'winner' => $winner, 'saturated' => $saturated, 'main_angle' => $mainAngle,
+                'failed_batches_in_angle' => $failedBatches], $urgency['batches']),
+            'price' => $prices,
+            'price_watch' => $cr->priceWatch($ops['price_change'] ?? null, $mainCampaign !== null ? ($minFor[$mainCampaign] ?? null) : null),
+            'alarms' => array_values(array_unique($alarms)),
+            'money_at_risk' => round(array_sum(array_map(fn ($id) => (float) ($f['campaigns'][$id]['windows']['3d']['totals']['spend'] ?? 0),
+                array_keys(array_filter($actions, fn ($k) => in_array($k, ['intervene', 'decrease', 'pause_city', 'drop'], true))))), 2),
+        ];
 
         return $out;
     }

@@ -246,6 +246,10 @@ class MetaAdsReport
             $tree[$p][$c][$a] = $key;
         }
 
+        // Etapa 5, paso 2b: la urgencia, el trabajo siguiente y las acciones de cada ciudad (3 días cerrados)
+        $decisions = $this->decisions(array_map('intval', array_keys($tree)));
+        $campaignCity = MetaCampaign::whereIn('product_id', array_keys($tree))->get(['meta_id', 'product_id', 'city_id', 'name']);
+
         $out = [];
         foreach ($tree as $productId => $byCity) {
             $manual = $targets[$productId] ?? ['target_cpa' => null, 'break_even_cpa' => null];
@@ -261,6 +265,7 @@ class MetaAdsReport
                 'manual_target_cpa' => $manual['target_cpa'],
                 'manual_break_even_cpa' => $manual['break_even_cpa'],
                 'financial' => $target['financial'],
+                'plan' => $decisions[(int) $productId]['plan'] ?? null,
                 'cities' => [],
             ];
             foreach ($byCity as $cityId => $byAccount) {
@@ -268,7 +273,10 @@ class MetaAdsReport
                 $city = $this->node($cur, $prev, $reach, array_values($byAccount), $compare, $cityTarget['target_cpa'], $cityTarget['break_even_cpa']);
                 $city += ['city_id' => (int) $cityId, 'name' => $cities->get((int) $cityId)?->name ?? "Ciudad {$cityId}", 'accounts' => [],
                     'target_cpa' => $cityTarget['target_cpa'], 'break_even_cpa' => $cityTarget['break_even_cpa'], 'target_source' => $cityTarget['source'],
-                    'financial' => $cityTarget['financial']];
+                    'financial' => $cityTarget['financial'],
+                    'actions' => $campaignCity->where('product_id', (int) $productId)->where('city_id', (int) $cityId)
+                        ->map(fn ($camp) => ($a = $decisions[(int) $productId]['campaigns'][$camp->meta_id]['action'] ?? null) ? $a + ['campaign' => $camp->name] : null)
+                        ->filter()->values()->all()];
                 foreach ($byAccount as $accountId => $key) {
                     $acc = $this->node($cur, $prev, $reach, [$key], $compare, $cityTarget['target_cpa'], $cityTarget['break_even_cpa']);
                     $city['accounts'][] = $acc + ['account_id' => (int) $accountId, 'name' => $accounts->get((int) $accountId)?->name];
@@ -477,6 +485,10 @@ class MetaAdsReport
             $decided = $decisions[$campaign?->product_id] ?? null;
             if ($level === 'campaign') {
                 $row['decision_notes'] = $decided['campaigns'][$e->meta_id]['notes'] ?? [];
+                // Paso 2b: qué hacer con la campaña (con montos), los mínimos y la opción de precio
+                $row['action'] = $decided['campaigns'][$e->meta_id]['action'] ?? null;
+                $row['budget_notes'] = $decided['campaigns'][$e->meta_id]['budget_notes'] ?? [];
+                $row['price_option'] = $decided['campaigns'][$e->meta_id]['price_option'] ?? null;
             } else {
                 $row['verdict'] = $decided[$level === 'adset' ? 'adsets' : 'ads'][$e->meta_id] ?? null;
             }
