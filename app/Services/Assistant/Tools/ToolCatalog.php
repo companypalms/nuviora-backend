@@ -45,6 +45,7 @@ class ToolCatalog
         MetaProductTool::class,
         MetaCreativesTool::class,
         MetaAnglesTool::class,
+        MetaQueueTool::class, // paso 4: la cola de producción y la banca
         // Paso 5: cambios, siempre con la tarjeta de Confirmar (Actions\ChangeTool)
         Change\CalendarNoteTool::class,
         Change\CalendarMarkTool::class,

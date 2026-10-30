@@ -10,13 +10,14 @@ use Illuminate\Database\Eloquent\Model;
  * - liquidation (liquidación, como Audinet en el manual): sin creativos nuevos ni escalar, solo los anuncios cerca o
  *   debajo del break-even, y apagar al agotarse;
  * - paused (pausado) y abandoned (abandonado): no se le piden creativos ni se escala.
- * Sin fila, el producto está en modo normal.
+ * Sin fila, el producto está en modo normal. En proof van los avales y pruebas reales del producto (paso 4b), que la IA
+ * usa tal cual en los encargos.
  */
 class ProductAdSetting extends Model
 {
     public const MODES = ['normal', 'liquidation', 'paused', 'abandoned'];
 
-    protected $fillable = ['product_id', 'mode', 'note', 'updated_by'];
+    protected $fillable = ['product_id', 'mode', 'note', 'proof', 'updated_by'];
 
     public function product()
     {

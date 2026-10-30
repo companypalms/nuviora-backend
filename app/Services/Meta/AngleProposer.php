@@ -31,7 +31,7 @@ Por cada código responde:
 - nombre: un nombre corto en español para el ángulo (2 a 5 palabras), por ejemplo "Dolor de tobillo al caminar".
 - hipotesis: una frase con la hipótesis del ángulo: a quién le habla, qué dolor o deseo toca y por qué compraría. Por ejemplo: "Personas con dolor de tobillo que quieren caminar sin molestias compran si ven que la tobillera les da firmeza desde el primer uso".
 - igual_a: si por los textos el código es claramente el mismo ángulo que otro código de la lista (por ejemplo FAS y FASP), ese otro código; si no, una cadena vacía.
-Usa solo lo que dicen los textos. Si un código no tiene textos, deduce lo que puedas del código y de los nombres, y dilo en la hipótesis ("sin textos: …"). No inventes promesas médicas ni resultados garantizados. Escribe en español sencillo.
+Usa solo lo que dicen los textos. Si un código no tiene textos, deduce lo que puedas del código y de los nombres, y dilo en la hipótesis ("sin textos: …"). Describe lo que prometen los textos tal cual, aunque sean promesas fuertes, sin agregar promesas que los textos no hacen. Escribe en español sencillo.
 TXT;
 
     private const SCHEMA = [

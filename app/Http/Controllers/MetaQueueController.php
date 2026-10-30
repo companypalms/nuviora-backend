@@ -7,11 +7,13 @@ use App\Models\CreativeBatch;
 use App\Models\CreativeBatchPiece;
 use App\Models\MetaCreative;
 use App\Models\Product;
+use App\Models\Setting;
 use App\Services\Meta\AngleStats;
 use App\Services\Meta\Decisions\DecisionSettings;
 use App\Services\Meta\Decisions\MetaDecisions;
 use App\Services\Meta\Queue\BatchQueue;
 use App\Services\Meta\Queue\BatchTracker;
+use App\Services\Meta\Queue\QueueProposer;
 use App\Services\Meta\Queue\QueueRules;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -22,7 +24,7 @@ use Illuminate\Validation\ValidationException;
 /**
  * Meta Ads › Cola y banca (Etapa 5, paso 4a). Solo el Administrador, como todo Meta Ads (hasta el Paso 5 no entran los
  * editores). Cada encargo es un batch con sus piezas:
- * - se crea a mano (o lo proponen las reglas, en el paso 4b) y queda "Propuesto";
+ * - se crea a mano, o lo proponen las reglas cada mañana y lo redacta la IA (paso 4b, QueueProposer), y queda "Propuesto";
  * - al aprobarlo, el sistema le da su B#### y a cada pieza su C####, y entra al final de la cola;
  * - el dueño lo mueve (En producción, En revisión, En banca) o lo descarta con un motivo;
  * - "En test" y "Testeado" se ponen solos cuando aparece en Meta y cuando las reglas le dan un veredicto (BatchTracker).
@@ -56,7 +58,14 @@ class MetaQueueController extends Controller
                 'capacity' => round($s['video_editors'] * $s['batches_per_editor'] / (1 + $s['corrections_pct'] / 100), 1),
             ],
             'statuses' => QueueRules::STATUSES, 'kinds' => QueueRules::KINDS, 'formats' => QueueRules::FORMATS,
+            'last_run' => Setting::get(QueueProposer::LAST_RUN),
         ]);
+    }
+
+    /** "Proponer ahora": lo mismo que corre con el análisis de la mañana (no repite lo ya propuesto hoy). */
+    public function propose(QueueProposer $proposer)
+    {
+        return response()->json(['run' => $proposer->run(Auth::id())]);
     }
 
     /** Lo que se elige al crear o editar un encargo de un producto: sus ángulos, sus creativos, sus ciudades y su precio. */

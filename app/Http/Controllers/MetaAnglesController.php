@@ -105,7 +105,7 @@ class MetaAnglesController extends Controller
             'products' => collect(AngleStats::products())->map(function ($p) use ($settings) {
                 $s = $settings->get($p['id']); // sin fila, el producto está en modo normal
 
-                return $p + ['mode' => $s->mode ?? 'normal', 'note' => $s?->note, 'updated_by' => $s?->updater?->names,
+                return $p + ['mode' => $s->mode ?? 'normal', 'note' => $s?->note, 'proof' => $s?->proof, 'updated_by' => $s?->updater?->names,
                     'updated_at' => $s?->updated_at?->toIso8601String()];
             })->values(),
         ]);
@@ -116,6 +116,7 @@ class MetaAnglesController extends Controller
         $data = $request->validate([
             'mode' => ['required', Rule::in(ProductAdSetting::MODES)],
             'note' => 'nullable|string|max:255',
+            'proof' => 'sometimes|nullable|string|max:2000', // paso 4b: los avales y pruebas reales, que la IA usa tal cual
         ]);
         ProductAdSetting::updateOrCreate(['product_id' => $product->id], $data + ['updated_by' => Auth::id()]);
 

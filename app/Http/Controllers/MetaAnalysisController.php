@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\CreativeBatch;
 use App\Models\MetaAnalysis;
 use App\Services\Meta\Analysis\MetaAnalyzer;
 use Illuminate\Http\Request;
@@ -33,6 +34,7 @@ class MetaAnalysisController extends Controller
             'dates' => MetaAnalysis::selectRaw('date, MAX(version) versions')->groupBy('date')->orderByDesc('date')->limit(60)->get()
                 ->map(fn ($r) => ['date' => substr((string) $r->date, 0, 10), 'versions' => (int) $r->versions]),
             'runs_left' => MetaAnalyzer::runsLeft(),
+            'queue_pending' => CreativeBatch::where('status', 'proposed')->count(), // paso 4b
         ]);
     }
 

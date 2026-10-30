@@ -263,7 +263,7 @@ class MetaDecisions
                 'cities' => collect($byCity)->map(fn ($v, $campaignId) => ['campaign_meta_id' => $campaignId, 'city' => $campaigns[$campaignId]['city'] ?? null] + $v)->values()->all(),
                 'funnel' => $funnel ? ['key' => $funnel, 'label' => AdRules::FUNNEL[$funnel], 'frequency' => $freq3] : null,
                 'video' => $w ? $rules->video($w, $isVideo, $length, $median, $cityCpm, $w['metrics']['cpa'] ?? null, $mainC) + ['window' => $w['window']] : null,
-                'status' => $cr['status'], 'status_source' => $cr['status_source'],
+                'status' => $cr['status'], 'status_source' => $cr['status_source'], 'angle_code' => $cr['angle_code'], 'type' => $cr['type'],
                 // Paso 3: sus 7 días, para ordenar los creativos en el análisis de la mañana
                 'week' => ['spend' => round((float) ($all['7d']['totals']['spend'] ?? 0), 2), 'purchases' => (float) ($all['7d']['totals']['purchases'] ?? 0),
                     'cpa' => isset($all['7d']['metrics']['cpa']) ? round((float) $all['7d']['metrics']['cpa'], 2) : null],
@@ -294,6 +294,9 @@ class MetaDecisions
             $cpa7 = $w7['metrics']['cpa'] ?? null;
             $budget = $c['daily_budget'];
             $out['campaigns'][$id]['action'] = null;
+            // Paso 4b: para elegir la ciudad de aprendizaje de un encargo (con stock y con ventas)
+            $out['campaigns'][$id] += ['city_id' => $c['city_id'], 'active' => $c['active'], 'stock' => $city['stock'] ?? null,
+                'purchases7' => (float) ($w7['totals']['purchases'] ?? 0)];
             $out['campaigns'][$id]['budget_notes'] = [];
             if (!$c['active']) {
                 // Una ciudad pausada hace poco porque perdía: el último test
@@ -414,7 +417,8 @@ class MetaDecisions
                 $p7 += (float) ($f['ads'][$m]['windows']['7d']['totals']['purchases'] ?? 0);
             }
             if ($key === 'proven' && $p7 >= $s['proven_purchases'] && (!$winner || $p7 > $winner['p7'])) {
-                $winner = ['label' => $cr2['label'], 'p7' => $p7, 'iterate' => self::ITERATE[$cr2['video']['iterate'] ?? ''] ?? null];
+                $winner = ['id' => $cid, 'label' => $cr2['label'], 'p7' => $p7, 'iterate' => self::ITERATE[$cr2['video']['iterate'] ?? ''] ?? null,
+                    'angle' => $cr2['angle_code'], 'type' => $cr2['type']];
             }
         }
         $activeCities = array_filter($f['campaigns'], fn ($c) => $c['active']);
@@ -453,6 +457,8 @@ class MetaDecisions
             'price' => $prices,
             'price_watch' => $cr->priceWatch($ops['price_change'] ?? null, $mainCampaign !== null ? ($minFor[$mainCampaign] ?? null) : null),
             'alarms' => array_values(array_unique($alarms)),
+            // Paso 4b: lo mismo que el trabajo siguiente, en datos, para proponer los encargos
+            'work' => ['winner' => $winner, 'main_angle' => $mainAngle, 'failed_batches_in_angle' => $failedBatches, 'saturated' => $saturated],
             'money_at_risk' => round(array_sum(array_map(fn ($id) => (float) ($f['campaigns'][$id]['windows']['3d']['totals']['spend'] ?? 0),
                 array_keys(array_filter($actions, fn ($k) => in_array($k, ['intervene', 'decrease', 'pause_city', 'drop'], true))))), 2),
         ];

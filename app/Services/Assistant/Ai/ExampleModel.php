@@ -64,7 +64,11 @@ class ExampleModel implements AssistantModel
         if ($has('orden') && preg_match('/#?\s?([a-z]{0,6}-?\d{3,})/i', $message, $m)) {
             return ['name' => 'historial_orden', 'arguments' => ['numero' => $m[1], 'id' => null]];
         }
-        // Etapa 5: Meta Ads ("¿cómo van las campañas?", "cómo va la campaña de FlexiStep", "creativos de FlexiStep", "ángulos de Cervimax")
+        // Etapa 5: Meta Ads ("¿cómo van las campañas?", "cómo va la campaña de FlexiStep", "creativos de FlexiStep", "ángulos de Cervimax",
+        // "¿qué hay en la cola?", "¿cómo le fue al B0100?")
+        if ($has('cola', 'banca', 'encargo') || preg_match('/\bB\d{3,}\b/', $message, $b)) {
+            return ['name' => 'cola_produccion', 'arguments' => ['producto' => $name, 'estado' => $has('aprobar') ? 'para_aprobar' : null, 'numero' => $b[0] ?? null]];
+        }
         if ($has('creativo')) {
             return ['name' => 'creativos', 'arguments' => ['producto' => $name, 'estado' => $has('ganador') ? 'ganadores' : ($has('perdedor') ? 'perdedores' : null)]];
         }

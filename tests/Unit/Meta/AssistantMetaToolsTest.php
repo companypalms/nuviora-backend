@@ -25,6 +25,13 @@ describe('El modo ejemplo entiende las preguntas de Meta', function () {
         expect(ExampleModel::understand('Ángulos de Cervimax'))->toBe(['name' => 'angulos', 'arguments' => ['producto' => 'Cervimax']]);
     });
 
+    it('la cola de producción: lo que hay, lo de un producto, lo que falta aprobar y un batch por su número', function () {
+        expect(ExampleModel::understand('¿Qué hay en la cola?'))->toBe(['name' => 'cola_produccion', 'arguments' => ['producto' => null, 'estado' => null, 'numero' => null]]);
+        expect(ExampleModel::understand('¿Qué hay en banca de FlexiStep?')['arguments']['producto'])->toBe('FlexiStep');
+        expect(ExampleModel::understand('¿Qué encargos hay para aprobar?')['arguments']['estado'])->toBe('para_aprobar');
+        expect(ExampleModel::understand('¿Cómo le fue al B0100?')['arguments'])->toBe(['producto' => null, 'estado' => null, 'numero' => 'B0100']);
+    });
+
     it('lo de antes sigue igual: las metas no son Meta y una persona sigue siendo una persona', function () {
         expect(ExampleModel::understand('¿Cómo voy con mis metas?')['name'])->toBe('metas');
         expect(ExampleModel::understand('¿Cuál es la efectividad de Fabiola este mes?')['name'])->toBe('persona');

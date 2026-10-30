@@ -4,6 +4,7 @@ namespace App\Services\Meta\Analysis;
 
 use App\Models\MetaAnalysis;
 use App\Services\Meta\Decisions\MetaDecisions;
+use App\Services\Meta\Queue\QueueProposer;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -13,6 +14,7 @@ use RuntimeException;
  * 2. Con eso se arma la lista urgente (UrgentList: el orden y los montos son de las reglas).
  * 3. La IA explica y redacta (AnalysisWriter); si escribe un monto que no está en los datos, queda un aviso (MoneyCheck).
  * 4. Se guarda como una versión del día; lo que el dueño ya marcó en la versión anterior se conserva.
+ * 5. Paso 4b: las reglas proponen los encargos que faltan y la IA los redacta (QueueProposer).
  * Nada se cambia en Meta ni se manda a nadie.
  */
 class MetaAnalyzer
@@ -52,7 +54,7 @@ class MetaAnalyzer
             }
         }
 
-        return DB::transaction(function () use ($date, $facts, $urgent, $row, $userId) {
+        $analysis = DB::transaction(function () use ($date, $facts, $urgent, $row, $userId) {
             $previous = MetaAnalysis::where('date', $date)->lockForUpdate()->orderByDesc('version')->first();
             $keys = array_column($urgent, 'key');
 
@@ -63,6 +65,14 @@ class MetaAnalyzer
                 'requested_by' => $userId,
             ]);
         });
+        // Paso 4b: los encargos que faltan quedan en la cola para aprobar (si algo falla, el análisis queda igual)
+        try {
+            (new QueueProposer($this->decisions))->run($userId);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        return $analysis;
     }
 
     /** ¿Cuántas veces más se puede tocar "Volver a analizar" hoy? */

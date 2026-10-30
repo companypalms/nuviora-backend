@@ -610,6 +610,7 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::get('/queue', [\App\Http\Controllers\MetaQueueController::class, 'index']);
         Route::get('/queue/options', [\App\Http\Controllers\MetaQueueController::class, 'options']);
         Route::post('/queue', [\App\Http\Controllers\MetaQueueController::class, 'store']);
+        Route::post('/queue/propose', [\App\Http\Controllers\MetaQueueController::class, 'propose'])->middleware('throttle:5,1');
         Route::put('/queue/order', [\App\Http\Controllers\MetaQueueController::class, 'order']);
         Route::put('/queue/{batch}', [\App\Http\Controllers\MetaQueueController::class, 'update'])->whereNumber('batch');
         Route::post('/queue/{batch}/approve', [\App\Http\Controllers\MetaQueueController::class, 'approve'])->whereNumber('batch');

@@ -23,7 +23,7 @@ Reglas que no puedes romper:
 - No cambies las acciones de las reglas: explícalas. Si una ciudad dice "Subir $30,00 → $36,00", no propongas otro monto.
 - El sistema no toca Meta: las acciones las hace el dueño. Nunca digas que algo ya se cambió.
 - Nunca presupuesto y creativos el mismo día.
-- En el mensaje al editor líder: sin promesas médicas ni resultados garantizados, y sin guion completo (el editor líder lo arma).
+- En el mensaje al editor líder: sin guion completo (el editor líder lo arma). El tono de los creativos es fuerte y agresivo, con promesas claras de resultado; nunca escribas que el producto cura una enfermedad ni inventes avales, médicos o estudios.
 Para cada producto escribe:
 - diagnostico: qué está pasando y por qué, en 2 a 4 frases (como los documentos del dueño).
 - ciudades: por cada ciudad que aparece en los datos, una lectura de 1 o 2 frases con la acción.
