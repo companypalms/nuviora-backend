@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\AdAngle;
 use App\Models\CreativeBatch;
 use App\Models\CreativeBatchPiece;
+use App\Models\LandingTask;
 use App\Models\MetaCreative;
 use App\Models\Product;
 use App\Models\Setting;
@@ -64,6 +65,11 @@ class MetaQueueController extends Controller
             'statuses' => QueueRules::STATUSES, 'kinds' => QueueRules::KINDS, 'formats' => QueueRules::FORMATS,
             'last_run' => Setting::get(QueueProposer::LAST_RUN),
             'editors' => EditorWork::editors(),
+            // Paso 6b: los tests de landing en curso (nunca cambiar creativo y landing a la vez)
+            'landing_tests' => LandingTask::with('testLanding')->where('status', 'testing')->get()->map(fn (LandingTask $t) => [
+                'product_id' => $t->product_id, 'code' => $t->code(), 'landing' => $t->testLanding?->label(),
+                'published_at' => $t->published_at?->toIso8601String(), 'max_days' => (int) $s['landing_test_max_days'],
+            ])->values()->all(),
         ]);
     }
 

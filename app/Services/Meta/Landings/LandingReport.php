@@ -4,6 +4,7 @@ namespace App\Services\Meta\Landings;
 
 use App\Models\AdAngle;
 use App\Models\Landing;
+use App\Models\LandingTask;
 use App\Models\MetaAdLandingChange;
 use App\Models\Product;
 use App\Services\Meta\Decisions\DecisionSettings;
@@ -94,8 +95,18 @@ class LandingReport
             $input[$id] = ['label' => $l->label(), 'angle_code' => $l->angle_code, 'totals' => $per[$id]['totals'] ?? LandingRules::empty(), 'angles' => $per[$id]['angles'] ?? []];
         }
         $findings = LandingRules::findings($input, $product, $s, $angleNames);
+        // Paso 6b: el encargo abierto (o el test en curso) de cada landing
+        $taskOf = [];
+        $open = LandingTask::whereIn('status', LandingTaskRules::OPEN)
+            ->where(fn ($q) => $q->whereIn('landing_id', $landings->keys())->orWhereIn('test_landing_id', $landings->keys()))->orderBy('id')->get();
+        foreach ($open as $t) {
+            foreach (array_filter([$t->landing_id, $t->test_landing_id]) as $lid) {
+                $taskOf[$lid] ??= ['id' => $t->id, 'code' => $t->code(), 'status' => $t->status, 'status_label' => LandingTaskRules::STATUSES[$t->status],
+                    'result' => $t->result['text'] ?? null];
+            }
+        }
 
-        $list = $landings->map(function (Landing $l) use ($per, $current, $findings, $angleNames) {
+        $list = $landings->map(function (Landing $l) use ($per, $current, $findings, $angleNames, $taskOf) {
             $p = $per[$l->id] ?? null;
             $f = $findings[$l->id] ?? [];
 
@@ -111,6 +122,8 @@ class LandingReport
                     ->sortByDesc('totals.spend')->values()->all(),
                 'findings' => $f,
                 'level' => LandingRules::level($f),
+                'task' => $taskOf[$l->id] ?? null,
+                'suggested_kind' => LandingTaskRules::kindFor(array_column($f, 'key')),
             ];
         })->sortByDesc(fn ($l) => [$l['totals']['spend'], $l['ads_active']])->values()->all();
 

@@ -73,6 +73,14 @@ class DecisionSettings
         // Paso 6a — las landings: con menos no se opina
         'landing_min_clicks' => [100, 1, 100000],   // de la visita
         'landing_min_visits' => [300, 1, 1000000],  // de la compra
+        // Paso 6b — los encargos de landing y su test antes/después con los mismos anuncios
+        'landing_due_days' => [2, 0, 30],             // plazo al aprobarlo
+        'landing_test_before_days' => [7, 1, 60],     // antes: los 7 días anteriores a publicar
+        'landing_test_min_days' => [3, 1, 60],        // después: al menos 3 días…
+        'landing_test_max_days' => [14, 1, 90],       // …y como mucho 14
+        'landing_test_min_purchases' => [10, 1, 1000], // muestra de cada lado
+        'landing_test_min_visits' => [300, 1, 1000000],
+        'landing_test_win_pct' => [15, 1, 100],       // gana o pierde si la compra cambia 15 % o más
     ];
 
     /** Se puede apagar sin publicar: los estados vuelven a quedar como estén. */

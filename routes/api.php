@@ -621,6 +621,17 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         // Etapa 5, paso 6a: las landings medidas una por una
         Route::get('/landings', [\App\Http\Controllers\MetaLandingsController::class, 'index']);
         Route::put('/landings/{landing}', [\App\Http\Controllers\MetaLandingsController::class, 'update'])->whereNumber('landing');
+        // Etapa 5, paso 6b: los encargos de landing (por ahora las hace el dueño: también empieza, entrega y publica)
+        Route::get('/landing-tasks', [\App\Http\Controllers\LandingTasksController::class, 'index']);
+        Route::post('/landing-tasks', [\App\Http\Controllers\LandingTasksController::class, 'store']);
+        Route::put('/landing-tasks/{task}', [\App\Http\Controllers\LandingTasksController::class, 'update'])->whereNumber('task');
+        Route::post('/landing-tasks/{task}/approve', [\App\Http\Controllers\LandingTasksController::class, 'approve'])->whereNumber('task');
+        Route::put('/landing-tasks/{task}/editor', [\App\Http\Controllers\LandingTasksController::class, 'assign'])->whereNumber('task');
+        Route::post('/landing-tasks/{task}/start', [\App\Http\Controllers\LandingTasksController::class, 'start'])->whereNumber('task');
+        Route::post('/landing-tasks/{task}/deliver', [\App\Http\Controllers\LandingTasksController::class, 'deliver'])->whereNumber('task')->middleware('throttle:30,1');
+        Route::post('/landing-tasks/{task}/review', [\App\Http\Controllers\LandingTasksController::class, 'review'])->whereNumber('task');
+        Route::post('/landing-tasks/{task}/publish', [\App\Http\Controllers\LandingTasksController::class, 'publish'])->whereNumber('task');
+        Route::post('/landing-tasks/{task}/discard', [\App\Http\Controllers\LandingTasksController::class, 'discard'])->whereNumber('task');
         Route::get('/targets', [\App\Http\Controllers\MetaAdsSetupController::class, 'targets']);
         Route::post('/targets', [\App\Http\Controllers\MetaAdsSetupController::class, 'storeTarget']);
         Route::get('/rules', [\App\Http\Controllers\MetaAdsSetupController::class, 'rules']);
@@ -639,6 +650,18 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::get('/report/series', [\App\Http\Controllers\MetaReportController::class, 'series']);
         Route::get('/report/filters', [\App\Http\Controllers\MetaReportController::class, 'filters']);
         Route::get('/report/creatives/{creative}', [\App\Http\Controllers\MetaReportController::class, 'creative']);
+    });
+
+    /**---------------------
+     * EDITOR DE LANDINGS (Etapa 5, paso 6b): "Mis encargos de landing". RestrictLimitedRoles no lo deja salir de
+     * /landing-editor/*; cada encargo tiene además sus permisos (LandingTaskRules).
+     * ---------------------**/
+    Route::middleware('role:Editor de landings')->prefix('landing-editor')->group(function () {
+        Route::get('/tasks', [\App\Http\Controllers\LandingTasksController::class, 'mine']);
+        Route::get('/summary', [\App\Http\Controllers\LandingTasksController::class, 'summary']);
+        Route::post('/tasks/{task}/start', [\App\Http\Controllers\LandingTasksController::class, 'start'])->whereNumber('task');
+        Route::post('/tasks/{task}/deliver', [\App\Http\Controllers\LandingTasksController::class, 'deliver'])->whereNumber('task')->middleware('throttle:30,1');
+        Route::post('/tasks/{task}/publish', [\App\Http\Controllers\LandingTasksController::class, 'publish'])->whereNumber('task');
     });
 
     /**---------------------

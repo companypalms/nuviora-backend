@@ -14,6 +14,7 @@ use Symfony\Component\HttpFoundation\Response;
  * - Rider: su app (/rider/*) y las dos llamadas de la entrega (§12.1): subir el comprobante y marcar "Entregado".
  * - Operador: su torre de control (/logistics/*).
  * - Los editores (Etapa 5, paso 5a): sus encargos (/editor/*).
+ * - El editor de landings (paso 6b): sus encargos de landing (/landing-editor/*).
  * - Todos: su sesión y su perfil.
  * Cada ruta de la lista sigue con sus propios controles (rol, orden suya, centro suyo).
  */
@@ -28,12 +29,13 @@ class RestrictLimitedRoles
     private const RIDER = 'repartidor';
     private const OPERATOR = 'operador logístico';
     private const EDITORS = ['editor líder', 'editor de video'];
+    private const LANDING_EDITOR = 'editor de landings';
 
     public function handle(Request $request, Closure $next): Response
     {
         $role = strtolower((string) $request->user()?->role?->description);
         $editor = in_array($role, self::EDITORS, true);
-        if ($role !== self::RIDER && $role !== self::OPERATOR && !$editor) {
+        if ($role !== self::RIDER && $role !== self::OPERATOR && !$editor && $role !== self::LANDING_EDITOR) {
             return $next($request);
         }
 
@@ -45,6 +47,9 @@ class RestrictLimitedRoles
         }
         if ($editor) {
             return $request->is('api/editor/*') ? $next($request) : $this->deny('Tu usuario solo tiene acceso a tus encargos de video.');
+        }
+        if ($role === self::LANDING_EDITOR) {
+            return $request->is('api/landing-editor/*') ? $next($request) : $this->deny('Tu usuario solo tiene acceso a tus encargos de landing.');
         }
         if ($role === self::RIDER) {
             if ($request->is('api/rider/*')) {

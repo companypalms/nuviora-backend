@@ -6,6 +6,7 @@ use App\Models\MetaAd;
 use App\Models\MetaAdAccount;
 use App\Models\MetaAdset;
 use App\Models\MetaCampaign;
+use App\Services\Meta\Landings\LandingTestTracker;
 use App\Services\Meta\Landings\LandingTracker;
 use App\Services\Meta\Queue\BatchTracker;
 use Illuminate\Support\Arr;
@@ -142,6 +143,8 @@ class MetaHierarchySync
         // Paso 6a: a qué landing lleva cada anuncio y desde cuándo (un error aquí no frena la sincronización)
         try {
             (new LandingTracker())->run($account->id, $now);
+            // Paso 6b: los tests de las landings publicadas (con los mismos anuncios antes y después)
+            (new LandingTestTracker())->run($now);
         } catch (\Throwable $e) {
             report($e);
         }
