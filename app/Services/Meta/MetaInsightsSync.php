@@ -23,8 +23,17 @@ class MetaInsightsSync
 {
     public const LEVELS = ['campaign', 'adset', 'ad'];
 
-    /** Rangos fijos del §27, con su nombre en Meta. Hoy y ayer salen del histórico diario. */
-    public const PRESETS = ['last_3d', 'last_7d', 'last_14d', 'last_30d', 'this_week_mon_today', 'last_week_mon_sun', 'this_month', 'last_month'];
+    /**
+     * Rangos fijos del §27, con su nombre en Meta. Hoy y ayer salen del histórico diario. "maximum" es el período máximo
+     * de cada anuncio (Etapa 5, paso 1a: "no decidir por un corte aislado si el histórico es bueno").
+     */
+    public const PRESETS = ['last_3d', 'last_7d', 'last_14d', 'last_30d', 'this_week_mon_today', 'last_week_mon_sun', 'this_month', 'last_month', 'maximum'];
+
+    /**
+     * Rangos que Meta no tiene con nombre: [días atrás desde, hasta] contados desde hoy en la zona de la cuenta. "prev_3d"
+     * son los 3 días cerrados anteriores a last_3d, para ver qué cambió (paso 1a).
+     */
+    public const CUSTOM_RANGES = ['prev_3d' => [6, 4]];
 
     /** Campos que Meta no aceptó en esta corrida (§54: "campo no disponible"). */
     private array $dropped = [];
@@ -59,7 +68,19 @@ class MetaInsightsSync
      */
     public function preset(MetaAdAccount $account, MetaClient $client, string $level, string $preset): int
     {
-        $rows = $this->fetch($client, $account, $level, ['date_preset' => $preset]);
+        return $this->current($account, $level, $preset, $this->fetch($client, $account, $level, ['date_preset' => $preset]));
+    }
+
+    /** Un rango sin nombre en Meta (CUSTOM_RANGES), calculado por Meta como un todo (alcance y CTR único exactos). */
+    public function custom(MetaAdAccount $account, MetaClient $client, string $level, string $range, string $since, string $until): int
+    {
+        return $this->current($account, $level, $range,
+            $this->fetch($client, $account, $level, ['time_range' => ['since' => $since, 'until' => $until]]));
+    }
+
+    /** Guarda el estado actual de un rango; lo que ya no trae datos en ese rango se quita de él. */
+    private function current(MetaAdAccount $account, string $level, string $preset, array $rows): int
+    {
         $now = now();
         $seen = [];
         foreach ($rows as $row) {

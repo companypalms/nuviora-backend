@@ -36,7 +36,7 @@ class MetaAdsReport
     ];
 
     private const SUMS = 'SUM(d.spend) spend, SUM(d.impressions) impressions, SUM(d.reach) reach, SUM(d.clicks) clicks,
-        SUM(d.link_clicks) link_clicks, SUM(d.outbound_clicks) outbound_clicks, SUM(d.landing_page_views) landing_page_views,
+        SUM(d.link_clicks) link_clicks, SUM(d.unique_link_clicks) unique_link_clicks, SUM(d.outbound_clicks) outbound_clicks, SUM(d.landing_page_views) landing_page_views,
         SUM(d.purchases) purchases, SUM(d.purchase_value) purchase_value, SUM(d.video_plays) video_plays,
         SUM(d.video_3s_plays) video_3s_plays, SUM(d.thruplays) thruplays, SUM(d.video_p25) video_p25, SUM(d.video_p50) video_p50,
         SUM(d.video_p75) video_p75, SUM(d.video_p95) video_p95, SUM(d.video_p100) video_p100,
@@ -170,7 +170,12 @@ class MetaAdsReport
         });
     }
 
-    /** El alcance de Meta para el rango fijo (§57), sumado por grupos de campañas, ad sets o anuncios. */
+    /**
+     * El alcance de Meta para el rango fijo (§57), sumado por grupos de campañas, ad sets o anuncios, y con él los clics
+     * únicos (paso 1a): los dos solo son exactos calculados por Meta para todo el rango.
+     *
+     * @return Collection<string, array{reach: ?float, unique_link_clicks: ?float}>|null
+     */
     private function presetReach(string $level, array $groups, ?bool $classified): ?Collection
     {
         $preset = $this->presetForReach();
@@ -184,29 +189,37 @@ class MetaAdsReport
         if ($classified !== null) {
             $this->classified($q, $classified);
         }
-        $select = 'SUM(d.reach) reach';
+        $select = 'SUM(d.reach) reach, SUM(d.unique_link_clicks) unique_link_clicks';
         foreach ($groups as $i => $g) {
             $select .= ", {$g} g{$i}";
         }
         return $q->selectRaw($select)->when($groups, fn ($q) => $q->groupBy($groups))->get()
             ->mapWithKeys(function ($r) use ($groups) {
                 $r = (array) $r;
-                return [implode('|', array_map(fn ($i) => (string) $r["g{$i}"], array_keys($groups))) => $r['reach'] !== null ? (float) $r['reach'] : null];
+                return [implode('|', array_map(fn ($i) => (string) $r["g{$i}"], array_keys($groups))) => [
+                    'reach' => $r['reach'] !== null ? (float) $r['reach'] : null,
+                    'unique_link_clicks' => $r['unique_link_clicks'] !== null ? (float) $r['unique_link_clicks'] : null,
+                ]];
             });
     }
 
-    /** Totales + fórmulas de un grupo, con el alcance de Meta si se puede. */
-    private function pack(?array $sum, ?float $presetReach): array
+    /** Totales + fórmulas de un grupo, con el alcance (y los clics únicos) de Meta si se puede. */
+    private function pack(?array $sum, ?array $preset): array
     {
         $totals = MetaMetrics::sum($sum ? [$sum] : []);
         $entities = (int) ($sum['entities'] ?? 0);
+        $presetReach = $preset['reach'] ?? null;
         $exact = $entities <= 1 && ($this->singleDay() || $presetReach !== null);
         // La del período anterior se calcula con el alcance sumado día a día: para comparar, las dos con la misma base
-        $dailyFrequency = MetaMetrics::compute($totals)['frequency'];
+        $daily = MetaMetrics::compute($totals);
         if ($presetReach !== null) {
             $totals['reach'] = $presetReach;
+            if (($preset['unique_link_clicks'] ?? null) !== null) {
+                $totals['unique_link_clicks'] = $preset['unique_link_clicks'];
+            }
         }
-        return ['totals' => $totals, 'metrics' => MetaMetrics::compute($totals), 'frequency_exact' => $exact, 'frequency_daily' => $dailyFrequency];
+        return ['totals' => $totals, 'metrics' => MetaMetrics::compute($totals), 'frequency_exact' => $exact,
+            'frequency_daily' => $daily['frequency'], 'unique_ctr_daily' => $daily['unique_ctr']];
     }
 
     // ------------------------------------------------------------------ vistas
@@ -283,8 +296,13 @@ class MetaAdsReport
     {
         $sum = MetaMetrics::sum(collect($keys)->map(fn ($k) => $cur->get($k))->filter()->all());
         $entities = collect($keys)->sum(fn ($k) => (int) ($cur->get($k)['entities'] ?? 0));
-        $presetReach = $reach ? collect($keys)->sum(fn ($k) => (float) ($reach->get($k) ?? 0)) : null;
-        $packed = $this->pack($sum + ['entities' => $entities], $presetReach ?: null);
+        $preset = null;
+        if ($reach) {
+            $r = collect($keys)->sum(fn ($k) => (float) ($reach->get($k)['reach'] ?? 0));
+            $u = collect($keys)->sum(fn ($k) => (float) ($reach->get($k)['unique_link_clicks'] ?? 0));
+            $preset = $r > 0 ? ['reach' => $r, 'unique_link_clicks' => $u > 0 ? $u : null] : null;
+        }
+        $packed = $this->pack($sum + ['entities' => $entities], $preset);
         if ($compare) {
             $prevSum = MetaMetrics::sum(collect($keys)->map(fn ($k) => $prev->get($k))->filter()->all());
             $packed['compare'] = $this->compareBlock($packed, $prevSum);
@@ -304,6 +322,7 @@ class MetaAdsReport
         foreach (['cpa', 'link_ctr', 'link_cpc', 'cpm', 'lpv_rate', 'conversion_rate', 'hook_rate', 'hold_rate'] as $m) {
             $change[$m] = MetaMetrics::change($metrics[$m], $prevMetrics[$m]);
         }
+        $change['unique_ctr'] = MetaMetrics::change($packed['unique_ctr_daily'] ?? $metrics['unique_ctr'], $prevMetrics['unique_ctr']);
         $change['frequency'] = MetaMetrics::change($packed['frequency_daily'] ?? $metrics['frequency'], $prevMetrics['frequency']);
         foreach (['spend', 'purchases', 'impressions', 'link_clicks', 'landing_page_views'] as $m) {
             $change[$m] = MetaMetrics::change($totals[$m] !== null ? (float) $totals[$m] : null, $prevTotals[$m] !== null ? (float) $prevTotals[$m] : null);

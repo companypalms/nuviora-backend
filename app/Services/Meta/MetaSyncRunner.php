@@ -183,6 +183,12 @@ class MetaSyncRunner
                         $steps[] = ['type' => 'preset', 'account' => $a, 'level' => $level, 'preset' => $preset];
                     }
                 }
+                foreach (MetaInsightsSync::CUSTOM_RANGES as $range => [$fromDays, $toDays]) {
+                    foreach (MetaInsightsSync::LEVELS as $level) {
+                        $steps[] = ['type' => 'range', 'account' => $a, 'level' => $level, 'range' => $range,
+                            'since' => $today->copy()->subDays($fromDays)->toDateString(), 'until' => $today->copy()->subDays($toDays)->toDateString()];
+                    }
+                }
                 $steps[] = ['type' => 'presets_done', 'account' => $a];
             }
             $steps[] = ['type' => 'account_done', 'account' => $a];
@@ -215,6 +221,8 @@ class MetaSyncRunner
                 return $this->insights->daily($account, $client, $step['level'], $step['since'], $step['until']);
             case 'preset':
                 return $this->insights->preset($account, $client, $step['level'], $step['preset']);
+            case 'range':
+                return $this->insights->custom($account, $client, $step['level'], $step['range'], $step['since'], $step['until']);
             case 'history_done':
                 if (!$account->history_from || $account->history_from->toDateString() > $step['from']) {
                     $account->forceFill(['history_from' => $step['from']])->save();

@@ -11,7 +11,7 @@ class MetaMetrics
 {
     /** Los valores base que se suman (§50). */
     public const SUMMABLE = [
-        'spend', 'impressions', 'reach', 'clicks', 'link_clicks', 'outbound_clicks', 'landing_page_views', 'purchases',
+        'spend', 'impressions', 'reach', 'clicks', 'link_clicks', 'unique_link_clicks', 'outbound_clicks', 'landing_page_views', 'purchases',
         'purchase_value', 'video_plays', 'video_3s_plays', 'thruplays', 'video_p25', 'video_p50', 'video_p75', 'video_p95',
         'video_p100', 'video_watch_time',
     ];
@@ -33,6 +33,9 @@ class MetaMetrics
             // todos los clics no interesan (respuesta de Fran del 2026-10-09, pregunta 2)
             'link_ctr' => self::pct($v('link_clicks'), $impressions),
             'link_cpc' => self::div($spend, $v('link_clicks')),
+            // Paso 1a: el CTR único del dueño = personas que hicieron clic en el enlace ÷ alcance. Como el alcance, solo es
+            // exacto en un rango calculado por Meta como un todo; al juntar días queda aproximado
+            'unique_ctr' => self::pct($v('unique_link_clicks'), $v('reach')),
             // §51: "CPM agregado = SUM(Spend) / SUM(Impressions) × 1000"
             'cpm' => self::div($spend * 1000, $impressions),
             'frequency' => self::div($impressions, $v('reach')),

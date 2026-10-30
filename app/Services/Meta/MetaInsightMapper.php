@@ -12,7 +12,7 @@ class MetaInsightMapper
     /** Campos que se piden a la Insights API (§15 métricas generales, §20 video). */
     public const FIELDS = [
         'campaign_id', 'campaign_name', 'adset_id', 'adset_name', 'ad_id', 'ad_name', 'date_start', 'date_stop',
-        'spend', 'impressions', 'reach', 'frequency', 'clicks', 'inline_link_clicks', 'outbound_clicks',
+        'spend', 'impressions', 'reach', 'frequency', 'clicks', 'inline_link_clicks', 'unique_inline_link_clicks', 'outbound_clicks',
         'actions', 'action_values',
         'video_play_actions', 'video_thruplay_watched_actions', 'video_p25_watched_actions', 'video_p50_watched_actions',
         'video_p75_watched_actions', 'video_p95_watched_actions', 'video_p100_watched_actions', 'video_avg_time_watched_actions',
@@ -49,6 +49,8 @@ class MetaInsightMapper
             'frequency' => self::num($row['frequency'] ?? null),
             'clicks' => self::int($row['clicks'] ?? null),
             'link_clicks' => self::int($row['inline_link_clicks'] ?? null),
+            // Paso 1a: el CTR único que usa el dueño (clics únicos en el enlace ÷ alcance)
+            'unique_link_clicks' => self::int($row['unique_inline_link_clicks'] ?? null),
             'outbound_clicks' => self::sumList($row['outbound_clicks'] ?? null),
             'landing_page_views' => isset($actions['landing_page_view']) ? (int) $actions['landing_page_view']
                 : (isset($actions['omni_landing_page_view']) ? (int) $actions['omni_landing_page_view'] : (isset($row['actions']) ? 0 : null)),

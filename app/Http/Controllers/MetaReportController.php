@@ -60,9 +60,22 @@ class MetaReportController extends Controller
 
         $adsReport = new MetaAdsReport(['creative' => $creative->id, 'include_inactive' => true], $report->range, $report->from, $report->to);
 
+        // Paso 1a: lo que dice el anuncio y a dónde lleva (del anuncio más nuevo), y las landings y UTM de todos
+        $ads = \App\Models\MetaAd::where('meta_creative_ref_id', $creative->id)->orderByDesc('created_time')
+            ->get(['ad_body', 'ad_title', 'image_url', 'thumbnail_url', 'landing_url', 'url_tags', 'video_length']);
+        $latest = $ads->first();
+        $details = [
+            'title' => $latest?->ad_title, 'body' => $latest?->ad_body, 'image_url' => $latest?->image_url ?: $latest?->thumbnail_url,
+            'video_length' => $ads->pluck('video_length')->filter()->max(),
+            'landing_urls' => $ads->pluck('landing_url')->filter()->unique()->values()->all(),
+            'url_tags' => $ads->pluck('url_tags')->filter()->unique()->values()->all(),
+            'synced' => $ads->contains(fn ($a) => $a->ad_body !== null || $a->landing_url !== null || $a->url_tags !== null),
+        ];
+
         return $this->json([
             'creative' => ['id' => $creative->id, 'tracking_id' => $creative->tracking_id, 'type' => $creative->type, 'status' => $creative->status,
                 'status_changed_at' => $creative->status_changed_at?->toIso8601String()],
+            'details' => $details,
             'summary' => $summary,
             'ads' => $adsReport->rows('ad', $compare),
         ] + $this->rangeInfo($report));

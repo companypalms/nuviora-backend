@@ -119,7 +119,7 @@ class MetaSignals
     public static function metricLabel(string $metric): string
     {
         return [
-            'cpa' => 'CPA', 'cpm' => 'CPM', 'link_ctr' => 'CTR enlace', 'link_cpc' => 'CPC enlace', 'frequency' => 'Frequency',
+            'cpa' => 'CPA', 'cpm' => 'CPM', 'unique_ctr' => 'CTR único', 'link_ctr' => 'CTR enlace', 'link_cpc' => 'CPC enlace', 'frequency' => 'Frequency',
             'hook_rate' => 'Hook Rate', 'hold_rate' => 'Hold Rate', 'lpv_rate' => 'LPV Rate', 'conversion_rate' => 'Conversion Rate',
             'spend' => 'Gasto', 'purchases' => 'Purchases',
         ][$metric] ?? $metric;
