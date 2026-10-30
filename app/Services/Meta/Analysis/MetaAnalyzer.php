@@ -29,7 +29,7 @@ class MetaAnalyzer
         $date ??= now(config('app.timezone'))->toDateString();
         $productIds = self::products();
         $decisions = ($this->decisions ?? new MetaDecisions())->compute($productIds);
-        $facts = AnalysisFacts::build($decisions, $this->names($decisions));
+        $facts = AnalysisFacts::build($decisions, self::names($decisions));
         $urgent = UrgentList::build($facts);
         $input = AnalysisFacts::input($facts);
 
@@ -86,7 +86,8 @@ class MetaAnalyzer
         return $spent->merge($active)->map(fn ($v) => (int) $v)->unique()->values()->all();
     }
 
-    private function names(array $decisions): array
+    /** Los nombres de las campañas y de los batches activos de unas decisiones (para el análisis y el asistente). */
+    public static function names(array $decisions): array
     {
         $campaigns = [];
         $adsets = [];

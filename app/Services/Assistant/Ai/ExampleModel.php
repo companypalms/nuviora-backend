@@ -8,9 +8,9 @@ use Carbon\CarbonImmutable;
 
 /**
  * El modo ejemplo: en la PC de pruebas no hay clave de OpenAI (y nunca se usa la real). Entiende frases simples por
- * palabras ("ventas de la semana pasada", "efectividad de Fabiola", "ranking de agencias", "qué tengo hoy") y usa las
- * herramientas de verdad, así se prueba todo el chat con los datos de prueba sin gastar. No razona: muestra los datos
- * tal cual. Solo se usa sin clave y con APP_ENV=local. PHP puro.
+ * palabras ("ventas de la semana pasada", "efectividad de Fabiola", "ranking de agencias", "qué tengo hoy", "cómo van
+ * las campañas") y usa las herramientas de verdad, así se prueba todo el chat con los datos de prueba sin gastar. No
+ * razona: muestra los datos tal cual. Solo se usa sin clave y con APP_ENV=local. PHP puro.
  */
 class ExampleModel implements AssistantModel
 {
@@ -27,7 +27,7 @@ class ExampleModel implements AssistantModel
         if ($turn->steps === []) {
             $call = $change ?? self::understand($turn->message);
             if ($call === null) {
-                return self::say(self::INTRO . "\n\nNo entendí la pregunta. Prueba con: \"¿Cuánto vendimos esta semana?\", \"Efectividad de Fabiola este mes\", \"Ranking de agencias del mes pasado\", \"¿Cómo voy con mis metas?\" o \"¿Qué tengo hoy?\".");
+                return self::say(self::INTRO . "\n\nNo entendí la pregunta. Prueba con: \"¿Cuánto vendimos esta semana?\", \"Efectividad de Fabiola este mes\", \"Ranking de agencias del mes pasado\", \"¿Cómo voy con mis metas?\", \"¿Cómo van las campañas?\" o \"¿Qué tengo hoy?\".");
             }
 
             return new ModelReply(null, [['call_id' => 'ejemplo_1', 'name' => $call['name'], 'arguments' => $call['arguments']]], [], self::noUsage(), self::NAME);
@@ -63,6 +63,17 @@ class ExampleModel implements AssistantModel
         // Paso 3: órdenes, inventario, comisiones, cierres, caja, gastos, tasas, usuarios, agencias y ciudades
         if ($has('orden') && preg_match('/#?\s?([a-z]{0,6}-?\d{3,})/i', $message, $m)) {
             return ['name' => 'historial_orden', 'arguments' => ['numero' => $m[1], 'id' => null]];
+        }
+        // Etapa 5: Meta Ads ("¿cómo van las campañas?", "cómo va la campaña de FlexiStep", "creativos de FlexiStep", "ángulos de Cervimax")
+        if ($has('creativo')) {
+            return ['name' => 'creativos', 'arguments' => ['producto' => $name, 'estado' => $has('ganador') ? 'ganadores' : ($has('perdedor') ? 'perdedores' : null)]];
+        }
+        if ($has('angulo')) {
+            return ['name' => 'angulos', 'arguments' => ['producto' => $name]];
+        }
+        if ($has('campana', 'meta ads', 'en meta', 'analisis del dia')) {
+            return $name !== null ? ['name' => 'campana_producto', 'arguments' => ['producto' => $name, 'grafico' => true]]
+                : ['name' => 'analisis_campanas', 'arguments' => ['fecha' => null]];
         }
         if ($has('se esta acabando', 'se acaba', 'stock bajo', 'se estan acabando')) {
             return ['name' => 'stock_bajo', 'arguments' => []];

@@ -223,7 +223,7 @@ describe('Las tarjetas de cambios', function () {
 });
 
 describe('Lo que ve OpenAI de las herramientas', function () {
-    it('las 39 son estrictas: cada objeto con todo requerido y nada de más (si no, OpenAI rechaza todas las preguntas)', function () {
+    it('las 43 son estrictas: cada objeto con todo requerido y nada de más (si no, OpenAI rechaza todas las preguntas)', function () {
         $check = function (array $schema, string $where) use (&$check) {
             if (isset($schema['anyOf'])) {
                 foreach ($schema['anyOf'] as $i => $branch) {
@@ -246,13 +246,14 @@ describe('Lo que ve OpenAI de las herramientas', function () {
             }
         };
         $definitions = app(ToolCatalog::class)->definitions();
-        expect(count($definitions))->toBe(39);
+        expect(count($definitions))->toBe(43);
         foreach ($definitions as $d) {
             expect($d['strict'])->toBeTrue();
             $check($d['parameters'], $d['name']);
         }
         expect(array_column($definitions, 'name'))->toContain('proponer_gasto', 'proponer_tasas', 'proponer_banco', 'proponer_pago_gasto_fijo',
             'proponer_compra', 'proponer_compra_por_recibir', 'proponer_recibir_compra', 'proponer_ciudad_trabajando', 'proponer_agencia_trabajando',
-            'proponer_usuario', 'proponer_desactivar_usuario', 'proponer_reactivar_usuario', 'efectivo_agencias');
+            'proponer_usuario', 'proponer_desactivar_usuario', 'proponer_reactivar_usuario', 'efectivo_agencias',
+            'analisis_campanas', 'campana_producto', 'creativos', 'angulos');
     });
 });

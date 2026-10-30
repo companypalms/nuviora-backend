@@ -40,6 +40,11 @@ class ToolCatalog
         RatesTool::class,
         UsersTool::class,
         RoutingTool::class,
+        // Etapa 5: Meta Ads (solo lectura: lo que dicen las reglas del dueño y el análisis de la mañana)
+        MetaAnalysisTool::class,
+        MetaProductTool::class,
+        MetaCreativesTool::class,
+        MetaAnglesTool::class,
         // Paso 5: cambios, siempre con la tarjeta de Confirmar (Actions\ChangeTool)
         Change\CalendarNoteTool::class,
         Change\CalendarMarkTool::class,
