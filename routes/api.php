@@ -602,6 +602,10 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         // Etapa 5, paso 2: los números de las reglas del dueño
         Route::get('/decisions/settings', [\App\Http\Controllers\MetaAdsSetupController::class, 'decisionSettings']);
         Route::put('/decisions/settings', [\App\Http\Controllers\MetaAdsSetupController::class, 'updateDecisionSettings']);
+        // Etapa 5, paso 3a: el análisis de la mañana
+        Route::get('/analysis', [\App\Http\Controllers\MetaAnalysisController::class, 'index']);
+        Route::post('/analysis/run', [\App\Http\Controllers\MetaAnalysisController::class, 'run'])->middleware('throttle:5,1');
+        Route::put('/analysis/{analysis}/marks', [\App\Http\Controllers\MetaAnalysisController::class, 'mark']);
         Route::get('/targets', [\App\Http\Controllers\MetaAdsSetupController::class, 'targets']);
         Route::post('/targets', [\App\Http\Controllers\MetaAdsSetupController::class, 'storeTarget']);
         Route::get('/rules', [\App\Http\Controllers\MetaAdsSetupController::class, 'rules']);

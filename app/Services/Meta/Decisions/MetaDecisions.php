@@ -262,6 +262,9 @@ class MetaDecisions
                 'funnel' => $funnel ? ['key' => $funnel, 'label' => AdRules::FUNNEL[$funnel], 'frequency' => $freq3] : null,
                 'video' => $w ? $rules->video($w, $isVideo, $length, $median, $cityCpm, $w['metrics']['cpa'] ?? null, $mainC) + ['window' => $w['window']] : null,
                 'status' => $cr['status'], 'status_source' => $cr['status_source'],
+                // Paso 3: sus 7 días, para ordenar los creativos en el análisis de la mañana
+                'week' => ['spend' => round((float) ($all['7d']['totals']['spend'] ?? 0), 2), 'purchases' => (float) ($all['7d']['totals']['purchases'] ?? 0),
+                    'cpa' => isset($all['7d']['metrics']['cpa']) ? round((float) $all['7d']['metrics']['cpa'], 2) : null],
             ];
         }
 

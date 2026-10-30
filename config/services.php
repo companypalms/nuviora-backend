@@ -71,6 +71,8 @@ return [
         'closure_model' => env('OPENAI_CLOSURE_MODEL', 'gpt-6-luna'),
         // Panel del dueño (2026-10-29): el análisis de los motivos de cancelación (Metrics\Insights\CancellationInsights)
         'insights_model' => env('OPENAI_INSIGHTS_MODEL', 'gpt-6-luna'),
+        // Etapa 5, paso 3a: el análisis de campañas de la mañana (por defecto, el mismo del análisis de cancelaciones)
+        'meta_analysis_model' => env('OPENAI_META_ANALYSIS_MODEL', env('OPENAI_INSIGHTS_MODEL', 'gpt-6-luna')),
         // El asistente del dueño (Etapa 4): usa herramientas, por eso un modelo de los fuertes en razonamiento
         'assistant_model' => env('OPENAI_ASSISTANT_MODEL', 'gpt-6.1-sol'),
         'assistant_effort' => env('OPENAI_ASSISTANT_EFFORT', 'low'),

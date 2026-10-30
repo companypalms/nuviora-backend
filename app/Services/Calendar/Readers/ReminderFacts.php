@@ -45,6 +45,7 @@ class ReminderFacts
         return [
             'rate_days' => $this->rateDays($from, $to),
             'goal_months' => array_keys($this->goals->get()['months'] ?? []),
+            'meta_analysis_days' => $this->metaAnalysisDays($from, $to),
         ];
     }
 
@@ -179,6 +180,18 @@ class ReminderFacts
             if ($at->betweenIncluded($from->startOfDay(), $to->endOfDay())) {
                 $days[$at->toDateString()] = $at->format('G:i');
             }
+        }
+
+        return $days;
+    }
+
+    /** Día => la hora en que el dueño abrió el análisis de campañas de ese día (Etapa 5, paso 3a). */
+    private function metaAnalysisDays(CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $days = [];
+        foreach (\App\Models\MetaAnalysis::whereBetween('date', [$from->toDateString(), $to->toDateString()])->whereNotNull('viewed_at')
+            ->orderBy('viewed_at')->get(['date', 'viewed_at']) as $a) {
+            $days[$a->date->toDateString()] ??= $a->viewed_at->setTimezone(config('app.timezone'))->format('G:i');
         }
 
         return $days;

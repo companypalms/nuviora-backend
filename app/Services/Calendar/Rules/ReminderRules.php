@@ -64,6 +64,12 @@ final class ReminderRules
             'help' => 'Los productos en rojo o en naranja se agotan pronto: si no se reabastecen a tiempo, se pierden ventas.',
             'link' => '/reabastecimiento',
         ],
+        'meta_analysis' => [
+            'type' => 'review', 'group' => 'daily', 'repeat' => 'daily', 'accumulates' => false, 'auto' => true,
+            'title' => 'Revisar el análisis de campañas',
+            'help' => 'Cada mañana a las 7:00 queda listo el análisis de Meta Ads con tus reglas: lo más urgente primero (qué subir, bajar, pausar o apagar) y el trabajo para los editores. Se tilda solo al abrirlo.',
+            'link' => '/meta-ads/analisis',
+        ],
         'review_3days' => [
             'type' => 'review', 'group' => 'daily', 'repeat' => 'daily', 'accumulates' => false, 'auto' => false,
             'title' => 'Analizar los últimos 3 días',
@@ -237,6 +243,14 @@ final class ReminderRules
                     $out['details'] = 'Mira los productos en rojo o en naranja y si hay que reabastecer.';
                 }
                 $out['actions'] = [['label' => 'Ir a reabastecimiento', 'link' => $rule['link']]];
+                break;
+
+            case 'meta_analysis':
+                $seen = $facts['meta_analysis_days'][$due] ?? null;
+                $out['auto_done'] = $seen !== null;
+                $out['auto_note'] = $seen !== null ? "Lo abriste a las {$seen}." : null;
+                $out['details'] = 'Lo más urgente de tus campañas primero, con los montos de tus reglas, y el trabajo para los editores.';
+                $out['actions'] = [['label' => 'Abrir el análisis', 'link' => $rule['link']]];
                 break;
 
             case 'review_3days':
