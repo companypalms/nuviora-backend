@@ -11,7 +11,7 @@ use App\Models\MetaInsightDaily;
 use App\Models\Product;
 use App\Models\ProductAdTarget;
 use App\Services\Meta\CampaignSuggester;
-use App\Services\Meta\MetaHierarchySync;
+use App\Services\Meta\MetaCreativeLinker;
 use App\Services\Meta\MetaVisibility;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -85,6 +85,8 @@ class MetaAdsSetupController extends Controller
             'city_id' => 'required|integer|exists:cities,id',
         ]);
         $campaign->forceFill($data + ['classified_by' => Auth::id(), 'classified_at' => now()])->save();
+        // Paso 1b: el creativo es producto + código, así que cambia con el producto de la campaña
+        (new MetaCreativeLinker())->run(['campaign' => $campaign->meta_id]);
 
         return response()->json(['status' => true]);
     }
@@ -95,7 +97,7 @@ class MetaAdsSetupController extends Controller
      */
     public function setTrackingId(Request $request, MetaAd $ad)
     {
-        $data = $request->validate(['creative_tracking_id' => 'nullable|string|max:120']);
+        $data = $request->validate(['creative_tracking_id' => 'nullable|string|max:100']);
         $id = isset($data['creative_tracking_id']) ? strtoupper(trim($data['creative_tracking_id'])) : '';
 
         if ($id === '') {
@@ -104,8 +106,9 @@ class MetaAdsSetupController extends Controller
             $ad->creative_tracking_id = $id;
             $ad->tracking_id_source = 'manual';
         }
-        MetaHierarchySync::applyTrackingId($ad);
         $ad->save();
+        (new MetaCreativeLinker())->run(['campaign' => $ad->campaign_meta_id]);
+        $ad->refresh();
 
         return response()->json(['creative_tracking_id' => $ad->creative_tracking_id, 'tracking_id_source' => $ad->tracking_id_source]);
     }

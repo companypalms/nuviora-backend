@@ -15,6 +15,8 @@ class MetaAd extends Model
         'status', 'effective_status', 'created_time', 'meta_creative_id', 'creative_type', 'video_id', 'image_hash',
         'thumbnail_url', 'meta_creative_ref_id', 'creative_tracking_id', 'tracking_id_source', 'last_known_state',
         'last_seen_at', 'missing_since', 'meta', 'ad_body', 'ad_title', 'image_url', 'url_tags', 'landing_url', 'video_length',
+        // Paso 1b: lo que dice su nombre (CreativeTrackingId)
+        'creative_code', 'angle_code', 'batch_code', 'ref_code', 'iteration_of',
     ];
 
     protected $casts = [

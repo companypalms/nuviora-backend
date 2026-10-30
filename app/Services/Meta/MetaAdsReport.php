@@ -400,7 +400,7 @@ class MetaAdsReport
         $entities = $model::query()
             ->when($level !== 'campaign', fn ($q) => $q->with('campaign:id,meta_id,name,product_id,city_id'))
             ->when($level === 'campaign', fn ($q) => $q->with(['product:id,title,showable_name', 'city:id,name']))
-            ->when($level === 'ad', fn ($q) => $q->with('creative:id,tracking_id,status,type'))
+            ->when($level === 'ad', fn ($q) => $q->with('creative:id,tracking_id,label,status,type'))
             ->with('account:id,name')
             ->when(!empty($this->filters['account_id']), fn ($q) => $q->where('meta_ad_account_id', $this->filters['account_id']))
             ->when($level === 'campaign' && !empty($this->filters['campaign']), fn ($q) => $q->where('meta_id', $this->filters['campaign']))
@@ -463,6 +463,7 @@ class MetaAdsReport
             }
             if ($level === 'adset') {
                 $row['attribution_spec'] = $e->attribution_spec;
+                $row += ['batch_code' => $e->batch_code, 'angle_code' => $e->angle_code, 'concept' => $e->concept, 'stage' => $e->stage];
             }
             if ($level === 'ad') {
                 $row += [
@@ -470,7 +471,11 @@ class MetaAdsReport
                     'creative_tracking_id' => $e->creative_tracking_id,
                     'tracking_id_source' => $e->tracking_id_source,
                     'creative_id' => $e->meta_creative_ref_id,
+                    'creative_label' => $e->creative?->displayName(),
                     'creative_status' => $e->creative?->status,
+                    // Paso 1b: lo que dice su nombre (o el de su ad set)
+                    'angle_code' => $e->angle_code,
+                    'batch_code' => $e->batch_code,
                     'creative_type' => $e->creative_type,
                     'thumbnail_url' => $e->thumbnail_url,
                 ];
@@ -509,7 +514,8 @@ class MetaAdsReport
             }
             $packed['signals'] = $this->signals($packed, $target['target_cpa'], $target['break_even_cpa']);
             $rows[] = $packed + [
-                'level' => 'creative', 'id' => $cr->id, 'tracking_id' => $cr->tracking_id, 'name' => $cr->tracking_id,
+                'level' => 'creative', 'id' => $cr->id, 'tracking_id' => $cr->tracking_id, 'name' => $cr->displayName(),
+                'angle_code' => $cr->angle_code, 'batch_code' => $cr->batch_code, 'iteration_of' => $cr->iteration_of,
                 'type' => $cr->type, 'status' => $cr->status, 'ads' => $cr->ads_count,
                 'accounts' => (int) ($cur->get((string) $cr->id)['accounts'] ?? 0),
                 'target_cpa' => $target['target_cpa'], 'break_even_cpa' => $target['break_even_cpa'],

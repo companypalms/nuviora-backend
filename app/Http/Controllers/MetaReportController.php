@@ -72,9 +72,25 @@ class MetaReportController extends Controller
             'synced' => $ads->contains(fn ($a) => $a->ad_body !== null || $a->landing_url !== null || $a->url_tags !== null),
         ];
 
+        // Paso 1b: el producto, el ángulo (con su nombre si ya lo tiene), el batch y el padre de una iteración
+        $angle = $creative->product_id && $creative->angle_code
+            ? \App\Models\AdAngle::where('product_id', $creative->product_id)->where('code', $creative->angle_code)->first(['code', 'name', 'hypothesis', 'status'])
+            : null;
+        $parent = $creative->product_id && $creative->iteration_of
+            // El mismo número puede estar en varios batches: primero el del mismo ángulo y el mismo batch
+            ? MetaCreative::where('product_id', $creative->product_id)->where('creative_code', $creative->iteration_of)->has('ads')
+                ->orderByRaw('(angle_code <=> ?) DESC, (batch_code <=> ?) DESC', [$creative->angle_code, $creative->batch_code])->orderByDesc('id')
+                ->first(['id', 'label', 'tracking_id'])
+            : null;
+
         return $this->json([
-            'creative' => ['id' => $creative->id, 'tracking_id' => $creative->tracking_id, 'type' => $creative->type, 'status' => $creative->status,
-                'status_changed_at' => $creative->status_changed_at?->toIso8601String()],
+            'creative' => ['id' => $creative->id, 'tracking_id' => $creative->tracking_id, 'label' => $creative->displayName(),
+                'type' => $creative->type, 'status' => $creative->status,
+                'status_changed_at' => $creative->status_changed_at?->toIso8601String(),
+                'product' => $creative->product ? ($creative->product->showable_name ?: $creative->product->title) : null,
+                'angle_code' => $creative->angle_code, 'angle' => $angle?->only(['code', 'name', 'hypothesis', 'status']),
+                'batch_code' => $creative->batch_code, 'iteration_of' => $creative->iteration_of,
+                'parent' => $parent ? ['id' => $parent->id, 'label' => $parent->displayName()] : null],
             'details' => $details,
             'summary' => $summary,
             'ads' => $adsReport->rows('ad', $compare),
@@ -95,7 +111,10 @@ class MetaReportController extends Controller
                 ->get(['meta_id', 'name', 'campaign_meta_id', 'effective_status', 'missing_since'])
                 ->map(fn ($s) => ['meta_id' => $s->meta_id, 'name' => $s->name, 'campaign_meta_id' => $s->campaign_meta_id,
                     'active' => $s->effective_status === 'ACTIVE' && $s->missing_since === null]),
-            'creatives' => MetaCreative::orderBy('tracking_id')->get(['id', 'tracking_id', 'type', 'status']),
+            // Paso 1b: solo los que tienen anuncios (los viejos, de antes de separar por producto, dejan de verse)
+            'creatives' => MetaCreative::has('ads')->orderBy('product_id')->orderBy('label')->get(['id', 'tracking_id', 'label', 'product_id', 'type', 'status'])
+                ->map(fn (MetaCreative $c) => ['id' => $c->id, 'tracking_id' => $c->tracking_id, 'label' => $c->displayName(),
+                    'product_id' => $c->product_id, 'type' => $c->type, 'status' => $c->status]),
         ]);
     }
 

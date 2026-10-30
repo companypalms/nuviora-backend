@@ -7,8 +7,9 @@ use Illuminate\Support\Collection;
 
 /**
  * Señales de Meta Ads con reglas matemáticas, sin IA (documento de Fran del 2026-10-08, Módulo 2, §36: permitido
- * "Frequency = 1,72 → posible saturación"; no permitido "Apaga C004 porque está saturado"). Son solo visuales: nada se
- * pausa ni se cambia en Meta (§37, §38).
+ * "Frequency = 1,72 → posible saturación"). Son solo visuales: nada se pausa ni se cambia en Meta (§37, §38).
+ * Etapa 5 (dueño, 2026-10-30): queda sin efecto la parte del §36 que prohibía órdenes como "Apaga C004": el análisis de
+ * cada mañana sí recomienda acciones con montos, pero el sistema sigue sin tocar Meta; las decide y las hace el dueño.
  */
 class MetaSignals
 {

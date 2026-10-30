@@ -37,8 +37,6 @@ return [
         'job_budget_seconds' => 35,
         // §15: el evento principal es Purchase; Meta lo informa con estos nombres (se usa el primero que venga)
         'purchase_actions' => ['omni_purchase', 'purchase', 'offsite_conversion.fb_pixel_purchase'],
-        // §32: "name" = el código completo del anuncio; "prefix" = solo "C004". Pendiente de Fran (pregunta 2).
-        'tracking_id_mode' => env('META_TRACKING_ID_MODE', 'name'),
     ],
     // Distancia de cada carrera de delivery (Módulo 3 de Fran, §3). La clave solo vive en el .env del servidor: nunca en
     // Git, en el frontend ni en los logs (§44, §45).

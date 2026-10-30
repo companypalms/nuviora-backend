@@ -605,6 +605,12 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::post('/rules', [\App\Http\Controllers\MetaAdsSetupController::class, 'storeRule']);
         Route::put('/rules/{rule}', [\App\Http\Controllers\MetaAdsSetupController::class, 'updateRule']);
         Route::delete('/rules/{rule}', [\App\Http\Controllers\MetaAdsSetupController::class, 'deleteRule']);
+        // Etapa 5, paso 1b: el diccionario de ángulos y el modo de cada producto
+        Route::get('/angles', [\App\Http\Controllers\MetaAnglesController::class, 'index']);
+        Route::put('/angles/{angle}', [\App\Http\Controllers\MetaAnglesController::class, 'update']);
+        Route::post('/angles/propose', [\App\Http\Controllers\MetaAnglesController::class, 'propose'])->middleware('throttle:10,1');
+        Route::get('/product-modes', [\App\Http\Controllers\MetaAnglesController::class, 'modes']);
+        Route::put('/product-modes/{product}', [\App\Http\Controllers\MetaAnglesController::class, 'setMode']);
 
         Route::get('/report/overview', [\App\Http\Controllers\MetaReportController::class, 'overview']);
         Route::get('/report/rows', [\App\Http\Controllers\MetaReportController::class, 'rows']);

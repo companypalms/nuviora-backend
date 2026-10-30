@@ -12,6 +12,8 @@ class MetaAdset extends Model
     protected $fillable = [
         'meta_ad_account_id', 'meta_campaign_id', 'campaign_meta_id', 'meta_id', 'name', 'status', 'effective_status',
         'optimization_goal', 'attribution_spec', 'created_time', 'last_known_state', 'last_seen_at', 'missing_since', 'meta',
+        // Paso 1b: lo que dice su nombre (CreativeTrackingId::parseAdset)
+        'batch_code', 'angle_code', 'concept', 'stage',
     ];
 
     protected $casts = [

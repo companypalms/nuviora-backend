@@ -6,7 +6,6 @@ use App\Models\MetaAd;
 use App\Models\MetaAdAccount;
 use App\Models\MetaAdset;
 use App\Models\MetaCampaign;
-use App\Models\MetaCreative;
 use Illuminate\Support\Arr;
 
 /**
@@ -14,10 +13,12 @@ use Illuminate\Support\Arr;
  * - se identifican por el ID de Meta; un cambio de nombre actualiza el mismo registro (§9, §10);
  * - lo que Meta deja de devolver no se borra: queda con su último estado conocido y la fecha (§42, §43);
  * - cada anuncio guarda su creativo de Meta y el creative_tracking_id detectado, salvo que el Admin lo haya puesto a
- *   mano (§32).
+ *   mano (§32): lo hace MetaCreativeLinker.
  * Etapa 5, paso 1a (2026-10-30): además, el texto, el título, la imagen, los parámetros de URL y la landing de cada
  * anuncio, la duración de sus videos, los mínimos y topes de gasto de los ad sets de una CBO, y una foto de los
  * presupuestos y estados cada vez que cambian (MetaSnapshots). Si Meta no acepta un campo nuevo, se piden los de siempre.
+ * Paso 1b: al final, MetaCreativeLinker lee los nombres, enlaza cada anuncio con su creativo (producto + código) y suma los
+ * ángulos nuevos al diccionario.
  * Una llamada por nivel y cuenta, con paginación (§52: no una llamada por anuncio).
  */
 class MetaHierarchySync
@@ -37,8 +38,10 @@ class MetaHierarchySync
     /** Si la última lista se pidió con los campos nuevos (si no, no se pisan los datos guardados). */
     private bool $full = true;
 
-    public function __construct(private MetaSnapshots $snapshots = new MetaSnapshots())
-    {
+    public function __construct(
+        private MetaSnapshots $snapshots = new MetaSnapshots(),
+        private MetaCreativeLinker $linker = new MetaCreativeLinker(),
+    ) {
     }
 
     /** @return int registros procesados */
@@ -127,12 +130,12 @@ class MetaHierarchySync
             if ($this->full) {
                 $ad->fill(self::creativeDetails($creative));
             }
-            self::applyTrackingId($ad);
             $ad->save();
             $seenAds[] = $ad->meta_id;
             $states['ad'][$ad->meta_id] = MetaSnapshots::state('ad', $row);
         }
         $this->markMissing(MetaAd::class, $account, $seenAds, $now);
+        $this->linker->run(['account' => $account->id]);
         $this->videoLengths($account, $client);
 
         foreach ($states as $level => $byId) {
@@ -176,32 +179,6 @@ class MetaHierarchySync
                 $video['call_to_action']['value']['link'] ?? null, $first($feed['link_urls'] ?? null, 'website_url'),
                 $story['template_data']['link'] ?? null),
         ];
-    }
-
-    /**
-     * El creative_tracking_id de un anuncio: el detectado por el nombre, salvo que el Admin lo haya puesto a mano (§32:
-     * "la relación debe poder corregirse manualmente"). Enlaza el anuncio con su creativo (§33).
-     */
-    public static function applyTrackingId(MetaAd $ad): void
-    {
-        if ($ad->tracking_id_source !== 'manual') {
-            $detected = CreativeTrackingId::detect($ad->name);
-            $ad->creative_tracking_id = $detected;
-            $ad->tracking_id_source = $detected ? 'auto' : null;
-        }
-        $ad->meta_creative_ref_id = $ad->creative_tracking_id
-            ? self::creativeFor($ad->creative_tracking_id, $ad->creative_type)->id
-            : null;
-    }
-
-    public static function creativeFor(string $trackingId, ?string $type): MetaCreative
-    {
-        $creative = MetaCreative::firstOrCreate(['tracking_id' => $trackingId], ['type' => $type]);
-        if ($type && $creative->type !== $type) {
-            $creative->type = $creative->type === null ? $type : 'mixed';
-            $creative->save();
-        }
-        return $creative;
     }
 
     /** Video o imagen, según lo que diga Meta del creativo (§20, §23). */

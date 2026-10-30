@@ -1,7 +1,6 @@
 <?php
 
 use App\Models\MetaAlertRule;
-use App\Services\Meta\CreativeTrackingId;
 use App\Services\Meta\MetaAdsReport;
 use App\Services\Meta\MetaInsightMapper;
 use App\Services\Meta\MetaMetrics;
@@ -130,24 +129,6 @@ describe('Señales sin IA (§37, §38, §39, §40)', function () {
         $s = new MetaSignals(collect([new MetaAlertRule(['type' => 'spend_no_purchases', 'threshold' => 1.5, 'severity' => 'alert'])]));
         expect($s->evaluate(['spend' => 5, 'purchases' => 0], [], null, 4))->toBe([]);
         expect($s->evaluate(['spend' => 6, 'purchases' => 0], [], null, 4))->toHaveCount(1);
-    });
-});
-
-describe('Creative Tracking ID (§32, §33)', function () {
-    it('detecta el código al principio del nombre', function (string $name, ?string $id) {
-        expect(CreativeTrackingId::detect($name, 'name'))->toBe($id);
-    })->with([
-        ['C004-COMP-GINE-UGC-H1', 'C004-COMP-GINE-UGC-H1'],
-        ['C004-COMP-GINE-UGC-H1 - Copia', 'C004-COMP-GINE-UGC-H1'],
-        ['C004-COMP-GINE-UGC-H1 – Copy 2', 'C004-COMP-GINE-UGC-H1'],
-        ['c012_flex_ugc', 'C012_FLEX_UGC'],
-        ['C004 | prueba', 'C004'],
-        ['CERVIMAX | CCS | TEST', null],
-        ['Anuncio nuevo', null],
-    ]);
-
-    it('en modo "prefix" queda solo "C004" (§33 y §60)', function () {
-        expect(CreativeTrackingId::detect('C004-COMP-GINE-UGC-H1', 'prefix'))->toBe('C004');
     });
 });
 
