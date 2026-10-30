@@ -42,12 +42,43 @@ class AssistantMessage extends Model
             'text' => $this->text,
             'status' => $this->status,
             'progress' => $this->progress,
-            'display' => $this->display ?? [],
+            'display' => $this->displayForChat(),
             'attachments' => $this->attachmentsForChat(),
             'error' => $this->error,
             'client_id' => $this->client_id,
             'time' => $this->created_at?->format('H:i'),
         ];
+    }
+
+    /**
+     * Los archivos que puede usar una respuesta (por ejemplo, de comprobante de un gasto): los de la pregunta o, si no
+     * trae, los del último mensaje del dueño con archivos (manda la factura y después dice "anótala"). Lo usan la
+     * propuesta y el Confirmar, así los dos ven los mismos.
+     */
+    public static function filesFor(self $question): array
+    {
+        if ($question->attachments) {
+            return $question->attachments;
+        }
+
+        return self::where('user_id', $question->user_id)->visible()->where('role', 'user')->where('id', '<', $question->id)
+            ->whereNotNull('attachments')->orderByDesc('id')->limit(1)->value('attachments') ?? [];
+    }
+
+    /** Lo que se ve debajo de la respuesta. Las tarjetas de cambios (paso 5) van con su estado de ahora. */
+    public function displayForChat(): array
+    {
+        $display = $this->display ?? [];
+        $ids = array_column(array_filter($display, fn ($b) => ($b['type'] ?? null) === 'action'), 'id');
+        if ($ids === []) {
+            return $display;
+        }
+        $actions = AssistantAction::where('user_id', $this->user_id)->whereIn('id', $ids)->get()->keyBy('id');
+
+        return array_values(array_filter(array_map(
+            fn ($b) => ($b['type'] ?? null) !== 'action' ? $b : (($a = $actions->get($b['id'])) ? ['type' => 'action', 'action' => $a->toCard()] : null),
+            $display,
+        )));
     }
 
     /** Los archivos de la pregunta, con un enlace firmado que vence en 12 h (como el chat interno). */

@@ -457,7 +457,8 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
     });
 
     Route::get('/currency', [CurrencyController::class, 'show']);
-    Route::post('/currency', [CurrencyController::class, 'create']);
+    // Cambiar la tasa: solo el Admin (decisión del dueño, paso 5 del asistente). Verla, como siempre
+    Route::post('/currency', [CurrencyController::class, 'create'])->middleware('role:Admin');
 
     /**---------------------
      * DELIVERY REVIEW
@@ -678,6 +679,10 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::post('/messages', [\App\Http\Controllers\AssistantController::class, 'store'])->middleware('throttle:30,1');
         Route::delete('/', [\App\Http\Controllers\AssistantController::class, 'clear'])->middleware('throttle:30,1');
         Route::post('/transcribe', [\App\Http\Controllers\AssistantController::class, 'transcribe'])->middleware('throttle:20,1');
+        // Paso 5: las tarjetas de cambios ("Lo que hizo el asistente", Confirmar y Cancelar)
+        Route::get('/actions', [\App\Http\Controllers\AssistantController::class, 'actions']);
+        Route::post('/actions/{action}/confirm', [\App\Http\Controllers\AssistantController::class, 'confirm'])->whereNumber('action')->middleware('throttle:30,1');
+        Route::post('/actions/{action}/cancel', [\App\Http\Controllers\AssistantController::class, 'cancel'])->whereNumber('action')->middleware('throttle:30,1');
     });
 
     // Finanzas (Módulo 4 de Fran): solo el Admin (§81). Gastos manuales y recurrentes (§24 a §33) y su historial (§82)

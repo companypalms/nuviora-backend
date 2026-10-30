@@ -25,7 +25,7 @@ class CalendarTool implements Tool
 
     public function description(): string
     {
-        return 'El calendario del dueño: sus pagos (vendedoras, agencias, gastos fijos), su rutina diaria, las revisiones de números y sus notas, con lo hecho, lo pendiente y lo atrasado. "hoy" trae lo de hoy y lo atrasado; "fechas" trae los días de desde a hasta (máximo 31). Solo lee: todavía no puede anotar ni tildar.';
+        return 'El calendario del dueño: sus pagos (vendedoras, agencias, gastos fijos), su rutina diaria, las revisiones de números y sus notas, con lo hecho, lo pendiente y lo atrasado. "hoy" trae lo de hoy y lo atrasado; "fechas" trae los días de desde a hasta (máximo 31). Solo lee: para anotar o tildar, usa proponer_nota_calendario y proponer_marca_calendario (con la clave y la fecha que trae cada cosa).';
     }
 
     public function parameters(): array
@@ -79,12 +79,15 @@ class CalendarTool implements Tool
         return new ToolResult(['dias' => $days ?: 'No hay nada en esas fechas.'], $link);
     }
 
-    /** Una cosa del calendario en una frase, con su estado. Lo que anotó una persona va sin teléfonos. */
+    /**
+     * Una cosa del calendario en una frase, con su estado, su clave y el día que le toca (para tildarla con
+     * proponer_marca_calendario). Lo que anotó una persona va sin teléfonos.
+     */
     private static function item(array $i): string
     {
         $text = ($i['source'] ?? null) === 'system' ? $i['text'] : Present::mask((string) $i['text']);
 
-        return $text . ' [' . (self::STATUS[$i['status']] ?? $i['status']) . ']';
+        return $text . ' [' . (self::STATUS[$i['status']] ?? $i['status']) . " · clave {$i['item_key']} · {$i['due_date']}]";
     }
 
     private static function date(?string $value): CarbonImmutable

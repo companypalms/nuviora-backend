@@ -17,6 +17,7 @@ use App\Models\FinancialAuditLog;
 use App\Models\FinancialTransaction as Tx;
 use App\Models\OrderRefund;
 use App\Models\ReconciliationItem;
+use App\Services\Finance\CashAccounts;
 use App\Services\Finance\CashDashboard;
 use App\Services\Finance\CashLedger;
 use App\Services\Finance\CashMovements;
@@ -152,23 +153,11 @@ class FinanceCashController extends Controller
     }
 
     /** §35: una cuenta nueva (Mercantil, efectivo…), con su saldo empresarial (§36). */
-    public function storeAccount(Request $request): JsonResponse
+    public function storeAccount(Request $request, CashAccounts $accounts): JsonResponse
     {
-        $start = CashLedger::startDate();
-        $data = $request->validate([
-            'name' => 'required|string|max:100|unique:financial_accounts,name',
-            'kind' => ['required', Rule::in(array_keys(array_diff_key(FinancialAccount::KINDS, [FinancialAccount::AGENCY_CASH => 1])))],
-            'currency' => ['required', Rule::in(FinancialAccount::CURRENCIES)],
-            'opening_balance' => 'nullable|numeric|min:-9999999999|max:9999999999',
-            'opening_date' => "nullable|date|after_or_equal:{$start}|before_or_equal:today",
-            'notes' => 'nullable|string|max:500',
-        ], [
-            'name.unique' => 'Ya hay una cuenta con ese nombre.',
-            'opening_date.after_or_equal' => 'La caja arranca el ' . date('d/m/Y', strtotime($start)) . ': el saldo inicial no puede ser de antes.',
-        ]);
-        $data['opening_date'] = $data['opening_date'] ?? $start;
-        $account = FinancialAccount::create($data + ['is_active' => true, 'created_by' => Auth::id()]);
-        FinancialAuditLog::record('cash_account_created', 'financial_account', $account->id, null, $account->snapshot());
+        // Las reglas y el alta están en Services\Finance\CashAccounts, que comparte con el asistente del dueño
+        $data = $request->validate($accounts->accountRules(), $accounts->accountMessages());
+        $account = $accounts->createAccount($data, Auth::id());
 
         return response()->json(['status' => true, 'message' => 'Cuenta creada.', 'account_id' => $account->id]);
     }
@@ -221,17 +210,14 @@ class FinanceCashController extends Controller
     }
 
     /** R14 y §75: a qué cuenta de la caja entra lo que llega por un método del Módulo 1. Sus pagos se mueven con ella. */
-    public function linkCompanyAccount(Request $request, CompanyAccount $companyAccount): JsonResponse
+    public function linkCompanyAccount(Request $request, CompanyAccount $companyAccount, CashAccounts $accounts): JsonResponse
     {
         $data = $request->validate(['financial_account_id' => 'nullable|integer|exists:financial_accounts,id']);
         $target = isset($data['financial_account_id']) ? FinancialAccount::find($data['financial_account_id']) : null;
         if ($target && $target->isAgencyCash()) {
             return response()->json(['status' => false, 'message' => 'Los pagos digitales no van al efectivo de una agencia.'], 422);
         }
-        $before = ['financial_account_id' => $companyAccount->financial_account_id];
-        $companyAccount->update(['financial_account_id' => $target?->id]);
-        FinancialAuditLog::record('cash_account_link', 'financial_account', $target?->id ?? $before['financial_account_id'], $before,
-            ['company_account' => $companyAccount->name, 'financial_account_id' => $target?->id]);
+        $accounts->link($companyAccount, $target, Auth::id());
 
         return response()->json(['status' => true, 'message' => $target ? "Lo que llega por {$companyAccount->name} entra a {$target->name}." : 'Quedó sin cuenta de la caja.']);
     }

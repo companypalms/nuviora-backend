@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Currency;
 use App\Http\Controllers\Controller;
 use App\Models\Setting;
-use App\Models\Status;
+use App\Services\Finance\ExchangeRates;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -91,102 +91,20 @@ class CurrencyController extends Controller
     }
 
     /**
-     * Show the form for creating a new resource.
+     * Guarda las tasas del día (la pantalla "Tasa y pagos › Tasa del dólar"). Solo el Admin (por la ruta, desde el paso 5
+     * del asistente: antes la API dejaba también a Gerente, Vendedor y Agencia). La lógica está en
+     * Services\Finance\ExchangeRates, que comparte con el asistente.
      */
-    public function create(Request $request)
+    public function create(Request $request, ExchangeRates $rates)
     {
-        $this->ensureManagerOrAdmin();
-
-        $data = $request->validate([
+        $request->validate([
             'bcv_usd'     => ['required', 'numeric', 'min:0'],
             'bcv_eur'     => ['required', 'numeric', 'min:0'],
             'binance_usd' => ['required', 'numeric', 'min:0'],
         ]);
-        $bcv_usd = Currency::where(function ($q) {
-            $q->whereHas('status', fn($s) => $s->where('description', 'Activo'))
-                ->where('description', 'bcv_usd');
-        })->first();
-        $bcv_eur = Currency::where(function ($q) {
-            $q->whereHas('status', fn($s) => $s->where('description', 'Activo'))
-                ->where('description', 'bcv_eur');
-        })->first();
-        $binance_usd = Currency::where(function ($q) {
-            $q->whereHas('status', fn($s) => $s->where('description', 'Activo'))
-                ->where('description', 'binance_usd');
-        })->first();
+        $created = $rates->set($request->only(ExchangeRates::KEYS), Auth::id());
 
-        $status_activo = Status::firstOrCreate([
-            'description' => 'Activo',
-        ]);
-        $status_inactivo = Status::firstOrCreate([
-            'description' => 'Inactivo',
-        ]);
-        if ($bcv_usd && $bcv_eur && $binance_usd) {
-            $bcv_usd->status()->associate($status_inactivo);
-            $bcv_usd->save();
-
-            $bcv_eur->status()->associate($status_inactivo);
-            $bcv_eur->save();
-
-            $binance_usd->status()->associate($status_inactivo);
-            $binance_usd->save();
-
-
-            $currency_bcv_usd = Currency::create([
-                'description' => 'bcv_usd',
-                'value' => $request->bcv_usd,
-            ]);
-            $currency_bcv_usd->status()->associate($status_activo);
-            $currency_bcv_usd->save();
-
-            $currency_bcv_eur = Currency::create([
-                'description' => 'bcv_eur',
-                'value' => $request->bcv_eur,
-            ]);
-            $currency_bcv_eur->status()->associate($status_activo);
-            $currency_bcv_eur->save();
-
-            $currency_binance_usd = Currency::create([
-                'description' => 'binance_usd',
-                'value' => $request->binance_usd,
-            ]);
-            $currency_binance_usd->status()->associate($status_activo);
-            $currency_binance_usd->save();
-        } else {
-            $currency_bcv_usd = Currency::create([
-                'description' => 'bcv_usd',
-                'value' => $request->bcv_usd,
-            ]);
-            $currency_bcv_usd->status()->associate($status_activo);
-            $currency_bcv_usd->save();
-
-            $currency_bcv_eur = Currency::create([
-                'description' => 'bcv_eur',
-                'value' => $request->bcv_eur,
-            ]);
-            $currency_bcv_eur->status()->associate($status_activo);
-            $currency_bcv_eur->save();
-
-            $currency_binance_usd = Currency::create([
-                'description' => 'binance_usd',
-                'value' => $request->binance_usd,
-            ]);
-            $currency_binance_usd->status()->associate($status_activo);
-            $currency_binance_usd->save();
-        }
-
-        // 🆕 Sincronizar con la tabla de settings para que el modelo Order lo vea
-        Setting::set('rate_bcv_usd', $request->bcv_usd);
-        Setting::set('rate_bcv_eur', $request->bcv_eur);
-        Setting::set('rate_binance_usd', $request->binance_usd);
-        Setting::set('rate_updated_at', now()->toDateTimeString());
-        return response()->json([
-            'data' => [
-                'bcv_usd' => $currency_bcv_usd,
-                'bcv_eur' => $currency_bcv_eur,
-                'binance_usd' => $currency_binance_usd
-            ]
-        ], 200);
+        return response()->json(['data' => $created], 200);
     }
 
     /**

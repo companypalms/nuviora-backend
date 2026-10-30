@@ -110,30 +110,37 @@ class OtherPayments
     // ---------------------------------------------------------------------------------------------------------------
     // Gastos recurrentes (§28)
 
-    /** @param array{due_date: string, paid_at: string, financial_account_id?: ?int, amount: float|string, currency: string, rate?: float|string|null, notes?: ?string} $data */
-    public function payRecurring(RecurringExpense $recurring, array $data, ?UploadedFile $receipt, int $userId): RecurringExpensePayment
+    /**
+     * $receipt: el recibo subido en la pantalla, o la ruta de uno ya guardado en el disco local (el asistente usa la foto
+     * que le mandaron). Todo junto o nada (transacción, desde el paso 5 del asistente).
+     * @param array{due_date: string, paid_at: string, financial_account_id?: ?int, amount: float|string, currency: string, rate?: float|string|null, notes?: ?string} $data
+     */
+    public function payRecurring(RecurringExpense $recurring, array $data, UploadedFile|string|null $receipt, int $userId): RecurringExpensePayment
     {
         $usd = Expense::toUsd((float) $data['amount'], $data['currency'], isset($data['rate']) ? (float) $data['rate'] : null);
         CashLedger::assertAccount($data['financial_account_id'] ?? null, $data['currency'], $data['paid_at']);
         if (RecurringExpensePayment::where('recurring_expense_id', $recurring->id)->where('due_date', $data['due_date'])->whereNull('voided_at')->exists()) {
             throw ValidationException::withMessages(['due_date' => 'Ese vencimiento ya está pagado.']);
         }
-        $payment = RecurringExpensePayment::create([
-            'recurring_expense_id' => $recurring->id,
-            'due_date' => $data['due_date'],
-            'paid_at' => $data['paid_at'],
-            'financial_account_id' => $data['financial_account_id'] ?? null,
-            'amount' => round((float) $data['amount'], 2),
-            'currency' => $data['currency'],
-            'rate' => $usd['rate'],
-            'amount_usd' => $usd['amount_usd'],
-            'notes' => $data['notes'] ?? null,
-            'receipt_path' => $receipt?->store('recurring-payments', 'local'),
-            'created_by' => $userId,
-        ]);
-        FinancialAuditLog::record('recurring_payment_created', 'recurring_expense', $recurring->id, null, $payment->fresh(['account'])->toPayload(), null, $userId);
 
-        return $payment;
+        return DB::transaction(function () use ($recurring, $data, $receipt, $userId, $usd) {
+            $payment = RecurringExpensePayment::create([
+                'recurring_expense_id' => $recurring->id,
+                'due_date' => $data['due_date'],
+                'paid_at' => $data['paid_at'],
+                'financial_account_id' => $data['financial_account_id'] ?? null,
+                'amount' => round((float) $data['amount'], 2),
+                'currency' => $data['currency'],
+                'rate' => $usd['rate'],
+                'amount_usd' => $usd['amount_usd'],
+                'notes' => $data['notes'] ?? null,
+                'receipt_path' => $receipt instanceof UploadedFile ? $receipt->store('recurring-payments', 'local') : $receipt,
+                'created_by' => $userId,
+            ]);
+            FinancialAuditLog::record('recurring_payment_created', 'recurring_expense', $recurring->id, null, $payment->fresh(['account'])->toPayload(), null, $userId);
+
+            return $payment;
+        });
     }
 
     public function voidRecurringPayment(RecurringExpensePayment $payment, string $reason, int $userId): void

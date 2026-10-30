@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\AssistantMessage;
+use App\Services\Assistant\Actions\ActionDesk;
 use App\Services\Assistant\Assistant;
 use App\Services\Assistant\Files\Attachments;
 use App\Services\Assistant\Files\FileRules;
@@ -10,9 +11,10 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 /**
- * El chat del asistente del dueño (Etapa 4). Solo el Admin, por la ruta. Por ahora solo consulta: no cambia nada del
- * sistema. La respuesta se arma después de contestarle al navegador, que pregunta por ella (show) hasta que llega. Desde el
- * paso 4 la pregunta puede llevar fotos, PDF o Excel, y se puede dictar con el micrófono (transcribe).
+ * El chat del asistente del dueño (Etapa 4). Solo el Admin, por la ruta. La respuesta se arma después de contestarle al
+ * navegador, que pregunta por ella (show) hasta que llega. Desde el paso 4 la pregunta puede llevar fotos, PDF o Excel, y
+ * se puede dictar con el micrófono (transcribe). Desde el paso 5 propone cambios en tarjetas: solo se hacen cuando el
+ * dueño toca Confirmar (confirm).
  */
 class AssistantController extends Controller
 {
@@ -69,6 +71,24 @@ class AssistantController extends Controller
     public function clear(Request $request, Assistant $assistant): JsonResponse
     {
         return response()->json(['cleared' => $assistant->clear($request->user())]);
+    }
+
+    /** "Lo que hizo el asistente": las tarjetas de cambios, de la más nueva a la más vieja (para siempre). */
+    public function actions(Request $request, ActionDesk $desk): JsonResponse
+    {
+        return response()->json(['actions' => $desk->history($request->user())]);
+    }
+
+    /** "Confirmar" en una tarjeta: el navegador manda solo su número; se revisa todo de nuevo y se hace. */
+    public function confirm(Request $request, int $action, ActionDesk $desk): JsonResponse
+    {
+        return response()->json($desk->confirm($request->user(), $action)->toCard());
+    }
+
+    /** "Cancelar" en una tarjeta. */
+    public function cancel(Request $request, int $action, ActionDesk $desk): JsonResponse
+    {
+        return response()->json($desk->cancel($request->user(), $action)->toCard());
     }
 
     /** El micrófono: lo que dijo, en texto, para la caja del chat (el audio no se guarda). */

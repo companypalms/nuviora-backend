@@ -17,6 +17,7 @@ use App\Models\Supplier;
 use App\Models\User;
 use App\Models\Warehouse;
 use App\Services\Finance\ExpenseLedger;
+use App\Services\Finance\Expenses;
 use App\Services\Finance\TransferTrips;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -33,22 +34,11 @@ use Illuminate\Validation\Rule;
  */
 class FinanceExpenseController extends Controller
 {
-    private const MESSAGES = [
-        'concept.required' => 'Escribe el concepto del gasto.',
-        'name.required' => 'Escribe el nombre del gasto.',
-        'expense_category_id.required' => 'Elige la categoría.',
-        'amount.required' => 'Escribe el monto.',
-        'amount.min' => 'El monto tiene que ser mayor que 0.',
-        'rate.required_if' => 'En bolívares, escribe la tasa (bolívares por dólar) de este gasto.',
-        'expense_date.before_or_equal' => 'La fecha del gasto no puede ser futura.',
-        'reason.required' => 'Escribe el motivo del cambio: queda en el historial.',
-        'receipt.mimes' => 'El comprobante tiene que ser una imagen o un PDF.',
-        'receipt.max' => 'El comprobante no puede pasar de 10 MB.',
-        'interval_days.required_if' => 'Escribe cada cuántos días se paga.',
-        'payment_day.required_if' => 'Elige el día de pago.',
-        'payment_date.required_if' => 'Elige la fecha de pago.',
-        'valid_from.required' => 'Elige desde cuándo vale el monto.',
-    ];
+    private const MESSAGES = Expenses::MESSAGES;
+
+    public function __construct(private Expenses $expenses)
+    {
+    }
 
     public function options(): JsonResponse
     {
@@ -136,16 +126,8 @@ class FinanceExpenseController extends Controller
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate($this->expenseRules(), self::MESSAGES);
-        $expense = DB::transaction(function () use ($request, $data) {
-            $expense = Expense::create($this->expenseAttributes($data) + [
-                'receipt_path' => $request->hasFile('receipt') ? $request->file('receipt')->store('expenses', 'local') : null,
-                'created_by' => Auth::id(),
-            ]);
-            app(OtherPayments::class)->applyExpensePayment($expense, $data);
-            FinancialAuditLog::record('expense_created', 'expense', $expense->id, null, $expense->fresh()->snapshot());
-
-            return $expense;
-        });
+        $receipt = $request->hasFile('receipt') ? $request->file('receipt')->store('expenses', 'local') : null;
+        $expense = $this->expenses->create($data, $receipt, Auth::id());
 
         return response()->json(['message' => 'Gasto registrado.', 'expense' => $expense->fresh()->toPayload()], 201);
     }
@@ -257,14 +239,7 @@ class FinanceExpenseController extends Controller
     public function recurringStore(Request $request): JsonResponse
     {
         $data = $request->validate($this->recurringRules() + $this->amountRules(), self::MESSAGES);
-        $recurring = DB::transaction(function () use ($data) {
-            $recurring = RecurringExpense::create($this->recurringAttributes($data) + ['is_active' => true, 'created_by' => Auth::id()]);
-            $version = $recurring->versions()->create($this->versionAttributes($data, true));
-            FinancialAuditLog::record('recurring_expense_created', 'recurring_expense', $recurring->id, null,
-                $recurring->fresh()->snapshot() + array_intersect_key($version->toPayload(), array_flip(['amount', 'currency', 'rate', 'amount_usd', 'valid_from'])));
-
-            return $recurring;
-        });
+        $recurring = $this->expenses->createRecurring($data, Auth::id());
 
         return response()->json(['message' => "Gasto recurrente \"{$recurring->name}\" creado.", 'recurring' => $this->recurringPayload($recurring)], 201);
     }
@@ -340,103 +315,35 @@ class FinanceExpenseController extends Controller
         ]);
     }
 
+    // Las reglas y los datos de un gasto están en Services\Finance\Expenses, que comparte con el asistente del dueño
     private function expenseRules(): array
     {
-        return [
-            'concept' => 'required|string|max:150',
-            'expense_category_id' => 'required|integer|exists:expense_categories,id',
-            'amount' => 'required|numeric|min:0.01|max:9999999999',
-            'currency' => ['required', Rule::in(Expense::CURRENCIES)],
-            'rate' => 'nullable|required_if:currency,VES|numeric|min:0.0001',
-            'expense_date' => 'required|date|before_or_equal:today',
-            'description' => 'nullable|string|max:2000',
-            'receipt' => 'nullable|file|mimes:jpg,jpeg,png,webp,pdf|max:10240',
-            'product_id' => 'nullable|integer|exists:products,id',
-            'city_id' => 'nullable|integer|exists:cities,id',
-            'warehouse_id' => 'nullable|integer|exists:warehouses,id',
-            'agency_id' => 'nullable|integer|exists:users,id',
-            'supplier_id' => 'nullable|integer|exists:suppliers,id',
-            // Entrega 3d (§28, §44): cómo se pagó
-            'payment' => ['nullable', Rule::in(['paid', 'payable', 'none'])],
-            'financial_account_id' => 'nullable|integer|exists:financial_accounts,id',
-            'payee_type' => ['nullable', Rule::in(array_keys(OtherPayments::PAYEE_TYPES))],
-            'payee_name' => 'nullable|string|max:150',
-            'due_date' => 'nullable|date',
-        ];
+        return $this->expenses->expenseRules();
     }
 
     private function expenseAttributes(array $data): array
     {
-        $usd = Expense::toUsd((float) $data['amount'], $data['currency'], isset($data['rate']) ? (float) $data['rate'] : null);
-
-        return [
-            'concept' => trim($data['concept']),
-            'expense_category_id' => $data['expense_category_id'],
-            'amount' => round((float) $data['amount'], 2),
-            'currency' => $data['currency'],
-            'expense_date' => Carbon::parse($data['expense_date'])->toDateString(),
-            'description' => $data['description'] ?? null,
-            'product_id' => $data['product_id'] ?? null,
-            'city_id' => $data['city_id'] ?? null,
-            'warehouse_id' => $data['warehouse_id'] ?? null,
-            'agency_id' => $data['agency_id'] ?? null,
-            'supplier_id' => $data['supplier_id'] ?? null,
-        ] + $usd;
+        return $this->expenses->expenseAttributes($data);
     }
 
     private function recurringRules(): array
     {
-        return [
-            'name' => 'required|string|max:150',
-            'expense_category_id' => 'required|integer|exists:expense_categories,id',
-            'frequency' => ['required', Rule::in(array_keys(RecurringExpense::FREQUENCIES))],
-            'interval_days' => 'nullable|required_if:frequency,custom|integer|min:1|max:3650',
-            'payment_day' => ['nullable', 'required_if:frequency,weekly,monthly', 'integer', 'min:1',
-                fn ($attr, $value, $fail) => request('frequency') === 'weekly' && $value > 7 ? $fail('En un gasto semanal, el día de pago va del lunes al domingo.') : null,
-                'max:31'],
-            'payment_date' => 'nullable|required_if:frequency,annual,custom|date',
-            'product_id' => 'nullable|integer|exists:products,id',
-            'city_id' => 'nullable|integer|exists:cities,id',
-        ];
+        return $this->expenses->recurringRules(request('frequency'));
     }
 
     private function recurringAttributes(array $data): array
     {
-        $frequency = $data['frequency'];
-
-        return [
-            'name' => trim($data['name']),
-            'expense_category_id' => $data['expense_category_id'],
-            'frequency' => $frequency,
-            'interval_days' => $frequency === 'custom' ? (int) $data['interval_days'] : null,
-            'payment_day' => in_array($frequency, ['weekly', 'monthly'], true) ? (int) $data['payment_day'] : null,
-            'payment_date' => in_array($frequency, ['annual', 'custom'], true) ? Carbon::parse($data['payment_date'])->toDateString() : null,
-            'product_id' => $data['product_id'] ?? null,
-            'city_id' => $data['city_id'] ?? null,
-        ];
+        return $this->expenses->recurringAttributes($data);
     }
 
     private function amountRules(): array
     {
-        return [
-            'amount' => 'required|numeric|min:0.01|max:9999999999',
-            'currency' => ['required', Rule::in(Expense::CURRENCIES)],
-            'rate' => 'nullable|required_if:currency,VES|numeric|min:0.0001',
-            'valid_from' => 'required|date',
-        ];
+        return $this->expenses->amountRules();
     }
 
     private function versionAttributes(array $data, bool $active): array
     {
-        $usd = Expense::toUsd((float) $data['amount'], $data['currency'], isset($data['rate']) ? (float) $data['rate'] : null);
-
-        return [
-            'valid_from' => Carbon::parse($data['valid_from'])->toDateString(),
-            'is_active' => $active,
-            'amount' => round((float) $data['amount'], 2),
-            'currency' => $data['currency'],
-            'created_by' => Auth::id(),
-        ] + $usd;
+        return $this->expenses->versionAttributes($data, $active, Auth::id());
     }
 
     private function recurringPayload(RecurringExpense $recurring): array

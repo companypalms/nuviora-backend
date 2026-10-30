@@ -7,6 +7,8 @@ use App\Models\User;
 use App\Services\Assistant\Ai\AssistantModel;
 use App\Services\Assistant\Ai\ExampleModel;
 use App\Services\Assistant\Ai\OpenAiModel;
+use App\Services\Assistant\Actions\ActionContext;
+use App\Services\Assistant\Actions\ActionDesk;
 use App\Services\Assistant\Files\Attachments;
 use App\Services\Assistant\Files\FileRules;
 use App\Services\Assistant\Tools\ToolCatalog;
@@ -47,7 +49,7 @@ class Assistant
         'audio/m4a' => 'm4a', 'audio/mpeg' => 'mp3', 'audio/wav' => 'wav', 'audio/x-wav' => 'wav', 'audio/wave' => 'wav',
     ];
 
-    public function __construct(private ToolCatalog $tools, private Attachments $files)
+    public function __construct(private ToolCatalog $tools, private Attachments $files, private ActionDesk $desk)
     {
     }
 
@@ -187,8 +189,10 @@ class Assistant
                 $question->forceFill(['attachments' => $read])->save();
                 $files = $this->files->parts($read);
             }
-            $outcome = (new Conversation($this->model(), $this->tools))->run(
-                new Turn(Instructions::build((string) $user?->names, CarbonImmutable::now()), $this->history($question), (string) $question->text, $this->tools->definitions(), files: $files),
+            // Las herramientas que cambian algo proponen a nombre del dueño, en esta respuesta (paso 5: las tarjetas)
+            $tools = $user ? $this->tools->forAnswer(new ActionContext($user, $reply->id, AssistantMessage::filesFor($question), CarbonImmutable::now())) : $this->tools;
+            $outcome = (new Conversation($this->model(), $tools))->run(
+                new Turn(Instructions::build((string) $user?->names, CarbonImmutable::now()), $this->history($question), (string) $question->text, $tools->definitions(), files: $files),
                 $progress,
             );
             $reply->forceFill([
@@ -239,11 +243,16 @@ class Assistant
         // Del más nuevo al más viejo, así el espacio para los archivos es para los últimos
         $messages = AssistantMessage::where('user_id', $question->user_id)->visible()->where('id', '<', $question->id)
             ->where('status', AssistantMessage::DONE)->whereNotNull('text')
-            ->orderByDesc('id')->limit(self::HISTORY)->get(['role', 'text', 'attachments']);
+            ->orderByDesc('id')->limit(self::HISTORY)->get(['id', 'role', 'text', 'attachments']);
+        // Cómo terminaron las tarjetas de cambios que propuso (confirmada, cancelada, vencida…)
+        $notes = $this->desk->notes($messages->where('role', 'assistant')->pluck('id')->all());
         foreach ($messages as $m) {
             $text = (string) $m->text;
             if ($m->role === 'user' && $m->attachments) {
                 $text = trim(($text !== '' ? $text : '(Mandó archivos, sin texto.)') . "\n\n" . $this->files->remembered($m->attachments, $budget));
+            }
+            if (isset($notes[$m->id])) {
+                $text .= $notes[$m->id];
             }
             $items[] = ['role' => $m->role === 'assistant' ? 'assistant' : 'user', 'text' => $text];
         }

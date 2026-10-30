@@ -2,6 +2,9 @@
 
 namespace App\Services\Assistant\Tools;
 
+use App\Services\Assistant\Actions\ActionContext;
+use App\Services\Assistant\Actions\ChangeTool;
+use App\Services\Assistant\Actions\Tools as Change;
 use Illuminate\Contracts\Container\Container;
 
 /**
@@ -36,6 +39,14 @@ class ToolCatalog
         RatesTool::class,
         UsersTool::class,
         RoutingTool::class,
+        // Paso 5: cambios, siempre con la tarjeta de Confirmar (Actions\ChangeTool)
+        Change\CalendarNoteTool::class,
+        Change\CalendarMarkTool::class,
+        Change\RatesChangeTool::class,
+        Change\BankTool::class,
+        Change\ExpenseTool::class,
+        Change\RecurringExpenseTool::class,
+        Change\RecurringPaymentTool::class,
     ];
 
     /** @var array<string, Tool>|null */
@@ -74,6 +85,15 @@ class ToolCatalog
     public function get(string $name): ?Tool
     {
         return $this->all()[$name] ?? null;
+    }
+
+    /** Las herramientas para una respuesta: las que cambian algo saben para quién proponen (ver Actions\ActionDesk). */
+    public function forAnswer(ActionContext $context): self
+    {
+        $copy = clone $this;
+        $copy->tools = array_map(fn (Tool $t) => $t instanceof ChangeTool ? $t->withContext($context) : $t, $this->all());
+
+        return $copy;
     }
 
     /** Lo que ve la IA de cada herramienta (formato de funciones de la Responses API, estricto). */

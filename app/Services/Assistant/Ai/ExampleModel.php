@@ -4,6 +4,7 @@ namespace App\Services\Assistant\Ai;
 
 use App\Services\Assistant\Lookup;
 use App\Services\Assistant\Turn;
+use Carbon\CarbonImmutable;
 
 /**
  * El modo ejemplo: en la PC de pruebas no hay clave de OpenAI (y nunca se usa la real). Entiende frases simples por
@@ -19,11 +20,12 @@ class ExampleModel implements AssistantModel
 
     public function next(Turn $turn): ModelReply
     {
-        if ($turn->steps === [] && $turn->files !== []) {
+        $change = $turn->steps === [] ? self::change($turn->message, CarbonImmutable::now(), $turn->files !== []) : null;
+        if ($turn->steps === [] && $turn->files !== [] && $change === null) {
             return self::say(self::files($turn->files));
         }
         if ($turn->steps === []) {
-            $call = self::understand($turn->message);
+            $call = $change ?? self::understand($turn->message);
             if ($call === null) {
                 return self::say(self::INTRO . "\n\nNo entendí la pregunta. Prueba con: \"¿Cuánto vendimos esta semana?\", \"Efectividad de Fabiola este mes\", \"Ranking de agencias del mes pasado\", \"¿Cómo voy con mis metas?\" o \"¿Qué tengo hoy?\".");
             }
@@ -126,6 +128,64 @@ class ExampleModel implements AssistantModel
         return null;
     }
 
+    /**
+     * Paso 5: frases simples que proponen un cambio (para probar las tarjetas sin IA). Público para probarlo.
+     * - "cambia la tasa binance a 575"; "anota en el calendario pagar el alquiler mañana"; "marca como hecho revisar la tasa";
+     * - "anota un gasto de 15 dólares de gasolina desde Banco DEMO" (con una foto, va de comprobante);
+     * - "gasto fijo Hostinger de 12 dólares cada mes el día 3"; "pagué el alquiler desde Banco DEMO";
+     * - "añade el banco Banesco en bolívares".
+     *
+     * @return array{name: string, arguments: array}|null
+     */
+    public static function change(string $message, CarbonImmutable $now, bool $hasFiles = false): ?array
+    {
+        // Sin acentos ni signos, pero con los decimales ("575,5" => "575.5")
+        $t = str_replace('zzdeczz', '.', Lookup::normalize(preg_replace('/(\d)[.,](\d)/u', '$1zzdeczz$2', $message)));
+        $amount = preg_match('/(\d+(?:[.,]\d+)?)\s*(dolares|dolar|usd|bolivares|bs|usdt)\b/u', $t, $m)
+            ? ['monto' => (float) str_replace(',', '.', $m[1]), 'moneda' => match ($m[2]) { 'bolivares', 'bs' => 'VES', 'usdt' => 'USDT', default => 'USD' }]
+            : null;
+        $account = preg_match('/\b(?:desde|con)\s+(?:la cuenta\s+|el\s+)?(.+)$/u', $t, $m) ? trim($m[1]) : null;
+        $date = match (true) {
+            str_contains($t, 'pasado manana') => $now->addDays(2)->toDateString(),
+            str_contains($t, 'manana') => $now->addDay()->toDateString(),
+            default => $now->toDateString(),
+        };
+
+        if (preg_match('/\b(tasa|binance|bcv)\b.*?\b(?:a|en)\s+(\d+(?:[.,]\d+)?)/u', $t, $m) && preg_match('/cambi|pon|actualiz|esta en|subio|bajo/u', $t)) {
+            $key = str_contains($t, 'binance') ? 'binance_usd' : (str_contains($t, 'euro') ? 'bcv_eur' : 'bcv_usd');
+
+            return ['name' => 'proponer_tasas', 'arguments' => ['bcv_usd' => null, 'bcv_eur' => null, 'binance_usd' => null, $key => (float) str_replace(',', '.', $m[2])]];
+        }
+        if (preg_match('/^(?:marca(?:r)? como hech[oa]|ya (?:hice|revise|pague))\s+(.+)$/u', $t, $m)) {
+            return ['name' => 'proponer_marca_calendario', 'arguments' => ['clave' => null, 'texto' => $m[1], 'fecha' => $now->toDateString(), 'estado' => 'hecho', 'nota' => null]];
+        }
+        if (preg_match('/gasto fijo\s+(.+?)\s+de\s+\d/u', $t, $m) && $amount && preg_match('/cada (semana|mes)/u', $t, $f)) {
+            $day = preg_match('/dia\s+(\d{1,2})/u', $t, $d) ? (int) $d[1] : 1;
+
+            return ['name' => 'proponer_gasto_fijo', 'arguments' => ['nombre' => ucfirst($m[1]), 'categoria' => 'Software', 'frecuencia' => $f[1] === 'semana' ? 'semanal' : 'mensual',
+                'dia_de_pago' => $day, 'fecha_de_pago' => null, 'cada_dias' => null, 'tasa' => null, 'desde' => null] + $amount];
+        }
+        if (preg_match('/^(?:pague|paga|pagar)\s+(?:el gasto fijo\s+|el\s+|la\s+)?(.+?)(?:\s+(?:desde|con)\s+.+)?$/u', $t, $m)) {
+            return ['name' => 'proponer_pago_gasto_fijo', 'arguments' => ['gasto_fijo' => $m[1], 'vencimiento' => null, 'pagado_el' => null, 'cuenta' => $account,
+                'monto' => null, 'moneda' => null, 'tasa' => null, 'notas' => null, 'comprobante' => $hasFiles ? 1 : null]];
+        }
+        if (str_contains($t, 'gasto') && $amount && preg_match('/\bde\s+(?:\d+(?:[.,]\d+)?\s*\w+\s+)?de\s+([^\d]+?)(?:\s+(?:desde|con)\s+.+)?$/u', $t, $m)) {
+            return ['name' => 'proponer_gasto', 'arguments' => ['concepto' => ucfirst(trim($m[1])), 'categoria' => 'Otros', 'tasa' => null, 'fecha' => null,
+                'pago' => 'pagado', 'cuenta' => $account, 'a_quien_tipo' => null, 'a_quien' => null, 'vence' => null, 'descripcion' => null, 'comprobante' => $hasFiles ? 1 : null] + $amount];
+        }
+        if (preg_match('/^(?:anade|agrega|crea)\s+(?:el banco|la cuenta|un banco|una cuenta)\s+(.+?)(?:\s+en\s+(bolivares|dolares|usdt|euros))?$/u', $t, $m)) {
+            $currency = match ($m[2] ?? '') { 'bolivares' => 'VES', 'usdt' => 'USDT', 'euros' => 'EUR', default => 'USD' };
+
+            return ['name' => 'proponer_banco', 'arguments' => ['nombre' => ucwords($m[1]), 'tipo' => 'banco', 'moneda' => $currency, 'saldo_inicial' => null, 'notas' => null, 'cobro' => null]];
+        }
+        if (preg_match('/^(?:anota(?:me)?|recuerdame)\s+(?:en el calendario\s+)?(.+?)(?:\s+(?:pasado manana|manana|hoy))?$/u', $t, $m) && !str_contains($t, 'gasto')) {
+            return ['name' => 'proponer_nota_calendario', 'arguments' => ['titulo' => ucfirst($m[1]), 'fecha' => $date, 'hora' => null,
+                'tipo' => str_contains($t, 'pagar') ? 'pago' : 'tarea', 'repetir' => 'no', 'hasta' => null, 'detalles' => null]];
+        }
+
+        return null;
+    }
+
     private static function period(string $t): array
     {
         $periodo = match (true) {
@@ -179,6 +239,10 @@ class ExampleModel implements AssistantModel
         $lines = [];
         if (isset($d['problema'])) {
             return $d['problema'];
+        }
+        if (isset($d['propuesta'])) {
+            return "Te dejé la tarjeta abajo: revísala y toca **Confirmar** si está bien (o **Cancelar**)."
+                . (isset($d['avisos']) ? "\n\nOjo: " . implode(' ', $d['avisos']) : '');
         }
         if (isset($d['varias_personas'])) {
             return "Hay varias personas con ese nombre:\n" . implode("\n", array_map(fn ($p) => "- {$p['nombre']}" . (isset($p['grupo']) ? " ({$p['grupo']})" : ''), $d['varias_personas']));
