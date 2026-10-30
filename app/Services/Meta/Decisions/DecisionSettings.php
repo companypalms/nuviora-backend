@@ -70,6 +70,9 @@ class DecisionSettings
         'batches_per_editor' => [2, 0.5, 20],    // por editor por día…
         'corrections_pct' => [30, 0, 100],       // …más ≈30 % de correcciones
         'due_days' => [1, 0, 30],                // plazo de un encargo al aprobarlo
+        // Paso 6a — las landings: con menos no se opina
+        'landing_min_clicks' => [100, 1, 100000],   // de la visita
+        'landing_min_visits' => [300, 1, 1000000],  // de la compra
     ];
 
     /** Se puede apagar sin publicar: los estados vuelven a quedar como estén. */

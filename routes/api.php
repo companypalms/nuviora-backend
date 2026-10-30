@@ -618,6 +618,9 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         // Etapa 5, paso 5a: el dueño también asigna el editor y revisa las entregas (las del editor líder, solo él)
         Route::put('/queue/{batch}/editor', [\App\Http\Controllers\MetaQueueController::class, 'assign'])->whereNumber('batch');
         Route::post('/queue/{batch}/review', [\App\Http\Controllers\MetaQueueController::class, 'review'])->whereNumber('batch');
+        // Etapa 5, paso 6a: las landings medidas una por una
+        Route::get('/landings', [\App\Http\Controllers\MetaLandingsController::class, 'index']);
+        Route::put('/landings/{landing}', [\App\Http\Controllers\MetaLandingsController::class, 'update'])->whereNumber('landing');
         Route::get('/targets', [\App\Http\Controllers\MetaAdsSetupController::class, 'targets']);
         Route::post('/targets', [\App\Http\Controllers\MetaAdsSetupController::class, 'storeTarget']);
         Route::get('/rules', [\App\Http\Controllers\MetaAdsSetupController::class, 'rules']);

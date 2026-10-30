@@ -6,6 +6,7 @@ use App\Models\MetaAd;
 use App\Models\MetaAdAccount;
 use App\Models\MetaAdset;
 use App\Models\MetaCampaign;
+use App\Services\Meta\Landings\LandingTracker;
 use App\Services\Meta\Queue\BatchTracker;
 use Illuminate\Support\Arr;
 
@@ -20,6 +21,7 @@ use Illuminate\Support\Arr;
  * presupuestos y estados cada vez que cambian (MetaSnapshots). Si Meta no acepta un campo nuevo, se piden los de siempre.
  * Paso 1b: al final, MetaCreativeLinker lee los nombres, enlaza cada anuncio con su creativo (producto + código) y suma los
  * ángulos nuevos al diccionario.
+ * Paso 6a: LandingTracker anota a qué landing lleva cada anuncio y desde cuándo.
  * Una llamada por nivel y cuenta, con paginación (§52: no una llamada por anuncio).
  */
 class MetaHierarchySync
@@ -137,6 +139,12 @@ class MetaHierarchySync
         }
         $this->markMissing(MetaAd::class, $account, $seenAds, $now);
         $this->linker->run(['account' => $account->id]);
+        // Paso 6a: a qué landing lleva cada anuncio y desde cuándo (un error aquí no frena la sincronización)
+        try {
+            (new LandingTracker())->run($account->id, $now);
+        } catch (\Throwable $e) {
+            report($e);
+        }
         // Paso 4a: los encargos de la cola que ya aparecen en Meta pasan a "En test" (un error aquí no frena la sincronización)
         try {
             (new BatchTracker())->run(null, false);
