@@ -33,6 +33,21 @@ describe('Ganancia (ya ganado)', function () use ($week, $monday, $order, $ad, $
         expect($r['totals']['profit'])->toBe(0.0);
     });
 
+    it('.49: los envíos sin costo cuentan su estimado y el aviso dice cuánto suma', function () use ($monday, $order, $none) {
+        // El lector ya sumó al envío 2 carreras sin costo a $3,25 (el promedio de su ciudad)
+        $r = MoneyRules::compute([$order('2026-10-19 09:00:00', 'delivered', 50, 15, 5, 10.5, ['delivery_trips' => 3, 'delivery_missing_trips' => 2, 'shipping_estimated' => 6.5])],
+            $monday, $none, [], []);
+        expect($r['totals']['shipping'])->toBe(10.5);
+        expect($r['totals']['profit'])->toBe(19.5);
+        $w = MoneyRules::warnings($r['totals'], $r['checks']);
+        expect($w[0])->toBe('2 envíos todavía no tienen costo: se cuentan al promedio de una carrera de su ciudad ($6,50 en total). Es estimado hasta que se apruebe el cierre de la agencia o se calcule su ruta.');
+    });
+
+    it('.49: sin ninguna carrera con costo para promediar, el aviso dice que cuentan $0', function () use ($monday, $order, $none) {
+        $r = MoneyRules::compute([$order('2026-10-19 09:00:00', 'delivered', 50, 15, 5, 0, ['delivery_missing_trips' => 1, 'shipping_estimated' => 0.0])], $monday, $none, [], []);
+        expect(MoneyRules::warnings($r['totals'], $r['checks'])[0])->toBe('1 envío no tiene costo calculado: cuentan $0.');
+    });
+
     it('el envío de una entrega que falló también se resta', function () use ($monday, $order, $none) {
         $r = MoneyRules::compute([$order('2026-10-19 09:00:00', 'not_delivered', 0, 0, 0, 4)], $monday, $none, [], []);
         expect($r['totals']['shipping'])->toBe(4.0);

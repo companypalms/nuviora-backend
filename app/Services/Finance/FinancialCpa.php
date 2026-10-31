@@ -273,17 +273,7 @@ class FinancialCpa
     /** Lo que cuesta en promedio una carrera con costo, por ciudad y en total, para completar las que no lo tienen. */
     private function tripCost(CarbonInterface $from, CarbonInterface $to): array
     {
-        $rows = DB::table('order_financials')->whereBetween('created_date', [$from->toDateString(), $to->toDateString()])
-            ->groupBy('city_id')->selectRaw('city_id, SUM(delivery_cost) cost, SUM(delivery_trips - delivery_missing_trips) trips')->get();
-        $cities = [];
-        foreach ($rows as $r) {
-            if ($r->city_id !== null && (int) $r->trips > 0) {
-                $cities[(int) $r->city_id] = (float) $r->cost / (int) $r->trips;
-            }
-        }
-        $trips = (int) $rows->sum('trips');
-
-        return ['cities' => $cities, 'all' => $trips > 0 ? (float) $rows->sum('cost') / $trips : 0.0];
+        return TripCostAverage::between($from->toDateString(), $to->toDateString());
     }
 
     /** Las sumas de una cohorte por producto + ciudad ("p|c") y por producto ("p|"). */

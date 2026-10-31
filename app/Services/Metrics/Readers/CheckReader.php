@@ -7,6 +7,7 @@ use App\Models\AgencyClosureRow;
 use App\Models\AgencyWeeklyClosure;
 use App\Models\OrderDeliveryRoute;
 use App\Services\Finance\PurchaseCost;
+use App\Services\Finance\TripCostAverage;
 use App\Services\Metrics\Period;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
@@ -105,7 +106,8 @@ class CheckReader
     /**
      * El envío de todos los pedidos creados en el período, entregados o no: cada carrera no anulada con su costo aprobado
      * en un cierre listo para pago o pagado; si no, el esperado de su ruta calculada; si no, $0. Antes de las carreras,
-     * lo que se le pagaba a la agencia por la orden (si salió). Y la comisión del repartidor propio, si se entregó.
+     * lo que se le pagaba a la agencia por la orden (si salió). Y la comisión del repartidor propio, si se entregó. Desde
+     * la `.49`, cada carrera sin costo cuenta el promedio de su ciudad (el mismo que usa el panel).
      */
     public function shipping(Period $period): float
     {
@@ -120,8 +122,12 @@ class CheckReader
             ->whereNull('t.voided_at')->whereIn('t.order_id', $orders)
             ->groupBy('t.order_id')
             ->selectRaw('t.order_id, SUM(CASE WHEN ap.matched_trip_id IS NOT NULL THEN ap.cost
-                WHEN r.calculation_status = ? AND r.expected_cost IS NOT NULL THEN r.expected_cost ELSE 0 END) AS cost', [OrderDeliveryRoute::CALCULATED])
-            ->pluck('cost', 'order_id');
+                WHEN r.calculation_status = ? AND r.expected_cost IS NOT NULL THEN r.expected_cost ELSE 0 END) AS cost,
+                SUM(ap.matched_trip_id IS NULL AND NOT (r.calculation_status <=> ? AND r.expected_cost IS NOT NULL)) AS missing',
+                [OrderDeliveryRoute::CALCULATED, OrderDeliveryRoute::CALCULATED])
+            ->get()->keyBy('order_id');
+        $cities = DB::table('orders')->whereIn('id', $trips->keys())->pluck('city_id', 'id');
+        $average = TripCostAverage::forPanel($period->toDate());
         $legacy = DB::table('earnings as e')->join('orders as o', 'o.id', '=', 'e.order_id')
             ->whereIn('e.order_id', (clone $orders))->where('e.role_type', 'agencia')->where('o.was_shipped', true)
             ->whereNotExists(fn ($q) => $q->from('agency_trips as t2')->whereColumn('t2.order_id', 'e.order_id')
@@ -133,7 +139,9 @@ class CheckReader
 
         $total = 0.0;
         foreach ($trips->keys()->merge($legacy->keys())->unique() as $id) {
-            $total += round((float) ($trips[$id] ?? 0) + round((float) ($legacy[$id] ?? 0), 2), 2);
+            $total += round((float) ($trips[$id]->cost ?? 0) + round((float) ($legacy[$id] ?? 0), 2), 2);
+            $city = $cities[$id] ?? null;
+            $total += TripCostAverage::fill((int) ($trips[$id]->missing ?? 0), $city !== null ? (int) $city : null, $average);
         }
         foreach ($rider as $amount) {
             $total += round((float) $amount, 2);
@@ -212,7 +220,8 @@ class CheckReader
 
         $noDate = $this->orders($period)->where('o.status_id', $st['delivered'])->whereNull('o.delivered_at')->pluck('o.name')->all();
         $out['delivered_without_date'] = ['count' => count($noDate), 'examples' => $noDate];
-        $zero = $this->orders($period)->where('o.status_id', $st['delivered'])->whereRaw('COALESCE(o.is_return, 0) = 0')
+        // Los cambios valen $0 a propósito (no son venta): solo cuentan los pedidos normales
+        $zero = $this->orders($period)->where('o.status_id', $st['delivered'])->whereRaw('COALESCE(o.is_return, 0) = 0 AND COALESCE(o.is_exchange, 0) = 0')
             ->whereRaw('COALESCE(o.current_total_price, 0) <= 0')->pluck('o.name')->all();
         $out['zero_price'] = ['count' => count($zero), 'examples' => $zero];
 

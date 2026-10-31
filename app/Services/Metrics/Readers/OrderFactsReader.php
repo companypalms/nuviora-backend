@@ -3,6 +3,7 @@
 namespace App\Services\Metrics\Readers;
 
 use App\Models\StatusChangeLog;
+use App\Services\Finance\TripCostAverage;
 use App\Services\Metrics\Filters;
 use App\Services\Metrics\Period;
 use Illuminate\Database\Query\Builder;
@@ -19,13 +20,14 @@ class OrderFactsReader
     /**
      * Un hecho por pedido creado en el período: hora de creación, tipo (normal, cambio o devolución), qué pasó con él,
      * lo que dejó en dólares si se entregó y lo que costó (como lo agrupa Finanzas › Rentabilidad: el producto con su
-     * traslado; las comisiones de vendedora, upsell y líder; el envío con la comisión del repartidor propio).
+     * traslado; las comisiones de vendedora, upsell y líder; el envío con la comisión del repartidor propio y, desde la
+     * `.49`, sus carreras sin costo al promedio de su ciudad).
      *
      * @return LazyCollection<int, object>
      */
     public function facts(Period $period, Filters $filters): LazyCollection
     {
-        return $this->base($period, $filters)
+        return $this->withEstimatedTrips($period, $this->base($period, $filters)
             ->whereNotNull('f.computed_at')
             ->select('o.created_at', 'o.shop_id', 'f.delivered_date', 'f.kind', 'f.outcome', 'f.product_id', 'f.city_id', 'f.cogs_source',
                 'f.cogs_missing_lines', 'f.delivery_trips', 'f.delivery_final_trips', 'f.delivery_missing_trips')
@@ -33,7 +35,26 @@ class OrderFactsReader
             ->selectRaw('(f.cogs_main + f.cogs_upsell + f.logistics_cost) AS product_cost')
             ->selectRaw('(f.commission_seller + f.commission_upsell + f.commission_leader + f.commission_other) AS commissions')
             ->selectRaw('(f.delivery_cost + f.commission_deliverer) AS shipping')
-            ->cursor();
+            ->cursor());
+    }
+
+    /**
+     * `.49` (decisión del dueño del 2026-10-31): una carrera que todavía no tiene costo no es gratis. Cuenta lo que costó en
+     * promedio una carrera con costo en su ciudad en los 28 días hasta el final del período (como Finanzas › CPA), y queda
+     * aparte en shipping_estimated para avisarlo. Cuando llega su costo real (cierre aprobado o ruta calculada), deja de
+     * estar sin costo y el estimado desaparece solo.
+     */
+    private function withEstimatedTrips(Period $period, LazyCollection $rows): LazyCollection
+    {
+        $average = TripCostAverage::forPanel($period->toDate());
+
+        return $rows->map(function (object $r) use ($average) {
+            $fill = TripCostAverage::fill((int) $r->delivery_missing_trips, $r->city_id !== null ? (int) $r->city_id : null, $average);
+            $r->shipping = (float) $r->shipping + $fill;
+            $r->shipping_estimated = $fill;
+
+            return $r;
+        });
     }
 
     /**
@@ -82,7 +103,7 @@ class OrderFactsReader
         $last = DB::table('order_cancellations')->where('status', 'approved')->whereIn('order_id', $orders)
             ->groupBy('order_id')->selectRaw('order_id, MAX(id) AS id');
 
-        return $this->base($period, $filters)
+        return $this->withEstimatedTrips($period, $this->base($period, $filters)
             ->whereNotNull('f.computed_at')
             ->join('statuses as s', 's.id', '=', 'o.status_id')
             ->leftJoinSub($last, 'lc', 'lc.order_id', '=', 'o.id')
@@ -92,9 +113,9 @@ class OrderFactsReader
             ->leftJoin('roles as r', 'r.id', '=', 'u.role_id')
             ->select('o.created_at', 'o.order_number', 'o.novedad_type', 'f.kind', 'f.outcome', 's.description as status',
                 'c.category', 'c.source', 'c.reason', 'c.created_at as cancelled_at', 'ps.description as previous_status',
-                'u.names as user_name', 'r.description as user_role', 'f.revenue_refunded as refunded')
+                'u.names as user_name', 'r.description as user_role', 'f.revenue_refunded as refunded', 'f.city_id', 'f.delivery_missing_trips')
             ->selectRaw('(f.delivery_cost + f.commission_deliverer) AS shipping')
-            ->cursor();
+            ->cursor());
     }
 
     /**

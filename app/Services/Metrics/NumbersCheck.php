@@ -39,8 +39,9 @@ class NumbersCheck
 
         // Lo que muestra el panel
         $sales = SalesRules::compute($this->orders->facts($period, $filters), $period)['totals'];
-        $money = MoneyRules::compute($this->orders->facts($period, $filters), $period, $filters, $this->money->adSpend($period),
-            $this->money->expenses(Buckets::ranges($period, Buckets::granularity($period))))['totals'];
+        $moneyRun = MoneyRules::compute($this->orders->facts($period, $filters), $period, $filters, $this->money->adSpend($period),
+            $this->money->expenses(Buckets::ranges($period, Buckets::granularity($period))));
+        $money = $moneyRun['totals'];
 
         // 1. Cada pedido, guardado contra calculado ahora
         $ids = $this->check->orderIds($period);
@@ -107,7 +108,7 @@ class NumbersCheck
         ];
 
         // 3. Los datos que pueden hacer que un número salga mal
-        $problems = $this->problems($this->check->problems($period, $stored), $pending);
+        $problems = $this->problems($this->check->problems($period, $stored), $pending, $moneyRun['checks']['trips_missing_amount']);
 
         return [
             'period' => $period->toArray(),
@@ -118,7 +119,7 @@ class NumbersCheck
         ];
     }
 
-    private function problems(array $p, int $pending): array
+    private function problems(array $p, int $pending, float $tripsEstimated): array
     {
         $g = CheckRules::GRAVE;
         $w = CheckRules::WARNING;
@@ -131,9 +132,12 @@ class NumbersCheck
             $make('foreign_currency', $g, 'Cuentas de Meta en otra moneda: su gasto se suma como si fueran dólares.', $p['foreign_currency']['count'],
                 $p['foreign_currency']['amount'], $p['foreign_currency']['examples']),
             $make('meta_missing_days', $g, 'Días sin datos de Meta: esos días la ganancia no resta publicidad.', $p['meta_missing_days']['count'], null, $p['meta_missing_days']['examples']),
-            $make('trips_missing', $g, 'Envíos sin costo calculado: cuentan $0.', $p['trips_missing']['count']),
             $make('unclassified_ads', $w, 'Publicidad de campañas sin producto o sin ciudad: cuenta en la ganancia total, pero no en la de ningún producto. Se clasifican en Integraciones › Meta.',
                 $p['unclassified_ads']['count'], $p['unclassified_ads']['amount'], $p['unclassified_ads']['examples']),
+            // `.49`: cuentan el promedio de una carrera de su ciudad; sin ninguna carrera con costo para promediar, $0 (grave)
+            $make('trips_missing', $tripsEstimated > 0 ? $w : $g, $tripsEstimated > 0
+                ? 'Envíos sin costo todavía: se cuentan al promedio de una carrera de su ciudad (estimado). Se arreglan con el tarifario de la agencia, aprobando la distancia o con el cierre de la agencia (Tiendas, ciudades y agencias › Tarifas de delivery › Carreras).'
+                : 'Envíos sin costo calculado: cuentan $0.', $p['trips_missing']['count'], $tripsEstimated > 0 ? $tripsEstimated : null),
             $make('earnings_not_delivered', $w, 'Comisiones guardadas de pedidos que hoy no están entregados. El Panel no las cuenta, pero Ganancias globales y los pagos sí.',
                 $p['earnings_not_delivered']['count'], $p['earnings_not_delivered']['amount'], $p['earnings_not_delivered']['examples']),
             $make('delivered_without_date', $w, 'Pedidos entregados sin fecha de entrega (el sistema la repara al recalcularlos).', $p['delivered_without_date']['count'], null, $p['delivered_without_date']['examples']),

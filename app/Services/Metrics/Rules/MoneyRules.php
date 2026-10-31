@@ -113,7 +113,7 @@ final class MoneyRules
         $totals = self::emptyPoint(null) + ['created' => 0, 'delivered' => 0];
         $products = [];
         $shopOrders = [];
-        $checks = ['catalog_cost' => 0, 'missing_cost_lines' => 0, 'trips_estimated' => 0, 'trips_missing' => 0];
+        $checks = ['catalog_cost' => 0, 'missing_cost_lines' => 0, 'trips_estimated' => 0, 'trips_missing' => 0, 'trips_missing_amount' => 0.0];
 
         foreach ($facts as $fact) {
             $f = (array) $fact;
@@ -160,6 +160,7 @@ final class MoneyRules
             }
             $checks['missing_cost_lines'] += (int) $f['cogs_missing_lines'];
             $checks['trips_missing'] += (int) $f['delivery_missing_trips'];
+            $checks['trips_missing_amount'] += (float) ($f['shipping_estimated'] ?? 0);
             $checks['trips_estimated'] += max(0, (int) $f['delivery_trips'] - (int) $f['delivery_final_trips'] - (int) $f['delivery_missing_trips']);
         }
 
@@ -386,7 +387,11 @@ final class MoneyRules
             $w[] = Card::plural($checks['trips_estimated'], 'envío tiene', 'envíos tienen') . ' su costo estimado: todavía no está en un cierre aprobado.';
         }
         if ($checks['trips_missing'] > 0) {
-            $w[] = Card::plural($checks['trips_missing'], 'envío no tiene', 'envíos no tienen') . ' costo calculado: cuentan $0.';
+            // `.49`: cuentan el promedio de una carrera de su ciudad (OrderFactsReader); sin ninguna carrera con costo, $0
+            $w[] = round($checks['trips_missing_amount'], 2) > 0
+                ? Card::plural($checks['trips_missing'], 'envío todavía no tiene', 'envíos todavía no tienen') . ' costo: se cuentan al promedio de una carrera de su ciudad ('
+                    . Card::money(round($checks['trips_missing_amount'], 2)) . ' en total). Es estimado hasta que se apruebe el cierre de la agencia o se calcule su ruta.'
+                : Card::plural($checks['trips_missing'], 'envío no tiene', 'envíos no tienen') . ' costo calculado: cuentan $0.';
         }
         if ($totals['ads'] <= 0) {
             $w[] = 'No hay publicidad de Meta registrada en estas fechas: la ganancia no resta publicidad.';
