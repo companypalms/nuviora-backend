@@ -336,6 +336,14 @@ class ShopifyWebhookController extends Controller
             );
         }
 
+        // .53: de dónde vino el pedido (su landing, los parámetros del anuncio y, si los dicen, el anuncio). Se guarda una
+        // sola vez; si algo falla aquí, el pedido entra igual
+        try {
+            app(\App\Services\Orders\OrderSources::class)->record($order, $orderData);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
         // Un reenvío de una orden que ya está en curso solo actualiza datos: no se vuelve a revisar
         // stock ni a asignar (antes podía mandarla a "Sin Stock" con su stock ya descontado).
         // Si el primer intento quedó a medias (sigue en "Nuevo" y sin vendedora), se completa.
