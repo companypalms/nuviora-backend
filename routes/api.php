@@ -722,6 +722,12 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::put('/goals', [\App\Http\Controllers\OwnerPanelController::class, 'saveGoals']);
     });
 
+    // .48b: los reportes del negocio del asistente (diario, semanal y mensual). Solo el Admin
+    Route::middleware('role:Admin')->prefix('business-reports')->group(function () {
+        Route::get('/', [\App\Http\Controllers\BusinessReportsController::class, 'index']);
+        Route::post('/run', [\App\Http\Controllers\BusinessReportsController::class, 'run'])->middleware('throttle:5,1');
+    });
+
     // Calendario del dueño (Etapa 3): sus notas, los recordatorios del sistema y lo que marca como hecho. Solo el Admin
     Route::middleware('role:Admin')->prefix('calendar')->group(function () {
         Route::get('/', [\App\Http\Controllers\CalendarController::class, 'index']);
