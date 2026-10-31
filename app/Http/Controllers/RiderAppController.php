@@ -19,6 +19,8 @@ use App\Services\Logistics\Novelties;
 use App\Services\Logistics\RiderCash;
 use App\Services\Logistics\RoadReports;
 use App\Services\Logistics\Routes;
+use App\Services\Payments\PaymentAccountRules;
+use App\Services\Payments\PaymentAccounts;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
@@ -220,7 +222,7 @@ class RiderAppController extends Controller
         $profile = $this->profile();
         // También sus retornos pendientes (§16.1) y la orden cuyo paquete todavía tiene mientras llega su reemplazo (§14)
         $me = (int) $profile->user_id;
-        $rows = LogisticsOrder::with(['center.warehouse', 'order.client', 'order.payments', 'pickupRider:id,names,phone',
+        $rows = LogisticsOrder::with(['center.warehouse', 'order.client', 'order.payments', 'order.paymentAccount', 'pickupRider:id,names,phone',
             'incidents' => fn ($q) => $q->whereIn('status', LogisticsIncident::ACTIVE)])
             ->where(fn ($q) => $q->where(fn ($w) => $w->where('rider_id', $me)->whereIn('status', [...Candidates::BUSY, LogisticsStatus::RETURN_PENDING]))
                 ->orWhere(fn ($w) => $w->where('pickup_rider_id', $me)->whereNotIn('status', LogisticsStatus::FINISHED)))
@@ -282,6 +284,11 @@ class RiderAppController extends Controller
                         'payment_method' => $order?->payment_method,
                         'payments' => $order?->payments->map(fn ($p) => ['method' => $p->method, 'amount' => (float) $p->amount])->values(),
                         'courier_shipment' => (bool) $order?->courier_shipment,
+                        // `.61`: si se paga por pago móvil, los datos de la cuenta de ESTA orden para dárselos al cliente
+                        // (los mismos de la plantilla de la agencia) y lo que paga en Bs. En un retorno, no
+                        'payment_account' => !$returning && $order?->paymentAccount && $order->payments->contains('method', PaymentAccounts::METHOD)
+                            ? PaymentAccounts::present($order->paymentAccount) + ['amount_bs' => PaymentAccountRules::orderBs($order->payments)]
+                            : null,
                     ],
                     // Un retorno ya no va al cliente: no se le muestran sus datos
                     'client' => $returning ? null : [
