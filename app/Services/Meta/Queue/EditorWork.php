@@ -148,9 +148,12 @@ class EditorWork
     {
         $angles = AdAngle::whereIn('product_id', $batches->pluck('product_id')->unique())->whereNotNull('name')->get(['product_id', 'code', 'name'])
             ->mapWithKeys(fn ($a) => ["{$a->product_id}:{$a->code}" => $a->name]);
-        $refs = self::references($batches->pluck('reference_creative_id')->filter()->unique()->values()->all());
+        $refIds = $batches->pluck('reference_creative_id')->filter()->unique()->values()->all();
+        $refs = self::references($refIds);
+        // .56: lo que dice el video de cada referencia (si es un ganador transcrito)
+        $scripts = \App\Services\Meta\Videos\Scripts::forCreatives($refIds);
 
-        return self::sorted($batches)->map(function (CreativeBatch $b) use ($angles, $refs, $who) {
+        return self::sorted($batches)->map(function (CreativeBatch $b) use ($angles, $refs, $scripts, $who) {
             $out = [
                 'id' => $b->id, 'code' => $b->code(), 'product' => $b->product?->showable_name ?: $b->product?->title,
                 'status' => $b->status, 'status_label' => QueueRules::STATUSES[$b->status] ?? $b->status, 'status_at' => $b->status_at?->toIso8601String(),
@@ -159,6 +162,7 @@ class EditorWork
                 'concept' => $b->concept, 'hypothesis' => $b->hypothesis, 'audience' => $b->audience,
                 'reference' => $b->reference?->label, 'reference_thumbnail' => $refs[$b->reference_creative_id]['thumbnail'] ?? null,
                 'reference_texts' => $refs[$b->reference_creative_id]['texts'] ?? [],
+                'reference_script' => $scripts[$b->reference_creative_id] ?? null,
                 'city' => $b->learningCity?->name, 'format' => $b->format, 'keep' => $b->keep, 'offer' => $b->offer, 'deliverables' => $b->deliverables,
                 'urgency' => $b->urgency, 'due_date' => $b->due_date?->toDateString(),
                 'pieces' => $b->pieces->map(fn (CreativeBatchPiece $p) => ['id' => $p->id, 'code' => $p->code(), 'change' => $p->change, 'format' => $p->format,

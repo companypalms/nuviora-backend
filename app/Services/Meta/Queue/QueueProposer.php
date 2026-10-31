@@ -151,6 +151,8 @@ class QueueProposer
                 ->mapWithKeys(fn ($a) => [$a->code => trim(($a->name ?? '') . ($a->hypothesis ? ": {$a->hypothesis}" : ''))])->all(),
             'reference_texts' => $refTexts,
             'reference_video' => $p['reference_id'] ? ($decisions[$pid]['creatives'][$p['reference_id']]['video']['diagnosis'] ?? []) : [],
+            // .56: lo que dice el video de la referencia (si es un ganador transcrito)
+            'reference_script' => $p['reference_id'] ? (\App\Services\Meta\Videos\Scripts::forCreatives([$p['reference_id']])[$p['reference_id']] ?? null) : null,
         ];
     }
 }

@@ -34,6 +34,9 @@ class MetaAnalyzer
         $productIds = self::products();
         $decisions = ($this->decisions ?? new MetaDecisions())->compute($productIds);
         $facts = AnalysisFacts::build($decisions, self::names($decisions));
+        // .56: lo que dicen los videos de los ganadores (transcritos en la .55)
+        $facts = AnalysisFacts::withScripts($facts, \App\Services\Meta\Videos\Scripts::forCreatives(
+            array_merge([], ...array_map(fn ($p) => array_column($p['creatives'], 'id'), $facts))));
         $urgent = UrgentList::build($facts);
         $input = AnalysisFacts::input($facts);
 

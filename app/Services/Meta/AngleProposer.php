@@ -139,6 +139,9 @@ TXT;
             if (!$s['texts']) {
                 $lines[] = '- (sin textos guardados todavía)';
             }
+            foreach ($s['videos'] ?? [] as $v) {
+                $lines[] = '- Video de un ganador: ' . $v;
+            }
             $lines[] = '';
         }
 
@@ -202,6 +205,8 @@ TXT;
     private function samples(int $productId, array $angles): array
     {
         $out = [];
+        // .56: lo que dicen los videos de los ganadores de cada ángulo
+        $winners = \App\Services\Meta\Videos\Scripts::winnersByAngle($productId);
         foreach ($angles as $angle) {
             $aliases = AdAngle::where('alias_of', $angle->id)->pluck('code')->all();
             $ads = DB::table('meta_ads as a')->join('meta_campaigns as c', 'c.meta_id', '=', 'a.campaign_meta_id')
@@ -211,7 +216,8 @@ TXT;
             $texts = $ads->map(fn ($a) => trim(($a->ad_title ? $a->ad_title . ' — ' : '') . (string) $a->ad_body))
                 ->filter()->unique()->take(self::MAX_ADS)
                 ->map(fn ($t) => mb_strimwidth(CancellationInsights::mask($t), 0, 600, '…'))->values()->all();
-            $out[$angle->code] = ['aliases' => $aliases, 'names' => $names, 'texts' => $texts];
+            $out[$angle->code] = ['aliases' => $aliases, 'names' => $names, 'texts' => $texts,
+                'videos' => array_map(fn ($w) => "{$w['label']}: " . \App\Services\Meta\Videos\Scripts::line($w, 400), $winners[strtoupper((string) $angle->code)] ?? [])];
         }
 
         return $out;

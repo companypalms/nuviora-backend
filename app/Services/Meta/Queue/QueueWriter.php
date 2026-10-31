@@ -28,6 +28,7 @@ Reglas que no puedes romper:
 - No inventes médicos, estudios, certificaciones, avales ni testimonios. Usa solo los avales y pruebas reales que vienen en los datos del producto, tal cual.
 - No inventes números: precios, descuentos y cantidades solo los que vienen en los datos.
 - No cambies hook, concepto, estilo y promesa a la vez: en una iteración se conserva el concepto y la promesa, y cambia lo que dicen los datos (por ejemplo, el hook).
+- Si la referencia trae "lo que dice su video", apóyate en eso para "conservar" (su promesa, su frase fuerte) y para las piezas (hooks nuevos que digan lo mismo de otra forma). No copies el guion entero.
 - Sin guion completo: lo arma el editor líder.
 Para cada encargo escribe, con su clave:
 - hipotesis: qué crees que va a pasar y por qué, en 1 o 2 frases.
@@ -92,6 +93,9 @@ TXT;
                 }
                 foreach ($c['reference_video'] ?? [] as $t) {
                     $lines[] = "  · video: {$t}";
+                }
+                if (!empty($c['reference_script'])) {
+                    $lines[] = '  · lo que dice su video: ' . \App\Services\Meta\Videos\Scripts::line($c['reference_script']);
                 }
             }
             $lines[] = 'Ciudad de aprendizaje: ' . ($p['city'] ?? 'sin elegir');

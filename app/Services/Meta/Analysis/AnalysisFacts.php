@@ -66,6 +66,24 @@ final class AnalysisFacts
         return $out;
     }
 
+    /**
+     * `.56`: lo que dice el video de cada creativo que lo tiene transcrito (solo los ganadores, `.55`). PHP puro.
+     *
+     * @param array<int, array{hook: ?string, text: ?string}> $scripts por id de creativo (Videos\Scripts::forCreatives)
+     */
+    public static function withScripts(array $facts, array $scripts): array
+    {
+        foreach ($facts as &$p) {
+            foreach ($p['creatives'] as &$cr) {
+                $cr['script'] = $scripts[$cr['id']] ?? null;
+            }
+            unset($cr);
+        }
+        unset($p);
+
+        return $facts;
+    }
+
     /** Lo que recibe la IA: un bloque por producto, en texto. */
     public static function input(array $facts): string
     {
@@ -91,6 +109,9 @@ final class AnalysisFacts
                     . $week . " · {$cr['reading']}" . ($cr['proposal'] ? " → {$cr['proposal']}" : '');
                 foreach ($cr['video']['diagnosis'] ?? [] as $dx) {
                     $lines[] = "  · video: {$dx}";
+                }
+                if (!empty($cr['script'])) {
+                    $lines[] = '  · lo que dice su video: ' . \App\Services\Meta\Videos\Scripts::line($cr['script']);
                 }
             }
             foreach ($p['batches'] as $b) {

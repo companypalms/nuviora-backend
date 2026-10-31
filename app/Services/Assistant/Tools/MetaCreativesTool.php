@@ -78,10 +78,12 @@ class MetaCreativesTool extends MetaTool
         $codes = MetaCreative::whereIn('id', array_column($creatives, 'id'))->get(['id', 'angle_code', 'batch_code'])->keyBy('id');
         $angles = AdAngle::where('product_id', $productId)->whereNotNull('name')->pluck('name', 'code');
         $rows = array_slice($creatives, 0, self::MAX_ROWS);
+        // .56: lo que dicen los videos de los ganadores (transcritos en la .55)
+        $scripts = \App\Services\Meta\Videos\Scripts::forCreatives(array_column($rows, 'id'));
         $data = [
             'producto' => $product,
             'cuantos' => count($creatives) . (count($creatives) > self::MAX_ROWS ? ' (van los ' . self::MAX_ROWS . ' que más gastaron en 7 días)' : ''),
-            'creativos' => array_map(function ($cr) use ($codes, $angles) {
+            'creativos' => array_map(function ($cr) use ($codes, $angles, $scripts) {
                 $code = $codes[$cr['id']] ?? null;
 
                 return array_filter([
@@ -98,6 +100,7 @@ class MetaCreativesTool extends MetaTool
                     'video' => ($cr['video']['diagnosis'] ?? []) ?: null,
                     'ultimos_7_dias' => self::window($cr['week']['spend'], $cr['week']['purchases']),
                     'estado' => isset(self::STATUS[$cr['status']]) ? self::STATUS[$cr['status']] . ($cr['status_source'] === 'manual' ? ' (puesto a mano)' : '') : null,
+                    'lo_que_dice_el_video' => isset($scripts[$cr['id']]) ? \App\Services\Meta\Videos\Scripts::line($scripts[$cr['id']]) : null,
                 ], fn ($v) => $v !== null);
             }, $rows),
         ];
