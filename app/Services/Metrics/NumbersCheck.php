@@ -4,6 +4,7 @@ namespace App\Services\Metrics;
 
 use App\Services\Finance\ExpenseLedger;
 use App\Services\Finance\OrderEconomics;
+use App\Services\Finance\ProfitAndLoss;
 use App\Services\Finance\Shrinkage;
 use App\Services\Metrics\Readers\CheckReader;
 use App\Services\Metrics\Readers\MoneyReader;
@@ -30,6 +31,7 @@ class NumbersCheck
         private OrderEconomics $economics,
         private ExpenseLedger $expenses,
         private Shrinkage $shrinkage,
+        private ProfitAndLoss $pnl,
     ) {
     }
 
@@ -105,6 +107,9 @@ class NumbersCheck
             $c('ads', 'Publicidad', 'money', $money['ads'], $ads, 'Todo lo gastado en Meta esos días, campaña por campaña.'),
             $c('expenses', 'Gastos', 'money', $money['expenses'], $expenses, 'El libro de gastos y la mercancía dada de baja de todo el período, de una vez.'),
             $c('profit', 'Ganancia', 'money', $money['profit'], $profit, 'Lo vendido menos todo lo anterior, con los números de este segundo camino.'),
+            // `.48c`: Finanzas › Rentabilidad (y Resumen y el Excel) cuenta por el mismo día que el panel: tiene que dar igual
+            $c('pnl', 'Ganancia en Finanzas', 'money', $money['profit'], $this->pnl->report($from, $to)['company']['operating_profit'],
+                'El beneficio operativo de Finanzas › Rentabilidad de esas mismas fechas.'),
         ];
 
         // 3. Los datos que pueden hacer que un número salga mal

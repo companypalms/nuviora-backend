@@ -77,8 +77,10 @@ try {
     Schedule::command('metrics:report')->dailyAt('07:15')->withoutOverlapping(30);
     // Reportes (entrega 4): los automáticos (diario D-3, semanal, mensual, §53 a §55) se generan solos cuando les toca;
     // cada noche, después de recalcular las órdenes, los recientes sacan versión nueva si cambiaron sus cifras (§20, §21)
-    Schedule::command('finance:reports')->everyTenMinutes()->withoutOverlapping(30)->runInBackground();
-    Schedule::command('finance:reports --refresh')->dailyAt('04:15')->withoutOverlapping(90);
+    // `.48c` (decisión del dueño, 2026-10-31): apagados. Los reemplazan los reportes del negocio del asistente
+    // (metrics:report). Los viejos quedan en Finanzas › Reportes, y ahí se puede hacer uno a mano.
+    // Schedule::command('finance:reports')->everyTenMinutes()->withoutOverlapping(30)->runInBackground();
+    // Schedule::command('finance:reports --refresh')->dailyAt('04:15')->withoutOverlapping(90);
     // Módulo 5 (entrega 4): autoevaluación de los planes que terminaron su horizonte (§98) y, si el Admin lo enciende, el
     // plan automático la noche antes de un día de ruta (§66, §107; viene apagado)
     Schedule::command('replenishment:evaluate')->dailyAt('05:00')->withoutOverlapping(60);

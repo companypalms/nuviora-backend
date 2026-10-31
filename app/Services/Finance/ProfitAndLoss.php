@@ -13,15 +13,19 @@ use Illuminate\Support\Facades\DB;
  * Rentabilidad cronológica por niveles (Módulo 4 de Fran, §47):
  *   Ingresos − COGS − logística atribuible − delivery − comisiones vendedoras − comisión líderes − publicidad
  *   − otros costes variables atribuibles = MARGEN DE CONTRIBUCIÓN; − gastos fijos/generales = BENEFICIO OPERATIVO.
- * - Ingreso y costos de las órdenes salen de order_financials por su cost_date (§3: la entregada, el día de la entrega;
- *   el delivery fallido, el día de la carrera, §5).
+ * - Ingreso y costos de las órdenes salen de order_financials por el día en que se CREÓ el pedido (`.48c`, decisión del
+ *   dueño del 2026-10-31: la misma regla que el panel del dueño, guias/DICCIONARIO-METRICAS.md §1; antes, por cost_date,
+ *   el día de la entrega). Así la ganancia de un período da igual en Finanzas, en el panel y en los reportes.
+ * - Una carrera sin costo cuenta lo que costó en promedio una carrera de su ciudad en los 28 días hasta el final del
+ *   período (`.49`, TripCostAverage, como el panel y el CPA).
  * - Publicidad: el gasto de Meta por producto y ciudad (§62); el de campañas sin clasificar va aparte, solo en la empresa.
  * - Gastos: los de un producto o una ciudad son "otros variables atribuibles" (§30); los generales van después del
  *   margen (§29), sin repartirlos entre productos.
  * - Merma (entrega 2d, R8): lo que se da de baja después de revisarlo, al costo de su lote, también es "otros
  *   variables atribuibles" del producto y la ciudad del almacén, en la fecha de la baja (Shrinkage).
  * - Logística atribuible (§14, entrega 2e): la parte de los viajes de traslado de las unidades entregadas
- *   (order_financials.logistics_cost). El costo del producto sale de sus lotes; donde no hay lote, del catálogo.
+ *   (order_financials.logistics_cost). El costo del producto sale de sus lotes; donde no hay lote, de la última compra
+ *   registrada (PurchaseCost).
  * Por producto, ciudad o producto + ciudad (§50 a §52); lo que no es de ninguno queda en una fila "sin asignar".
  */
 class ProfitAndLoss
@@ -99,13 +103,13 @@ class ProfitAndLoss
             $key = ($product ?? '-') . '|' . ($city ?? '-');
             $cells[$key] ??= ['product_id' => $product, 'city_id' => $city, 'orders_delivered' => 0, 'orders_not_delivered' => 0,
                 'advertising' => 0.0, 'other_variable' => 0.0, 'purchases' => 0.0, 'shrinkage' => 0.0, 'shrinkage_provisional' => 0,
-                'cogs_catalog_orders' => 0] + array_fill_keys(self::ORDER_SUMS, 0.0);
+                'cogs_catalog_orders' => 0, 'delivery_fill' => 0.0] + array_fill_keys(self::ORDER_SUMS, 0.0);
 
             return $key;
         };
 
         $select = implode(', ', array_map(fn ($c) => "SUM({$c}) AS {$c}", self::ORDER_SUMS));
-        $rows = DB::table('order_financials')->whereBetween('cost_date', [$from->toDateString(), $to->toDateString()])
+        $rows = DB::table('order_financials')->whereBetween('created_date', [$from->toDateString(), $to->toDateString()])
             ->groupBy('product_id', 'city_id')
             ->selectRaw("product_id, city_id, SUM(outcome = 'delivered') AS orders_delivered, SUM(outcome = 'not_delivered') AS orders_not_delivered,
                 SUM(outcome = 'delivered' AND kind <> 'return' AND COALESCE(cogs_source, 'catalog') <> 'lots') AS cogs_catalog_orders, {$select}")
@@ -115,6 +119,11 @@ class ProfitAndLoss
             foreach (array_merge(self::ORDER_SUMS, ['orders_delivered', 'orders_not_delivered', 'cogs_catalog_orders']) as $c) {
                 $cells[$k][$c] += (float) $r->{$c};
             }
+        }
+        // `.49`: las carreras sin costo, al promedio de una carrera de su ciudad
+        $average = TripCostAverage::forPanel($to->toDateString());
+        foreach ($cells as $k => $c) {
+            $cells[$k]['delivery_fill'] = TripCostAverage::fill((int) $c['delivery_missing_trips'], $c['city_id'], $average);
         }
         foreach ($this->meta->dailySpend($from->toDateString(), $to->toDateString(), ['product', 'city']) as $s) {
             $k = $cell((int) $s['product_id'], (int) $s['city_id']);
@@ -138,7 +147,7 @@ class ProfitAndLoss
     private function add(array $cells): array
     {
         $sum = ['orders_delivered' => 0, 'orders_not_delivered' => 0, 'advertising' => 0.0, 'other_variable' => 0.0, 'purchases' => 0.0,
-            'shrinkage' => 0.0, 'shrinkage_provisional' => 0, 'cogs_catalog_orders' => 0] + array_fill_keys(self::ORDER_SUMS, 0.0);
+            'shrinkage' => 0.0, 'shrinkage_provisional' => 0, 'cogs_catalog_orders' => 0, 'delivery_fill' => 0.0] + array_fill_keys(self::ORDER_SUMS, 0.0);
         foreach ($cells as $c) {
             foreach ($sum as $k => $v) {
                 $sum[$k] += $c[$k];
@@ -154,7 +163,7 @@ class ProfitAndLoss
         $revenue = round($s['revenue_main'] + $s['revenue_upsell'] - $s['revenue_refunded'], 2);
         $cogs = round($s['cogs_main'] + $s['cogs_upsell'], 2);
         $logistics = round($s['logistics_cost'], 2);
-        $delivery = round($s['delivery_cost'] + $s['commission_deliverer'], 2);
+        $delivery = round($s['delivery_cost'] + $s['commission_deliverer'] + $s['delivery_fill'], 2);
         $sellers = round($s['commission_seller'] + $s['commission_upsell'], 2);
         $leaders = round($s['commission_leader'], 2);
         $advertising = round($s['advertising'], 2);
@@ -193,6 +202,7 @@ class ProfitAndLoss
                 'delivery_trips' => (int) $s['delivery_trips'],
                 'delivery_final_trips' => (int) $s['delivery_final_trips'],
                 'delivery_missing_trips' => (int) $s['delivery_missing_trips'],
+                'delivery_missing_amount' => round($s['delivery_fill'], 2),
                 'delivery_estimated_trips' => max(0, (int) ($s['delivery_trips'] - $s['delivery_final_trips'] - $s['delivery_missing_trips'])),
                 'shrinkage_provisional_units' => (int) $s['shrinkage_provisional'],
                 'cogs_catalog_orders' => (int) $s['cogs_catalog_orders'],
@@ -256,7 +266,9 @@ class ProfitAndLoss
             $reasons[] = "{$n} carreras con el costo estimado por Google Routes, sin cierre aprobado.";
         }
         if ($n = $company['checks']['delivery_missing_trips']) {
-            $reasons[] = "{$n} carreras sin costo calculado (cuentan $0).";
+            $reasons[] = $company['checks']['delivery_missing_amount'] > 0
+                ? "{$n} carreras sin costo calculado: se cuentan al promedio de una carrera de su ciudad ($" . number_format($company['checks']['delivery_missing_amount'], 2, ',', '.') . ' en total).'
+                : "{$n} carreras sin costo calculado (cuentan $0).";
         }
 
         return ['label' => $reasons ? 'PROVISIONAL' : 'CONSOLIDADO', 'reasons' => $reasons];

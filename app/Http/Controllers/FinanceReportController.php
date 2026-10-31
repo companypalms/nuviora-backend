@@ -54,13 +54,14 @@ class FinanceReportController extends Controller
         $data = $request->validate(['product_id' => 'nullable|string', 'city_id' => 'nullable|string', 'page' => 'nullable|integer|min:1']);
         $query = OrderFinancial::query()->from('order_financials as f')->join('orders as o', 'o.id', '=', 'f.order_id')
             ->leftJoin('statuses as s', 's.id', '=', 'o.status_id')
-            ->whereBetween('f.cost_date', [$from->toDateString(), $to->toDateString()]);
+            // `.48c`: los pedidos creados esos días, como Rentabilidad y el panel del dueño
+            ->whereBetween('f.created_date', [$from->toDateString(), $to->toDateString()]);
         foreach (['product_id', 'city_id'] as $key) {
             if (($value = $data[$key] ?? null) !== null) {
                 $value === 'none' ? $query->whereNull("f.{$key}") : $query->where("f.{$key}", (int) $value);
             }
         }
-        $page = $query->orderByDesc('f.cost_date')->orderByDesc('f.order_id')
+        $page = $query->orderByDesc('f.created_date')->orderByDesc('f.order_id')
             ->select('f.*', 'o.name', 's.description as status')->paginate(50, ['*'], 'page', (int) ($data['page'] ?? 1));
 
         return response()->json([

@@ -123,8 +123,9 @@ class ReportExcel
         ]];
         DB::table('order_financials as f')->join('orders as o', 'o.id', '=', 'f.order_id')
             ->leftJoin('products as p', 'p.id', '=', 'f.product_id')->leftJoin('cities as c', 'c.id', '=', 'f.city_id')->leftJoin('users as a', 'a.id', '=', 'f.agency_id')
-            ->whereBetween('f.cost_date', [$from->toDateString(), $to->toDateString()])
-            ->orderBy('f.cost_date')->orderBy('f.order_id')
+            // `.48c`: los pedidos creados esos días, como Rentabilidad y el panel del dueño
+            ->whereBetween('f.created_date', [$from->toDateString(), $to->toDateString()])
+            ->orderBy('f.created_date')->orderBy('f.order_id')
             ->select('f.*', 'o.name as order_name', 'p.title as product', 'c.name as city', 'a.names as agency')
             ->chunk(2000, function ($chunk) use (&$rows) {
                 foreach ($chunk as $f) {
