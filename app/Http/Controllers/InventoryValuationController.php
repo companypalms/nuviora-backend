@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Inventory;
 use App\Models\Product;
 use App\Models\PurchaseOrderItem;
+use App\Services\Finance\PurchaseCost;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -32,7 +33,7 @@ class InventoryValuationController extends Controller
      *
      * Also includes:
      *   - sale_price        (products.price)
-     *   - base_cost_usd     (products.cost_usd — manual field)
+     *   - base_cost_usd     (la última compra registrada, PurchaseCost; ya no products.cost_usd — 2026-10-31)
      *   - avg_po_cost_usd   (weighted avg from received PO items)
      *   - effective_cost    (avg_po_cost_usd if available, else base_cost_usd)
      *   - total_value_usd   (quantity × effective_cost)
@@ -62,17 +63,18 @@ class InventoryValuationController extends Controller
             ->where('quantity', '>', 0)
             ->get();
 
-        $rows = $inventories->map(function ($inv) use ($avgCosts) {
+        $purchases = PurchaseCost::for();
+        $rows = $inventories->map(function ($inv) use ($avgCosts, $purchases) {
             $product     = $inv->product;
             if (!$product) return null;
 
             $qty         = (int) $inv->quantity;
             $salePrice   = (float) ($product->price ?? 0);
-            $baseCost    = (float) ($product->cost_usd ?? 0);
+            $baseCost    = (float) ($purchases->at((int) $product->id) ?? 0);
             $avgPoData   = $avgCosts->get($product->id);
             $avgPoCost   = $avgPoData ? (float) $avgPoData->avg_po_cost_usd : null;
 
-            // Prefer PO-derived cost; fall back to manual cost_usd
+            // Prefer PO-derived cost; fall back to the last registered purchase
             $effectiveCost = $avgPoCost ?? $baseCost;
 
             $totalValue    = $qty * $effectiveCost;
@@ -92,7 +94,7 @@ class InventoryValuationController extends Controller
                 'base_cost_usd'       => round($baseCost, 4),
                 'avg_po_cost_usd'     => $avgPoCost !== null ? round($avgPoCost, 4) : null,
                 'effective_cost_usd'  => round($effectiveCost, 4),
-                'cost_source'         => $avgPoCost !== null ? 'purchase_order' : 'manual',
+                'cost_source'         => $avgPoCost !== null ? 'purchase_order' : 'last_purchase',
                 'total_value_usd'     => round($totalValue, 2),
                 'margin_usd'          => $marginUsd !== null ? round($marginUsd, 4) : null,
                 'margin_pct'          => $marginPct !== null ? round($marginPct, 2) : null,

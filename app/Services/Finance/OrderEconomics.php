@@ -23,9 +23,10 @@ use Illuminate\Support\Facades\DB;
  *   ingreso de la original (R3): los reembolsos (orders.refunded_usd) y las órdenes de devolución antiguas entregadas.
  * - Costo del producto (§9, §11, R5; entrega 2e): el de los lotes de lo que la orden sacó del inventario (FIFO, lo
  *   asigna LotLedger), y su logística atribuible, la parte de los viajes de traslado de esas unidades (§14). Lo que no
- *   tiene lote (salió antes del corte, o sin stock) va a products.cost_usd y queda PROVISIONAL (cogs_source catalog o
- *   mixed). Un cambio carga la pieza que sale (la que vuelve queda para revisión, R3); una devolución no, porque el
- *   producto se quedó con el cliente.
+ *   tiene lote (salió antes del corte, o sin stock) toma el costo de la última compra registrada de ese producto hasta el
+ *   día de la venta (PurchaseCost, regla del dueño del 2026-10-31; nunca el de la ficha) y queda PROVISIONAL (cogs_source
+ *   last o mixed); si el producto nunca tuvo una compra, la línea queda "sin costo". Un cambio carga la pieza que sale (la
+ *   que vuelve queda para revisión, R3); una devolución no, porque el producto se quedó con el cliente.
  * - Delivery (§5, §18, §19): todas las carreras no anuladas, entregada o no. El costo aprobado en un cierre listo para
  *   pago o pagado; si no, el esperado de su ruta si está calculada; si no, 0 y se cuenta como "sin costo". Antes del
  *   Módulo 3 no había carreras: se toma lo que se le pagaba a la agencia por esa orden (earnings "agencia").
@@ -159,10 +160,11 @@ class OrderEconomics
         }
         $ids = $orders->keys()->all();
 
-        $lines = DB::table('order_products as op')->leftJoin('products as p', 'p.id', '=', 'op.product_id')
-            ->whereIn('op.order_id', $ids)->orderBy('op.id')
-            ->get(['op.order_id', 'op.product_id', 'op.variant_id', 'op.price', 'op.quantity', 'op.is_upsell', 'p.cost_usd'])->groupBy('order_id');
+        $lines = DB::table('order_products as op')->whereIn('op.order_id', $ids)->orderBy('op.id')
+            ->get(['op.order_id', 'op.product_id', 'op.variant_id', 'op.price', 'op.quantity', 'op.is_upsell'])->groupBy('order_id');
         $held = $this->heldUnits($ids);
+        // El costo de lo que salió sin lote: la última compra registrada de cada producto
+        $purchases = PurchaseCost::for($lines->flatten(1)->pluck('product_id')->filter()->all());
 
         $trips = DB::table('agency_trips as t')->leftJoin('order_delivery_routes as r', 'r.id', '=', 't.delivery_route_id')
             ->whereIn('t.order_id', $ids)->whereNull('t.voided_at')
@@ -192,7 +194,7 @@ class OrderEconomics
         foreach ($orders as $o) {
             $o->delivered_at = $this->repairDeliveredAt($o, $st['delivered']);
             $rows[] = $this->economics($o, $lines->get($o->id, collect()), $held->get($o->id, collect()), $trips->get($o->id, collect()),
-                $approved, $earnings->get($o->id, collect()), $tripEarningIds, (float) ($leader[$o->id] ?? 0), isset($returned[$o->id]), $st);
+                $approved, $earnings->get($o->id, collect()), $tripEarningIds, (float) ($leader[$o->id] ?? 0), isset($returned[$o->id]), $st, $purchases);
         }
         DB::table('order_financials')->upsert($rows, ['order_id'], array_values(array_diff(array_keys($rows[0]), ['order_id'])));
         $this->auditMatureChanges($previous, $rows);
@@ -216,7 +218,7 @@ class OrderEconomics
     }
 
     private function economics(object $o, Collection $lines, Collection $held, Collection $trips, Collection $approved,
-        Collection $earnings, array $tripEarningIds, float $leader, bool $hasDeliveredReturn, array $st): array
+        Collection $earnings, array $tripEarningIds, float $leader, bool $hasDeliveredReturn, array $st, PurchaseCost $purchases): array
     {
         $outcome = match ((int) $o->status_id) {
             $st['delivered'] => OrderFinancial::DELIVERED,
@@ -236,7 +238,8 @@ class OrderEconomics
         $revenueMain = $delivered ? round($total - $revenueUpsell, 2) : 0.0;
         $refunded = $delivered ? round(min($total, $hasDeliveredReturn ? $total : (float) $o->refunded_usd), 2) : 0.0;
 
-        $cogs = $delivered && $kind !== OrderFinancial::KIND_RETURN ? $this->goodsCost($lines, $held)
+        $saleDate = Carbon::parse($o->delivered_at ?? $o->created_at)->toDateString();
+        $cogs = $delivered && $kind !== OrderFinancial::KIND_RETURN ? $this->goodsCost($lines, $held, $purchases, $saleDate)
             : ['main' => 0.0, 'upsell' => 0.0, 'logistics' => 0.0, 'missing' => 0, 'source' => null, 'provisional' => false];
 
         $delivery = 0.0;
@@ -316,19 +319,20 @@ class OrderEconomics
             ->groupBy('a.reference_id', 'a.product_id', 'a.variant_id', 'a.layer_id')
             ->havingRaw('SUM(a.quantity) < 0')
             ->selectRaw('a.reference_id AS order_id, a.product_id, a.variant_id, a.layer_id, -SUM(a.quantity) AS units,
-                MAX(lot.unit_cost_usd) AS unit_cost, MAX(l.landed_cost_per_unit) AS landed, MAX(lot.kind) AS lot_kind')
+                MAX(lot.unit_cost_usd) AS unit_cost, MAX(l.landed_cost_per_unit) AS landed, MAX(lot.kind) AS lot_kind, MAX(lot.cost_source) AS cost_source')
             ->get()->groupBy('order_id');
     }
 
     /**
      * §9, §11, §14: el costo de lo entregado y su logística. Por producto y variante, las unidades de la orden se reparten
      * entre sus líneas (primero las de su misma variante): cada una lleva el costo promedio de sus lotes y su logística.
-     * Lo que no alcanza a tener lote con costo va a products.cost_usd (provisional); si tampoco hay, la línea queda "sin
-     * costo". Los lotes "por completar" (pending_cost) tienen el costo de catálogo: también son provisionales.
+     * Lo que no alcanza a tener lote con costo toma la última compra registrada de ese producto hasta el día de la venta
+     * (provisional); si nunca tuvo una compra, la línea queda "sin costo". Los lotes que no son de una compra (por completar,
+     * ajustes, el corte) también tienen el costo de la última compra (PurchaseCost::recost): también son provisionales.
      *
      * @return array{main: float, upsell: float, logistics: float, missing: int, source: ?string, provisional: bool}
      */
-    private function goodsCost(Collection $lines, Collection $held): array
+    private function goodsCost(Collection $lines, Collection $held, PurchaseCost $purchases, string $saleDate): array
     {
         // Lo que tiene la orden, por producto y variante
         $pool = [];
@@ -340,7 +344,7 @@ class OrderEconomics
             if ($h->layer_id !== null && $h->unit_cost !== null) {
                 $p['costed'] += $units;
                 $p['cost'] += $units * (float) $h->unit_cost;
-                if ($h->lot_kind === InventoryLot::KIND_PENDING_COST) {
+                if ($h->lot_kind === InventoryLot::KIND_PENDING_COST || $h->cost_source === PurchaseCost::DERIVED) {
                     $p['pending'] += $units;
                 }
             }
@@ -350,7 +354,7 @@ class OrderEconomics
 
         $out = ['main' => 0.0, 'upsell' => 0.0, 'logistics' => 0.0, 'missing' => 0, 'source' => null, 'provisional' => false];
         $fromLots = 0.0;
-        $fromCatalog = 0.0;
+        $fromLast = 0.0;
         foreach ($lines as $l) {
             $need = (float) (int) $l->quantity;
             if ($need <= 0) {
@@ -381,12 +385,13 @@ class OrderEconomics
                 $need -= $take;
                 unset($p);
             }
-            // Lo que no tiene lote con costo: el costo de catálogo, provisional
+            // Lo que no tiene lote con costo: la última compra registrada de ese producto, provisional
             $withoutLotCost = (float) (int) $l->quantity - $costed;
             if ($withoutLotCost > 0.0001) {
-                if ($l->cost_usd !== null && (float) $l->cost_usd > 0) {
-                    $cost += $withoutLotCost * (float) $l->cost_usd;
-                    $fromCatalog += $withoutLotCost;
+                $last = $purchases->at($productId, $saleDate);
+                if ($last !== null) {
+                    $cost += $withoutLotCost * $last;
+                    $fromLast += $withoutLotCost;
                 } else {
                     $out['missing']++;
                 }
@@ -396,9 +401,9 @@ class OrderEconomics
             $out[$l->is_upsell ? 'upsell' : 'main'] += $cost;
         }
         $out['source'] = match (true) {
-            $fromLots > 0 && $fromCatalog <= 0 && $out['missing'] === 0 => OrderFinancial::COGS_LOTS,
+            $fromLots > 0 && $fromLast <= 0 && $out['missing'] === 0 => OrderFinancial::COGS_LOTS,
             $fromLots > 0 => OrderFinancial::COGS_MIXED,
-            default => OrderFinancial::COGS_CATALOG,
+            default => OrderFinancial::COGS_LAST,
         };
 
         return $out;

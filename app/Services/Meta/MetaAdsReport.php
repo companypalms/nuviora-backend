@@ -364,6 +364,16 @@ class MetaAdsReport
     {
         $this->financialCpa ??= app(\App\Services\Finance\FinancialCpa::class)->latest();
         $versions = array_filter([$cityId !== null ? ($this->financialCpa["{$productId}|{$cityId}"] ?? null) : null, $this->financialCpa["{$productId}|"] ?? null]);
+        // 2026-10-31: un producto sin ninguna compra registrada no tiene costo: sin objetivo (ni el puesto a mano), así las
+        // reglas no le recomiendan subir el presupuesto
+        $noCost = collect($versions)->first(fn ($v) => ($v->detail['no_cost'] ?? false) === true);
+        if ($noCost) {
+            return ['target_cpa' => null, 'break_even_cpa' => null, 'source' => 'financial', 'financial' => [
+                'target' => null, 'break_even' => null, 'fully_loaded' => null, 'viable' => null, 'no_cost' => true,
+                'city_level' => $noCost->city_id !== null, 'period_from' => $noCost->period_from?->format('Y-m-d'), 'period_to' => $noCost->period_to?->format('Y-m-d'),
+                'computed_at' => $noCost->computed_at?->format('Y-m-d H:i'), 'version' => $noCost->version,
+            ]];
+        }
         $v = collect($versions)->first(fn ($v) => $v->target !== null);
         if ($v) {
             return ['target_cpa' => $v->target, 'break_even_cpa' => $v->break_even, 'source' => 'financial', 'financial' => [

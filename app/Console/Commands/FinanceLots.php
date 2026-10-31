@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Services\Finance\LotLedger;
+use App\Services\Finance\PurchaseCost;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
@@ -12,10 +13,12 @@ use Illuminate\Support\Facades\DB;
  *   de inventario nuevos.
  * - --replay: lo rehace todo desde el corte (es determinista).
  * - --check: compara las capas con el stock de cada almacén + producto + variante (solo lee).
+ * - --recost (cada noche, 2026-10-31): los lotes que no son de una compra toman el costo de la última compra registrada de
+ *   su producto (PurchaseCost); sin compras, quedan sin costo.
  */
 class FinanceLots extends Command
 {
-    protected $signature = 'finance:lots {--replay} {--check} {--max-time=50}';
+    protected $signature = 'finance:lots {--replay} {--check} {--recost} {--max-time=50}';
 
     protected $description = 'Mantiene el inventario por lotes (FIFO) al día con los movimientos de inventario';
 
@@ -23,6 +26,11 @@ class FinanceLots extends Command
     {
         if ($this->option('check')) {
             return $this->check($ledger);
+        }
+        if ($this->option('recost')) {
+            $this->info('Lotes con el costo de la última compra al día: ' . PurchaseCost::recost() . ' cambiaron.');
+
+            return self::SUCCESS;
         }
         if ($this->option('replay')) {
             $this->info('Movimientos reprocesados desde el corte: ' . $ledger->replay(3600) . '.');

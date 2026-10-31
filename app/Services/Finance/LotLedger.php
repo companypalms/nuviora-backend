@@ -22,8 +22,8 @@ use RuntimeException;
  * Libro de lotes del Módulo 4 de Fran (entrega 2a; §9, §11, §12, R3, R5, R7, R8). Reproduce inventory_movements, en
  * orden, sobre los lotes: no va dentro de la transacción del movimiento, así un error aquí nunca frena una venta.
  *
- * - Corte (initialize): cada almacén + producto + variante con stock recibe un lote "initial" a products.cost_usd (R5);
- *   sin costo, queda "sin costo" para completarlo a mano. Las piezas defectuosas del corte quedan en revisión, en un
+ * - Corte (initialize): cada almacén + producto + variante con stock recibe un lote "initial" al costo de la última compra
+ *   registrada (PurchaseCost, regla del dueño del 2026-10-31; antes, products.cost_usd); sin compras, queda "sin costo". Las piezas defectuosas del corte quedan en revisión, en un
  *   lote "recovered" a $0. Lo que las órdenes abiertas tienen fuera también recibe su parte del lote inicial, para que
  *   al entregarse tengan lote.
  * - Cada movimiento nuevo (process), según su tipo:
@@ -33,7 +33,7 @@ use RuntimeException;
  *   - in de una orden (reingreso): vuelven las capas que esa orden tenía, empezando por las últimas que tomó.
  *   - in de una compra (2b): lote "purchase" con el costo unitario de la compra (§9), uno por variante (R7).
  *   - in de una pieza retirada en un cambio: lote "recovered" a $0 y en revisión (decisión nuestra, confirmar con Fran).
- *   - otros in: lote "pending_cost" a cost_usd, que el Admin completa.
+ *   - otros in: lote "pending_cost" al costo de la última compra registrada (o sin costo), que el Admin completa.
  *   - transfer: sale FIFO del origen y llega al destino con el mismo lote y su costo (§12), en una capa nueva. Si va en
  *     un viaje (2c), la capa suma a su logística la parte del viaje por unidad (§14, R8); recomputeLanded() la rehace
  *     cuando el viaje se registra, se corrige o se anula después.
@@ -82,7 +82,7 @@ class LotLedger
             $now = now();
             $variants = DB::table('inventory_variants')->get(['warehouse_id', 'product_id', 'variant_id', 'quantity', 'defective_stock'])
                 ->groupBy(fn ($r) => "{$r->warehouse_id}|{$r->product_id}");
-            $costs = DB::table('products')->pluck('cost_usd', 'id');
+            $costs = PurchaseCost::for();
 
             // Lo que hay en cada almacén, por producto + variante: disponible y en revisión
             $stock = [];
@@ -103,17 +103,17 @@ class LotLedger
             $lotFor = function (int $productId, ?int $variantId, string $kind) use (&$lots, &$summary, $costs, $now) {
                 $key = "{$productId}|" . ($variantId ?: 0) . "|{$kind}";
                 if (!isset($lots[$key])) {
-                    $cost = $kind === InventoryLot::KIND_RECOVERED ? 0.0 : $this->positiveCost($costs[$productId] ?? null);
+                    $cost = $kind === InventoryLot::KIND_RECOVERED ? 0.0 : $costs->at($productId, $now->format('Y-m-d H:i:s'));
                     $lots[$key] = InventoryLot::create([
                         'product_id' => $productId,
                         'variant_id' => $variantId,
                         'kind' => $kind,
                         'unit_cost_usd' => $cost,
-                        'cost_source' => $kind === InventoryLot::KIND_RECOVERED ? 'recovered' : ($cost !== null ? 'catalog' : null),
+                        'cost_source' => $kind === InventoryLot::KIND_RECOVERED ? 'recovered' : ($cost !== null ? PurchaseCost::DERIVED : null),
                         'received_at' => $now,
                         'notes' => $kind === InventoryLot::KIND_RECOVERED
                             ? 'Piezas defectuosas en el corte: en revisión, a $0'
-                            : 'Lote inicial del corte (R5), a costo de catálogo',
+                            : 'Lote inicial del corte (R5), al costo de la última compra',
                     ]);
                     $summary['lots']++;
                     if ($cost === null) {
@@ -526,12 +526,11 @@ class LotLedger
             // Una compra (§9): el costo unitario de la compra, igual para cada variante (R7: el lote por variante ya permite
             // que una talla cueste distinto más adelante)
             $purchase = $kind === InventoryLot::KIND_PURCHASE ? InventoryPurchase::with('supplier:id,name')->find($m->reference_id) : null;
-            $latest = $kind === InventoryLot::KIND_ADJUSTMENT ? $this->latestLotCost((int) $m->product_id, $variantId) : null;
+            // Lo que no es una compra: el costo de la última compra registrada de ese producto (nunca el de la ficha)
             $cost = match (true) {
                 $kind === InventoryLot::KIND_RECOVERED => 0.0,
                 $purchase !== null => round((float) $purchase->unit_cost_usd, 4),
-                $latest !== null => $latest,
-                default => $this->positiveCost(DB::table('products')->where('id', $m->product_id)->value('cost_usd')),
+                default => PurchaseCost::for([(int) $m->product_id])->at((int) $m->product_id, ($m->created_at ?? now())->format('Y-m-d H:i:s')),
             };
             $lot = InventoryLot::create([
                 'product_id' => $m->product_id,
@@ -544,17 +543,16 @@ class LotLedger
                 'cost_source' => match (true) {
                     $kind === InventoryLot::KIND_RECOVERED => 'recovered',
                     $purchase !== null => 'purchase',
-                    $latest !== null => 'last_lot',
                     $cost === null => null,
-                    default => 'catalog',
+                    default => PurchaseCost::DERIVED,
                 },
                 'received_at' => $m->created_at ?? now(),
                 'notes' => match (true) {
                     $purchase !== null => 'Compra a ' . ($purchase->supplier?->name ?? 'proveedor'),
                     $kind === InventoryLot::KIND_RECOVERED => 'Pieza retirada en un cambio: en revisión, a $0 (su costo ya se contó en la orden)',
-                    $kind === InventoryLot::KIND_INITIAL => 'Reingreso de una orden que salió antes del corte: a costo de catálogo',
-                    $kind === InventoryLot::KIND_ADJUSTMENT => 'Corrección de conteo (ajuste): ' . ($latest !== null ? 'al costo del lote más reciente' : 'a costo de catálogo'),
-                    default => 'Entró sin costo de compra: costo de catálogo provisional, por completar',
+                    $kind === InventoryLot::KIND_INITIAL => 'Reingreso de una orden que salió antes del corte: ' . ($cost !== null ? 'al costo de la última compra' : 'sin compras todavía'),
+                    $kind === InventoryLot::KIND_ADJUSTMENT => 'Corrección de conteo (ajuste): ' . ($cost !== null ? 'al costo de la última compra' : 'sin compras todavía'),
+                    default => 'Entró sin costo de compra: ' . ($cost !== null ? 'al costo de la última compra' : 'sin compras todavía') . ', por completar',
                 },
             ]);
         }
@@ -675,24 +673,5 @@ class LotLedger
         }
 
         return (float) (InventoryTransferTrip::whereKey($m->trip_id)->whereNull('voided_at')->value('unit_cost_usd') ?? 0);
-    }
-
-    /**
-     * El costo del lote más reciente de ese producto (primero de esa misma variante, o "sin variante"), sin contar las
-     * piezas recuperadas a $0 ni los lotes sin costo. Es el que recibe una corrección de conteo hacia arriba.
-     */
-    private function latestLotCost(int $productId, ?int $variantId): ?float
-    {
-        $query = fn () => InventoryLot::where('product_id', $productId)->where('kind', '<>', InventoryLot::KIND_RECOVERED)
-            ->whereNotNull('unit_cost_usd')->where('unit_cost_usd', '>', 0)->orderByDesc('received_at')->orderByDesc('id');
-        $cost = $query()->where('variant_id', $variantId)->value('unit_cost_usd');
-        $cost ??= $query()->value('unit_cost_usd');
-
-        return $cost !== null ? round((float) $cost, 4) : null;
-    }
-
-    private function positiveCost($cost): ?float
-    {
-        return $cost !== null && (float) $cost > 0 ? round((float) $cost, 4) : null;
     }
 }

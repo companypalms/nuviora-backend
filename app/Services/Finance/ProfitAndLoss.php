@@ -266,10 +266,10 @@ class ProfitAndLoss
     {
         $w = [];
         if ($n = $company['checks']['cogs_catalog_orders']) {
-            $w[] = "{$n} órdenes entregadas tienen costo de catálogo (products.cost_usd) en vez del de sus lotes: salieron antes del inventario por lotes o sin stock. Su costo es provisional.";
+            $w[] = "{$n} órdenes entregadas tienen el costo de la última compra registrada en vez del de sus lotes: salieron antes del inventario por lotes o sin stock. Su costo es provisional.";
         }
         if ($n = $company['checks']['cogs_missing_lines']) {
-            $w[] = "{$n} líneas entregadas son de productos sin costo cargado: su ganancia sale más alta de lo real.";
+            $w[] = "{$n} líneas entregadas son de productos sin ninguna compra registrada: no tienen costo y su ganancia sale más alta de lo real. Registra su compra en Inventario.";
         }
         if ($n = $company['checks']['shrinkage_provisional_units']) {
             $w[] = "{$n} pieza(s) dadas de baja no tenían costo de lote: su merma se calculó con el costo de catálogo.";

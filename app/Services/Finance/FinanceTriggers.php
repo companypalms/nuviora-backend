@@ -16,10 +16,10 @@ use App\Models\InventoryTransferTrip;
 use App\Models\LeaderCommission;
 use App\Models\Order;
 use App\Models\OrderDeliveryRoute;
+use App\Models\OrderFinancial;
 use App\Models\OrderProduct;
 use App\Models\OrderRefund;
 use App\Models\PayablePayment;
-use App\Models\Product;
 use App\Models\ReconciliationItem;
 use App\Models\Status;
 use Illuminate\Database\Eloquent\Model;
@@ -73,6 +73,16 @@ class FinanceTriggers
                     ->join('inventory_lot_layers as l', 'l.id', '=', 'a.layer_id')->where('l.lot_id', $lot->id)
                     ->where('a.reference_type', 'Order')->whereNotNull('a.reference_id')->select('a.reference_id')));
             }
+            // 2026-10-31: una compra nueva o corregida (o un costo completado a mano) es el costo de referencia de su producto:
+            // los lotes que no son de una compra toman ese costo, y lo que se vendió sin lote se recalcula
+            if (in_array($lot->cost_source, PurchaseCost::REFERENCE, true) && ($lot->wasRecentlyCreated || $lot->wasChanged(['unit_cost_usd', 'cost_source']))) {
+                self::safely(function () use ($lot) {
+                    PurchaseCost::recost([(int) $lot->product_id]);
+                    OrderEconomics::markStaleWhere(DB::table('order_products as op')->join('order_financials as f', 'f.order_id', '=', 'op.order_id')
+                        ->where('op.product_id', $lot->product_id)->where(fn ($q) => $q->whereNull('f.cogs_source')->orWhere('f.cogs_source', '<>', OrderFinancial::COGS_LOTS))
+                        ->select('op.order_id'));
+                });
+            }
         });
 
         // Entrega 3 (§75, §76): un pago digital de la conciliación entra a la caja, o cambia su estado, al momento
@@ -98,13 +108,8 @@ class FinanceTriggers
             }
         });
 
-        // R5: un costo nuevo cambia el costo provisional de todas las órdenes con ese producto
-        Product::saved(function (Product $product) {
-            if ($product->wasChanged('cost_usd')) {
-                self::safely(fn () => OrderEconomics::markStaleWhere(DB::table('order_products')
-                    ->where('product_id', $product->id)->select('order_id')));
-            }
-        });
+        // El costo de la ficha del producto (products.cost_usd) ya no se usa (regla del dueño, 2026-10-31): el costo sale solo
+        // de las compras registradas (PurchaseCost)
     }
 
     private static function mark(array $orderIds): void

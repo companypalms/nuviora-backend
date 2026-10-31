@@ -26,6 +26,8 @@ use Illuminate\Support\Facades\DB;
  *   Objetivo = (R − V − fijos − utilidad) ÷ P: la utilidad del producto (20 % de lo vendido, o sobre el costo), después de
  *   los gastos fijos. Si no queda nada: $0 y "no viable" (§68). Fully Loaded queda igual al break-even (ya los incluye).
  * Se calcula cada día a las 06:30 o a mano; cada cálculo es una versión nueva (§73). No toca Meta (§71).
+ * - Regla del dueño (2026-10-31): un producto que nunca tuvo una compra registrada no tiene costo (PurchaseCost), así que no
+ *   se calcula su objetivo ni su break-even: queda "falta el costo" (detail.no_cost) hasta que se registre una compra.
  */
 class FinancialCpa
 {
@@ -87,6 +89,7 @@ class FinancialCpa
         usort($keys, fn ($a, $b) => [str_ends_with($a, '|') ? 0 : 1, $a] <=> [str_ends_with($b, '|') ? 0 : 1, $b]);
         $productIds = array_values(array_unique(array_map(fn ($k) => (int) explode('|', $k)[0], $keys)));
         $margins = ProductFinancialSetting::forProducts($productIds);
+        $purchases = PurchaseCost::for($productIds);
         $fixed = $this->fixedShare($today);
         $min = self::cityMinPurchases();
 
@@ -116,6 +119,11 @@ class FinancialCpa
             } else {
                 $econ = $choice === 'short' ? $s : $l;
                 $window = $windows[$choice];
+            }
+            // Sin ninguna compra registrada, el costo no se conoce: no se calcula
+            $noCost = !$purchases->has($productId);
+            if ($noCost) {
+                $econ = array_merge($econ, ['break_even' => null, 'target' => null, 'fully_loaded' => null, 'viable' => null]);
             }
             if ($cityId === null) {
                 $chosen[$key] = ['econ' => $econ];
@@ -157,6 +165,7 @@ class FinancialCpa
                     'short' => $summary($s, 'short', $short[$key] ?? null),
                     'long' => $summary($l, 'long', $long[$key] ?? null),
                     'fixed' => $fixed,
+                    'no_cost' => $noCost,
                 ], JSON_UNESCAPED_UNICODE),
                 'trigger' => $trigger,
                 'computed_by' => $userId,

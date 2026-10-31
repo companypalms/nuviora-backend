@@ -103,7 +103,7 @@ class ProductController extends Controller
             'name' => 'nullable|string',
             'showable_name' => 'nullable|string',
             'price' => 'required|numeric',
-            'cost_usd' => 'required|numeric',
+            'cost_usd' => 'nullable|numeric', // ya no se usa: el costo sale de las compras registradas (2026-10-31)
             'image' => 'nullable|string',
             'stock' => 'nullable|integer',
             'description' => 'nullable|string',
@@ -122,7 +122,7 @@ class ProductController extends Controller
             'name' => 'nullable|string',
             'showable_name' => 'nullable|string',
             'price' => 'sometimes|required|numeric',
-            'cost_usd' => 'sometimes|required|numeric',
+            'cost_usd' => 'sometimes|nullable|numeric', // ya no se usa (2026-10-31)
             'image' => 'nullable|string',
             'stock' => 'nullable|integer',
             'description' => 'nullable|string',

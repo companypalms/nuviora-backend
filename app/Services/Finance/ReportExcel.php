@@ -135,7 +135,7 @@ class ReportExcel
                         $f->order_name, ['normal' => 'Normal', 'exchange' => 'Cambio', 'return' => 'Devolución'][$f->kind] ?? $f->kind, $f->created_date, $f->delivered_date,
                         $f->cost_date, ['delivered' => 'Entregada', 'not_delivered' => 'No entregada', 'open' => 'Abierta'][$f->outcome] ?? $f->outcome,
                         $f->product, $f->city, $f->agency, (float) $f->revenue_main, (float) $f->revenue_upsell, (float) $f->revenue_refunded, round($net, 2),
-                        (float) $f->cogs_main, (float) $f->cogs_upsell, ['lots' => 'Lotes', 'catalog' => 'Catálogo', 'mixed' => 'Mixto'][$f->cogs_source ?? ''] ?? ($f->cogs_source ?? ''),
+                        (float) $f->cogs_main, (float) $f->cogs_upsell, ['lots' => 'Lotes', 'last' => 'Última compra', 'catalog' => 'Catálogo', 'mixed' => 'Mixto'][$f->cogs_source ?? ''] ?? ($f->cogs_source ?? ''),
                         (float) $f->logistics_cost, (float) $f->delivery_cost, (float) $f->delivery_legacy_cost, (float) $f->commission_seller,
                         (float) $f->commission_upsell, (float) $f->commission_leader, (float) $f->commission_deliverer, round($net - $cost, 2),
                         (int) $f->cogs_missing_lines, (int) $f->delivery_missing_trips,

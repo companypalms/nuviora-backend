@@ -20,7 +20,8 @@ class OrderFinancial extends Model
 
     /** De dónde sale el costo del producto (entrega 2e): de sus lotes, del catálogo (provisional) o de ambos. */
     public const COGS_LOTS = 'lots';
-    public const COGS_CATALOG = 'catalog';
+    public const COGS_CATALOG = 'catalog'; // el de la ficha del producto: ya no se usa (2026-10-31), queda en lo viejo hasta recalcular
+    public const COGS_LAST = 'last';       // la última compra registrada del producto (PurchaseCost)
     public const COGS_MIXED = 'mixed';
 
     public $timestamps = false;

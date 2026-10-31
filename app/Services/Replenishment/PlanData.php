@@ -9,6 +9,7 @@ use App\Models\Warehouse;
 use App\Services\Finance\CashDashboard;
 use App\Services\Finance\FinancialCpa;
 use App\Services\Finance\OrderEconomics;
+use App\Services\Finance\PurchaseCost;
 use App\Services\Inventory\StockStatus;
 use App\Services\Meta\MetaAdsData;
 use Illuminate\Support\Facades\DB;
@@ -180,10 +181,9 @@ class PlanData
             ->orderByDesc('sp.is_preferred')->orderBy('sp.lead_time_days')->orderBy('sp.id')
             ->get(['sp.product_id', 'sp.supplier_id', 's.name', 'sp.lead_time_days', 'sp.receiving_warehouse_id', 'sp.city_id', 'sp.expected_unit_cost_usd'])
             ->groupBy('product_id');
-        $lastLotCost = DB::table('inventory_lots')->where('kind', 'purchase')->whereNotNull('unit_cost_usd')->orderByDesc('received_at')->orderByDesc('id')
-            ->get(['product_id', 'unit_cost_usd'])->unique('product_id')->pluck('unit_cost_usd', 'product_id');
+        $lastPurchase = PurchaseCost::for();
         $products = [];
-        foreach (DB::table('products')->get(['id', 'title', 'showable_name', 'cost_usd']) as $p) {
+        foreach (DB::table('products')->get(['id', 'title', 'showable_name']) as $p) {
             $set = $settings->get($p->id);
             $sup = ($suppliers->get($p->id) ?? collect())->first();
             $receiving = $sup?->receiving_warehouse_id ? (int) $sup->receiving_warehouse_id : null;
@@ -191,7 +191,7 @@ class PlanData
                 // §20: sin almacén habitual, llega a un almacén de la ciudad del proveedor
                 $receiving = collect($warehouses)->firstWhere('city_id', (int) $sup->city_id)['id'] ?? null;
             }
-            $cost = $sup?->expected_unit_cost_usd ?? $lastLotCost[$p->id] ?? $p->cost_usd;
+            $cost = $sup?->expected_unit_cost_usd ?? $lastPurchase->at((int) $p->id);
             $first = $firstOrder[$p->id] ?? null;
             $e = $eff->get($p->id);
             $products[(int) $p->id] = [

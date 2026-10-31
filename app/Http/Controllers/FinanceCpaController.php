@@ -12,6 +12,7 @@ use App\Services\CommissionService;
 use App\Services\Finance\CohortReport;
 use App\Services\Finance\FinancialCpa;
 use App\Services\Finance\OrderEconomics;
+use App\Services\Finance\PurchaseCost;
 use App\Services\Finance\TransferTrips;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -82,6 +83,7 @@ class FinanceCpaController extends Controller
     {
         $margins = ProductFinancialSetting::get()->keyBy('product_id');
 
+        $purchases = PurchaseCost::for();
         return response()->json([
             'maturity_lag_days' => (int) Setting::get(OrderEconomics::SETTING_MATURITY_LAG, 4),
             'analysis_window_days' => (int) Setting::get(FinancialCpa::SETTING_WINDOW, 7),
@@ -93,8 +95,9 @@ class FinanceCpaController extends Controller
             'vehicle_wear' => TransferTrips::wearRule(),
             'wear_modes' => TransferTrips::WEAR_MODES,
             'target_types' => ProductFinancialSetting::TYPES,
-            'products' => Product::orderBy('title')->get(['id', 'title', 'showable_name', 'cost_usd'])->map(fn ($p) => [
-                'id' => $p->id, 'name' => $p->showable_name ?: $p->title, 'cost_usd' => $p->cost_usd !== null ? (float) $p->cost_usd : null,
+            // El costo sale solo de las compras registradas (2026-10-31): el de la última compra, o null si nunca hubo una
+            'products' => Product::orderBy('title')->get(['id', 'title', 'showable_name'])->map(fn ($p) => [
+                'id' => $p->id, 'name' => $p->showable_name ?: $p->title, 'cost_usd' => $purchases->at((int) $p->id),
                 'target_type' => $margins->get($p->id)?->target_type ?? ProductFinancialSetting::DEFAULT_TYPE,
                 'target_pct' => $margins->get($p->id)?->target_pct ?? ProductFinancialSetting::DEFAULT_PCT,
             ]),

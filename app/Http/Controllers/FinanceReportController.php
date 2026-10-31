@@ -8,6 +8,7 @@ use App\Models\Order;
 use App\Models\OrderDeliveryRoute;
 use App\Models\OrderFinancial;
 use App\Services\Finance\ProfitAndLoss;
+use App\Services\Finance\PurchaseCost;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -93,8 +94,13 @@ class FinanceReportController extends Controller
     public function order(Order $order): JsonResponse
     {
         $f = OrderFinancial::where('order_id', $order->id)->first();
-        $lines = DB::table('order_products as op')->leftJoin('products as p', 'p.id', '=', 'op.product_id')->where('op.order_id', $order->id)
-            ->orderBy('op.id')->get(['op.id', 'op.showable_name', 'op.title', 'op.size', 'op.quantity', 'op.price', 'op.is_upsell', 'p.title as product', 'p.cost_usd'])
+        $raw = DB::table('order_products as op')->leftJoin('products as p', 'p.id', '=', 'op.product_id')->where('op.order_id', $order->id)
+            ->orderBy('op.id')->get(['op.id', 'op.product_id', 'op.showable_name', 'op.title', 'op.size', 'op.quantity', 'op.price', 'op.is_upsell', 'p.title as product']);
+        // El costo de cada línea: la última compra registrada de ese producto hasta el día de la venta (nunca el de la ficha)
+        $purchases = PurchaseCost::for($raw->pluck('product_id')->filter()->all());
+        $saleDate = substr((string) ($order->delivered_at ?? $order->created_at), 0, 10);
+        $lines = $raw->map(fn ($l) => ['cost_usd' => $l->product_id ? $purchases->at((int) $l->product_id, $saleDate) : null] + (array) $l)
+            ->map(fn ($l) => (object) $l)
             ->map(fn ($l) => [
                 'name' => $l->showable_name ?: ($l->title ?: $l->product),
                 'size' => $l->size,

@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Models\Status;
 use App\Models\ProductAdSpend;
 use App\Services\Meta\MetaAdsData;
+use App\Services\Finance\PurchaseCost;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
@@ -24,6 +25,8 @@ class MetricsController extends Controller
         $agencyId = $request->get('agency_id');
 
         $statusEntregado = Status::whereRaw('LOWER(description) = ?', ['entregado'])->first()?->id ?? 0;
+        // El costo de cada producto: la última compra registrada (2026-10-31; nunca el de la ficha)
+        $purchases = PurchaseCost::for();
         $statusCancelado = Status::whereRaw('LOWER(description) = ?', ['cancelado'])->first()?->id ?? 0;
         $statusRechazado = Status::whereRaw('LOWER(description) = ?', ['rechazado'])->first()?->id ?? 0;
         $statusConfirmado = Status::whereRaw('LOWER(description) = ?', ['confirmado'])->first()?->id ?? 0;
@@ -80,7 +83,7 @@ class MetricsController extends Controller
                 ->when($shopId, fn($q) => $q->where('orders.shop_id', '=', $shopId))
                 ->when($cityId, fn($q) => $q->where('orders.city_id', '=', $cityId))
                 ->when($agencyId, fn($q) => $q->where('orders.agency_id', '=', $agencyId))
-                ->sum(DB::raw(($product->cost_usd ?? 0) . ' * order_products.quantity'));
+                ->sum('order_products.quantity') * ($purchases->at((int) $product->id) ?? 0);
 
             $days = collect($spend[$product->id] ?? []);
             $adSpend = $days->sum('amount');
@@ -345,7 +348,8 @@ class MetricsController extends Controller
                 ->when($shopId, fn($q) => $q->where('orders.shop_id', '=', $shopId))
                 ->when($cityId, fn($q) => $q->where('orders.city_id', '=', $cityId))
                 ->when($agencyId, fn($q) => $q->where('orders.agency_id', '=', $agencyId))
-                ->sum(DB::raw('products.cost_usd * order_products.quantity'));
+                ->groupBy('order_products.product_id')->selectRaw('order_products.product_id, SUM(order_products.quantity) AS units')->get()
+                ->sum(fn ($r) => (float) $r->units * ($purchases->at((int) $r->product_id) ?? 0));
 
             $dayCells = collect($spend)->map(fn ($days) => $days[$date] ?? null)->filter();
             $dayAdSpend = $dayCells->sum('amount');

@@ -62,6 +62,9 @@ try {
     Schedule::command('finance:rebuild --mark-all')->dailyAt('03:30');
     // Libro de lotes (entrega 2): reproduce los movimientos de inventario nuevos con FIFO por lote
     Schedule::command('finance:lots')->everyMinute()->withoutOverlapping(10)->runInBackground();
+    // El costo sale solo de las compras registradas (2026-10-31): antes del recálculo de la noche, los lotes que no son de
+    // una compra toman el costo de la última compra de su producto
+    Schedule::command('finance:lots --recost')->dailyAt('03:20')->withoutOverlapping(10);
     // Caja (entrega 3): los movimientos automáticos se cuadran solos con su origen; cada noche se revisan todos
     Schedule::command('finance:cash --resync')->dailyAt('03:45')->withoutOverlapping(60);
     // CPA objetivo y break-even reales, cada día antes del análisis de campañas de las 07:00 (pedido del dueño, 2026-10-30)
