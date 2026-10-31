@@ -377,10 +377,10 @@ final class MoneyRules
     {
         $w = [];
         if ($checks['missing_cost_lines'] > 0) {
-            $w[] = Card::plural($checks['missing_cost_lines'], 'producto entregado no tiene', 'productos entregados no tienen') . ' costo cargado: la ganancia sale más alta de lo real. Se carga en Finanzas › Configuración o en el inventario.';
+            $w[] = Card::plural($checks['missing_cost_lines'], 'producto entregado no tiene', 'productos entregados no tienen') . ' costo: nunca tuvieron una compra registrada y la ganancia sale más alta de lo real. Registra su compra en Inventario.';
         }
         if ($checks['catalog_cost'] > 0) {
-            $w[] = Card::plural($checks['catalog_cost'], 'pedido entregado usa', 'pedidos entregados usan') . ' el costo de catálogo del producto en vez del de sus lotes: es provisional.';
+            $w[] = Card::plural($checks['catalog_cost'], 'pedido entregado usa', 'pedidos entregados usan') . ' el costo de la última compra registrada en vez del de sus lotes (salieron sin stock o antes del inventario por lotes): es provisional.';
         }
         if ($checks['trips_estimated'] > 0) {
             $w[] = Card::plural($checks['trips_estimated'], 'envío tiene', 'envíos tienen') . ' su costo estimado: todavía no está en un cierre aprobado.';

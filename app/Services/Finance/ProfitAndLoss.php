@@ -272,7 +272,7 @@ class ProfitAndLoss
             $w[] = "{$n} líneas entregadas son de productos sin ninguna compra registrada: no tienen costo y su ganancia sale más alta de lo real. Registra su compra en Inventario.";
         }
         if ($n = $company['checks']['shrinkage_provisional_units']) {
-            $w[] = "{$n} pieza(s) dadas de baja no tenían costo de lote: su merma se calculó con el costo de catálogo.";
+            $w[] = "{$n} pieza(s) dadas de baja no tenían costo de lote: su merma se calculó con la última compra registrada del producto.";
         }
         if ($company['delivery_legacy'] > 0) {
             $w[] = 'Antes del 03/10/2026 no había registro de carreras: el delivery de esas órdenes es lo que se le pagaba a la agencia por orden.';

@@ -158,7 +158,7 @@ describe('A dónde se fue el dinero', function () use ($week, $order, $ad, $expe
         expect($byProduct[2])->toBe(30.0);
         expect($byProduct[3])->toBe(-15.0); // solo publicidad, sin ventas
         $warnings = MoneyRules::warnings($r['totals'], $r['checks']);
-        expect($warnings[0])->toContain('1 producto entregado no tiene costo cargado');
-        expect($warnings[1])->toContain('1 pedido entregado usa el costo de catálogo');
+        expect($warnings[0])->toContain('1 producto entregado no tiene costo')->toContain('Registra su compra en Inventario');
+        expect($warnings[1])->toContain('1 pedido entregado usa el costo de la última compra registrada');
     });
 });

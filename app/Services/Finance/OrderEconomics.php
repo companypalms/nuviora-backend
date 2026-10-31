@@ -142,21 +142,62 @@ class OrderEconomics
         return $done;
     }
 
+    /**
+     * `.48a`: la economía de estas órdenes calculada ahora, sin guardar nada (ni reparar orders.delivered_at). La
+     * revisión de los números (metrics:check) la compara con la guardada para encontrar órdenes desactualizadas.
+     * @param int[] $orderIds
+     * @return array<int, array> la fila de order_financials que tendría cada orden, por order_id
+     */
+    public function preview(array $orderIds): array
+    {
+        $out = [];
+        foreach (array_chunk(array_values(array_unique(array_map('intval', $orderIds))), self::CHUNK) as $ids) {
+            foreach ($this->computeRows($ids, false) as $row) {
+                $out[$row['order_id']] = $row;
+            }
+        }
+
+        return $out;
+    }
+
     private function rebuildChunk(array $ids): int
     {
         // Una fila marcada desde este momento sigue marcada y se recalcula en la siguiente vuelta
         $startedAt = self::stamp();
-        $st = $this->statusIds();
         $requested = $ids;
 
+        $rows = $this->computeRows($ids, true);
+        if ($rows === []) {
+            DB::table('order_financials')->whereIn('order_id', $ids)->delete();
+            $this->syncCash($requested);
+            return 0;
+        }
+        $ids = array_column($rows, 'order_id');
+
+        $previous = DB::table('order_financials')->whereIn('order_id', $ids)->whereNotNull('computed_at')
+            ->get(['order_id', 'outcome', 'status_id', 'revenue_main', 'revenue_upsell', 'revenue_refunded', 'delivered_date'])->keyBy('order_id');
+
+        DB::table('order_financials')->upsert($rows, ['order_id'], array_values(array_diff(array_keys($rows[0]), ['order_id'])));
+        $this->auditMatureChanges($previous, $rows);
+        DB::table('order_financials')->whereIn('order_id', $ids)->where('stale_at', '<', $startedAt)->update(['stale_at' => null]);
+        $this->syncCash($requested);
+
+        return count($rows);
+    }
+
+    /**
+     * La fila de order_financials de cada orden que existe. Con $repair, también deja bien orders.delivered_at (el
+     * recálculo); sin él no escribe nada (preview).
+     */
+    private function computeRows(array $ids, bool $repair): array
+    {
+        $st = $this->statusIds();
         $orders = DB::table('orders')->whereIn('id', $ids)->get([
             'id', 'status_id', 'created_at', 'delivered_at', 'updated_at', 'current_total_price', 'refunded_usd', 'city_id',
             'agency_id', 'is_exchange', 'is_return', 'parent_order_id', 'was_shipped',
         ])->keyBy('id');
         if ($orders->isEmpty()) {
-            DB::table('order_financials')->whereIn('order_id', $ids)->delete();
-            $this->syncCash($requested);
-            return 0;
+            return [];
         }
         $ids = $orders->keys()->all();
 
@@ -187,21 +228,14 @@ class OrderEconomics
         $returned = array_flip(DB::table('orders')->whereIn('parent_order_id', $ids)->where('is_return', true)
             ->where('status_id', $st['delivered'])->pluck('parent_order_id')->all());
 
-        $previous = DB::table('order_financials')->whereIn('order_id', $ids)->whereNotNull('computed_at')
-            ->get(['order_id', 'outcome', 'status_id', 'revenue_main', 'revenue_upsell', 'revenue_refunded', 'delivered_date'])->keyBy('order_id');
-
         $rows = [];
         foreach ($orders as $o) {
-            $o->delivered_at = $this->repairDeliveredAt($o, $st['delivered']);
+            $o->delivered_at = $this->repairDeliveredAt($o, $st['delivered'], $repair);
             $rows[] = $this->economics($o, $lines->get($o->id, collect()), $held->get($o->id, collect()), $trips->get($o->id, collect()),
                 $approved, $earnings->get($o->id, collect()), $tripEarningIds, (float) ($leader[$o->id] ?? 0), isset($returned[$o->id]), $st, $purchases);
         }
-        DB::table('order_financials')->upsert($rows, ['order_id'], array_values(array_diff(array_keys($rows[0]), ['order_id'])));
-        $this->auditMatureChanges($previous, $rows);
-        DB::table('order_financials')->whereIn('order_id', $ids)->where('stale_at', '<', $startedAt)->update(['stale_at' => null]);
-        $this->syncCash($requested);
 
-        return count($rows);
+        return $rows;
     }
 
     /**
@@ -461,7 +495,7 @@ class OrderEconomics
     }
 
     /** §3: la fecha de entrega, aunque el cambio de estado no haya pasado por el observer (actualizaciones masivas). */
-    private function repairDeliveredAt(object $o, int $deliveredId): ?string
+    private function repairDeliveredAt(object $o, int $deliveredId, bool $write = true): ?string
     {
         $isDelivered = (int) $o->status_id === $deliveredId;
         if ($isDelivered && $o->delivered_at === null) {
@@ -469,12 +503,16 @@ class OrderEconomics
                 DB::table('order_tracking_comprehensive_logs')->where('order_id', $o->id)->where('to_status_id', $deliveredId)->max('created_at'),
                 DB::table('order_status_logs')->where('order_id', $o->id)->where('to_status_id', $deliveredId)->max('created_at'),
             ])->filter()->max() ?? $o->updated_at;
-            DB::table('orders')->where('id', $o->id)->update(['delivered_at' => $at]);
+            if ($write) {
+                DB::table('orders')->where('id', $o->id)->update(['delivered_at' => $at]);
+            }
 
             return $at;
         }
         if (!$isDelivered && $o->delivered_at !== null) {
-            DB::table('orders')->where('id', $o->id)->update(['delivered_at' => null]);
+            if ($write) {
+                DB::table('orders')->where('id', $o->id)->update(['delivered_at' => null]);
+            }
 
             return null;
         }

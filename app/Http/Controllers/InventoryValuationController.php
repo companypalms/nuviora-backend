@@ -160,10 +160,12 @@ class InventoryValuationController extends Controller
             ->keyBy('product_id');
 
         $products = Product::all();
+        // Sin órdenes de compra recibidas: la última compra registrada (PurchaseCost), nunca products.cost_usd (2026-10-31)
+        $purchases = PurchaseCost::for();
 
-        $rows = $products->map(function ($p) use ($avgCosts, $stockByProduct) {
+        $rows = $products->map(function ($p) use ($avgCosts, $stockByProduct, $purchases) {
             $salePrice    = (float) ($p->price ?? 0);
-            $baseCost     = (float) ($p->cost_usd ?? 0);
+            $baseCost     = (float) ($purchases->at((int) $p->id) ?? 0);
             $avgPo        = $avgCosts->get($p->id);
             $effectiveCost = $avgPo ? (float) $avgPo->avg_po_cost_usd : $baseCost;
             $stock        = $stockByProduct->get($p->id)?->total_qty ?? 0;
