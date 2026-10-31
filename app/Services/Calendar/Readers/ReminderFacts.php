@@ -46,6 +46,7 @@ class ReminderFacts
             'rate_days' => $this->rateDays($from, $to),
             'goal_months' => array_keys($this->goals->get()['months'] ?? []),
             'meta_analysis_days' => $this->metaAnalysisDays($from, $to),
+            'report_views' => $this->reportViews($from, $to),
         ];
     }
 
@@ -195,6 +196,21 @@ class ReminderFacts
         }
 
         return $days;
+    }
+
+    /**
+     * .48b-2: "tipo|desde|hasta" => la hora en que el dueño abrió por primera vez el reporte del negocio de esas fechas. Un
+     * reporte mira días de antes de su revisión (el mensual, hasta un mes y una semana antes).
+     */
+    private function reportViews(CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $out = [];
+        foreach (\App\Models\BusinessReport::whereNotNull('viewed_at')->where('period_to', '>=', $from->subDays(45)->toDateString())
+            ->where('period_from', '<=', $to->toDateString())->orderBy('viewed_at')->get(['type', 'period_from', 'period_to', 'viewed_at']) as $r) {
+            $out["{$r->type}|{$r->period_from->toDateString()}|{$r->period_to->toDateString()}"] ??= $r->viewed_at->setTimezone(config('app.timezone'))->format('G:i');
+        }
+
+        return $out;
     }
 
     /** Las tasas que hay guardadas (las activas), y cuándo se guardaron. */

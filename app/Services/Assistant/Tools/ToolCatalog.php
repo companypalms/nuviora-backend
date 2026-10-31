@@ -25,6 +25,7 @@ class ToolCatalog
         GoalsTool::class,
         AlertsTool::class,
         CalendarTool::class,
+        BusinessReportTool::class, // .48b-2: el reporte del negocio ya hecho (diario, semanal o mensual)
         // Paso 3: órdenes, inventario, comisiones, cierres, caja, gastos, tasas, usuarios, agencias y ciudades
         FindOrderTool::class,
         OrderHistoryTool::class,

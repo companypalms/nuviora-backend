@@ -246,7 +246,7 @@ describe('Lo que ve OpenAI de las herramientas', function () {
             }
         };
         $definitions = app(ToolCatalog::class)->definitions();
-        expect(count($definitions))->toBe(45); // con "landings" del paso 6c
+        expect(count($definitions))->toBe(46); // con "reporte_negocio" de la .48b-2
         foreach ($definitions as $d) {
             expect($d['strict'])->toBeTrue();
             $check($d['parameters'], $d['name']);

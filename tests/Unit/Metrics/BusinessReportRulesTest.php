@@ -136,3 +136,15 @@ describe('que la IA no invente', function () {
         expect(TextCheck::unknown('Ganaste $1.300,00 y la efectividad subió 12 %.', $source))->toBe(['$1.300,00', '12 %']);
     });
 });
+
+describe('.48b-2: el chat entiende el pedido del reporte', function () {
+    it('"dame el reporte de la semana" es el reporte semanal', function () {
+        expect(\App\Services\Assistant\Ai\ExampleModel::understand('Dame el reporte de la semana'))
+            ->toBe(['name' => 'reporte_negocio', 'arguments' => ['tipo' => 'semanal']]);
+    });
+
+    it('el del mes y el diario', function () {
+        expect(\App\Services\Assistant\Ai\ExampleModel::understand('¿Cómo fue el mes?')['arguments']['tipo'])->toBe('mensual');
+        expect(\App\Services\Assistant\Ai\ExampleModel::understand('Muéstrame el reporte diario')['arguments']['tipo'])->toBe('diario');
+    });
+});

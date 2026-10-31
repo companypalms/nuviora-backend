@@ -21,10 +21,24 @@ class BusinessReportsController extends Controller
         $data = $request->validate([
             'type' => ['nullable', Rule::in(BusinessReport::TYPES)],
             'id' => 'nullable|integer',
+            // .48b-2: el calendario abre el reporte de esas fechas (la última versión)
+            'from' => 'nullable|date_format:Y-m-d',
+            'to' => 'nullable|date_format:Y-m-d',
         ]);
         $type = $data['type'] ?? 'daily';
         $q = BusinessReport::query()->with('requester:id,names')->where('type', $type);
-        $report = isset($data['id']) ? (clone $q)->whereKey($data['id'])->first() : (clone $q)->orderByDesc('period_to')->orderByDesc('version')->first();
+        $missing = null;
+        if (isset($data['id'])) {
+            $report = (clone $q)->whereKey($data['id'])->first();
+        } elseif (isset($data['from'], $data['to'])) {
+            $report = (clone $q)->where('period_from', $data['from'])->where('period_to', $data['to'])->orderByDesc('version')->first();
+            if (!$report) {
+                $missing = ['from' => $data['from'], 'to' => $data['to']];
+                $report = (clone $q)->orderByDesc('period_to')->orderByDesc('version')->first();
+            }
+        } else {
+            $report = (clone $q)->orderByDesc('period_to')->orderByDesc('version')->first();
+        }
         if ($report && $report->viewed_at === null) {
             $report->forceFill(['viewed_at' => now(), 'viewed_by' => Auth::id()])->save();
         }
@@ -32,6 +46,7 @@ class BusinessReportsController extends Controller
         return response()->json([
             'type' => $type,
             'report' => $report ? $this->present($report) : null,
+            'missing' => $missing,
             'history' => BusinessReport::where('type', $type)->orderByDesc('period_to')->orderByDesc('version')->limit(60)
                 ->get(['id', 'period_from', 'period_to', 'version', 'status', 'requested_by', 'created_at'])
                 ->map(fn (BusinessReport $r) => ['id' => $r->id, 'from' => $r->period_from->toDateString(), 'to' => $r->period_to->toDateString(),

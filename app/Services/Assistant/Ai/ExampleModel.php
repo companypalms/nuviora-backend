@@ -81,6 +81,9 @@ class ExampleModel implements AssistantModel
         if ($has('angulo')) {
             return ['name' => 'angulos', 'arguments' => ['producto' => $name]];
         }
+        if ($has('reporte', 'como fue la semana', 'como fue el mes', 'como va el negocio')) {
+            return ['name' => 'reporte_negocio', 'arguments' => ['tipo' => $has('diario', 'dias') ? 'diario' : ($has('mes') ? 'mensual' : 'semanal')]];
+        }
         if ($has('campana', 'meta ads', 'en meta', 'analisis del dia')) {
             return $name !== null ? ['name' => 'campana_producto', 'arguments' => ['producto' => $name, 'grafico' => true]]
                 : ['name' => 'analisis_campanas', 'arguments' => ['fecha' => null]];

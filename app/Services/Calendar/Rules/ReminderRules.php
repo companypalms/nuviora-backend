@@ -70,22 +70,23 @@ final class ReminderRules
             'help' => 'Cada mañana a las 7:00 queda listo el análisis de Meta Ads con tus reglas: lo más urgente primero (qué subir, bajar, pausar o apagar) y el trabajo para los editores. Se tilda solo al abrirlo.',
             'link' => '/meta-ads/analisis',
         ],
+        // .48b-2: cada revisión abre su reporte del negocio y se tilda sola al abrirlo (decisión del dueño, 2026-10-31)
         'review_3days' => [
-            'type' => 'review', 'group' => 'daily', 'repeat' => 'daily', 'accumulates' => false, 'auto' => false,
+            'type' => 'review', 'group' => 'daily', 'repeat' => 'daily', 'accumulates' => false, 'auto' => true,
             'title' => 'Analizar los últimos 3 días',
-            'help' => 'Los números de los 3 días anteriores (hoy no cuenta, todavía no termina): sirven para corregir a tiempo lo que va mal.',
+            'help' => 'Los números de los 3 días anteriores (hoy no cuenta, todavía no termina): sirven para corregir a tiempo lo que va mal. Tu reporte diario sale a las 7:15 y se tilda solo al abrirlo.',
             'link' => null,
         ],
         'review_week' => [
-            'type' => 'review', 'group' => null, 'repeat' => 'weekly', 'accumulates' => true, 'auto' => false,
+            'type' => 'review', 'group' => null, 'repeat' => 'weekly', 'accumulates' => true, 'auto' => true,
             'title' => 'Revisar la semana pasada',
-            'help' => 'El jueves ya llegaron los cierres de las agencias: se puede ver cuánto se ganó, cuánto se perdió y por producto, de lunes a domingo.',
+            'help' => 'El jueves ya llegaron los cierres de las agencias: se puede ver cuánto se ganó, cuánto se perdió y por producto, de lunes a domingo. Tu reporte semanal sale a las 7:15 y se tilda solo al abrirlo.',
             'link' => null,
         ],
         'review_month' => [
-            'type' => 'review', 'group' => null, 'repeat' => 'monthly', 'day' => 8, 'accumulates' => true, 'auto' => false,
+            'type' => 'review', 'group' => null, 'repeat' => 'monthly', 'day' => 8, 'accumulates' => true, 'auto' => true,
             'title' => 'Revisar el mes pasado',
-            'help' => 'Pasada la primera semana, casi todo lo del mes anterior ya se entregó o se canceló y llegaron los cierres: sus números ya son casi definitivos.',
+            'help' => 'Pasada la primera semana, casi todo lo del mes anterior ya se entregó o se canceló y llegaron los cierres: sus números ya son casi definitivos. Tu reporte mensual sale a las 7:15 y se tilda solo al abrirlo.',
             'link' => null,
         ],
         'goals_month' => [
@@ -256,16 +257,14 @@ final class ReminderRules
             case 'review_3days':
                 [$from, $to] = [$d->subDays(3), $d->subDay()];
                 $out['details'] = 'Del ' . Schedule::dayName($from->toDateString()) . ' al ' . Schedule::dayName($to->toDateString()) . '.';
-                $out['link'] = self::panelLink($from, $to);
-                $out['actions'] = [['label' => 'Abrir panel', 'link' => $out['link']]];
+                self::reportReview($out, 'daily', $from, $to, $facts);
                 break;
 
             case 'review_week':
                 [$from, $to] = self::lastWeek($d);
                 $out['details'] = 'Del ' . Schedule::dayName($from->toDateString()) . ' al ' . Schedule::dayName($to->toDateString())
                     . ': cuánto se ganó, cuánto se perdió y por producto.';
-                $out['link'] = self::panelLink($from, $to);
-                $out['actions'] = [['label' => 'Abrir panel', 'link' => $out['link']]];
+                self::reportReview($out, 'weekly', $from, $to, $facts);
                 break;
 
             case 'review_month':
@@ -273,8 +272,7 @@ final class ReminderRules
                 $to = $from->endOfMonth()->startOfDay();
                 $out['title'] = 'Revisar el mes pasado (' . self::monthName($from) . ')';
                 $out['details'] = 'Del ' . $from->format('j/n') . ' al ' . $to->format('j/n') . ': el mes completo.';
-                $out['link'] = self::panelLink($from, $to);
-                $out['actions'] = [['label' => 'Abrir panel', 'link' => $out['link']]];
+                self::reportReview($out, 'monthly', $from, $to, $facts);
                 break;
 
             case 'goals_month':
@@ -432,6 +430,19 @@ final class ReminderRules
     private static function weekLabel(CarbonImmutable $from, CarbonImmutable $to): string
     {
         return 'Del ' . Schedule::dayName($from->toDateString()) . ' al ' . Schedule::dayName($to->toDateString());
+    }
+
+    /**
+     * .48b-2: una revisión abre su reporte del negocio de esas fechas (y el Panel, de segundo) y se tilda sola cuando el
+     * dueño abrió ese reporte (report_views: "tipo|desde|hasta" => la hora).
+     */
+    private static function reportReview(array &$out, string $type, CarbonImmutable $from, CarbonImmutable $to, array $facts): void
+    {
+        $seen = $facts['report_views']["{$type}|{$from->toDateString()}|{$to->toDateString()}"] ?? null;
+        $out['auto_done'] = $seen !== null;
+        $out['auto_note'] = $seen !== null ? "Abriste el reporte a las {$seen}." : null;
+        $out['link'] = '/reportes-negocio?tipo=' . $type . '&desde=' . $from->toDateString() . '&hasta=' . $to->toDateString();
+        $out['actions'] = [['label' => 'Abrir el reporte', 'link' => $out['link']], ['label' => 'Abrir panel', 'link' => self::panelLink($from, $to)]];
     }
 
     /** El Panel del dueño con esas fechas ya puestas. */

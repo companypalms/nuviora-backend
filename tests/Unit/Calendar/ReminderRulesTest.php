@@ -33,25 +33,37 @@ describe('Cuándo tocan', function () use ($on, $dates) {
 });
 
 describe('Qué dicen', function () {
-    it('los últimos 3 días: el lunes, de viernes a domingo, con el panel en esas fechas', function () {
+    it('los últimos 3 días: el lunes, de viernes a domingo, con su reporte y el panel en esas fechas', function () {
         $o = ReminderRules::occurrence('review_3days', '2026-11-02', '2026-11-02', []);
         expect($o['details'])->toBe('Del viernes 30/10 al domingo 1/11.');
-        expect($o['link'])->toBe('/panel-dueno?desde=2026-10-30&hasta=2026-11-01');
-        expect($o['actions'])->toBe([['label' => 'Abrir panel', 'link' => '/panel-dueno?desde=2026-10-30&hasta=2026-11-01']]);
+        expect($o['link'])->toBe('/reportes-negocio?tipo=daily&desde=2026-10-30&hasta=2026-11-01');
+        expect($o['actions'])->toBe([
+            ['label' => 'Abrir el reporte', 'link' => '/reportes-negocio?tipo=daily&desde=2026-10-30&hasta=2026-11-01'],
+            ['label' => 'Abrir panel', 'link' => '/panel-dueno?desde=2026-10-30&hasta=2026-11-01'],
+        ]);
         expect($o['auto_done'])->toBeFalse();
+    });
+
+    it('.48b-2: se tilda sola cuando el dueño abrió el reporte de esas mismas fechas', function () {
+        $facts = ['report_views' => ['weekly|2026-10-26|2026-11-01' => '8:05', 'daily|2026-10-29|2026-10-31' => '7:20']];
+        $o = ReminderRules::occurrence('review_week', '2026-11-05', '2026-11-05', $facts);
+        expect($o['auto_done'])->toBeTrue();
+        expect($o['auto_note'])->toBe('Abriste el reporte a las 8:05.');
+        // El reporte diario de otros días no cuenta para el lunes 2/11 (mira del 30/10 al 1/11)
+        expect(ReminderRules::occurrence('review_3days', '2026-11-02', '2026-11-02', $facts)['auto_done'])->toBeFalse();
     });
 
     it('la semana pasada: el jueves 5 de noviembre mira del lunes 26/10 al domingo 1/11', function () {
         $o = ReminderRules::occurrence('review_week', '2026-11-05', '2026-11-05', []);
         expect($o['details'])->toBe('Del lunes 26/10 al domingo 1/11: cuánto se ganó, cuánto se perdió y por producto.');
-        expect($o['link'])->toBe('/panel-dueno?desde=2026-10-26&hasta=2026-11-01');
+        expect($o['link'])->toBe('/reportes-negocio?tipo=weekly&desde=2026-10-26&hasta=2026-11-01');
     });
 
     it('el mes pasado: octubre completo (aunque se mire el lunes 9)', function () {
         $o = ReminderRules::occurrence('review_month', '2026-11-08', '2026-11-09', []);
         expect($o['title'])->toBe('Revisar el mes pasado (octubre)');
         expect($o['details'])->toBe('Del 1/10 al 31/10: el mes completo.');
-        expect($o['link'])->toBe('/panel-dueno?desde=2026-10-01&hasta=2026-10-31');
+        expect($o['link'])->toBe('/reportes-negocio?tipo=monthly&desde=2026-10-01&hasta=2026-10-31');
     });
 
     it('las metas: se tilda sola cuando están puestas las del mes siguiente', function () {
