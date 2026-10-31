@@ -145,6 +145,15 @@ class MetaQueueController extends Controller
         return response()->json(['batch' => $this->presentOne($batch)]);
     }
 
+    /**
+     * .57: lo que "Subir a Meta" va a crear para este batch (la campaña, el ad set que se copia, el nombre, los anuncios
+     * con sus archivos de Drive y los textos) y lo que lo impide. Es el simulacro: no escribe nada en Meta.
+     */
+    public function uploadPlan(CreativeBatch $batch, \App\Services\Meta\Upload\UploadPlanner $planner)
+    {
+        return response()->json(['plan' => $planner->plan($batch), 'simulation' => true]);
+    }
+
     public function approve(CreativeBatch $batch, BatchQueue $queue)
     {
         return response()->json(['batch' => $this->presentOne($queue->approve($batch, (int) Auth::id()))]);
