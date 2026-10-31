@@ -17,11 +17,13 @@ class CompanyAccount extends Model
         'financial_account_id',
         'details',
         'is_active',
+        'takes_orders', // .60: recibe órdenes nuevas de pago móvil (pausarla sin desactivarla)
     ];
 
     protected $casts = [
         'details' => 'array',
         'is_active' => 'boolean',
+        'takes_orders' => 'boolean',
     ];
 
     protected $appends = ['statement_source_name'];

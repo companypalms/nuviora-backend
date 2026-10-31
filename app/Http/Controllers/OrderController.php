@@ -83,10 +83,32 @@ class OrderController extends Controller
         // Con los pagos nuevos, quién da el vuelto y cuánto (si ya no hay vuelto, la agencia no pone nada)
         ChangeRules::normalize($order);
         $order->save();
+        // .60: con un pago por pago móvil, la orden recibe su cuenta (la que menos Bs lleva hoy). Si falla, los pagos
+        // igual quedan guardados: la cuenta se pide otra vez al volver a guardarlos
+        try {
+            app(\App\Services\Payments\PaymentAccounts::class)->ensure($order);
+        } catch (\Throwable $e) {
+            report($e);
+        }
         // Los comprobantes ya leídos se comparan otra vez con los pagos nuevos (sin volver a llamar a la IA)
         app(\App\Services\Payments\ReceiptChecker::class)->evaluateOrder($order);
 
         return response()->json(['status' => true, 'order' => $order->fresh('payments')]);
+    }
+
+    /** .60: el Admin cambia a mano la cuenta de pago móvil de una orden (por ejemplo, si el banco le bloqueó una). */
+    public function updatePaymentAccount(Request $request, Order $order, \App\Services\Payments\PaymentAccounts $accounts)
+    {
+        $data = $request->validate(['company_account_id' => 'required|integer|exists:company_accounts,id']);
+        $account = \App\Models\CompanyAccount::findOrFail($data['company_account_id']);
+        if ($account->method !== \App\Services\Payments\PaymentAccounts::KIND || !$account->is_active) {
+            return response()->json(['status' => false, 'message' => 'Elige una cuenta de pago móvil activa.'], 422);
+        }
+        if ((int) $order->payment_account_id !== $account->id) {
+            $accounts->change($order, $account, Auth::id());
+        }
+
+        return response()->json(['status' => true, 'payment_account' => \App\Services\Payments\PaymentAccounts::present($account)]);
     }
 
     public function autoAssignCities()
@@ -156,6 +178,7 @@ class OrderController extends Controller
             'locationReviews', // 👈 enviamos al front
             'rejectionReviews', // 👈 enviamos al front
             'payments', // 👈 incluimos pagos
+            'paymentAccount', // .60: la cuenta de pago móvil de la orden
             'paymentReceipts.check', // 👈 Payment Receipts Gallery, con la revisión de la IA
             'agency', // 👈 incluimos agencia (viejo)
             'warehouse', // 👈 incluimos agencia regional (nuevo SCM)
@@ -224,6 +247,8 @@ class OrderController extends Controller
                 'location_reviews'     => $order->locationReviews,
                 'rejection_reviews'    => $order->rejectionReviews,
                 'payments'             => $order->payments, 
+                // .60: la cuenta de pago móvil a la que le paga el cliente (la plantilla de la agencia la trae al final)
+                'payment_account'      => \App\Services\Payments\PaymentAccounts::present($order->paymentAccount),
                 'payment_receipt'      => $order->payment_receipt,
                 'payment_receipt_url'  => $order->payment_receipt_url,
                 'reminder_at'          => $order->reminder_at,

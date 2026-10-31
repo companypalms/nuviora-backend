@@ -94,6 +94,12 @@ class Order extends Model
         return $this->hasMany(OrderPayment::class);
     }
 
+    /** .60: la cuenta de pago móvil a la que le paga el cliente (Services\Payments\PaymentAccounts). */
+    public function paymentAccount()
+    {
+        return $this->belongsTo(CompanyAccount::class, 'payment_account_id');
+    }
+
     public function paymentReceipts()
     {
         return $this->hasMany(PaymentReceipt::class);

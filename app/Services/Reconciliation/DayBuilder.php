@@ -159,7 +159,7 @@ class DayBuilder
 
     private function fromCheck(PaymentReceipt $receipt, ReceiptCheck $check, Order $order, Collection $accounts): array
     {
-        $account = $check->company_account_id ? $accounts->firstWhere('id', $check->company_account_id) : $this->onlyAccount($accounts, $check->kind);
+        $account = $check->company_account_id ? $accounts->firstWhere('id', $check->company_account_id) : $this->onlyAccount($accounts, $check->kind, $order);
 
         return [
             'receipt_check_id' => $check->id,
@@ -180,7 +180,7 @@ class DayBuilder
 
     private function withoutData(PaymentReceipt $receipt, string $kind, Order $order, Collection $accounts): array
     {
-        $account = $this->onlyAccount($accounts, $kind);
+        $account = $this->onlyAccount($accounts, $kind, $order);
 
         return [
             'receipt_check_id' => null,
@@ -201,11 +201,16 @@ class DayBuilder
     }
 
     /** Si el método tiene una sola cuenta activa, el pago fue a esa (§13). */
-    private function onlyAccount(Collection $accounts, string $kind): ?CompanyAccount
+    /** La cuenta cuando el comprobante no la dice: la única activa del método o, con varias (`.60`), la de la orden. */
+    private function onlyAccount(Collection $accounts, string $kind, ?Order $order = null): ?CompanyAccount
     {
         $active = $accounts->where('method', $kind)->where('is_active', true);
+        if ($active->count() === 1) {
+            return $active->first();
+        }
+        $own = $order?->payment_account_id ? $accounts->firstWhere('id', (int) $order->payment_account_id) : null;
 
-        return $active->count() === 1 ? $active->first() : null;
+        return $own && $own->method === $kind ? $own : null;
     }
 
     /** La fecha que dice el comprobante, si es razonable: hasta una semana antes de subirlo. */

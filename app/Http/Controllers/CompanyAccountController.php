@@ -5,14 +5,25 @@ namespace App\Http\Controllers;
 use App\Models\CompanyAccount;
 use App\Models\StatementSource;
 use App\Services\Finance\CashAccounts;
+use App\Services\Payments\PaymentAccounts;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 /** Tasa y pagos › Cuentas de la empresa. Las reglas y el alta están en Services\Finance\CashAccounts (las comparte con el asistente). */
 class CompanyAccountController extends Controller
 {
-    public function index()
+    public function index(PaymentAccounts $payments)
     {
-        return response()->json(CompanyAccount::with('statementSource')->get());
+        $accounts = CompanyAccount::with('statementSource')->get();
+        // .60: lo que lleva hoy cada cuenta de pago móvil (órdenes y Bs), para ver cómo se reparte. Solo administración
+        if (in_array(Auth::user()?->role?->description, ['Admin', 'Gerente', 'Master'], true)) {
+            $today = $payments->today();
+            foreach ($accounts->where('method', PaymentAccounts::KIND) as $a) {
+                $a->setAttribute('today', $today[$a->id] ?? ['orders' => 0, 'bs' => 0.0]);
+            }
+        }
+
+        return response()->json($accounts);
     }
 
     /**

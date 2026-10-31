@@ -240,7 +240,7 @@ class ReceiptChecker
                 if ($kindPayments->isEmpty()) {
                     $list[] = $this->fail('El comprobante es de ' . self::KIND_LABEL[$kind] . ", pero el pago está registrado como {$methodsText}.", 'kind');
                 } else {
-                    [$destination, $accountIds[$check->id]] = $this->checkDestination($kind, $d, $accounts->where('kind', $kind));
+                    [$destination, $accountIds[$check->id]] = $this->checkDestination($kind, $d, $accounts->where('kind', $kind), $order->payment_account_id ? (int) $order->payment_account_id : null);
                     $list = array_merge($list, $destination);
                 }
                 if (($d['estado'] ?? null) === 'rechazada') {
@@ -311,6 +311,14 @@ class ReceiptChecker
             if (!in_array($check->kind, ['ilegible', 'otro'], true) && ($check->extracted['confianza'] ?? 'alta') !== 'alta'
                 && !in_array('review', array_column($list, 'code'), true)) {
                 $list[] = $this->warn('La imagen no se ve del todo bien. Pide al cliente una foto o un capture más claro.', 'blurry');
+            }
+            // .60: fue a otra cuenta de la empresa, no a la de la orden: es dinero de la empresa y vale igual. Solo se
+            // anota (nivel "info": no cambia el resultado ni la deja en "Revisar"), al final de la lista
+            $paidTo = $accountIds[$check->id] ?? null;
+            if ($paidTo && $order->payment_account_id && $paidTo !== (int) $order->payment_account_id
+                && ($own = $accounts->firstWhere('id', (int) $order->payment_account_id)) && $own['kind'] === $check->kind) {
+                $list[] = ['level' => 'info', 'code' => 'other_account',
+                    'text' => 'Pagó a la cuenta «' . $accounts->firstWhere('id', $paidTo)['name'] . "», no a la de esta orden («{$own['name']}»). Es de la empresa: vale igual."];
             }
             $levels = array_column($list, 'level');
             $status = $check->kind === 'ilegible' ? ReceiptCheck::UNREADABLE
@@ -684,10 +692,11 @@ class ReceiptChecker
     /**
      * A qué cuenta de la empresa fue el pago. Puede haber varias cuentas del mismo método (documento de Fran del
      * 2026-10-06, §13: Mercantil, Banesco…): vale la que mejor coincide con lo que muestra el comprobante, y cada
-     * pago guarda su cuenta. Si el comprobante no la deja ver y el método tiene una sola cuenta activa, es esa.
+     * pago guarda su cuenta. Si el comprobante no la deja ver y el método tiene una sola cuenta activa, es esa; con
+     * varias (`.60`: una por orden), la de la orden.
      * @return array{0: array, 1: ?int} los avisos y el id de la cuenta (null si no se sabe o no es de la empresa)
      */
-    private function checkDestination(string $kind, array $d, Collection $accounts): array
+    private function checkDestination(string $kind, array $d, Collection $accounts, ?int $orderAccountId = null): array
     {
         $label = self::KIND_LABEL[$kind];
         if ($accounts->isEmpty()) {
@@ -696,9 +705,12 @@ class ReceiptChecker
         $best = null;
         foreach ($accounts as $account) {
             $result = $this->compareDestination($kind, $d, $account);
-            // A igual coincidencia, mejor una cuenta activa
-            if ($best === null || $result['rank'] > $best['rank'] || ($result['rank'] === $best['rank'] && $account['active'] && !$best['account']['active'])) {
-                $best = $result + ['account' => $account];
+            // A igual coincidencia, la que más datos tiene iguales (`.60`: las cuentas del dueño suelen tener la misma
+            // cédula, y a veces el mismo teléfono en otro banco: entonces decide el banco), después la de la orden y
+            // al final una activa
+            $key = [$result['rank'], $result['score'], $orderAccountId && $account['id'] === $orderAccountId ? 1 : 0, $account['active'] ? 1 : 0];
+            if ($best === null || ($key <=> $best['key']) > 0) {
+                $best = $result + ['account' => $account, 'key' => $key];
             }
         }
         $list = $best['account']['active'] ? [] : [$this->warn("La cuenta de {$label} está desactivada en Cuentas bancarias.", 'account')];
@@ -706,6 +718,7 @@ class ReceiptChecker
         $accountId = match (true) {
             $best['rank'] >= 2 => $best['account']['id'],
             $best['rank'] === 1 && $active->count() === 1 => $active->first()['id'],
+            $best['rank'] === 1 && $orderAccountId && $accounts->contains('id', $orderAccountId) => $orderAccountId,
             default => null,
         };
 
@@ -714,7 +727,8 @@ class ReceiptChecker
 
     /**
      * Compara el destino del comprobante con una cuenta de la empresa.
-     * @return array{rank: int, issues: array} rank: 3 coincide, 2 parecido, 1 no se ve, 0 es otra cuenta
+     * @return array{rank: int, score: int, issues: array} rank: 3 coincide, 2 parecido, 1 no se ve, 0 es otra cuenta;
+     *         score: cuántos datos coinciden (para elegir entre varias cuentas con el mismo rank)
      */
     private function compareDestination(string $kind, array $d, array $account): array
     {
@@ -739,6 +753,9 @@ class ReceiptChecker
                 $grades[$name] = $best ?? ['unknown', null];
             }
             $levels = array_column($grades, 0);
+            $bankRead = $d['banco_destino'] ?? null;
+            $sameBank = $bankRead && $account['bank'] ? $this->sameBank($bankRead, $account['bank']) : null;
+            $score = 2 * count(array_keys($levels, 'exact', true)) + count(array_keys($levels, 'near', true)) + ($sameBank === true ? 1 : ($sameBank === false ? -1 : 0));
             $read = fn (string $grade) => implode(' y ', array_map(fn ($name) => "{$name} de destino es {$grades[$name][1]}", array_keys(array_filter($grades, fn ($g) => $g[0] === $grade))));
             $wrong = false;
             if (in_array('exact', $levels, true)) {
@@ -769,6 +786,7 @@ class ReceiptChecker
         } else {
             $same = $this->sameMasked(mb_strtolower(trim((string) ($d['receptor_correo'] ?? ''))) ?: null, mb_strtolower((string) $account['email']) ?: null, true);
             $rank = $same === true ? 3 : ($same === null ? 1 : 0);
+            $score = 0;
             if ($same === false) {
                 $list[] = $this->fail("El pago por {$label} no fue a la cuenta de la empresa: el correo de destino es {$d['receptor_correo']}.", 'destination');
             } elseif ($same === null) {
@@ -776,7 +794,7 @@ class ReceiptChecker
             }
         }
 
-        return ['rank' => $rank, 'issues' => $list];
+        return ['rank' => $rank, 'score' => $score, 'issues' => $list];
     }
 
     private function checkDate(array $d, $uploadedAt): ?array
@@ -941,6 +959,7 @@ class ReceiptChecker
 
             return [
                 'id' => $a->id,
+                'name' => $a->name,
                 'kind' => $a->method,
                 'active' => (bool) $a->is_active,
                 'phone' => $field('telefono'),

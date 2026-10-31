@@ -392,6 +392,7 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
     Route::post('/deliverers/{id}/stock/return', [DelivererStockController::class, 'return']);
 
     Route::put('/orders/{order}/payment', [OrderController::class, 'updatePayment'])->middleware('order.access');
+    Route::put('/orders/{order}/payment-account', [OrderController::class, 'updatePaymentAccount'])->middleware('role:Admin');
     Route::put('/orders/{order}/change', [OrderController::class, 'updateChange'])->middleware('order.access');
     Route::get('/order/{order}/products', [OrderController::class, 'getOrderProducts']);
     Route::put('/orders/{order}/location', [OrderController::class, 'addLocation'])->middleware('order.access');

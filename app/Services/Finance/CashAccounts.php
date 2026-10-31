@@ -59,6 +59,7 @@ class CashAccounts
             'statement_source_name' => 'nullable|string|max:60',
             'details' => 'nullable|array',
             'is_active' => 'boolean',
+            'takes_orders' => 'boolean',
         ];
     }
 
