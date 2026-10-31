@@ -6,7 +6,6 @@ use App\Http\Controllers\BankController;
 use App\Http\Controllers\BusinessController;
 use App\Http\Controllers\CompanyAccountController;
 use App\Http\Controllers\CityController;
-use App\Http\Controllers\CommissionController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\CurrencyController;
 use App\Http\Controllers\DelivererStockController;
@@ -329,8 +328,6 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
     Route::post('/deliverer/stock/assign', [DelivererStockController::class, 'assign']);
     Route::post('/deliverer/stock/return', [DelivererStockController::class, 'return']);
 
-    Route::get('/commissions/me/today', [CommissionController::class, 'myToday']);
-    Route::get('/commissions/admin/summary', [CommissionController::class, 'adminSummary']); // ?from=YYYY-MM-DD&to=...
     // Productos
     Route::get('/inventory/products', [ProductController::class, 'index']);
     Route::post('/inventory/products', [ProductController::class, 'store'])->middleware('role:Admin,Gerente,Master');

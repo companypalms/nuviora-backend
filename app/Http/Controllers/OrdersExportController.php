@@ -56,8 +56,11 @@ class OrdersExportController extends Controller
                 $cancelledAt = $order->cancelled_at  ? Carbon::parse($order->cancelled_at)  : null;
                 $scheduledFor = $order->scheduled_for ? Carbon::parse($order->scheduled_for) : null;
 
-                $durationHours = ($createdAt && $processedAt)
-                    ? round($createdAt->diffInMinutes($processedAt) / 60, 2)
+                // .58: la fecha real de entrega (delivered_at, la que mantiene el sistema venga de donde venga el
+                // "Entregado"); processed_at solo se ponía al entregar desde una pantalla
+                $deliveredAt = $order->status?->description === 'Entregado' && $order->delivered_at ? Carbon::parse($order->delivered_at) : null;
+                $durationHours = ($createdAt && $deliveredAt)
+                    ? round($createdAt->diffInMinutes($deliveredAt) / 60, 2)
                     : null;
 
                 // Products summary: "Producto A x2, Producto B x1"
@@ -131,6 +134,7 @@ class OrdersExportController extends Controller
                     // ── Fechas y tiempos ──────────────────────────────────────
                     'created_at'          => $createdAt?->format('Y-m-d H:i:s'),
                     'processed_at'        => $processedAt?->format('Y-m-d H:i:s'),
+                    'delivered_at'        => $deliveredAt?->format('Y-m-d H:i:s'),
                     'cancelled_at'        => $cancelledAt?->format('Y-m-d H:i:s'),
                     'scheduled_for'       => $scheduledFor?->format('Y-m-d H:i:s'),
                     'created_weekday'     => $createdAt?->locale('es')->dayName,
