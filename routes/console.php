@@ -75,6 +75,8 @@ try {
     Schedule::command('meta:analyze')->dailyAt('07:00')->withoutOverlapping(30);
     // .48b: los reportes del negocio del asistente (los días de las revisiones del calendario), con el CPA y Meta al día
     Schedule::command('metrics:report')->dailyAt('07:15')->withoutOverlapping(30);
+    // .55: los videos de los creativos ganadores (con sus estados de las 06:45 al día), hasta 40 por día
+    Schedule::command('meta:transcribe')->dailyAt('07:30')->withoutOverlapping(60);
     // Reportes (entrega 4): los automáticos (diario D-3, semanal, mensual, §53 a §55) se generan solos cuando les toca;
     // cada noche, después de recalcular las órdenes, los recientes sacan versión nueva si cambiaron sus cifras (§20, §21)
     // `.48c` (decisión del dueño, 2026-10-31): apagados. Los reemplazan los reportes del negocio del asistente

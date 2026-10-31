@@ -93,7 +93,20 @@ class MetaReportController extends Controller
             }
         }
 
+        // .55: lo que dicen sus videos (se transcriben solo los de los creativos ganadores)
+        $videoIds = \App\Models\MetaAd::where('meta_creative_ref_id', $creative->id)->whereNotNull('video_id')->where('video_id', '<>', '')
+            ->distinct()->pluck('video_id')->map(fn ($v) => (string) $v);
+        $transcripts = [
+            'has_video' => $videoIds->isNotEmpty(),
+            'transcribes' => in_array($creative->status, \App\Services\Meta\Videos\VideoTranscriber::WINNERS, true),
+            'items' => \App\Models\MetaVideoTranscript::whereIn('video_id', $videoIds)->orderByDesc('transcribed_at')->get()
+                ->map(fn ($t) => ['video_id' => $t->video_id, 'status' => $t->status, 'status_label' => \App\Models\MetaVideoTranscript::LABELS[$t->status] ?? $t->status,
+                    'hook' => $t->hook, 'text' => $t->text, 'error' => $t->status === 'done' ? null : $t->error,
+                    'transcribed_at' => $t->transcribed_at?->toIso8601String()])->values(),
+        ];
+
         return $this->json([
+            'transcripts' => $transcripts,
             'decision' => $decision,
             'creative' => ['id' => $creative->id, 'tracking_id' => $creative->tracking_id, 'label' => $creative->displayName(),
                 'type' => $creative->type, 'status' => $creative->status, 'status_source' => $creative->status_source,
