@@ -12,8 +12,8 @@ use Illuminate\Support\Facades\DB;
  * Métricas del grupo de la Líder (Fran, 2026-09-26: "todo lo referente a su grupo de vendedoras").
  *
  * Las órdenes del período son las creadas en esas fechas, y cada una cuenta para la PRIMERA vendedora
- * a la que se le asignó: la misma regla que la pantalla Métricas del Admin (MetricsController, 2A),
- * para que los números coincidan. Sobre esas órdenes:
+ * a la que se le asignó: la misma regla que usaba la pantalla vieja Métricas del Admin (2A, quitada en la `.47`).
+ * Sobre esas órdenes:
  * - efectividad = entregadas por ella misma ÷ asignadas (spec §8.1);
  * - cancelaciones = las que hoy están en Cancelado ÷ asignadas;
  * - a agencia = las que llegaron alguna vez a "Asignar a agencia" ÷ asignadas;

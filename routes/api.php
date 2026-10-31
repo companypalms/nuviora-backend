@@ -532,14 +532,6 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
     Route::post('shops/{shop}/assign-sellers', [\App\Http\Controllers\ShopController::class, 'assignSellers']);
 
     /**---------------------
-     * METRICS
-     * ---------------------**/
-    Route::get('metrics', [\App\Http\Controllers\MetricsController::class, 'index'])->middleware('role:Admin,Gerente,Master');
-    Route::get('business-metrics', [\App\Http\Controllers\BusinessMetricsController::class, 'index'])->middleware('role:Admin,Master');
-    Route::post('metrics/ad-spend', [\App\Http\Controllers\MetricsController::class, 'storeAdSpend'])->middleware('role:Admin,Gerente,Master');
-
-
-    /**---------------------
      * CITIES (lectura para todos; ciudades, agencias y precio por carrera solo los edita supervisión)
      * ---------------------**/
     Route::apiResource('cities', CityController::class)->only(['index', 'show']);

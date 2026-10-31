@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Order;
 use App\Models\Earning;
+use App\Models\RiderPayout;
 use App\Models\Setting;
 use Illuminate\Support\Facades\DB;
 
@@ -46,7 +47,10 @@ class CommissionService
         // R11 (Módulo 4): el repartidor propio cobra su monto fijo o su tarifario por distancia. Se calcula una sola vez,
         // fuera de la transacción (puede consultar Google Routes), y queda en la auditoría con su base.
         $delivererCost = null;
-        if ($order->deliverer_id && !Earning::where('order_id', $order->id)->where('role_type', 'repartidor')->exists()) {
+        if ($order->deliverer_id) {
+            $this->dropOtherRidersUnpaid($order);
+        }
+        if ($order->deliverer_id && !Earning::where('order_id', $order->id)->where('role_type', 'repartidor')->where('user_id', $order->deliverer_id)->exists()) {
             $delivererCost = app(\App\Services\Finance\OwnDelivererCost::class)->forOrder($order);
             $amounts['deliverer'] = $delivererCost['amount'];
         }
@@ -107,5 +111,23 @@ class CommissionService
             }
 
         });
+    }
+
+    /**
+     * `.47`: la orden se volvió a entregar con otro repartidor (el Admin cambió el repartidor de una orden entregada).
+     * La comisión del anterior se borra, salvo que ya se le haya pagado en su cierre del día (RiderPay): esa plata ya
+     * salió, así que se queda. Antes quedaban las dos aunque no se hubiera pagado ninguna.
+     */
+    private function dropOtherRidersUnpaid(Order $order): void
+    {
+        $others = Earning::where('order_id', $order->id)->where('role_type', 'repartidor')->where('user_id', '<>', $order->deliverer_id)->get();
+        foreach ($others as $earning) {
+            $paid = RiderPayout::where('rider_id', $earning->user_id)->whereDate('pay_date', $earning->earning_date)->get()
+                ->contains(fn (RiderPayout $p) => collect($p->details['carreras'] ?? [])
+                    ->contains(fn ($t) => ($t['concept'] ?? null) === 'entrega' && (int) ($t['order_id'] ?? 0) === (int) $order->id));
+            if (!$paid) {
+                $earning->delete();
+            }
+        }
     }
 }
