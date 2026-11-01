@@ -156,4 +156,23 @@ final class EditorRules
 
         return $out + ['total' => array_sum($out)];
     }
+
+    /**
+     * `.63`: el resultado de un batch para el editor, sin números ni ciudades: "Ganó", "Perdió", "Empate" o, si todavía
+     * no terminó, "En test" / "Por lanzar". Ganó si en alguna ciudad salió ganador; perdió si en todas salió perdedor.
+     *
+     * @param list<array{key: string}> $verdicts
+     */
+    public static function result(string $status, array $verdicts): string
+    {
+        if ($status !== 'tested') {
+            return $status === 'testing' ? 'En test' : 'Por lanzar';
+        }
+        $keys = array_column($verdicts, 'key');
+        if (array_intersect($keys, ['promising', 'proven'])) {
+            return 'Ganó';
+        }
+
+        return $keys !== [] && !array_diff($keys, ['loser']) ? 'Perdió' : 'Empate';
+    }
 }

@@ -125,11 +125,14 @@ class QueueProposer
         $batch = CreativeBatch::create([
             'product_id' => $p['product_id'], 'kind' => $p['kind'], 'angle_code' => $angle, 'concept' => mb_substr((string) $clean($t['concepto'] ?? null), 0, 120) ?: null,
             'hypothesis' => $hypothesis, 'audience' => mb_substr((string) $clean($t['publico'] ?? null), 0, 255) ?: null,
+            // .63: lo que buscamos y lo que hay que mejorar, para el editor
+            'goal' => $clean($t['objetivo'] ?? null), 'improve' => $clean($t['mejorar'] ?? null),
             'reference_creative_id' => $p['reference_id'], 'learning_city_id' => $p['city_id'], 'format' => $p['format'], 'keep' => $clean($t['conservar'] ?? null),
             'offer' => $p['context']['price'] ? 'Precio ' . $p['context']['price'] : null, 'deliverables' => $clean($t['entregables'] ?? null),
             'urgency' => $p['urgency'], 'source' => 'rules', 'proposed_on' => $today, 'status' => 'proposed', 'status_at' => now(), 'created_by' => $userId,
         ]);
-        $texts = array_values(array_slice((array) ($t['piezas'] ?? []), 0, $p['pieces']));
+        // .63: una idea por versión (sugerencias; el editor decide cómo)
+        $texts = array_values(array_slice((array) ($t['ideas'] ?? []), 0, $p['pieces']));
         for ($i = 0; $i < $p['pieces']; $i++) {
             CreativeBatchPiece::create(['creative_batch_id' => $batch->id, 'position' => $i + 1, 'change' => $clean($texts[$i] ?? null)]);
         }
@@ -151,6 +154,9 @@ class QueueProposer
                 ->mapWithKeys(fn ($a) => [$a->code => trim(($a->name ?? '') . ($a->hypothesis ? ": {$a->hypothesis}" : ''))])->all(),
             'reference_texts' => $refTexts,
             'reference_video' => $p['reference_id'] ? ($decisions[$pid]['creatives'][$p['reference_id']]['video']['diagnosis'] ?? []) : [],
+            // .63: cómo le fue a cada parte del video (hook, retención, clic, compra) y dónde se va la gente
+            'reference_grades' => $p['reference_id'] ? ($decisions[$pid]['creatives'][$p['reference_id']]['video']['grades'] ?? []) : [],
+            'reference_leaves' => $p['reference_id'] ? ($decisions[$pid]['creatives'][$p['reference_id']]['video']['leaves'] ?? null) : null,
             // .56: lo que dice el video de la referencia (si es un ganador transcrito)
             'reference_script' => $p['reference_id'] ? (\App\Services\Meta\Videos\Scripts::forCreatives([$p['reference_id']])[$p['reference_id']] ?? null) : null,
         ];

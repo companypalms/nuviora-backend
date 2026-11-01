@@ -105,13 +105,31 @@ describe('Lo que lee la IA', function () {
         $input = QueueWriter::input([$base, ['key' => 'E2', 'product' => 'Loli'] + array_replace($base, ['context' => ['proof' => null, 'price' => null, 'angles' => []]])], []);
         expect($input)->toContain('Avales y pruebas reales: Registro sanitario 1234')
             ->toContain('Avales y pruebas reales: ninguno (no inventes)')
-            ->toContain('== ENCARGO E1 · FlexiStep · U1 · iteración · 3 piezas')
+            ->toContain('== ENCARGO E1 · FlexiStep · U1 · iteración · 3 versiones')
             ->toContain('texto del anuncio: Camina sin dolor');
     });
 
     it('sin IA, la plantilla respeta la cantidad de piezas', function () {
         $p = ['key' => 'E1', 'kind' => 'iteration', 'reference' => 'C004 FASP', 'iterate' => 'el hook', 'pieces' => 3, 'format' => 'video'];
         $t = QueueWriter::example([$p], [])['encargos'][0];
-        expect($t['clave'])->toBe('E1')->and($t['piezas'])->toHaveCount(3)->and($t['entregables'])->toBe('3 videos 9:16');
+        expect($t['clave'])->toBe('E1')->and($t['ideas'])->toHaveCount(3)->and($t['entregables'])->toBe('3 videos 9:16');
+        // .63: la plantilla también explica el objetivo, sin dictar las piezas
+        expect($t['objetivo'])->toContain('3 versiones bien distintas')->and($t['mejorar'])->not->toBe('');
+    });
+});
+
+describe('.63: la IA explica qué se busca', function () {
+    it('le cuenta cómo le fue al video, en palabras y sin números', function () {
+        expect(QueueWriter::videoWords(['hook' => 'good', 'hold' => 'weak', 'ctr' => 'ok', 'conversion' => null], 'body'))
+            ->toBe('el hook engancha muy bien; la gente no se queda viendo; la gente toca el anuncio; se van en la parte del medio');
+        expect(QueueWriter::videoWords([], null))->toBe('');
+    });
+
+    it('lo lee la IA en cada encargo con referencia', function () {
+        $p = ['key' => 'E1', 'product' => 'FlexiStep', 'urgency' => 1, 'kind' => 'iteration', 'pieces' => 3, 'reason' => 'x', 'iterate' => 'la duración o el ritmo',
+            'angle_code' => null, 'reference' => 'C004', 'reference_type' => 'video', 'city' => null,
+            'context' => ['proof' => null, 'price' => null, 'angles' => [], 'reference_texts' => [], 'reference_video' => [],
+                'reference_grades' => ['hook' => 'good', 'hold' => 'weak'], 'reference_leaves' => 'body']];
+        expect(QueueWriter::input([$p], []))->toContain('cómo le fue, en palabras: el hook engancha muy bien; la gente no se queda viendo; se van en la parte del medio');
     });
 });

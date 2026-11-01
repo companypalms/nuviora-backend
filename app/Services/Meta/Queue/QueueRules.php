@@ -129,20 +129,22 @@ final class QueueRules
     }
 
     /**
-     * El encargo en texto, para mandárselo al editor (botón "Copiar").
+     * El encargo en texto, para mandárselo al editor (botón "Copiar"). `.63`: es para el editor, así que no lleva nada del
+     * proceso del dueño (ni la prioridad, ni la hipótesis, ni la ciudad de prueba): lo que buscamos, lo que funcionó, lo
+     * que hay que mejorar y las ideas para cada versión.
      *
-     * @param array $b el encargo como lo arma la pantalla (MetaQueueController::present)
+     * @param array $b el encargo como lo arma la pantalla (MetaQueueController::present o EditorWork::present)
      */
     public static function brief(array $b): string
     {
-        $lines = ['ENCARGO ' . ($b['code'] ?? '(sin aprobar)') . " · {$b['product']}" . ($b['urgency'] ? " · U{$b['urgency']}" : '')];
+        $lines = ['ENCARGO ' . ($b['code'] ?? '(sin aprobar)') . " · {$b['product']}"];
         $kind = self::KINDS[$b['kind']] ?? $b['kind'];
         $lines[] = "Tipo: {$kind}" . ($b['reference'] ? " (referencia: {$b['reference']})" : '');
         if ($b['angle_code']) {
             $lines[] = "Ángulo: {$b['angle_code']}" . ($b['angle_name'] ? " ({$b['angle_name']})" : '');
         }
-        foreach (['concept' => 'Concepto', 'hypothesis' => 'Hipótesis', 'audience' => 'Dolor o público', 'city' => 'Ciudad de aprendizaje',
-            'offer' => 'Oferta', 'keep' => 'Conservar'] as $key => $label) {
+        foreach (['goal' => 'Lo que buscamos', 'keep' => 'Lo que funcionó (no lo cambies)', 'improve' => 'Lo que hay que mejorar',
+            'concept' => 'Concepto', 'audience' => 'Dolor o público', 'offer' => 'Oferta'] as $key => $label) {
             if (($b[$key] ?? null) !== null && trim((string) $b[$key]) !== '') {
                 $lines[] = "{$label}: " . trim((string) $b[$key]);
             }
@@ -151,7 +153,7 @@ final class QueueRules
             $lines[] = 'Formato: ' . (self::FORMATS[$b['format']] ?? $b['format']);
         }
         if ($b['pieces']) {
-            $lines[] = 'Piezas:';
+            $lines[] = 'Ideas para cada versión (tú decides cómo):';
             foreach ($b['pieces'] as $i => $p) {
                 $lines[] = ($i + 1) . '. ' . ($p['code'] ? "{$p['code']} — " : '') . (trim((string) $p['change']) !== '' ? trim((string) $p['change']) : 'sin detalle')
                     . ($p['format'] && $p['format'] !== $b['format'] ? ' (' . mb_strtolower(self::FORMATS[$p['format']] ?? $p['format']) . ')' : '');

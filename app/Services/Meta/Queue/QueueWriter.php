@@ -6,13 +6,16 @@ use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
 /**
- * La IA que redacta los encargos que proponen las reglas (Etapa 5, paso 4b): la hipótesis, el público, el concepto, qué se
- * conserva, qué cambia en cada pieza y los entregables; y el aprendizaje de los batches que ya se testearon. El tipo, la
- * referencia, la ciudad y cuántos son de las reglas: la IA no los cambia.
+ * La IA que redacta los encargos que proponen las reglas (Etapa 5, paso 4b) y el aprendizaje de los batches que ya se
+ * testearon. El tipo, la referencia, la ciudad y cuántos son de las reglas: la IA no los cambia.
  *
- * El tono lo pidió el dueño (2026-10-30): fuerte y agresivo, con promesas claras de resultado. Lo único que no escribe es
- * que el producto cura una enfermedad, ni avales, médicos o estudios que no estén en los datos: los avales reales los
- * pone el dueño en cada producto y se usan tal cual.
+ * `.63` (pedido del dueño del 2026-11-01): la IA no le dicta al editor el creativo exacto, le explica qué se busca: lo
+ * que buscamos, lo que funcionó (no se toca), lo que hay que mejorar e ideas para cada versión (el editor decide cómo).
+ * Y escribe para el editor: nada de números del negocio, reglas ni prioridades (el proceso del dueño no se le cuenta). La
+ * hipótesis sigue, solo para el dueño.
+ *
+ * El tono de los anuncios lo pidió el dueño (2026-10-30): fuerte y agresivo, con promesas claras de resultado. Lo único
+ * que no se escribe es que el producto cura una enfermedad, ni avales, médicos o estudios que no estén en los datos.
  *
  * Como el análisis de la mañana: la Responses API de OpenAI con un JSON estricto y sin guardar nada (store: false). Sin
  * OPENAI_API_KEY se redacta con una plantilla (example).
@@ -20,25 +23,30 @@ use RuntimeException;
 class QueueWriter
 {
     private const INSTRUCTIONS = <<<'TXT'
-Eres el director creativo de una tienda online de Venezuela que vende con anuncios de Facebook e Instagram y cobra contra entrega. Escribes los encargos de creativos para los editores de video, en español sencillo y directo.
-Recibes los encargos que ya decidieron las reglas del dueño: el producto, el tipo (iteración, concepto nuevo, ángulo nuevo o arriba del embudo), el ángulo, el creativo de referencia con sus textos y lo que dice su video, la ciudad, qué iterar y cuántas piezas lleva. No cambies nada de eso: redáctalo.
-El tono es el que pide el dueño: fuerte y agresivo. Hooks que pegan en el primer segundo, promesas claras de resultado y de alivio, urgencia. Nada tibio.
-Reglas que no puedes romper:
+Eres el director creativo de una tienda online de Venezuela que vende con anuncios de Facebook e Instagram y cobra contra entrega. Escribes los encargos de creativos para los editores de video, en español sencillo, claro y directo, como si le hablaras al editor.
+Recibes los encargos que ya decidieron las reglas del dueño: el producto, el tipo (iteración, concepto nuevo, ángulo nuevo o arriba del embudo), el ángulo, el creativo de referencia con sus textos, lo que dice su video y cómo le fue a cada parte del video, y cuántas versiones lleva. No cambies nada de eso: redáctalo.
+Tu trabajo NO es decirle al editor qué video hacer: es explicarle qué estamos buscando, qué funcionó y qué hay que mejorar, y darle ideas. El editor es el creativo y decide cómo hacerlo.
+Así se escribe una iteración (ejemplo): si el hook funcionó y la gente se va en la parte del medio, el objetivo es "3 versiones bien distintas entre sí, con el mismo hook, que hagan que la gente se quede hasta el final"; lo que funcionó es "el hook: engancha muy bien en los primeros segundos, no lo cambies"; lo que hay que mejorar es "mucha gente se va en la parte del medio del video"; y las ideas son "una versión más corta", "otra que cambie por completo la parte del medio", "otra con un medio más dinámico".
+Cómo le fue al video, en palabras para el editor: "hook" es si engancha en los primeros segundos; "retención" es si la gente se queda viendo; "se van al principio / en el medio / al final" dice dónde abandonan; "clic" es si la gente toca el anuncio; "compra" es si los que llegan compran (si engancha y hacen clic pero no compran, puede ser la landing, no el video).
+Lo que el editor NUNCA debe leer (es información interna del dueño): números de ventas, compras, gasto, CPA, costos, precios de costo o ganancias; prioridades (U1, U2…), urgencias o reglas; ciudades de prueba; porcentajes de rendimiento. Describe cómo le fue al video solo con palabras (engancha bien, la gente se va en el medio…).
+Reglas del contenido de los anuncios que no puedes romper:
+- El tono que pide el dueño para los anuncios: fuerte y agresivo. Hooks que pegan en el primer segundo, promesas claras de resultado y de alivio, urgencia. Nada tibio.
 - Nunca escribas que el producto cura una enfermedad, ni que reemplaza al médico o a las medicinas.
 - No inventes médicos, estudios, certificaciones, avales ni testimonios. Usa solo los avales y pruebas reales que vienen en los datos del producto, tal cual.
 - No inventes números: precios, descuentos y cantidades solo los que vienen en los datos.
-- No cambies hook, concepto, estilo y promesa a la vez: en una iteración se conserva el concepto y la promesa, y cambia lo que dicen los datos (por ejemplo, el hook).
-- Si la referencia trae "lo que dice su video", apóyate en eso para "conservar" (su promesa, su frase fuerte) y para las piezas (hooks nuevos que digan lo mismo de otra forma). No copies el guion entero.
-- Sin guion completo: lo arma el editor líder.
+- En una iteración se conserva lo que funcionó y se cambia lo que hay que mejorar; las versiones tienen que ser bien distintas entre sí (no tres variaciones de lo mismo).
+- Si la referencia trae "lo que dice su video", apóyate en eso para explicar lo que funcionó (su promesa, su frase fuerte). No copies el guion entero ni escribas guiones.
 Para cada encargo escribe, con su clave:
-- hipotesis: qué crees que va a pasar y por qué, en 1 o 2 frases.
+- hipotesis: SOLO PARA EL DUEÑO (el editor no la ve): qué crees que va a pasar y por qué, en 1 o 2 frases. Aquí sí puedes nombrar lo que dicen los datos.
+- objetivo: lo que buscamos con este encargo, en 1 o 2 frases para el editor.
+- conservar: lo que funcionó y no hay que cambiar (en una iteración); si no hay referencia, qué tienen que tener en común todas las versiones. Vacío si no aplica.
+- mejorar: lo que hay que mejorar respecto a la referencia, en palabras (en una iteración); vacío en un concepto o ángulo nuevo.
 - publico: el dolor o el público al que le habla.
 - concepto: el concepto en pocas palabras.
-- conservar: qué se conserva del creativo de referencia (si no hay referencia, qué no hay que tocar entre las piezas).
-- piezas: exactamente la cantidad de piezas pedida; en cada una, qué cambia, en una frase concreta (por ejemplo, el texto del hook).
-- entregables: qué entrega el editor (cantidad de videos o imágenes, formato 9:16, duración).
+- ideas: exactamente la cantidad de versiones pedida; una idea por versión, como sugerencia ("una versión más corta", "otra que…"), no como orden ni guion.
+- entregables: qué entrega el editor (cantidad de videos o imágenes, formato 9:16, duración aproximada).
 - angulo_codigo y angulo_nombre: solo en un ángulo nuevo, un código de 3 a 6 letras que no esté en la lista de ángulos del producto y su nombre; en los demás, null.
-Y para cada batch testeado que venga en los datos, su aprendizaje en 1 o 2 frases (qué funcionó o no, y qué hacer distinto), con su clave.
+Y para cada batch testeado que venga en los datos, su aprendizaje en 1 o 2 frases (qué funcionó o no, y qué hacer distinto), con su clave. El aprendizaje es para el dueño.
 TXT;
 
     private const SCHEMA = [
@@ -48,14 +56,16 @@ TXT;
         'properties' => [
             'encargos' => ['type' => 'array', 'items' => [
                 'type' => 'object', 'additionalProperties' => false,
-                'required' => ['clave', 'hipotesis', 'publico', 'concepto', 'conservar', 'piezas', 'entregables', 'angulo_codigo', 'angulo_nombre'],
+                'required' => ['clave', 'hipotesis', 'objetivo', 'conservar', 'mejorar', 'publico', 'concepto', 'ideas', 'entregables', 'angulo_codigo', 'angulo_nombre'],
                 'properties' => [
                     'clave' => ['type' => 'string'],
                     'hipotesis' => ['type' => 'string'],
+                    'objetivo' => ['type' => 'string'],
+                    'conservar' => ['type' => 'string'],
+                    'mejorar' => ['type' => 'string'],
                     'publico' => ['type' => 'string'],
                     'concepto' => ['type' => 'string'],
-                    'conservar' => ['type' => 'string'],
-                    'piezas' => ['type' => 'array', 'items' => ['type' => 'string']],
+                    'ideas' => ['type' => 'array', 'items' => ['type' => 'string']],
                     'entregables' => ['type' => 'string'],
                     'angulo_codigo' => ['type' => ['string', 'null']],
                     'angulo_nombre' => ['type' => ['string', 'null']],
@@ -82,7 +92,7 @@ TXT;
         $lines = [];
         foreach ($plan as $p) {
             $c = $p['context'];
-            $lines[] = "== ENCARGO {$p['key']} · {$p['product']} · U{$p['urgency']} · " . (self::KINDS[$p['kind']] ?? $p['kind']) . " · {$p['pieces']} piezas";
+            $lines[] = "== ENCARGO {$p['key']} · {$p['product']} · U{$p['urgency']} · " . (self::KINDS[$p['kind']] ?? $p['kind']) . " · {$p['pieces']} versiones";
             $lines[] = "Por qué: {$p['reason']}";
             $lines[] = 'Qué iterar: ' . $p['iterate'];
             $lines[] = 'Ángulo: ' . ($p['angle_code'] ?? 'nuevo (proponlo)') . (isset($c['angles'][$p['angle_code'] ?? '']) ? ' — ' . $c['angles'][$p['angle_code']] : '');
@@ -93,6 +103,10 @@ TXT;
                 }
                 foreach ($c['reference_video'] ?? [] as $t) {
                     $lines[] = "  · video: {$t}";
+                }
+                // .63: cómo le fue a cada parte, en palabras (para explicarle al editor qué funcionó y qué mejorar)
+                if ($words = self::videoWords($c['reference_grades'] ?? [], $c['reference_leaves'] ?? null)) {
+                    $lines[] = "  · cómo le fue, en palabras: {$words}";
                 }
                 if (!empty($c['reference_script'])) {
                     $lines[] = '  · lo que dice su video: ' . \App\Services\Meta\Videos\Scripts::line($c['reference_script']);
@@ -118,6 +132,31 @@ TXT;
         }
 
         return implode("\n", $lines);
+    }
+
+    private const GRADE_WORDS = [
+        'hook' => ['good' => 'el hook engancha muy bien', 'ok' => 'el hook engancha', 'weak' => 'el hook no engancha'],
+        'hold' => ['good' => 'la gente se queda viendo', 'ok' => 'la retención es normal', 'weak' => 'la gente no se queda viendo'],
+        'ctr' => ['good' => 'mucha gente toca el anuncio', 'ok' => 'la gente toca el anuncio', 'weak' => 'poca gente toca el anuncio'],
+        'conversion' => ['good' => 'los que llegan compran', 'weak' => 'los que llegan compran poco'],
+    ];
+
+    private const LEAVES_WORDS = ['opening' => 'se van al principio', 'body' => 'se van en la parte del medio', 'end' => 'se van al final'];
+
+    /** `.63`: cómo le fue al video, en palabras, sin números: "el hook engancha muy bien; la gente no se queda viendo; se van en la parte del medio". */
+    public static function videoWords(array $grades, ?string $leaves): string
+    {
+        $out = [];
+        foreach (self::GRADE_WORDS as $key => $words) {
+            if (isset($grades[$key], $words[$grades[$key]])) {
+                $out[] = $words[$grades[$key]];
+            }
+        }
+        if ($leaves !== null && isset(self::LEAVES_WORDS[$leaves])) {
+            $out[] = self::LEAVES_WORDS[$leaves];
+        }
+
+        return implode('; ', $out);
     }
 
     /**
@@ -169,10 +208,14 @@ TXT;
             'encargos' => array_map(fn ($p) => [
                 'clave' => $p['key'],
                 'hipotesis' => ucfirst(self::KINDS[$p['kind']] ?? $p['kind']) . ($p['reference'] ? " de {$p['reference']}" : '') . ": {$p['iterate']}.",
+                'objetivo' => $p['kind'] === 'iteration'
+                    ? "{$p['pieces']} versiones bien distintas entre sí que mejoren {$p['iterate']}, conservando lo que ya funciona de la referencia."
+                    : "{$p['pieces']} versiones bien distintas entre sí para probar este " . (self::KINDS[$p['kind']] ?? $p['kind']) . '.',
+                'conservar' => $p['kind'] === 'iteration' ? 'El concepto, la promesa y el cierre de la referencia.' : '',
+                'mejorar' => $p['kind'] === 'iteration' ? ucfirst($p['iterate']) . '.' : '',
                 'publico' => '',
                 'concepto' => $p['kind'] === 'iteration' ? 'El mismo de la referencia' : '',
-                'conservar' => $p['kind'] === 'iteration' ? 'El concepto, la promesa y el cierre de la referencia.' : '',
-                'piezas' => array_map(fn ($i) => $p['kind'] === 'iteration' ? "Cambia {$p['iterate']} (versión " . ($i + 1) . ')' : 'Variación ' . ($i + 1), range(0, $p['pieces'] - 1)),
+                'ideas' => array_map(fn ($i) => 'Versión ' . ($i + 1) . ': tú decides cómo.', range(0, $p['pieces'] - 1)),
                 'entregables' => "{$p['pieces']} " . ($p['format'] === 'image' ? 'imágenes' : 'videos 9:16'),
                 'angulo_codigo' => null, 'angulo_nombre' => null,
             ], $plan),

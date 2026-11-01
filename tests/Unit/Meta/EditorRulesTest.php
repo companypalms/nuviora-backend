@@ -155,3 +155,16 @@ describe('El encargo en texto', function () {
             ->not->toContain('Archivos')->not->toContain('Editor:');
     });
 });
+
+describe('.63: lo que ve el editor de sus resultados', function () {
+    it('solo ganó, perdió o empate, sin números ni ciudades', function () {
+        expect(EditorRules::result('tested', [['key' => 'proven', 'city' => 'Caracas'], ['key' => 'loser', 'city' => 'Valencia']]))->toBe('Ganó');
+        expect(EditorRules::result('tested', [['key' => 'loser'], ['key' => 'loser']]))->toBe('Perdió');
+        expect(EditorRules::result('tested', [['key' => 'loser'], ['key' => 'neutral']]))->toBe('Empate');
+    });
+
+    it('lo que no terminó dice en qué va', function () {
+        expect(EditorRules::result('testing', []))->toBe('En test');
+        expect(EditorRules::result('bank', []))->toBe('Por lanzar');
+    });
+});

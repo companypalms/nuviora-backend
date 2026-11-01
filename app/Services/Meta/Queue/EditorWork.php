@@ -159,12 +159,13 @@ class EditorWork
                 'status' => $b->status, 'status_label' => QueueRules::STATUSES[$b->status] ?? $b->status, 'status_at' => $b->status_at?->toIso8601String(),
                 'position' => $b->position, 'kind' => $b->kind, 'kind_label' => QueueRules::KINDS[$b->kind] ?? $b->kind,
                 'angle_code' => $b->angle_code, 'angle_name' => $angles["{$b->product_id}:{$b->angle_code}"] ?? null,
-                'concept' => $b->concept, 'hypothesis' => $b->hypothesis, 'audience' => $b->audience,
+                // .63: lo que buscamos, lo que funcionó y lo que hay que mejorar; nada del proceso del dueño (ni la hipótesis, ni
+                // la prioridad, ni la ciudad de prueba): el editor ve solo lo que necesita para hacer su trabajo
+                'goal' => $b->goal, 'keep' => $b->keep, 'improve' => $b->improve, 'concept' => $b->concept, 'audience' => $b->audience,
                 'reference' => $b->reference?->label, 'reference_thumbnail' => $refs[$b->reference_creative_id]['thumbnail'] ?? null,
                 'reference_texts' => $refs[$b->reference_creative_id]['texts'] ?? [],
                 'reference_script' => $scripts[$b->reference_creative_id] ?? null,
-                'city' => $b->learningCity?->name, 'format' => $b->format, 'keep' => $b->keep, 'offer' => $b->offer, 'deliverables' => $b->deliverables,
-                'urgency' => $b->urgency, 'due_date' => $b->due_date?->toDateString(),
+                'format' => $b->format, 'offer' => $b->offer, 'deliverables' => $b->deliverables, 'due_date' => $b->due_date?->toDateString(),
                 'pieces' => $b->pieces->map(fn (CreativeBatchPiece $p) => ['id' => $p->id, 'code' => $p->code(), 'change' => $p->change, 'format' => $p->format,
                     'link' => $p->link, 'hook' => $p->hook])->values()->all(),
                 'meta_names' => QueueRules::metaNames($b->number, $b->angle_code, $b->pieces->pluck('number')->all()),

@@ -20,6 +20,9 @@ use Illuminate\Http\Request;
  */
 class EditorQueueController extends Controller
 {
+    /** `.63`: lo que el editor no ve de sus resultados (números del negocio). */
+    private const HIDDEN_FROM_EDITORS = ['cpa_vs_c', 'purchases'];
+
     /** Los terminados (en banca, en test, testeados o descartados) que se siguen mostrando, en días. */
     private const RECENT_DAYS = 14;
 
@@ -102,7 +105,8 @@ class EditorQueueController extends Controller
         $people = $reader->people(EditorRules::ROLES);
         $facts = (new EditorFacts())->read($period, $leader ? null : [$user->id]) + ['people' => $people];
         $computed = (new EditorKpis())->compute($facts, $period);
-        $metrics = EditorKpis::withoutMoney(EditorKpis::METRICS);
+        // .63 (decisión del dueño): el editor solo ve si su batch ganó, perdió o empató; ni compras ni CPA contra el objetivo
+        $metrics = array_diff_key(EditorKpis::withoutMoney(EditorKpis::METRICS), array_flip(self::HIDDEN_FROM_EDITORS));
         $strip = fn (?array $p) => ['values' => array_intersect_key($p['values'] ?? [], $metrics), 'details' => array_intersect_key($p['details'] ?? [], $metrics)];
         $names = array_map(fn ($p) => $p['name'], $people);
 
@@ -117,7 +121,9 @@ class EditorQueueController extends Controller
                 'people' => array_values(array_map(fn ($id, $p) => ['id' => $id, 'name' => $p['name'], 'group' => $p['group']] + $strip($p),
                     array_keys($computed['people']), $computed['people'])),
             ] : null,
-            'batches' => array_map(fn ($b) => $b + ['editor' => $names[$b['editor_id']] ?? null], EditorKpis::batches($facts, $leader ? null : [$user->id])),
+            'batches' => array_map(fn ($b) => array_diff_key($b, array_flip(['purchases', 'cpa_vs_c', 'verdicts']))
+                + ['result' => EditorRules::result($b['status'], $b['verdicts']), 'editor' => $names[$b['editor_id']] ?? null],
+                EditorKpis::batches($facts, $leader ? null : [$user->id])),
         ]);
     }
 

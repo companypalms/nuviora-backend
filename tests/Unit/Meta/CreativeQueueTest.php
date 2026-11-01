@@ -97,23 +97,31 @@ describe('El texto del encargo para el editor', function () {
         $text = QueueRules::brief([
             'code' => 'B0123', 'product' => 'FlexiStep', 'urgency' => 1, 'kind' => 'iteration', 'reference' => 'C0400 FASP', 'angle_code' => 'FASP',
             'angle_name' => 'Dolor de tobillo', 'concept' => 'Antes y después', 'hypothesis' => 'Un hook con la pregunta del dolor sube el CTR.',
+            'goal' => '3 versiones bien distintas, con el mismo hook, que hagan que la gente se quede.', 'improve' => 'La gente se va en el medio.',
             'audience' => 'Mujeres de 40+ con dolor al caminar', 'city' => 'Caracas', 'offer' => 'Precio $23,14', 'keep' => 'El cuerpo y el cierre',
             'format' => 'video', 'deliverables' => '3 videos 9:16', 'due_date' => '2026-10-31',
             'pieces' => [['code' => 'C0457', 'change' => 'Hook 1: la pregunta', 'format' => null], ['code' => 'C0458', 'change' => 'Hook 2: el dato', 'format' => 'image']],
             'meta_names' => ['adset' => 'B0123 FASP', 'ads' => ['C0457 FASP', 'C0458 FASP']],
         ]);
-        expect($text)->toStartWith('ENCARGO B0123 · FlexiStep · U1')
+        expect($text)->toStartWith("ENCARGO B0123 · FlexiStep\n")
             ->toContain('Tipo: Iteración (referencia: C0400 FASP)')
+            ->toContain('Lo que buscamos: 3 versiones bien distintas, con el mismo hook, que hagan que la gente se quede.')
+            ->toContain('Lo que funcionó (no lo cambies): El cuerpo y el cierre')
+            ->toContain('Lo que hay que mejorar: La gente se va en el medio.')
+            ->toContain('Ideas para cada versión (tú decides cómo):')
             ->toContain('Ángulo: FASP (Dolor de tobillo)')
             ->toContain("1. C0457 — Hook 1: la pregunta\n2. C0458 — Hook 2: el dato (imagen)")
             ->toContain('Plazo: sáb 31/10')
             ->toContain('Nombres en Meta: ad set "B0123 FASP"; anuncios "C0457 FASP", "C0458 FASP".');
+        // .63: el texto es para el editor: nada del proceso del dueño
+        expect($text)->not->toContain('U1')->not->toContain('Hipótesis')->not->toContain('sube el CTR')->not->toContain('Caracas')
+            ->not->toContain('Ciudad');
     });
 
     it('sin aprobar todavía no tiene números', function () {
         $text = QueueRules::brief(['code' => null, 'product' => 'Loli', 'urgency' => null, 'kind' => 'new_angle', 'reference' => null, 'angle_code' => null,
             'angle_name' => null, 'format' => null, 'due_date' => null, 'pieces' => [['code' => null, 'change' => '', 'format' => null]],
             'meta_names' => ['adset' => null, 'ads' => []]]);
-        expect($text)->toBe("ENCARGO (sin aprobar) · Loli\nTipo: Ángulo nuevo\nPiezas:\n1. sin detalle");
+        expect($text)->toBe("ENCARGO (sin aprobar) · Loli\nTipo: Ángulo nuevo\nIdeas para cada versión (tú decides cómo):\n1. sin detalle");
     });
 });
