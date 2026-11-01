@@ -44,6 +44,7 @@ class MetaQueueController extends Controller
     {
         try {
             (new BatchTracker($decisions))->run();
+            \App\Services\Meta\Products\TestingPhase::refresh(); // .65: cierra las rondas de testeo con todos sus resultados
         } catch (\Throwable $e) {
             report($e); // la cola se muestra igual
         }
@@ -274,6 +275,11 @@ class MetaQueueController extends Controller
     private function products(MetaDecisions $decisions): array
     {
         $products = AngleStats::products();
+        // .65: los productos en testeo, aunque todavía no tengan campañas
+        $testing = \App\Models\ProductProfile::where('phase', 'testing')->whereNotIn('product_id', array_column($products, 'id') ?: [0])->pluck('product_id')->all();
+        foreach (Product::whereIn('id', $testing ?: [0])->get(['id', 'title', 'showable_name']) as $p) {
+            $products[] = ['id' => $p->id, 'name' => $p->showable_name ?: $p->title, 'campaigns' => 0, 'active_campaigns' => 0];
+        }
         $active = array_column(array_filter($products, fn ($p) => $p['active_campaigns'] > 0), 'id');
         try {
             $plans = $decisions->forProducts($active);
@@ -290,6 +296,8 @@ class MetaQueueController extends Controller
                 'bank' => ($bank[$p['id']] ?? collect())->count(),
                 'ready' => ($bank[$p['id']] ?? collect())->where('status', 'bank')->count(),
                 'urgency' => $u ? ['level' => $u['level'], 'label' => $u['label'], 'to_order' => $u['batches'], 'needed' => $u['needed'] ?? $u['batches']] : null,
+                // .65: en testeo (o un testeo que terminó hace poco)
+                'testing' => \App\Services\Meta\Products\TestingPhase::summary((int) $p['id']),
             ];
         }, $products);
     }
@@ -320,7 +328,7 @@ class MetaQueueController extends Controller
                     'status_by' => $b->statusUser?->names, 'position' => $b->position, 'source' => $b->source,
                     'kind' => $b->kind, 'angle_code' => $b->angle_code, 'angle_name' => $angles["{$b->product_id}:{$b->angle_code}"] ?? null,
                     'concept' => $b->concept, 'hypothesis' => $b->hypothesis, 'goal' => $b->goal, 'test_idea' => $b->test_idea, 'improve' => $b->improve, 'audience' => $b->audience,
-                    'persona_id' => $b->persona_id,
+                    'persona_id' => $b->persona_id, 'testing_round' => $b->testing_round,
                 ] + EditorWork::product($b, $profiles) + [
                     'reference_id' => $b->reference_creative_id, 'reference' => $b->reference?->label,
                     'city_id' => $b->learning_city_id, 'city' => $b->learningCity?->name, 'format' => $b->format, 'keep' => $b->keep, 'offer' => $b->offer,

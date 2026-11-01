@@ -26,6 +26,7 @@ class QueueWriter
 Eres el director creativo de una tienda online de Venezuela que vende con anuncios de Facebook e Instagram y cobra contra entrega. Escribes los encargos de creativos para los editores de video, en español sencillo, claro y directo, como si le hablaras al editor.
 Recibes los encargos que ya decidieron las reglas del dueño: el producto, el tipo (iteración, concepto nuevo, ángulo nuevo o arriba del embudo), el ángulo, el creativo de referencia con sus textos, lo que dice su video y cómo le fue a cada parte del video, y cuántas versiones lleva. No cambies nada de eso: redáctalo.
 Cada encargo trae la FICHA DEL PRODUCTO (qué es, para qué sirve, cómo funciona, lo que NO es, la información clave y sus buyer personas). Léela primero: todo lo que escribas tiene que ser fiel a la ficha. Nunca contradigas "lo que NO es" y no le agregues usos ni beneficios que no estén en la ficha.
+Los encargos que dicen "Testeo" son la primera prueba de un producto: se prueban sus ángulos principales, sin creativo de referencia. Explícale al editor la idea del ángulo para su buyer persona. Si un ángulo lleva más de un batch en el testeo, cada uno prueba una hipótesis distinta: otro concepto u otro formato (por ejemplo: video animado, testimonio, venta directa, demostración). Dilo claro en "probando" y en "concepto", y nunca hagas dos iguales.
 Tu trabajo NO es decirle al editor qué video hacer: es explicarle qué estamos buscando, qué funcionó y qué hay que mejorar, y darle ideas. El editor es el creativo y decide cómo hacerlo.
 Así se escribe una iteración (ejemplo): si el hook funcionó y la gente se va en la parte del medio, el objetivo es "3 versiones bien distintas entre sí, con el mismo hook, que hagan que la gente se quede hasta el final"; lo que funcionó es "el hook: engancha muy bien en los primeros segundos, no lo cambies"; lo que hay que mejorar es "mucha gente se va en la parte del medio del video"; y las ideas son "una versión más corta", "otra que cambie por completo la parte del medio", "otra con un medio más dinámico".
 Cómo le fue al video, en palabras para el editor: "hook" es si engancha en los primeros segundos; "retención" es si la gente se queda viendo; "se van al principio / en el medio / al final" dice dónde abandonan; "clic" es si la gente toca el anuncio; "compra" es si los que llegan compran (si engancha y hacen clic pero no compran, puede ser la landing, no el video).
@@ -45,11 +46,11 @@ Para cada encargo escribe, con su clave:
 - conservar: lo que funcionó y no hay que cambiar (en una iteración); si no hay referencia, qué tienen que tener en común todas las versiones. Vacío si no aplica.
 - mejorar: lo que hay que mejorar respecto a la referencia, en palabras (en una iteración); vacío en un concepto o ángulo nuevo.
 - publico: el dolor o el público al que le habla.
-- buyer: el nombre exacto de UNO de los buyer personas de la ficha al que le habla este encargo (el que mejor encaje con el ángulo y la referencia). El editor solo conoce ese. null si la ficha no trae buyer personas.
+- buyer: el nombre exacto de UNO de los buyer personas de la ficha al que le habla este encargo (el que mejor encaje con el ángulo y la referencia). El editor solo conoce ese. Si el encargo trae "Buyer persona del ángulo", usa ese. null si la ficha no trae buyer personas.
 - concepto: el concepto en pocas palabras.
 - ideas: exactamente la cantidad de versiones pedida; una idea por versión, como sugerencia ("una versión más corta", "otra que…"), no como orden ni guion.
 - entregables: qué entrega el editor (cantidad de videos o imágenes, formato 9:16, duración aproximada).
-- angulo_codigo y angulo_nombre: solo en un ángulo nuevo, un código de 3 a 6 letras que no esté en la lista de ángulos del producto y su nombre; en los demás, null.
+- angulo_codigo y angulo_nombre: solo en un ángulo nuevo cuyo ángulo dice "nuevo (proponlo)", un código de 3 a 6 letras que no esté en la lista de ángulos del producto y su nombre; en los demás, null.
 Y para cada batch testeado que venga en los datos, su aprendizaje en 1 o 2 frases (qué funcionó o no, y qué hacer distinto), con su clave. El aprendizaje es para el dueño.
 TXT;
 
@@ -98,9 +99,21 @@ TXT;
         $lines = [];
         foreach ($plan as $p) {
             $c = $p['context'];
-            $lines[] = "== ENCARGO {$p['key']} · {$p['product']} · U{$p['urgency']} · " . (self::KINDS[$p['kind']] ?? $p['kind']) . " · {$p['pieces']} versiones";
+            $lines[] = "== ENCARGO {$p['key']} · {$p['product']} · " . ($p['urgency'] !== null ? "U{$p['urgency']}" : 'Testeo') . ' · '
+                . (self::KINDS[$p['kind']] ?? $p['kind']) . " · {$p['pieces']} versiones";
             $lines[] = "Por qué: {$p['reason']}";
             $lines[] = 'Qué iterar: ' . $p['iterate'];
+            // .65: el testeo: cuántos batches lleva este ángulo y qué conceptos ya tienen los otros
+            if ($t = $p['testing'] ?? null) {
+                $lines[] = "Testeo (ronda {$t['round']}): batch {$t['n']} de {$t['of']} de este ángulo."
+                    . ($t['of'] > 1 ? ' Cada batch de este ángulo prueba una hipótesis distinta: otro concepto u otro formato.' : '');
+                foreach ($t['siblings'] ?? [] as $s) {
+                    $lines[] = "  · ya hay otro batch de este ángulo con el concepto «{$s}»: este tiene que ser distinto";
+                }
+                if (!empty($t['persona'])) {
+                    $lines[] = "Buyer persona del ángulo: {$t['persona']}";
+                }
+            }
             $lines[] = 'Ángulo: ' . ($p['angle_code'] ?? 'nuevo (proponlo)') . (isset($c['angles'][$p['angle_code'] ?? '']) ? ' — ' . $c['angles'][$p['angle_code']] : '');
             if ($p['reference']) {
                 $lines[] = "Referencia: {$p['reference']}" . ($p['reference_type'] ? " ({$p['reference_type']})" : '');

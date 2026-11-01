@@ -70,7 +70,7 @@ describe('La tarjeta del asistente', function () use ($ficha, $gine) {
             'buyer_personas' => [['nombre' => 'Hombre con ginecomastia', 'quien_es' => 'Hombre de 25 a 45', 'que_le_duele' => 'La vergüenza', 'que_quiere' => null, 'que_lo_frena' => null]],
         ]));
         expect($p->title)->toBe('Llenar la ficha de Comprimax')->and($p->warnings)->toBe([]);
-        expect(array_column($p->lines, 'label'))->toBe(['Producto', 'Qué es', 'Para qué sirve', 'Cómo funciona', 'Lo que NO es y nunca se dice', 'Buyer persona: Hombre con ginecomastia']);
+        expect(array_column($p->lines, 'label'))->toBe(['Producto', 'Qué es', 'Para qué sirve', 'Cómo funciona', 'Lo que NO es y nunca se dice', 'Buyer persona: Hombre con ginecomastia', 'Fase']);
         expect($p->lines[5]['value'])->toBe("Quién es: Hombre de 25 a 45\nLe duele: La vergüenza");
         expect($p->payload['profile']['not_this'])->toBe('No es para el frío')->and($p->payload['personas'][0])->not->toHaveKey('id');
     });

@@ -640,6 +640,7 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         // .64: la ficha de cada producto (la lee la IA de los encargos y las landings)
         Route::get('/product-profiles', [\App\Http\Controllers\MetaProductProfileController::class, 'index']);
         Route::put('/product-profiles/{product}', [\App\Http\Controllers\MetaProductProfileController::class, 'update']);
+        Route::post('/product-profiles/{product}/next-round', [\App\Http\Controllers\MetaProductProfileController::class, 'nextRound']); // .65
 
         Route::get('/report/overview', [\App\Http\Controllers\MetaReportController::class, 'overview']);
         Route::get('/report/rows', [\App\Http\Controllers\MetaReportController::class, 'rows']);

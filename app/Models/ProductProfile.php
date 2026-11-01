@@ -10,7 +10,11 @@ use Illuminate\Database\Eloquent\Model;
  */
 class ProductProfile extends Model
 {
-    protected $fillable = ['product_id', 'what_it_is', 'benefits', 'mechanism', 'not_this', 'key_info', 'photos_url', 'source', 'updated_by'];
+    protected $fillable = ['product_id', 'what_it_is', 'benefits', 'mechanism', 'not_this', 'key_info', 'photos_url', 'source', 'updated_by',
+        'phase', 'testing_round', 'phase_at', 'testing_results'];
+
+    /** .65: la fase (testing / iterate) y el resultado de cada ronda de testeo terminada. */
+    protected $casts = ['phase_at' => 'datetime', 'testing_results' => 'array'];
 
     public function product()
     {

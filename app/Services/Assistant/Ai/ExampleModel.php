@@ -269,7 +269,8 @@ class ExampleModel implements AssistantModel
     {
         $keys = ['que es' => 'que_es', 'para que sirve' => 'para_que_sirve', 'como funciona' => 'como_funciona', 'no es' => 'lo_que_no_es',
             'lo que no es' => 'lo_que_no_es', 'info' => 'info_clave', 'informacion clave' => 'info_clave', 'fotos' => 'fotos'];
-        $args = ['producto' => $product] + array_fill_keys(array_unique(array_values($keys)), null) + ['buyer_personas' => [], 'quitar_buyer_personas' => []];
+        $args = ['producto' => $product] + array_fill_keys(array_unique(array_values($keys)), null) + ['buyer_personas' => [], 'quitar_buyer_personas' => [],
+            'angulos' => [], 'fase' => 'sin_cambio'];
         foreach (preg_split('/\s*;\s*/u', $text) as $part) {
             if (!preg_match('/^([^:]+):\s*(.+)$/su', $part, $kv)) {
                 continue;
@@ -278,6 +279,12 @@ class ExampleModel implements AssistantModel
             if ($key === 'buyer') {
                 $p = array_map('trim', explode('/', $kv[2]));
                 $args['buyer_personas'][] = ['nombre' => $p[0], 'quien_es' => $p[1] ?? null, 'que_le_duele' => $p[2] ?? null, 'que_quiere' => $p[3] ?? null, 'que_lo_frena' => $p[4] ?? null];
+            } elseif ($key === 'angulo') {
+                // .65: "angulo: GINE / Ginecomastia / Hombre con ginecomastia / hipótesis"
+                $p = array_map('trim', explode('/', $kv[2]));
+                $args['angulos'][] = ['codigo' => $p[0], 'nombre' => $p[1] ?? $p[0], 'buyer' => ($p[2] ?? '') !== '' ? $p[2] : null, 'hipotesis' => $p[3] ?? null];
+            } elseif ($key === 'fase') {
+                $args['fase'] = str_starts_with(Lookup::normalize($kv[2]), 'test') ? 'testeo' : 'iterar';
             } elseif ($key === 'quitar buyer') {
                 $args['quitar_buyer_personas'][] = trim($kv[2]);
             } elseif (isset($keys[$key])) {

@@ -14,7 +14,7 @@ class AdAngle extends Model
     public const STATUSES = ['detected', 'proposed', 'confirmed'];
 
     protected $fillable = ['product_id', 'code', 'alias_of', 'name', 'hypothesis', 'status', 'proposed_by', 'suggested_alias',
-        'proposed_at', 'confirmed_by', 'confirmed_at'];
+        'proposed_at', 'confirmed_by', 'confirmed_at', 'position', 'persona_id'];
 
     protected $casts = ['proposed_at' => 'datetime', 'confirmed_at' => 'datetime'];
 

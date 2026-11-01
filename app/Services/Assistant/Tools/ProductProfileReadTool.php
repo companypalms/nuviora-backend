@@ -24,7 +24,7 @@ class ProductProfileReadTool implements Tool
 
     public function description(): string
     {
-        return 'La ficha de un producto como está guardada: qué es, para qué sirve, cómo funciona, lo que NO es, la información clave, el link de las fotos, sus buyer personas y lo que le falta para estar completa. Úsala para "qué dice la ficha de X" y antes de cambiar una parte de una ficha que ya existe.';
+        return 'La ficha de un producto como está guardada: qué es, para qué sirve, cómo funciona, lo que NO es, la información clave, el link de las fotos, sus buyer personas, sus ángulos (del más fuerte al más débil), su fase (en testeo o iterar), en qué va el testeo y lo que le falta para estar completa. Úsala para "qué dice la ficha de X" y antes de cambiar una parte de una ficha que ya existe.';
     }
 
     public function parameters(): array
@@ -60,6 +60,15 @@ class ProductProfileReadTool implements Tool
             ], fn ($v) => $v !== null), $f['personas']) ?: 'ninguno';
         }
         $data['completa'] = $missing === [] ? 'sí' : 'no, falta: ' . implode(', ', $missing);
+        // .65: los ángulos (del más fuerte al más débil), la fase y en qué va el testeo
+        $angles = \App\Services\Meta\Products\TestingPhase::angles($productId);
+        $data['angulos'] = array_map(fn ($a) => array_filter(['codigo' => $a['code'], 'nombre' => $a['name'], 'hipotesis' => $a['hypothesis'], 'buyer' => $a['persona']],
+            fn ($v) => $v !== null), $angles) ?: 'ninguno';
+        $phase = \App\Models\ProductProfile::where('product_id', $productId)->value('phase') ?? 'iterate';
+        $data['fase'] = \App\Services\Meta\Products\TestingRules::PHASES[$phase];
+        if ($summary = \App\Services\Meta\Products\TestingPhase::summary($productId)) {
+            $data['testeo'] = $summary['text'];
+        }
 
         return new ToolResult($data, [['type' => 'link', 'label' => 'Abrir la ficha', 'to' => '/admin/integraciones?seccion=meta&tab=profile&producto=' . $productId]]);
     }

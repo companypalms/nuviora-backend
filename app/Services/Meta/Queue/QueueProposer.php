@@ -12,6 +12,7 @@ use App\Services\Meta\Decisions\DecisionSettings;
 use App\Services\Meta\Decisions\MetaDecisions;
 use App\Services\Meta\Products\ProductProfileRules;
 use App\Services\Meta\Products\ProductProfiles;
+use App\Services\Meta\Products\TestingPhase;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -21,6 +22,7 @@ use RuntimeException;
  * 1. las propuestas de días anteriores que nadie aprobó se reemplazan (quedan descartadas, "reemplazada");
  * 2. las reglas deciden cuántos encargos, de qué productos y de qué tipo (ProposalRules), sin repetir lo ya propuesto hoy;
  *    `.64`: solo de los productos con la ficha completa (los demás quedan en missing_profile, para avisarle al dueño);
+ *    `.65`: los productos en testeo piden sus batches del testeo (TestingPhase) y no los de las reglas de siempre;
  * 3. la IA los redacta (QueueWriter) y escribe el aprendizaje de los batches que ya se testearon;
  * 4. quedan en "Para aprobar": nada se manda a nadie ni se toca Meta.
  */
@@ -55,15 +57,27 @@ class QueueProposer
         $already = $todayRows->whereIn('status', ['proposed', 'discarded'])->countBy('product_id')->all();
         $capacity = max(0, (int) round($s['video_editors'] * $s['batches_per_editor'] / (1 + $s['corrections_pct'] / 100)) - $todayRows->count());
         $pieces = max(1, (int) $s['batch_pieces']);
+        // .65: las rondas de testeo que ya tienen todos sus resultados se cierran (con un ganador, el producto pasa a iterar)
+        TestingPhase::refresh();
+        $testingIds = \App\Models\ProductProfile::where('phase', 'testing')->pluck('product_id')->map(fn ($v) => (int) $v)->all();
         // .64: sin ficha completa, la IA no escribe encargos de ese producto (no sabría qué es ni para qué sirve)
-        $complete = ProductProfiles::completeIds(array_keys($decisions));
+        $complete = ProductProfiles::completeIds(array_unique(array_merge(array_keys($decisions), $testingIds)));
         $missingProfile = [];
         foreach ($decisions as $pid => $d) {
-            if (!in_array((int) $pid, $complete, true) && ($d['product']['mode'] ?? 'normal') === 'normal') {
+            if (!in_array((int) $pid, $complete, true) && ($d['product']['mode'] ?? 'normal') === 'normal' && !in_array((int) $pid, $testingIds, true)) {
                 $missingProfile[] = (string) ($d['product']['name'] ?? $pid);
             }
         }
-        $plan = ProposalRules::plan(array_intersect_key($decisions, array_flip($complete)), $already, $capacity);
+        $missingProfile = array_merge($missingProfile, \Illuminate\Support\Facades\DB::table('products')->whereIn('id', array_diff($testingIds, $complete) ?: [0])
+            ->get(['title', 'showable_name'])->map(fn ($p) => $p->showable_name ?: $p->title)->all());
+        $normal = array_diff_key(array_intersect_key($decisions, array_flip($complete)), array_flip($testingIds));
+        foreach ($normal as $pid => &$d) {
+            $d['profile_angles'] = TestingPhase::profileAngles((int) $pid);
+        }
+        unset($d);
+        // .65: el testeo, solo de los productos en modo normal (no en pausa, abandonados ni en liquidación)
+        $stopped = ProductAdSetting::where('mode', '!=', 'normal')->pluck('product_id')->map(fn ($v) => (int) $v)->all();
+        $plan = ProposalRules::plan($normal, $already, $capacity, TestingPhase::candidates(array_values(array_diff(array_intersect($testingIds, $complete), $stopped)), $decisions));
         foreach ($plan as $i => &$p) {
             $p['key'] = 'E' . ($i + 1);
             $p['pieces'] = $pieces;
@@ -137,8 +151,9 @@ class QueueProposer
         $batch = CreativeBatch::create([
             'product_id' => $p['product_id'], 'kind' => $p['kind'], 'angle_code' => $angle, 'concept' => mb_substr((string) $clean($t['concepto'] ?? null), 0, 120) ?: null,
             'hypothesis' => $hypothesis, 'audience' => mb_substr((string) $clean($t['publico'] ?? null), 0, 255) ?: null,
-            // .64: el buyer persona de la ficha que eligió la IA (el editor solo ve ese)
-            'persona_id' => ProductProfileRules::findByName($p['context']['personas'] ?? [], is_string($t['buyer'] ?? null) ? $t['buyer'] : null)['id'] ?? null,
+            // .64: el buyer persona de la ficha que eligió la IA (el editor solo ve ese); .65: en el testeo, el del ángulo
+            'persona_id' => $p['persona_id'] ?? ProductProfileRules::findByName($p['context']['personas'] ?? [], is_string($t['buyer'] ?? null) ? $t['buyer'] : null)['id'] ?? null,
+            'testing_round' => $p['testing']['round'] ?? null,
             // .63: lo que buscamos y lo que hay que mejorar, para el editor
             'goal' => $clean($t['objetivo'] ?? null), 'test_idea' => $clean($t['probando'] ?? null), 'improve' => $clean($t['mejorar'] ?? null),
             'reference_creative_id' => $p['reference_id'], 'learning_city_id' => $p['city_id'], 'format' => $p['format'], 'keep' => $clean($t['conservar'] ?? null),

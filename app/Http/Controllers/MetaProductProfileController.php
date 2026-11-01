@@ -7,6 +7,9 @@ use App\Models\ProductProfile;
 use App\Services\Meta\AngleStats;
 use App\Services\Meta\Products\ProductProfileRules;
 use App\Services\Meta\Products\ProductProfiles;
+use App\Services\Meta\Products\TestingPhase;
+use App\Services\Meta\Products\TestingRules;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
@@ -38,15 +41,39 @@ class MetaProductProfileController extends Controller
             'personas.*.pain' => 'nullable|string|max:' . ProductProfileRules::TEXT_MAX,
             'personas.*.wants' => 'nullable|string|max:' . ProductProfileRules::TEXT_MAX,
             'personas.*.objections' => 'nullable|string|max:' . ProductProfileRules::TEXT_MAX,
+            // .65: la fase y los ángulos (del más fuerte al más débil)
+            'phase' => 'sometimes|in:' . implode(',', array_keys(TestingRules::PHASES)),
+            'angles' => 'sometimes|array|max:' . TestingRules::MAX_ANGLES,
+            'angles.*.code' => 'required|string|max:12',
+            'angles.*.name' => 'nullable|string|max:120',
+            'angles.*.hypothesis' => 'nullable|string|max:1000',
+            'angles.*.persona' => 'nullable|string|max:' . ProductProfileRules::NAME_MAX,
         ]);
         $profile = ProductProfileRules::normalize($data['profile']);
         // Una fila vacía (todavía sin escribir) no es un buyer persona
         $personas = array_values(array_filter(array_map([ProductProfileRules::class, 'normalizePersona'], $data['personas']),
             fn ($p) => array_filter(array_intersect_key($p, ProductProfileRules::PERSONA_FIELDS)) !== []));
-        if ($problems = ProductProfileRules::problems($profile, $personas)) {
+        $angles = array_key_exists('angles', $data) ? array_map([ProductProfileRules::class, 'normalizeAngle'], $data['angles']) : null;
+        if ($problems = array_merge(ProductProfileRules::problems($profile, $personas), $angles !== null ? ProductProfileRules::angleProblems($angles, $personas) : [])) {
             throw ValidationException::withMessages(['profile' => $problems]);
         }
-        ProductProfiles::save($product->id, $profile, $personas, Auth::id(), 'owner');
+        DB::transaction(function () use ($product, $profile, $personas, $angles, $data) {
+            ProductProfiles::save($product->id, $profile, $personas, Auth::id(), 'owner');
+            if ($angles !== null) {
+                TestingPhase::saveAngles($product->id, $angles, Auth::id());
+            }
+            if (isset($data['phase'])) {
+                TestingPhase::setPhase($product->id, $data['phase']);
+            }
+        });
+
+        return response()->json(['product_id' => $product->id] + self::present($product->id) + ['products' => self::products()]);
+    }
+
+    /** .65: "Probar los siguientes": otra ronda de testeo con los ángulos de la ficha que no se probaron. */
+    public function nextRound(Product $product)
+    {
+        TestingPhase::nextRound($product->id);
 
         return response()->json(['product_id' => $product->id] + self::present($product->id) + ['products' => self::products()]);
     }
@@ -63,6 +90,12 @@ class MetaProductProfileController extends Controller
             'missing' => ProductProfileRules::missing($f['profile'], $f['personas']),
             'updated' => $row ? ['at' => $row->updated_at?->toIso8601String(), 'by' => $row->updater?->names, 'source' => $row->source] : null,
             'labels' => ['fields' => ProductProfileRules::FIELDS, 'persona' => ProductProfileRules::PERSONA_FIELDS],
+            // .65: la fase, los ángulos de la ficha y en qué va el testeo
+            'phase' => $row->phase ?? 'iterate', 'phases' => TestingRules::PHASES,
+            'angles' => array_map(fn ($a) => ['code' => $a['code'], 'name' => $a['name'], 'hypothesis' => $a['hypothesis'], 'persona' => $a['persona']],
+                TestingPhase::angles($productId)),
+            'testing' => TestingPhase::summary($productId),
+            'tested_angles' => TestingPhase::testedAngles($productId),
         ];
     }
 

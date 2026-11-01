@@ -243,6 +243,75 @@ final class ProductProfileRules
         return ['profile' => $out, 'personas' => array_values($personas), 'removed' => $removed, 'unknown' => $unknown];
     }
 
+    /** `.65`: un ángulo de la ficha: el código en mayúsculas (el de los nombres de Meta), su nombre, la hipótesis y su buyer persona (por nombre). */
+    public static function normalizeAngle(array $a): array
+    {
+        return [
+            'code' => strtoupper((string) preg_replace('/[^A-Za-z0-9]/', '', (string) ($a['code'] ?? ''))),
+            'name' => self::clean($a['name'] ?? null),
+            'hypothesis' => self::clean($a['hypothesis'] ?? null),
+            'persona' => self::clean($a['persona'] ?? null),
+        ];
+    }
+
+    /**
+     * Lo que no se puede guardar de los ángulos: un código que no sirve o repetido, sin nombre, un buyer persona que no
+     * está en la ficha, demasiados.
+     *
+     * @param list<array> $angles normalizeAngle
+     * @param list<array> $personas los buyer personas que quedan en la ficha
+     * @return list<string>
+     */
+    public static function angleProblems(array $angles, array $personas): array
+    {
+        $problems = [];
+        if (count($angles) > TestingRules::MAX_ANGLES) {
+            $problems[] = 'Como mucho ' . TestingRules::MAX_ANGLES . ' ángulos por producto.';
+        }
+        $seen = [];
+        foreach ($angles as $i => $a) {
+            $label = $a['code'] !== '' ? $a['code'] : 'El ángulo ' . ($i + 1);
+            if (!preg_match('/^[A-Z0-9]{2,12}$/', $a['code'])) {
+                $problems[] = "{$label}: el código va con 2 a 12 letras o números, sin espacios (es el que va en los nombres de Meta, como GINE).";
+            } elseif (isset($seen[$a['code']])) {
+                $problems[] = "El ángulo {$a['code']} está dos veces.";
+            }
+            $seen[$a['code']] = true;
+            if ($a['name'] === null) {
+                $problems[] = "{$label}: falta el nombre.";
+            } elseif (mb_strlen($a['name']) > 120) {
+                $problems[] = "{$label}: el nombre es muy largo (hasta 120 letras).";
+            }
+            if (mb_strlen((string) $a['hypothesis']) > 1000) {
+                $problems[] = "{$label}: la hipótesis es muy larga (hasta 1000 letras).";
+            }
+            if ($a['persona'] !== null && self::findByName($personas, $a['persona']) === null) {
+                $problems[] = "{$label}: no hay ningún buyer persona que se llame \"{$a['persona']}\" en la ficha.";
+            }
+        }
+
+        return $problems;
+    }
+
+    /** `.65`: los ángulos en líneas, del más fuerte al más débil: "1. GINE · Ginecomastia → Hombre con ginecomastia". */
+    public static function anglesText(array $angles): string
+    {
+        return implode("\n", array_map(fn ($a, $i) => ($i + 1) . ". {$a['code']}" . ($a['name'] ? " · {$a['name']}" : '') . ($a['persona'] ? " → {$a['persona']}" : ''),
+            array_values($angles), array_keys(array_values($angles))));
+    }
+
+    /** `.65`: los 3 batches del testeo en palabras: "2 batches de GINE (conceptos o formatos distintos) y 1 de ABDO". */
+    public static function testingText(array $codes): string
+    {
+        $count = array_count_values(TestingRules::slots($codes));
+        if ($count === []) {
+            return 'sin ángulos todavía: el testeo no puede empezar';
+        }
+
+        return TestingRules::join(array_map(fn ($code, $n) => $n . ($n === 1 ? ' batch' : ' batches') . " de {$code}" . ($n > 1 ? ' (con conceptos o formatos distintos)' : ''),
+            array_keys($count), $count));
+    }
+
     /** Un buyer persona en varias líneas, para la tarjeta y la pantalla. */
     public static function personaText(array $p): string
     {
