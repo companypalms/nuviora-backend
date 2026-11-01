@@ -18,11 +18,22 @@ class Shop extends Model
         'auto_open_at',
         'auto_close_at',
         'auto_schedule_enabled',
+        'auto_open_days',
     ];
 
     protected $casts = [
         'auto_schedule_enabled' => 'boolean',
+        'auto_open_days' => 'array',
     ];
+
+    /**
+     * Si la tienda abre sola ese día de la semana (1 = lunes … 7 = domingo). Sin días elegidos, todos (como antes).
+     * Dueño, 2026-11-01: "que podamos apagar los domingos". Abrir a mano sigue pudiéndose cualquier día.
+     */
+    public function opensOn(int $dayOfWeekIso): bool
+    {
+        return !is_array($this->auto_open_days) || in_array($dayOfWeekIso, array_map('intval', $this->auto_open_days), true);
+    }
 
     /**
      * El token de la API de Shopify y el secreto de los webhooks nunca salen en una respuesta: GET /api/shops los daba a
@@ -53,16 +64,17 @@ class Shop extends Model
             return true; // Si no hay horario, asumimos abierta por defecto o gestionada manualmente
         }
 
-        $now = now()->format('H:i:s');
+        $at = now();
+        $now = $at->format('H:i:s');
         $open = $this->auto_open_at;
         $close = $this->auto_close_at;
 
         if ($open < $close) {
             // Horario normal (ej: 08:00 a 20:00)
-            return $now >= $open && $now <= $close;
+            return $this->opensOn($at->dayOfWeekIso) && $now >= $open && $now <= $close;
         } else {
-            // Horario cruzando medianoche (ej: 22:00 a 06:00)
-            return $now >= $open || $now <= $close;
+            // Horario cruzando medianoche (ej: 22:00 a 06:00): la madrugada es del día que abrió
+            return $now >= $open ? $this->opensOn($at->dayOfWeekIso) : ($now <= $close && $this->opensOn($at->copy()->subDay()->dayOfWeekIso));
         }
     }
 

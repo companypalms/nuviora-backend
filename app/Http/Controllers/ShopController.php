@@ -13,6 +13,23 @@ class ShopController extends Controller
     /** Lo que no se devuelve nunca (Shop::$hidden) y que, vacío al editar, no se borra. */
     private const SECRETS = ['shopify_access_token', 'shopify_webhook_secret'];
 
+    /** Días en que abre sola (1 = lunes … 7 = domingo); null o los 7 = todos (dueño, 2026-11-01). */
+    private const DAYS_RULE = 'nullable|array|min:1';
+
+    private const DAYS_MESSAGES = ['auto_open_days.min' => 'Marca al menos un día en que la tienda abre sola.'];
+
+    /** Los días ordenados y sin repetir; los 7 se guardan como "todos los días" (null). */
+    private static function cleanDays(array $data): array
+    {
+        if (array_key_exists('auto_open_days', $data) && is_array($data['auto_open_days'])) {
+            $days = array_values(array_unique(array_map('intval', $data['auto_open_days'])));
+            sort($days);
+            $data['auto_open_days'] = count($days) === 7 ? null : $days;
+        }
+
+        return $data;
+    }
+
     protected function ensureAdmin()
     {
         $role = Auth::user()->role?->description;
@@ -42,8 +59,11 @@ class ShopController extends Controller
             'auto_open_at' => 'nullable|date_format:H:i',
             'auto_close_at' => 'nullable|date_format:H:i',
             'auto_schedule_enabled' => 'boolean',
-        ]);
+            'auto_open_days' => self::DAYS_RULE,
+            'auto_open_days.*' => 'integer|between:1,7',
+        ], self::DAYS_MESSAGES);
 
+        $data = self::cleanDays($data);
         $shop = Shop::create($data);
         return response()->json($shop);
     }
@@ -60,7 +80,10 @@ class ShopController extends Controller
             'auto_open_at' => 'nullable|date_format:H:i',
             'auto_close_at' => 'nullable|date_format:H:i',
             'auto_schedule_enabled' => 'boolean',
-        ]);
+            'auto_open_days' => self::DAYS_RULE,
+            'auto_open_days.*' => 'integer|between:1,7',
+        ], self::DAYS_MESSAGES);
+        $data = self::cleanDays($data);
 
         // La pantalla ya no recibe el token ni el secreto: si llegan vacíos, se quedan los que están
         foreach (self::SECRETS as $key) {

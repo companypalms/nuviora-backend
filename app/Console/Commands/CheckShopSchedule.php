@@ -44,6 +44,9 @@ class CheckShopSchedule extends Command
     {
         if (!$shop->auto_open_at) return;
 
+        // Dueño (2026-11-01): solo los días elegidos (por ejemplo, el domingo no). A mano se puede abrir igual.
+        if (!$shop->opensOn(now()->dayOfWeekIso)) return;
+
         // Trim seconds from DB time if present "08:00:00" -> "08:00"
         $openTime  = substr($shop->auto_open_at, 0, 5);
         $closeTime = $shop->auto_close_at ? substr($shop->auto_close_at, 0, 5) : null;
