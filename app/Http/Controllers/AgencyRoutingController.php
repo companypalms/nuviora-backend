@@ -111,8 +111,9 @@ class AgencyRoutingController extends Controller
     }
 
     /**
-     * PUT /agency-routing/agencies/{agency}/hours { is_working, works_from, works_until } (Fran, 2026-10-17: "los
-     * horarios deberían ser por agencia").
+     * PUT /agency-routing/agencies/{agency}/hours { is_working, works_from, works_until } o { is_working, schedule }
+     * (Fran, 2026-10-17: "los horarios deberían ser por agencia"; dueño, 2026-11-01: horario por día, schedule =
+     * {"1": ["09:00", "19:00"], …, "7": null}).
      */
     public function updateAgencyHours(Request $request, User $agency): JsonResponse
     {
@@ -124,16 +125,28 @@ class AgencyRoutingController extends Controller
         return response()->json(['status' => true, 'message' => $this->hoursMessage($agency->names, $data, $stop ? "{$agency->names} {$stop}" : null), 'data' => $this->payload()]);
     }
 
-    /** @return array{is_working: bool, works_from: ?string, works_until: ?string} */
+    /** @return array{is_working: bool, works_from: ?string, works_until: ?string, schedule: ?array} */
     private function validateHours(Request $request): array
     {
         $data = $request->validate([
             'is_working' => 'required|boolean',
             'works_from' => 'nullable|date_format:H:i',
             'works_until' => 'nullable|date_format:H:i',
-        ], ['works_from.date_format' => 'La hora de inicio tiene que ser HH:MM.', 'works_until.date_format' => 'La hora de cierre tiene que ser HH:MM.']);
+            'schedule' => 'nullable|array',
+            'schedule.*' => 'nullable|array|size:2',
+            'schedule.*.*' => 'nullable|date_format:H:i',
+        ], [
+            'works_from.date_format' => 'La hora de inicio tiene que ser HH:MM.',
+            'works_until.date_format' => 'La hora de cierre tiene que ser HH:MM.',
+            'schedule.*.*.date_format' => 'Las horas del horario tienen que ser HH:MM.',
+        ]);
 
-        return AgencySwitch::hours((bool) $data['is_working'], $data['works_from'] ?? null, $data['works_until'] ?? null);
+        if (is_array($data['schedule'] ?? null)) {
+            return AgencySwitch::schedule((bool) $data['is_working'], $data['schedule']);
+        }
+
+        // El mismo horario todos los días: deja de tener horario por día
+        return AgencySwitch::hours((bool) $data['is_working'], $data['works_from'] ?? null, $data['works_until'] ?? null) + ['schedule' => null];
     }
 
     private function hoursMessage(string $name, array $data, ?string $stop): string
@@ -141,7 +154,8 @@ class AgencyRoutingController extends Controller
         if (!$data['is_working']) {
             return "{$name} apagada: sus órdenes no pasan a vendedora hasta que la enciendas.";
         }
-        $hours = $data['works_from'] || $data['works_until'] ? ', horario ' . WorkingHours::hoursLabel($data['works_from'], $data['works_until']) : '';
+        $label = AgencySwitch::label($data);
+        $hours = $label ? ", horario {$label}" : '';
 
         return $stop
             ? "{$name} guardada{$hours}. Ahora no trabaja ({$stop}): sus órdenes esperan sin vendedora."

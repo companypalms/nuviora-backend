@@ -68,6 +68,9 @@ class AgencyWorkingTool extends ChangeTool
     {
         $agency = self::agency((string) ($args['agencia'] ?? ''));
         $on = (bool) ($args['trabajando'] ?? false);
+        if (is_array($agency->agency_schedule)) {
+            return $this->proposeWithSchedule($agency, $on, is_array($args['horario'] ?? null));
+        }
         $from = $agency->agency_works_from ? substr($agency->agency_works_from, 0, 5) : null;
         $until = $agency->agency_works_until ? substr($agency->agency_works_until, 0, 5) : null;
         if (is_array($args['horario'] ?? null)) {
@@ -114,6 +117,45 @@ class AgencyWorkingTool extends ChangeTool
                     $from !== $hours['works_from'] || $until !== $hours['works_until'] ? $label($from, $until) : null),
             ]),
             ['agency_id' => $agency->id, 'hours' => $hours],
+            [],
+            $notes,
+        );
+    }
+
+    /**
+     * La agencia tiene horario por día (dueño, 2026-11-01): aquí solo se enciende o se apaga; el horario se cambia en
+     * Tiendas, ciudades y agencias (un "desde/hasta" de todos los días borraría el de cada día).
+     */
+    private function proposeWithSchedule(User $agency, bool $on, bool $newHours): Proposal
+    {
+        $label = WorkingHours::agencyHoursLabel($agency);
+        if ($newHours) {
+            throw new ToolProblem("{$agency->names} tiene horario por día ({$label}). Ese horario se cambia en Tiendas, ciudades y agencias › Agencias; desde aquí solo se enciende o se apaga.");
+        }
+        $wasOn = $agency->agency_is_working !== false;
+        if ($wasOn === $on) {
+            throw new ToolProblem("{$agency->names} ya está así.");
+        }
+        $copy = clone $agency;
+        $copy->agency_is_working = $on;
+        $stop = $this->hours->agencyStop($copy);
+        $notes = [!$on || $stop
+            ? 'Mientras no trabaje, sus órdenes nuevas van a las otras agencias de su ciudad; donde es la única, esperan.'
+            : 'Las órdenes que esperaban se reparten en el próximo minuto.'];
+        if ($on && $stop) {
+            $notes[] = "Ahora mismo no trabaja: {$stop}.";
+        }
+
+        return new Proposal(
+            $on ? 'Encender una agencia' : 'Apagar una agencia',
+            ($on ? 'Encender ' : 'Apagar ') . $agency->names,
+            Proposal::lines([
+                Proposal::line('Agencia', $agency->names),
+                Proposal::line('Estado', $on ? 'Encendida' : 'Apagada', $wasOn ? 'Encendida' : 'Apagada'),
+                Proposal::line('Horario', $label),
+            ]),
+            // Sin "schedule": el horario por día queda como está
+            ['agency_id' => $agency->id, 'hours' => ['is_working' => $on, 'works_from' => null, 'works_until' => null]],
             [],
             $notes,
         );

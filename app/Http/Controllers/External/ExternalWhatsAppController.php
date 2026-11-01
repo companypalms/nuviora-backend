@@ -11,6 +11,9 @@ use App\Models\Order;
 use App\Services\WhatsAppService;
 use App\Services\ConversationBucketService;
 use App\Models\Setting;
+use App\Models\User;
+use App\Services\Agencies\AgencyRouter;
+use App\Services\Agencies\WorkingHours;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
@@ -513,6 +516,14 @@ class ExternalWhatsAppController extends Controller
             && !$hasClientResponseSinceLastAutomated
             && !$hasAgentResponseSinceLastAutomated;
 
+        // La agencia que entrega la orden (o la principal de su ciudad) y su horario (dueño, 2026-11-01): n8n manda los
+        // mensajes de la orden solo cuando trabajan el equipo y esa agencia.
+        $agency = null;
+        if ($order) {
+            $agencyId = $order->agency_id ?: app(AgencyRouter::class)->cityFor($order)?->agency_id;
+            $agency = $agencyId ? User::find($agencyId) : null;
+        }
+
         return response()->json([
             'success' => true,
             'client_id' => $client->id,
@@ -542,6 +553,15 @@ class ExternalWhatsAppController extends Controller
                                 : 0,
                 'items' => $products,
                 'store_is_open' => $order->is_store_open,
+            ] : null,
+            'agency' => $agency ? [
+                'id' => $agency->id,
+                'name' => $agency->names,
+                'is_working' => $agency->agency_is_working !== false,
+                'works_now' => app(WorkingHours::class)->agencyWorks($agency),
+                // 1 = lunes … 7 = domingo: [desde, hasta] o null (ese día no trabaja); null entero = sin horario
+                'schedule' => WorkingHours::weekSchedule($agency),
+                'hours_label' => WorkingHours::agencyHoursLabel($agency),
             ] : null,
             'rates' => [
                 'binance_usd' => (float) Setting::get('rate_binance_usd', 0),

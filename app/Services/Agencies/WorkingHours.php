@@ -26,10 +26,18 @@ use Illuminate\Support\Facades\Log;
  *    (Setting SETTING_WAITING). Cuando la ciudad vuelve a trabajar (al encenderla o al llegar su hora) se reparte como
  *    siempre (release, cada minuto). Una en "Sin Stock" que recupera stock tampoco sale mientras tanto.
  *  - Las que ya tenían vendedora no se tocan.
+ *  - El horario puede ser por día de la semana (dueño, 2026-11-01: "Caracas de 9 a 7 de lunes a viernes, los sábados
+ *    hasta las 5"; ninguna trabaja los domingos): users.agency_schedule. Sin él, el "desde/hasta" vale todos los días.
  */
 class WorkingHours
 {
     public const SETTING_WAITING = 'agencies.orders_waiting_city';
+
+    public const DAYS = [1 => 'lunes', 2 => 'martes', 3 => 'miércoles', 4 => 'jueves', 5 => 'viernes', 6 => 'sábado', 7 => 'domingo'];
+
+    private const DAYS_PLURAL = [1 => 'lunes', 2 => 'martes', 3 => 'miércoles', 4 => 'jueves', 5 => 'viernes', 6 => 'sábados', 7 => 'domingos'];
+
+    private const DAYS_SHORT = [1 => 'lun', 2 => 'mar', 3 => 'mié', 4 => 'jue', 5 => 'vie', 6 => 'sáb', 7 => 'dom'];
 
     public function __construct(private AgencyRouter $router) {}
 
@@ -43,7 +51,10 @@ class WorkingHours
         return $this->cityStop($city, $at) === null;
     }
 
-    /** Por qué la agencia no trabaja ahora ("está apagada", "trabaja de 08:00 a 17:00"), o null si trabaja. */
+    /**
+     * Por qué la agencia no trabaja ahora ("está apagada", "trabaja de 08:00 a 17:00", "no trabaja los domingos", "los
+     * sábados trabaja de 09:00 a 17:00"), o null si trabaja.
+     */
     public function agencyStop(User $agency, ?Carbon $at = null): ?string
     {
         if ($agency->isDeactivated()) {
@@ -52,9 +63,78 @@ class WorkingHours
         if ($agency->agency_is_working === false) {
             return 'está apagada';
         }
+        $at ??= now();
+        if (is_array($agency->agency_schedule)) {
+            $day = $at->dayOfWeekIso;
+            $hours = self::dayHours($agency->agency_schedule, $day);
+            if ($hours === null) {
+                return 'no trabaja los ' . self::DAYS_PLURAL[$day];
+            }
 
-        return self::inHours($at ?? now(), $agency->agency_works_from, $agency->agency_works_until)
+            return self::inHours($at, $hours[0], $hours[1]) ? null : 'los ' . self::DAYS_PLURAL[$day] . ' trabaja ' . self::hoursLabel($hours[0], $hours[1]);
+        }
+
+        return self::inHours($at, $agency->agency_works_from, $agency->agency_works_until)
             ? null : 'trabaja ' . self::hoursLabel($agency->agency_works_from, $agency->agency_works_until);
+    }
+
+    /**
+     * El horario de la semana de la agencia: [1 => [desde, hasta] … 7 => null], 1 = lunes, null = ese día no trabaja,
+     * desde/hasta "HH:MM" o null (sin límite). Sin horario por día, el "desde/hasta" vale los 7 días. null = trabaja
+     * todos los días a toda hora. Lo lee n8n (check-window) para mandar los mensajes en el horario de la agencia.
+     *
+     * @return array<int, array{0: ?string, 1: ?string}|null>|null
+     */
+    public static function weekSchedule(User $agency): ?array
+    {
+        if (is_array($agency->agency_schedule)) {
+            $week = [];
+            foreach (array_keys(self::DAYS) as $day) {
+                $week[$day] = self::dayHours($agency->agency_schedule, $day);
+            }
+
+            return $week;
+        }
+        $from = $agency->agency_works_from ? substr(self::time($agency->agency_works_from), 0, 5) : null;
+        $until = $agency->agency_works_until ? substr(self::time($agency->agency_works_until), 0, 5) : null;
+
+        return $from || $until ? array_fill_keys(array_keys(self::DAYS), [$from, $until]) : null;
+    }
+
+    /** El horario de la agencia en palabras ("lun a vie de 09:00 a 19:00 · sáb de 09:00 a 17:00 · dom no trabaja"); null = todo el día. */
+    public static function agencyHoursLabel(User $agency): ?string
+    {
+        if (is_array($agency->agency_schedule)) {
+            return self::scheduleLabel($agency->agency_schedule);
+        }
+
+        return $agency->agency_works_from || $agency->agency_works_until ? self::hoursLabel($agency->agency_works_from, $agency->agency_works_until) : null;
+    }
+
+    /** Un horario por día en palabras, juntando los días seguidos que tienen el mismo horario. */
+    public static function scheduleLabel(array $schedule): string
+    {
+        $parts = [];
+        for ($day = 1; $day <= 7; $day = $end + 1) {
+            $hours = self::dayHours($schedule, $day);
+            for ($end = $day; $end < 7 && self::dayHours($schedule, $end + 1) === $hours; $end++);
+            $days = self::DAYS_SHORT[$day] . ($end === $day ? '' : ($end === $day + 1 ? ' y ' : ' a ') . self::DAYS_SHORT[$end]);
+            $parts[] = $days . ' ' . ($hours === null ? 'no trabaja' : self::hoursLabel($hours[0], $hours[1]));
+        }
+
+        return implode(' · ', $parts);
+    }
+
+    /** Las horas de un día del horario semanal: [desde, hasta] ("HH:MM" o null) o null si ese día no trabaja. */
+    public static function dayHours(array $schedule, int $day): ?array
+    {
+        $hours = $schedule[$day] ?? null;
+        if (!is_array($hours)) {
+            return null;
+        }
+        $clean = fn ($v) => $v ? substr(self::time((string) $v), 0, 5) : null;
+
+        return [$clean($hours[0] ?? null), $clean($hours[1] ?? null)];
     }
 
     /**

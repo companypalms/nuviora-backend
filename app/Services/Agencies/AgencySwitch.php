@@ -20,11 +20,57 @@ class AgencySwitch
         Log::info('Ciudad ' . $city->name . ': ' . ($working ? 'encendida' : 'apagada') . ' (por ' . $by?->names . ').');
     }
 
-    /** @param array{is_working: bool, works_from: ?string, works_until: ?string} $hours ya revisado con hours() */
+    /**
+     * @param array{is_working: bool, works_from: ?string, works_until: ?string, schedule?: ?array} $hours ya revisado con
+     *        hours() o schedule(). Sin la clave "schedule", el horario por día que tenga queda como está.
+     */
     public function setAgency(User $agency, array $hours, ?User $by): void
     {
-        $agency->forceFill(['agency_is_working' => $hours['is_working'], 'agency_works_from' => $hours['works_from'], 'agency_works_until' => $hours['works_until']])->save();
-        Log::info('Agencia ' . $agency->names . ': ' . ($hours['is_working'] ? 'encendida' : 'apagada') . ', horario ' . WorkingHours::hoursLabel($hours['works_from'], $hours['works_until']) . ' (por ' . $by?->names . ').');
+        $fill = ['agency_is_working' => $hours['is_working'], 'agency_works_from' => $hours['works_from'], 'agency_works_until' => $hours['works_until']];
+        if (array_key_exists('schedule', $hours)) {
+            $fill['agency_schedule'] = $hours['schedule'];
+        }
+        $agency->forceFill($fill)->save();
+        Log::info('Agencia ' . $agency->names . ': ' . ($hours['is_working'] ? 'encendida' : 'apagada') . ', horario ' . (WorkingHours::agencyHoursLabel($agency) ?? 'todo el día') . ' (por ' . $by?->names . ').');
+    }
+
+    /** El horario como se lee: por día si lo tiene, si no "desde/hasta"; null = todo el día. */
+    public static function label(array $hours): ?string
+    {
+        if (!empty($hours['schedule'])) {
+            return WorkingHours::scheduleLabel($hours['schedule']);
+        }
+
+        return $hours['works_from'] || $hours['works_until'] ? WorkingHours::hoursLabel($hours['works_from'], $hours['works_until']) : null;
+    }
+
+    /**
+     * El horario por día limpio (dueño, 2026-11-01): 1 = lunes … 7 = domingo; cada día null (no trabaja) o [desde,
+     * hasta] en HH:MM (vacío = sin límite). Con horario por día, el "desde/hasta" de todos los días queda vacío.
+     *
+     * @return array{is_working: bool, works_from: null, works_until: null, schedule: array<int, ?array>}
+     */
+    public static function schedule(bool $working, array $days): array
+    {
+        $clean = [];
+        foreach (array_keys(WorkingHours::DAYS) as $day) {
+            $hours = $days[$day] ?? null;
+            if (!is_array($hours)) {
+                $clean[$day] = null;
+                continue;
+            }
+            $from = ($hours[0] ?? null) ?: null;
+            $until = ($hours[1] ?? null) ?: null;
+            if ($from && $until && $from === $until) {
+                throw ValidationException::withMessages(["schedule.{$day}" => 'El ' . WorkingHours::DAYS[$day] . ' la hora de cierre no puede ser igual a la de inicio.']);
+            }
+            $clean[$day] = [$from, $until];
+        }
+        if (array_filter($clean) === []) {
+            throw ValidationException::withMessages(['schedule' => 'Marca al menos un día de trabajo (o apágala).']);
+        }
+
+        return ['is_working' => $working, 'works_from' => null, 'works_until' => null, 'schedule' => $clean];
     }
 
     /**

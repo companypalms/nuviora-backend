@@ -135,6 +135,7 @@ class User extends Authenticatable
         'agency_is_working',
         'agency_works_from',
         'agency_works_until',
+        'agency_schedule',
     ];
 
     /** Membresía vigente en un grupo de ventas (una sola a la vez). */
@@ -212,6 +213,7 @@ class User extends Authenticatable
             'can_handle_no_stock' => 'boolean',
             'max_active_orders' => 'integer',
             'agency_is_working' => 'boolean',
+            'agency_schedule' => 'array',
             'deactivated_at' => 'datetime',
         ];
     }

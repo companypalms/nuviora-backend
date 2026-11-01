@@ -23,7 +23,7 @@ class RoutingOverview
     public function payload(): array
     {
         $agencies = User::whereHas('role', fn ($q) => $q->where('description', 'Agencia'))
-            ->orderBy('names')->get(['id', 'names', 'color', 'delivery_cost', 'max_active_orders', 'agency_is_working', 'agency_works_from', 'agency_works_until', 'deactivated_at']);
+            ->orderBy('names')->get(['id', 'names', 'color', 'delivery_cost', 'max_active_orders', 'agency_is_working', 'agency_works_from', 'agency_works_until', 'agency_schedule', 'deactivated_at']);
         $waiting = $this->hours->waitingByCity();
         $active = $this->router->activeCounts($agencies->pluck('id')->all());
         $pendingId = Status::where('description', OrderStatus::PENDIENTE_AGENCIA)->value('id');
@@ -51,6 +51,9 @@ class RoutingOverview
                 'is_working' => $a->agency_is_working !== false,
                 'works_from' => $a->agency_works_from ? substr($a->agency_works_from, 0, 5) : null,
                 'works_until' => $a->agency_works_until ? substr($a->agency_works_until, 0, 5) : null,
+                // Horario por día (1 = lunes … 7 = domingo) o null si usa el mismo "desde/hasta" todos los días
+                'schedule' => is_array($a->agency_schedule) ? WorkingHours::weekSchedule($a) : null,
+                'hours_label' => WorkingHours::agencyHoursLabel($a),
                 'stop_reason' => $this->hours->agencyStop($a),
             ])->values(),
             'cities' => $cities->map(function (City $city) use ($active, $pending, $waiting) {
