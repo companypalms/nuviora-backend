@@ -176,4 +176,16 @@ describe('A dónde se fue el dinero', function () use ($week, $order, $ad, $expe
         expect($warnings[0])->toContain('1 producto entregado no tiene costo')->toContain('Registra su compra en Inventario');
         expect($warnings[1])->toContain('1 pedido entregado usa el costo de la última compra registrada');
     });
+
+    it('`.62`: con más de 10 productos, "products" los junta en "Otros" pero "products_full" los trae a todos', function () use ($week, $order, $none) {
+        $facts = [];
+        for ($i = 1; $i <= 12; $i++) {
+            $facts[] = $order('2026-10-19 09:00:00', 'delivered', 10, 2, 0, 0, ['product_id' => $i]);
+        }
+        $r = MoneyRules::compute($facts, $week, $none, [], []);
+        expect($r['products'])->toHaveCount(10);
+        expect(collect($r['products'])->firstWhere('others', true)['delivered'])->toBe(3); // 12 − 9 nombrados
+        expect($r['products_full'])->toHaveCount(12);
+        expect(collect($r['products_full'])->contains('others', true))->toBeFalse();
+    });
 });

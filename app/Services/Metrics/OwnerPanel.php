@@ -244,10 +244,14 @@ class OwnerPanel
 
         $receivables = $this->money->receivables();
         usort($receivables, fn ($a, $b) => $b['usd'] <=> $a['usd']);
-        $names = $this->money->productNames(array_column($current['products'], 'product_id'));
-        $products = array_map(fn ($p) => $p + [
+        // `.62`: los nombres salen de "products_full" (sin juntar en "Otros"): tiene todos los id que puede haber en
+        // los dos, "products" (el gráfico, hasta 10) es un subconjunto
+        $names = $this->money->productNames(array_column($current['products_full'], 'product_id'));
+        $withNames = fn (array $rows) => array_map(fn ($p) => $p + [
             'name' => !empty($p['others']) ? 'Otros productos' : ($p['product_id'] ? ($names[$p['product_id']] ?? "Producto {$p['product_id']}") : 'Sin producto'),
-        ], $current['products']);
+        ], $rows);
+        $products = $withNames($current['products']);
+        $productsFull = $withNames($current['products_full']);
 
         return [
             'period' => $period->toArray() + ['compare_label' => $period->compareLabel],
@@ -268,6 +272,8 @@ class OwnerPanel
                 'help' => MoneyRules::SERIES_HELP,
             ],
             'products' => ['rows' => $products, 'help' => MoneyRules::PRODUCTS_HELP],
+            // `.62`: cada producto activo, uno por uno, sin juntar en "Otros" — lo usan los reportes del negocio
+            'products_full' => ['rows' => $productsFull, 'help' => MoneyRules::PRODUCTS_HELP],
             'receivables' => [
                 'rows' => array_values(array_filter($receivables, fn ($r) => abs($r['usd']) > 0.005)),
                 'total' => round(array_sum(array_column($receivables, 'usd')), 2),

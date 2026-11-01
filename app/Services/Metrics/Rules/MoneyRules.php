@@ -226,6 +226,8 @@ final class MoneyRules
             'totals' => $totals,
             'series' => ['granularity' => $granularity, 'points' => array_values(array_map([self::class, 'finish'], $series))],
             'products' => self::products($products),
+            // `.62`: la misma lista, sin juntar en "Otros" — para los reportes, que quieren cada producto activo
+            'products_full' => self::products($products, PHP_INT_MAX),
             'checks' => $checks,
         ];
     }
@@ -415,7 +417,11 @@ final class MoneyRules
         return ($f->productId === null || $e['product_id'] === $f->productId) && ($f->cityId === null || $e['city_id'] === $f->cityId);
     }
 
-    private static function products(array $products): array
+    /**
+     * @param int $limit a cuántos productos nombrados deja llegar antes de juntar el resto en "Otros" (el gráfico del
+     *        Panel se queda corto con muchas barras); `.62`: los reportes piden la lista completa, sin juntar nada.
+     */
+    private static function products(array $products, int $limit = 10): array
     {
         $rows = array_map(function ($p) {
             $p['profit'] = round($p['revenue'] - $p['costs'] - $p['ads'], 2);
@@ -426,17 +432,17 @@ final class MoneyRules
             return $p;
         }, array_values($products));
         usort($rows, fn ($a, $b) => [$b['revenue'], $b['ads']] <=> [$a['revenue'], $a['ads']]);
-        if (count($rows) <= 10) {
+        if (count($rows) <= $limit) {
             return $rows;
         }
         $others = ['product_id' => null, 'others' => true, 'revenue' => 0.0, 'costs' => 0.0, 'ads' => 0.0, 'delivered' => 0, 'profit' => 0.0];
-        foreach (array_slice($rows, 9) as $r) {
+        foreach (array_slice($rows, $limit - 1) as $r) {
             foreach (['revenue', 'costs', 'ads', 'delivered', 'profit'] as $k) {
                 $others[$k] += $r[$k];
             }
         }
 
-        return [...array_slice($rows, 0, 9), $others];
+        return [...array_slice($rows, 0, $limit - 1), $others];
     }
 
     private static function cell(string $date, $productId, $cityId): string

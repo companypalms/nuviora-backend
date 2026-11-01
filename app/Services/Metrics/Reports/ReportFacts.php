@@ -54,7 +54,9 @@ final class ReportFacts
             'maturing' => (bool) ($panel['sales']['maturing'] ?? false),
             'cards' => $cards,
             'waterfall' => array_map(fn ($w) => ['key' => $w['key'], 'label' => $w['label'], 'amount' => (float) $w['amount']], $panel['money']['waterfall'] ?? []),
-            'products' => self::products($panel['money']['products']['rows'] ?? []),
+            // `.62`: "products_full" trae cada producto activo sin juntar en "Otros" (lo que piden los reportes); si no
+            // viene (fixtures viejas), se usa "products" como hasta ahora
+            'products' => self::products($panel['money']['products_full']['rows'] ?? $panel['money']['products']['rows'] ?? []),
             'reasons' => self::reasons($panel['losses']['reasons']['rows'] ?? []),
             'team' => [
                 'sellers' => self::team($panel['sellers']['role'] ?? null),
@@ -98,12 +100,11 @@ final class ReportFacts
             }
         }
         $lines[] = '';
-        $lines[] = 'PRODUCTOS (ganancia después de su publicidad)';
-        foreach ($f['products']['best'] as $p) {
-            $lines[] = "- Más dejó: {$p['name']}: ganancia " . $fmt($p['profit'], 'money') . ', vendido ' . $fmt($p['revenue'], 'money') . ", {$p['delivered']} entregados.";
-        }
-        foreach ($f['products']['losing'] as $p) {
-            $lines[] = "- Perdió: {$p['name']}: ganancia " . $fmt($p['profit'], 'money') . ', vendido ' . $fmt($p['revenue'], 'money') . ', publicidad ' . $fmt($p['ads'], 'money') . '.';
+        // `.62`: cada producto activo, del que más dejó al que más perdió (antes solo los 3 mejores y los 3 peores)
+        $lines[] = 'PRODUCTOS, del que más dejó al que más perdió (ganancia después de su publicidad)';
+        foreach ($f['products']['all'] as $p) {
+            $lines[] = "- {$p['name']}: ganancia " . $fmt($p['profit'], 'money') . ', vendido ' . $fmt($p['revenue'], 'money')
+                . ', publicidad ' . $fmt($p['ads'], 'money') . ", {$p['delivered']} entregados.";
         }
         if ($f['reasons']) {
             $lines[] = '- Motivos de cancelación más comunes: ' . implode('; ', array_map(fn ($r) => "{$r['label']} ({$r['count']}, " . $fmt($r['pct'], 'percent') . ')', $f['reasons'])) . '.';
@@ -175,17 +176,23 @@ final class ReportFacts
     }
 
     /** Los que más ganancia dejaron (con ventas) y los que perdieron, sin "Otros productos". */
+    /**
+     * `.62`: cada producto activo (con ventas o publicidad en el período), uno por uno, del que más dejó al que más
+     * perdió — la tabla de los reportes, pedida por el dueño ("necesito ver rápido qué producto me da dinero y cuál
+     * no"). "best"/"losing" (los primeros de cada lado) se quedan igual para el resumen de la IA (ReportWriter).
+     */
     private static function products(array $rows): array
     {
         $named = array_values(array_filter($rows, fn ($r) => empty($r['others']) && $r['product_id'] !== null));
         $pick = fn (array $r) => ['name' => $r['name'] ?? "Producto {$r['product_id']}", 'revenue' => (float) $r['revenue'], 'ads' => (float) $r['ads'],
-            'profit' => (float) $r['profit'], 'delivered' => (int) $r['delivered']];
-        $best = array_filter($named, fn ($r) => $r['profit'] > 0);
-        usort($best, fn ($a, $b) => $b['profit'] <=> $a['profit']);
-        $losing = array_filter($named, fn ($r) => $r['profit'] < 0);
-        usort($losing, fn ($a, $b) => $a['profit'] <=> $b['profit']);
+            'profit' => (float) $r['profit'], 'delivered' => (int) $r['delivered'],
+            'margin_pct' => $r['revenue'] > 0 ? round($r['profit'] / $r['revenue'] * 100, 1) : null];
+        $all = array_map($pick, $named);
+        usort($all, fn ($a, $b) => $b['profit'] <=> $a['profit']);
+        $best = array_values(array_filter($all, fn ($r) => $r['profit'] > 0));
+        $losing = array_reverse(array_values(array_filter($all, fn ($r) => $r['profit'] < 0)));
 
-        return ['best' => array_map($pick, array_slice($best, 0, self::TOP)), 'losing' => array_map($pick, array_slice($losing, 0, self::TOP))];
+        return ['all' => $all, 'best' => array_slice($best, 0, self::TOP), 'losing' => array_slice($losing, 0, self::TOP)];
     }
 
     /** Los motivos de cancelación más comunes, con su % de todas las cancelaciones. */

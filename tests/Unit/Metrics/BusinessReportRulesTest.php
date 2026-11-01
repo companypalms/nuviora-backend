@@ -70,10 +70,18 @@ describe('los números del reporte', function () {
         ]],
         'money' => ['cards' => [$card('profit', 'Ganancia neta (ya ganado)', 'money', 1234.5, 1000.0, 23.5)],
             'waterfall' => [['key' => 'revenue', 'label' => 'Vendido', 'amount' => 3000.0], ['key' => 'profit', 'label' => 'Ganancia', 'amount' => 1234.5]],
+            // "products" es lo que trae el gráfico del Panel (puede estar viejo/folded); "products_full" (`.62`) es lo
+            // que usan los reportes, uno por uno — aquí con ZenPulse solo en "products_full", para probar que el
+            // reporte lee de ahí y no del otro
             'products' => ['rows' => [
                 ['product_id' => 1, 'name' => 'Solo Brillo', 'revenue' => 2000.0, 'costs' => 800.0, 'ads' => 300.0, 'profit' => 900.0, 'delivered' => 40],
                 ['product_id' => 2, 'name' => 'Audinet', 'revenue' => 100.0, 'costs' => 50.0, 'ads' => 200.0, 'profit' => -150.0, 'delivered' => 2],
                 ['product_id' => null, 'others' => true, 'revenue' => 50.0, 'costs' => 0.0, 'ads' => 0.0, 'profit' => 50.0, 'delivered' => 1],
+            ]],
+            'products_full' => ['rows' => [
+                ['product_id' => 1, 'name' => 'Solo Brillo', 'revenue' => 2000.0, 'costs' => 800.0, 'ads' => 300.0, 'profit' => 900.0, 'delivered' => 40],
+                ['product_id' => 3, 'name' => 'ZenPulse', 'revenue' => 50.0, 'costs' => 30.0, 'ads' => 10.0, 'profit' => 10.0, 'delivered' => 1],
+                ['product_id' => 2, 'name' => 'Audinet', 'revenue' => 100.0, 'costs' => 50.0, 'ads' => 200.0, 'profit' => -150.0, 'delivered' => 2],
             ]]],
         'losses' => ['cards' => [$card('cancelled', 'Cancelados', 'count', 30, 20, 50.0)],
             'reasons' => ['rows' => [['label' => 'Se arrepintió', 'count' => 6], ['label' => 'No contesta', 'count' => 18], ['label' => 'Precio', 'count' => 6]]]],
@@ -88,8 +96,15 @@ describe('los números del reporte', function () {
     $f = ReportFacts::build('weekly', '2026-10-26', '2026-11-01', 'Del lunes 26/10 al domingo 1/11', $panel, $check);
 
     it('los productos que más dejaron y los que perdieron, sin "Otros"', function () use ($f) {
-        expect(array_column($f['products']['best'], 'name'))->toBe(['Solo Brillo']);
+        expect(array_column($f['products']['best'], 'name'))->toBe(['Solo Brillo', 'ZenPulse']);
         expect(array_column($f['products']['losing'], 'name'))->toBe(['Audinet']);
+    });
+
+    it('`.62`: "all" trae cada producto activo (viene de "products_full", no del folded "products")', function () use ($f) {
+        expect(array_column($f['products']['all'], 'name'))->toBe(['Solo Brillo', 'ZenPulse', 'Audinet']); // del que más dejó al que más perdió
+        expect($f['products']['all'][0]['margin_pct'])->toBe(45.0); // 900 / 2000
+        expect($f['products']['all'][1]['margin_pct'])->toBe(20.0); // 10 / 50
+        expect($f['products']['all'][2]['margin_pct'])->toBe(-150.0); // −150 / 100
     });
 
     it('los motivos de cancelación más comunes con su %', function () use ($f) {
@@ -111,7 +126,8 @@ describe('los números del reporte', function () {
         expect($in)->toContain('Ganancia neta (ya ganado): $1.234,50 (antes $1.000,00, +23,5 %).')
             ->toContain('Efectividad general: 50 % (antes 55 %, −5 puntos) — todavía puede cambiar.')
             ->toContain('todavía se están entregando')
-            ->toContain('Perdió: Audinet: ganancia −$150,00')
+            ->toContain('Audinet: ganancia −$150,00, vendido $100,00, publicidad $200,00, 2 entregados.')
+            ->toContain('ZenPulse: ganancia $10,00, vendido $50,00, publicidad $10,00, 1 entregados.') // `.62`: todos, no solo los 3 mejores/peores
             ->toContain('ROJA · Agencias con mucho dinero: PYP: $390,00 sin entregar')
             ->toContain('GRAVE (3): Sin costo Ej.: Audinet (3).');
     });
