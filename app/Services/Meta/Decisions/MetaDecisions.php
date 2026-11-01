@@ -303,6 +303,11 @@ class MetaDecisions
                 'cities' => collect($byCity)->map(fn ($v, $campaignId) => ['campaign_meta_id' => $campaignId, 'city' => $campaigns[$campaignId]['city'] ?? null] + $v)->values()->all(),
                 'funnel' => $funnel ? ['key' => $funnel, 'label' => AdRules::FUNNEL[$funnel], 'frequency' => $freq3] : null,
                 'video' => $w ? $rules->video($w, $isVideo, $length, $median, $cityCpm, $w['metrics']['cpa'] ?? null, $mainC) + ['window' => $w['window']] : null,
+                // .70: sus números (hook rate, hold rate, CTR, frecuencia, CPM, cuánta gente llega a cada parte y el tiempo
+                // promedio), para que el dueño vea en qué se basa la decisión del análisis
+                'metrics' => $w ? ['window' => $w['window'], 'hook_rate' => $w['metrics']['hook_rate'] ?? null, 'hold_rate' => $w['metrics']['hold_rate'] ?? null,
+                    'unique_ctr' => $w['metrics']['unique_ctr'] ?? null, 'frequency' => $w['metrics']['frequency'] ?? null, 'cpm' => $w['metrics']['cpm'] ?? null,
+                    'retention' => $w['metrics']['retention'] ?? null, 'avg_watch_time' => $w['metrics']['avg_watch_time'] ?? null, 'length' => $length] : null,
                 'status' => $cr['status'], 'status_source' => $cr['status_source'], 'angle_code' => $cr['angle_code'], 'type' => $cr['type'],
                 // Paso 3: sus 7 días, para ordenar los creativos en el análisis de la mañana
                 'week' => ['spend' => round((float) ($all['7d']['totals']['spend'] ?? 0), 2), 'purchases' => (float) ($all['7d']['totals']['purchases'] ?? 0),

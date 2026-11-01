@@ -37,6 +37,14 @@ final class AnalysisFacts
                     'price_option' => $c['price_option']['text'] ?? null,
                 ];
             }
+            // .70: lo que dice la regla de cada ciudad, para "ESCALAR" (cuánto subir y dónde)
+            $cityActions = [];
+            foreach ($p['campaigns'] as $id => $c) {
+                if ($c['action'] ?? null) {
+                    $cityActions[(string) $id] = ['city' => $c['city'] ?? null, 'key' => $c['action']['key'], 'label' => $c['action']['label'],
+                        'proposal' => $c['action']['proposal'] ?? null];
+                }
+            }
             $creatives = array_values(array_filter($p['creatives'] ?? [], fn ($cr) => $cr['active'] ?? false));
             usort($creatives, fn ($a, $b) => ($b['week']['spend'] ?? 0) <=> ($a['week']['spend'] ?? 0));
             $creatives = array_map(fn ($cr) => [
@@ -46,6 +54,10 @@ final class AnalysisFacts
                 'cities' => array_map(fn ($c) => ['city' => $c['city'], 'verdict' => $c['label'], 'data' => $c['data']], $cr['cities'] ?? []),
                 'video' => $cr['video'] ? ['window' => $cr['video']['window'], 'diagnosis' => $cr['video']['diagnosis'], 'iterate' => $cr['video']['iterate']] : null,
                 'status' => $cr['status'] ?? null,
+                // .70: ESCALAR, MANTENER, PARAR o ITERAR, sus números (para el dueño) y qué hacer el editor (en palabras)
+                'type' => $cr['type'] ?? null,
+                'call' => CreativeCalls::call($cr, $cityActions),
+                'numbers' => CreativeCalls::numbers($cr),
             ], array_slice($creatives, 0, self::MAX_CREATIVES));
             $batches = [];
             foreach ($p['adsets'] ?? [] as $id => $v) {
@@ -107,6 +119,15 @@ final class AnalysisFacts
                     . ' compras' . ($cr['week']['cpa'] !== null ? ', CPA ' . self::money($cr['week']['cpa']) : '') : '';
                 $lines[] = 'Creativo #' . ($i + 1) . " {$cr['label']}: {$cr['verdict']}" . ($cr['cross'] ? " ({$cr['cross']})" : '') . ($cr['funnel'] ? " · {$cr['funnel']}" : '')
                     . $week . " · {$cr['reading']}" . ($cr['proposal'] ? " → {$cr['proposal']}" : '');
+                if (!empty($cr['call'])) {
+                    $lines[] = "  · decisión: {$cr['call']['label']} — {$cr['call']['todo']}";
+                    foreach ($cr['numbers'] ?? [] as $n) {
+                        $lines[] = "  · números: {$n}";
+                    }
+                    if ($cr['call']['editor']) {
+                        $lines[] = "  · para el editor (en palabras): {$cr['call']['editor']}";
+                    }
+                }
                 foreach ($cr['video']['diagnosis'] ?? [] as $dx) {
                     $lines[] = "  · video: {$dx}";
                 }

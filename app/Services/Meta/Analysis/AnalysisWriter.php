@@ -28,8 +28,8 @@ Reglas que no puedes romper:
 Para cada producto escribe:
 - diagnostico: qué está pasando y por qué, en 2 a 4 frases (como los documentos del dueño).
 - ciudades: por cada ciudad que aparece en los datos, una lectura de 1 o 2 frases con la acción.
-- decisiones_creativas: la lista de decisiones sobre los creativos, de la más importante a la menos (apagar, mantener sin tocar, iterar y qué cambiar), con su nombre. Ordena los creativos como P1, P2, P3… según lo que aportan.
-- mensaje_editor: el borrador del mensaje al editor líder con lo que hay que producir hoy: cuántos batches, de qué tipo (iteraciones, concepto nuevo o ángulo nuevo), el ángulo, qué se conserva y qué cambia en cada una de las 3 piezas (por ejemplo 3 hooks distintos). Si el producto no necesita creativos, dilo en una frase.
+- decisiones_creativas: una por creativo, ordenados como P1, P2, P3… según lo que aportan. Cada una empieza con la decisión que trae el creativo (ESCALAR, MANTENER, PARAR o ITERAR) y su nombre, y dice por qué en palabras sencillas, apoyándote en sus números (hook rate, hold rate, CTR, frecuencia, cuánta gente llega a cada parte del video, tiempo promedio). Nunca cambies la decisión que trae.
+- mensaje_editor: el borrador del mensaje al editor líder con lo que hay que producir hoy: cuántos batches, de qué tipo (iteraciones, concepto nuevo o ángulo nuevo), el ángulo, qué se conserva y qué cambia en cada una de las 3 piezas (por ejemplo 3 hooks distintos). Si el producto no necesita creativos, dilo en una frase. Escríbelo en palabras, sin números ni porcentajes (ni del video ni de dinero): el editor no ve números. Apóyate en lo que dice "para el editor" de cada creativo.
 - aprendizaje: lo que deja el día, en 1 o 2 frases.
 Y arriba, resumen: 3 a 5 frases con lo más importante del día, de lo más urgente a lo menos.
 TXT;
@@ -113,9 +113,10 @@ TXT;
                 'producto' => $p['product'],
                 'diagnostico' => ($u ? "{$u['label']}." : '') . ($u && $u['reasons'] ? ' ' . implode('. ', $u['reasons']) . '.' : ''),
                 'ciudades' => array_map(fn ($c) => ['ciudad' => (string) $c['city'], 'lectura' => trim($c['action']['label'] . ': ' . $c['action']['reading'] . ' ' . ($c['action']['proposal'] ?? ''))], $p['cities']),
-                'decisiones_creativas' => array_map(fn ($cr, $i) => 'P' . ($i + 1) . " {$cr['label']}: {$cr['verdict']}" . ($cr['proposal'] ? " → {$cr['proposal']}" : ''),
-                    $p['creatives'], array_keys($p['creatives'])),
-                'mensaje_editor' => 'Hola. Para ' . $p['product'] . ': ' . ($u ? "batches a pedir: {$u['batches']}. " : '') . implode(' ', $p['next_work']),
+                'decisiones_creativas' => array_map(fn ($cr, $i) => 'P' . ($i + 1) . ' ' . (!empty($cr['call']) ? "{$cr['call']['label']} · " : '') . "{$cr['label']}: {$cr['verdict']}"
+                    . (!empty($cr['call']) ? " → {$cr['call']['todo']}" : ($cr['proposal'] ? " → {$cr['proposal']}" : '')), $p['creatives'], array_keys($p['creatives'])),
+                'mensaje_editor' => trim('Hola. Para ' . $p['product'] . ': ' . ($u ? "batches a pedir: {$u['batches']}. " : '') . implode(' ', $p['next_work'])
+                    . implode('', array_map(fn ($cr) => !empty($cr['call']['editor']) ? "\n{$cr['label']}: {$cr['call']['editor']}" : '', $p['creatives']))),
                 'aprendizaje' => 'Ejemplo: en el sistema real la IA escribe aquí lo que deja el día.',
             ];
         }
