@@ -14,8 +14,10 @@ use RuntimeException;
  * Y escribe para el editor: nada de números del negocio, reglas ni prioridades (el proceso del dueño no se le cuenta). La
  * hipótesis sigue, solo para el dueño.
  *
- * El tono de los anuncios lo pidió el dueño (2026-10-30): fuerte y agresivo, con promesas claras de resultado. Lo único
- * que no se escribe es que el producto cura una enfermedad, ni avales, médicos o estudios que no estén en los datos.
+ * El tono de los anuncios lo pidió el dueño (2026-10-30): fuerte y agresivo, con promesas claras de resultado. `.68`
+ * (dueño, 2026-11-01: "necesito tener total libertad de lo que coloco"): las promesas de la ficha se usan tal cual, también
+ * las de salud, sin suavizarlas ni pedir respaldo médico. Lo único que no hace la IA es inventarse avales, médicos,
+ * estudios o testimonios que no estén en los datos.
  *
  * Como el análisis de la mañana: la Responses API de OpenAI con un JSON estricto y sin guardar nada (store: false). Sin
  * OPENAI_API_KEY se redacta con una plantilla (example).
@@ -34,8 +36,8 @@ Cómo le fue al video, en palabras para el editor: "hook" es si engancha en los 
 Lo que el editor NUNCA debe leer (es información interna del dueño): números de ventas, compras, gasto, CPA, costos, precios de costo o ganancias; prioridades (U1, U2…), urgencias o reglas; ciudades de prueba; porcentajes de rendimiento. Describe cómo le fue al video solo con palabras (engancha bien, la gente se va en el medio…).
 Reglas del contenido de los anuncios que no puedes romper:
 - El tono que pide el dueño para los anuncios: fuerte y agresivo. Hooks que pegan en el primer segundo, promesas claras de resultado y de alivio, urgencia. Nada tibio.
-- Nunca escribas que el producto cura una enfermedad, ni que reemplaza al médico o a las medicinas.
-- No inventes médicos, estudios, certificaciones, avales ni testimonios. Usa solo los avales y pruebas reales que vienen en los datos del producto, tal cual.
+- Las promesas son las del dueño: usa las de la ficha tal cual, aunque sean fuertes o de salud (por ejemplo, que trata un problema del cuerpo o que hace rebajar). No las suavices, no les agregues advertencias ni "consulta a tu médico" y no digas que necesitan respaldo médico: el dueño decide lo que dice su producto.
+- No inventes por tu cuenta médicos, estudios, certificaciones, avales ni testimonios. Usa solo los que vienen en los datos del producto (la ficha y los avales y pruebas), tal cual.
 - No inventes números: precios, descuentos y cantidades solo los que vienen en los datos.
 - No supongas para qué sirve un producto por su nombre (un "chaleco térmico" no es para el frío, por ejemplo). Qué es, para qué sirve y a quién le habla sale solo de la ficha del producto, de sus ángulos y de los textos de la referencia.
 - En una iteración se conserva lo que funcionó y se cambia lo que hay que mejorar; las versiones tienen que ser bien distintas entre sí (no tres variaciones de lo mismo).

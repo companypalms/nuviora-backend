@@ -32,8 +32,11 @@ describe('Los encargos de landing redactados por la IA', function () use ($respu
         Http::assertSent(fn (Request $q) => $q->url() === 'https://api.openai.com/v1/responses'
             && $q['store'] === false && $q['text']['format']['strict'] === true && $q['text']['format']['name'] === 'encargos_landing'
             && str_contains($q['instructions'], 'fuerte y agresivo')
-            && str_contains($q['instructions'], 'Nunca escribas que el producto cura una enfermedad')
-            && str_contains($q['instructions'], 'No inventes médicos, estudios, certificaciones, avales ni testimonios')
+            // .68: las promesas del dueño tal cual (también las de salud); la IA no se inventa avales
+            && str_contains($q['instructions'], 'Las promesas son las del dueño: usa las de la ficha tal cual, aunque sean fuertes o de salud')
+            && str_contains($q['instructions'], 'no digas que necesitan respaldo médico')
+            && !str_contains($q['instructions'], 'cura una enfermedad')
+            && str_contains($q['instructions'], 'No inventes por tu cuenta médicos, estudios, certificaciones, avales ni testimonios')
             && str_contains($q['instructions'], 'Un solo cambio por encargo')
             && str_contains($q['input'][0]['content'][0]['text'], 'avales y pruebas reales del producto: Registro sanitario 123')
             && $q->hasHeader('Authorization', 'Bearer ' . LLAVE_FALSA_LANDING)

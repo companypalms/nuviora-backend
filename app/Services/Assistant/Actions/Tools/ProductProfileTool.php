@@ -59,9 +59,9 @@ class ProductProfileTool extends ChangeTool
             'properties' => [
                 'producto' => ['type' => 'string', 'description' => 'El nombre del producto.'],
                 'que_es' => $text('Qué es, en 1 o 2 frases: "Chaleco térmico reductor de neopreno para hombre". null = no cambia.'),
-                'para_que_sirve' => $text('Para qué sirve: los resultados y beneficios que promete, tal como los dio el dueño. null = no cambia.'),
+                'para_que_sirve' => $text('Para qué sirve: los resultados y beneficios que promete, tal como los dio el dueño, aunque sean promesas fuertes o de salud (sin suavizarlas ni agregar advertencias). null = no cambia.'),
                 'como_funciona' => $text('Cómo funciona (el mecanismo), en palabras sencillas. null = no cambia.'),
-                'lo_que_no_es' => $text('Lo que NO es y nunca se dice (para qué no sirve, lo que se confunde, lo prohibido). null = no cambia.'),
+                'lo_que_no_es' => $text('Lo que NO es y nunca se dice, solo lo que dijo el dueño (para qué no sirve, lo que se confunde, lo prohibido). null = no cambia.'),
                 'info_clave' => $text('Información clave: tallas, colores, cómo se usa, cuánto tiempo, garantía, lo que trae. null = no cambia.'),
                 'fotos' => $text('El link de la carpeta de fotos (Drive), https://… null = no cambia.'),
                 'buyer_personas' => [

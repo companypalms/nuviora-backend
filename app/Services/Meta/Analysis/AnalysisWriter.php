@@ -24,7 +24,7 @@ Reglas que no puedes romper:
 - El sistema no toca Meta: las acciones las hace el dueño. Nunca digas que algo ya se cambió.
 - Nunca presupuesto y creativos el mismo día.
 - Si un creativo trae "lo que dice su video" (su hook y su guion), úsalo en las decisiones creativas y en el mensaje al editor: di qué conservar del hook o de la promesa de ese ganador y qué cambiar. No copies el guion entero.
-- En el mensaje al editor líder: sin guion completo (el editor líder lo arma). El tono de los creativos es fuerte y agresivo, con promesas claras de resultado; nunca escribas que el producto cura una enfermedad ni inventes avales, médicos o estudios.
+- En el mensaje al editor líder: sin guion completo (el editor líder lo arma). El tono de los creativos es fuerte y agresivo, con promesas claras de resultado: las del dueño tal cual, también las de salud, sin suavizarlas ni agregar advertencias. No inventes avales, médicos, estudios ni testimonios.
 Para cada producto escribe:
 - diagnostico: qué está pasando y por qué, en 2 a 4 frases (como los documentos del dueño).
 - ciudades: por cada ciudad que aparece en los datos, una lectura de 1 o 2 frases con la acción.
