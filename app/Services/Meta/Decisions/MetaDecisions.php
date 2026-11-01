@@ -151,6 +151,36 @@ class MetaDecisions
         };
     }
 
+    /**
+     * `.65` (dueño, 2026-11-01): "ningún batch se elimina por sí solo si no han salido perdedores sus creativos… el batch
+     * no se apaga por sí solo, a menos que los tres creativos que estén ahí sean perdedores". Si el batch, por sus totales,
+     * es perdedor pero alguno de sus anuncios no perdió (un solo creativo se llevó el gasto), el batch sigue: se apaga solo
+     * el anuncio perdedor. Si alguno de los demás va bien, el batch va bien (PHP puro).
+     *
+     * @param array $set el veredicto del ad set por sus totales
+     * @param list<array{name: string, active: bool, verdict: array}> $ads sus anuncios
+     */
+    public static function batchVerdict(array $set, array $ads): array
+    {
+        $rest = array_values(array_filter($ads, fn ($a) => $a['verdict']['key'] !== 'loser'));
+        if ($set['key'] !== 'loser' || $ads === [] || $rest === []) {
+            return $set;
+        }
+        $order = ['proven', 'promising', 'intermediate', 'failing', 'evaluation', 'no_data', 'no_target'];
+        $rank = fn (array $a) => ($i = array_search($a['verdict']['key'], $order, true)) === false ? 99 : $i;
+        usort($rest, fn ($a, $b) => $rank($a) <=> $rank($b));
+        $key = in_array($rest[0]['verdict']['key'], ['proven', 'promising'], true) ? $rest[0]['verdict']['key'] : 'evaluation';
+        $lost = array_values(array_filter($ads, fn ($a) => $a['verdict']['key'] === 'loser'));
+        $lostOn = array_column(array_filter($lost, fn ($a) => $a['active']), 'name');
+
+        return ['key' => $key, 'label' => AdRules::STATES[$key]['label'], 'tone' => AdRules::STATES[$key]['tone'], 'data' => $set['data'] ?? '',
+            'reading' => 'Por sus totales gastó como perdedor, pero no todos sus creativos perdieron: perdió ' . implode(', ', array_column($lost, 'name')) . '; '
+                . implode(', ', array_map(fn ($a) => $a['name'] . ' ' . mb_strtolower($a['verdict']['label'] ?? AdRules::STATES[$a['verdict']['key']]['label'] ?? $a['verdict']['key']), $rest)) . '.',
+            'proposal' => 'No apagar el batch: ' . ($lostOn ? 'apagar solo ' . implode(', ', $lostOn) . ' para que el gasto pase a los demás creativos.'
+                : 'los demás creativos todavía se están probando.'),
+            'causes' => [], 'kept' => true];
+    }
+
     private function product(array $f, AdRules $rules, array $s): array
     {
         $campaigns = $f['campaigns'];
@@ -187,9 +217,19 @@ class MetaDecisions
             $out['adsets'][$id] = $this->entity($windows, $c, $rules, 'batch', $history['adset'][$id] ?? [], $cpmChange[$set['campaign_meta_id']] ?? null, $tracking);
         }
         // Anuncios: el que concentra el gasto se apaga primero, no el batch
+        $adVerdicts = [];
         foreach ($f['ads'] as $id => $ad) {
             $c = $campaigns[$ad['campaign_meta_id']] ?? null;
-            $v = $this->entity($ad['windows'], $c, $rules, 'anuncio', $history['ad'][$id] ?? [], $cpmChange[$ad['campaign_meta_id']] ?? null, $tracking);
+            $adVerdicts[$id] = $this->entity($ad['windows'], $c, $rules, 'anuncio', $history['ad'][$id] ?? [], $cpmChange[$ad['campaign_meta_id']] ?? null, $tracking);
+        }
+        // .65: un batch es perdedor solo si todos sus creativos perdieron
+        foreach ($out['adsets'] as $setId => $v) {
+            $inside = array_keys(array_filter($f['ads'], fn ($a) => $a['adset_meta_id'] === $setId));
+            $out['adsets'][$setId] = self::batchVerdict($v, array_map(fn ($adId) => ['name' => (string) $f['ads'][$adId]['name'], 'active' => (bool) $f['ads'][$adId]['active'],
+                'verdict' => $adVerdicts[$adId]], $inside));
+        }
+        foreach ($f['ads'] as $id => $ad) {
+            $v = $adVerdicts[$id];
             $batch = $out['adsets'][$ad['adset_meta_id']]['key'] ?? null;
             if ($v['key'] === 'loser' && $batch !== null && $batch !== 'loser') {
                 $v['proposal'] = 'Apagar este anuncio (no el batch).';

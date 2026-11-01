@@ -72,6 +72,35 @@ describe('Los 3 batches del testeo', function () {
     });
 });
 
+describe('Un batch no se apaga solo si no perdieron todos sus creativos', function () {
+    $v = fn (string $key, string $label) => ['key' => $key, 'label' => $label, 'tone' => 'x', 'data' => 'Gastó $60', 'reading' => '…', 'proposal' => 'Apagar el batch.'];
+    $ad = fn (string $name, string $key, string $label, bool $active = true) => ['name' => $name, 'active' => $active, 'verdict' => ['key' => $key, 'label' => $label]];
+
+    it('un creativo se llevó todo el gasto y perdió: los otros dos no se probaron, el batch sigue y se apaga solo ese anuncio', function () use ($v, $ad) {
+        $b = \App\Services\Meta\Decisions\MetaDecisions::batchVerdict($v('loser', 'Perdedor'),
+            [$ad('C0457 FASP', 'loser', 'Perdedor'), $ad('C0458 FASP', 'no_data', 'Sin datos'), $ad('C0459 FASP', 'no_data', 'Sin datos')]);
+        expect($b['key'])->toBe('evaluation')->and($b['label'])->toBe('En evaluación')
+            ->and($b['reading'])->toBe('Por sus totales gastó como perdedor, pero no todos sus creativos perdieron: perdió C0457 FASP; C0458 FASP sin datos, C0459 FASP sin datos.')
+            ->and($b['proposal'])->toBe('No apagar el batch: apagar solo C0457 FASP para que el gasto pase a los demás creativos.');
+        // Ya un batch "En evaluación" no está terminado: sigue En test
+        expect(\App\Services\Meta\Queue\QueueRules::outcome([['city' => 'Caracas', 'key' => $b['key'], 'label' => $b['label']]]))->toBeNull();
+    });
+
+    it('si el perdedor ya está apagado, solo espera a los demás; si otro va bien, el batch va bien', function () use ($v, $ad) {
+        $off = \App\Services\Meta\Decisions\MetaDecisions::batchVerdict($v('loser', 'Perdedor'), [$ad('C0457', 'loser', 'Perdedor', false), $ad('C0458', 'evaluation', 'En evaluación')]);
+        expect($off['proposal'])->toBe('No apagar el batch: los demás creativos todavía se están probando.');
+        $good = \App\Services\Meta\Decisions\MetaDecisions::batchVerdict($v('loser', 'Perdedor'), [$ad('C0457', 'loser', 'Perdedor'), $ad('C0458', 'promising', 'Prometedor')]);
+        expect($good['key'])->toBe('promising');
+    });
+
+    it('solo es perdedor si los tres perdieron; los demás veredictos no cambian', function () use ($v, $ad) {
+        $all = [$ad('C1', 'loser', 'Perdedor'), $ad('C2', 'loser', 'Perdedor'), $ad('C3', 'loser', 'Perdedor')];
+        expect(\App\Services\Meta\Decisions\MetaDecisions::batchVerdict($v('loser', 'Perdedor'), $all)['key'])->toBe('loser');
+        expect(\App\Services\Meta\Decisions\MetaDecisions::batchVerdict($v('intermediate', 'Intermedio'), [$ad('C1', 'loser', 'Perdedor')])['key'])->toBe('intermediate');
+        expect(\App\Services\Meta\Decisions\MetaDecisions::batchVerdict($v('loser', 'Perdedor'), [])['key'])->toBe('loser');
+    });
+});
+
 describe('Las propuestas de la mañana', function () use ($item) {
     it('el testeo va después del mínimo de lo que pierde dinero (U1 y U2) y antes de lo demás', function () use ($item) {
         $d = [1 => productoTesteo(1, 'Urgente', 1, '2–3'), 2 => productoTesteo(2, 'Escalando', 3, '1')];
