@@ -161,6 +161,7 @@ class ReminderFacts
         // .67: Meta Ads y los editores (si falla, esos recordatorios se muestran sin el dato)
         try {
             $facts['meta_work'] = $this->meta->now($now);
+            $facts['meta_routine'] = $this->meta->routine($now);
         } catch (\Throwable $e) {
             report($e);
         }

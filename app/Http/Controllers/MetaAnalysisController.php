@@ -4,7 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\CreativeBatch;
 use App\Models\MetaAnalysis;
+use App\Services\Meta\Analysis\AnalysisSender;
 use App\Services\Meta\Analysis\MetaAnalyzer;
+use App\Services\Meta\Queue\QueueRules;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
@@ -68,6 +70,29 @@ class MetaAnalysisController extends Controller
         return response()->json(['marks' => $analysis->marks ?? []]);
     }
 
+    /**
+     * Por creativo del análisis, su encargo más nuevo que está en manos del equipo o en test: el código, en qué va y quién
+     * lo hace.
+     *
+     * @return array<int, array{code: ?string, status: string, status_label: string, editor: ?string}>
+     */
+    private static function sent(array $facts): array
+    {
+        $ids = array_merge([], ...array_map(fn ($p) => array_column($p['creatives'] ?? [], 'id'), $facts));
+        if ($ids === []) {
+            return [];
+        }
+        $out = [];
+        foreach (CreativeBatch::with('editor:id,names,surnames')->whereIn('reference_creative_id', $ids)
+            ->whereIn('status', [...AnalysisSender::OPEN, 'testing'])->orderBy('id')->get() as $b) {
+            $out[(int) $b->reference_creative_id] = ['code' => $b->code(), 'status' => $b->status,
+                'status_label' => QueueRules::STATUSES[$b->status] ?? $b->status,
+                'editor' => $b->editor ? trim($b->editor->names . ' ' . $b->editor->surnames) : null];
+        }
+
+        return $out;
+    }
+
     private function present(MetaAnalysis $a): array
     {
         return [
@@ -76,6 +101,8 @@ class MetaAnalysisController extends Controller
             'model' => $a->model, 'error' => $a->error, 'warnings' => $a->warnings ?? [],
             'urgent' => $a->urgent ?? [], 'marks' => (object) ($a->marks ?? []),
             'facts' => $a->facts ?? [], 'text' => $a->text,
+            // .71: lo que ya tiene el equipo de cada creativo (el encargo que se le mandó al editor líder)
+            'sent' => (object) self::sent($a->facts ?? []),
             'versions' => MetaAnalysis::where('date', $a->date)->orderBy('version')->get(['version', 'created_at', 'requested_by'])
                 ->map(fn ($v) => ['version' => $v->version, 'created_at' => $v->created_at?->toIso8601String(), 'auto' => $v->requested_by === null]),
         ];

@@ -70,7 +70,7 @@ final class ReminderRules
         'meta_analysis' => [
             'type' => 'review', 'group' => 'meta', 'repeat' => 'daily', 'accumulates' => false, 'auto' => true,
             'title' => 'Revisar el análisis de campañas',
-            'help' => 'Cada mañana a las 7:00 queda listo el análisis de Meta Ads con tus reglas: lo más urgente primero (qué subir, bajar, pausar o apagar) y el trabajo para los editores. Se tilda solo al abrirlo.',
+            'help' => 'Tu rutina de cada mañana (después de las 7:00): 1) lo urgente de tus campañas (qué subir, bajar o pausar en cada ciudad, con el monto); 2) qué hacer con cada creativo (ESCALAR, MANTENER, PARAR o ITERAR), que haces tú en el Administrador de anuncios; 3) lo que hay que iterar ya le llegó solo al editor líder, que lo reparte en "Encargos del equipo". Se tilda solo al abrirlo.',
             'link' => '/meta-ads/analisis',
         ],
         // .67 (dueño, 2026-11-01): "que en el calendario se vea todo lo que tengo que revisar en sus respectivos tiempos,
@@ -291,7 +291,9 @@ final class ReminderRules
                 $seen = $facts['meta_analysis_days'][$due] ?? null;
                 $out['auto_done'] = $seen !== null;
                 $out['auto_note'] = $seen !== null ? "Lo abriste a las {$seen}." : null;
-                $out['details'] = 'Lo más urgente de tus campañas primero, con los montos de tus reglas, y el trabajo para los editores.';
+                // .71: la rutina de la mañana, con lo de hoy
+                $out['details'] = $isToday && isset($facts['meta_routine']) ? self::routineText($facts['meta_routine'])
+                    : 'Lo urgente de tus campañas, qué hacer con cada creativo (ESCALAR, MANTENER, PARAR o ITERAR) y lo que le llegó solo al editor líder.';
                 $out['actions'] = [['label' => 'Abrir el análisis', 'link' => $rule['link']]];
                 break;
 
@@ -337,6 +339,29 @@ final class ReminderRules
         }
 
         return $out;
+    }
+
+    /**
+     * `.71`: la rutina de hoy en una frase: "Lo urgente: 3 cosas. Creativos: 2 PARAR · 1 ESCALAR · 2 ITERAR. Al editor
+     * líder le llegaron 2 encargos (1 espera cupo para mañana)."
+     *
+     * @param array{ready: bool, urgent: int, calls: array<string, int>, sent: int, waiting: int} $r
+     */
+    public static function routineText(array $r): string
+    {
+        if (!$r['ready']) {
+            return 'El análisis de hoy sale a las 7:00: lo urgente, qué hacer con cada creativo y lo que le llega solo al editor líder.';
+        }
+        $parts = [$r['urgent'] > 0 ? 'Lo urgente: ' . ($r['urgent'] === 1 ? '1 cosa.' : "{$r['urgent']} cosas.") : 'Nada urgente en tus campañas.'];
+        if ($r['calls']) {
+            $parts[] = 'Creativos: ' . implode(' · ', array_map(fn ($label, $n) => "{$n} {$label}", array_keys($r['calls']), $r['calls'])) . '.';
+        }
+        if ($r['sent'] + $r['waiting'] > 0) {
+            $parts[] = 'Al editor líder le ' . ($r['sent'] === 1 ? 'llegó 1 encargo' : "llegaron {$r['sent']} encargos")
+                . ($r['waiting'] > 0 ? ' (' . $r['waiting'] . ' ' . ($r['waiting'] === 1 ? 'espera' : 'esperan') . ' cupo para mañana)' : '') . '.';
+        }
+
+        return implode(' ', $parts);
     }
 
     /** "BCV: $ 36,50 y € 39,80 · Binance: $ 40,10. Guardadas el 29/10 a las 9:12." */

@@ -18,7 +18,7 @@ class BatchQueue
     {
     }
 
-    public function approve(CreativeBatch $batch, int $userId): CreativeBatch
+    public function approve(CreativeBatch $batch, ?int $userId): CreativeBatch
     {
         return DB::transaction(function () use ($batch, $userId) {
             $batch = CreativeBatch::lockForUpdate()->findOrFail($batch->id);

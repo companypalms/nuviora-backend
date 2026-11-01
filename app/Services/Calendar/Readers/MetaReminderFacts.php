@@ -56,6 +56,38 @@ class MetaReminderFacts
      *
      * @return list<array{name: string, landing: bool, delivered: int, on_time: int, reviewed: int, returned: int, won: int, lost: int, tie: int}>
      */
+    /**
+     * `.71`: la rutina de hoy (del último análisis del día): lo urgente sin tildar, cuántos creativos hay en cada decisión
+     * y cuántos se le mandaron al editor líder o esperan cupo.
+     *
+     * @return array{ready: bool, urgent: int, calls: array<string, int>, sent: int, waiting: int}
+     */
+    public function routine(CarbonImmutable $now): array
+    {
+        $a = \App\Models\MetaAnalysis::where('date', $now->toDateString())->orderByDesc('version')->first();
+        if ($a === null) {
+            return ['ready' => false, 'urgent' => 0, 'calls' => [], 'sent' => 0, 'waiting' => 0];
+        }
+        $marks = $a->marks ?? [];
+        $urgent = count(array_filter($a->urgent ?? [], fn ($u) => ($marks[$u['key']]['status'] ?? null) !== 'done'));
+        $calls = [];
+        foreach (array_keys(\App\Services\Meta\Analysis\CreativeCalls::CALLS) as $k) {
+            $calls[\App\Services\Meta\Analysis\CreativeCalls::CALLS[$k]['label']] = 0;
+        }
+        foreach ($a->facts ?? [] as $p) {
+            foreach ($p['creatives'] ?? [] as $cr) {
+                if (isset($cr['call']['label'])) {
+                    $calls[$cr['call']['label']]++;
+                }
+            }
+        }
+        $ids = array_map(fn ($c) => (int) $c['creative']['id'], \App\Services\Meta\Analysis\AnalysisSender::candidates($a->facts ?? []));
+        $open = $ids ? CreativeBatch::whereIn('reference_creative_id', $ids)->whereIn('status', \App\Services\Meta\Analysis\AnalysisSender::OPEN)
+            ->distinct()->pluck('reference_creative_id')->count() : 0;
+
+        return ['ready' => true, 'urgent' => $urgent, 'calls' => array_filter($calls), 'sent' => $open, 'waiting' => count(array_unique($ids)) - $open];
+    }
+
     public function editorWeek(string $monday): array
     {
         [$from, $to] = $this->bounds($monday, 6);

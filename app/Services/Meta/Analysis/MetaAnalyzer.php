@@ -15,6 +15,7 @@ use RuntimeException;
  * 3. La IA explica y redacta (AnalysisWriter); si escribe un monto que no está en los datos, queda un aviso (MoneyCheck).
  * 4. Se guarda como una versión del día; lo que el dueño ya marcó en la versión anterior se conserva.
  * 5. Paso 4b: las reglas proponen los encargos que faltan y la IA los redacta (QueueProposer).
+ * 5b. `.71`: lo que hay que iterar (y los ganadores) se le manda solo al editor líder como encargo aprobado (AnalysisSender).
  * 6. Paso 6c: los encargos de landing ya no se proponen solos (`.70`, el dueño las hace él): "Proponer ahora" en Landings.
  * Nada se cambia en Meta ni se manda a nadie.
  */
@@ -72,6 +73,13 @@ class MetaAnalyzer
         // Paso 4b: los encargos que faltan quedan en la cola para aprobar (si algo falla, el análisis queda igual)
         try {
             (new QueueProposer($this->decisions))->run($userId);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+        // .71: lo que hay que iterar se le manda solo al editor líder (después de las propuestas: si la IA ya propuso una
+        // iteración de ese creativo, se aprueba esa)
+        try {
+            (new AnalysisSender())->run($analysis);
         } catch (\Throwable $e) {
             report($e);
         }

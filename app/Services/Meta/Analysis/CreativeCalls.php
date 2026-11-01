@@ -76,6 +76,12 @@ final class CreativeCalls
         return ['key' => $key] + self::CALLS[$key] + ['todo' => $todo, 'editor' => $editor];
     }
 
+    /** `.71`: qué cambiar, en palabras (null si no hay nada claro que arreglar en el video). */
+    public static function fix(?string $iterate): ?string
+    {
+        return self::FIX[$iterate] ?? null;
+    }
+
     /**
      * Los números del creativo, para el dueño: los del video (hook rate, hold rate, CTR, frecuencia, cuánta gente llega al
      * 25 %, al 75 % y al final, el tiempo promedio y el CPM) y la plata de los últimos 7 días.
