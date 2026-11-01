@@ -179,7 +179,9 @@ final class ProductProfileRules
         if ($profile === null) {
             return null;
         }
-        $out = array_filter(array_intersect_key($profile, self::FIELDS), fn ($v) => $v !== null && trim((string) $v) !== '');
+        // .69: sin precios ni montos (el editor no ve el precio del producto)
+        $out = array_filter(array_map(fn ($v) => \App\Services\Meta\Queue\QueueRules::withoutPrices($v === null ? null : (string) $v),
+            array_intersect_key($profile, self::FIELDS)), fn ($v) => $v !== null);
 
         return $out === [] ? null : $out;
     }
@@ -191,7 +193,8 @@ final class ProductProfileRules
             return null;
         }
 
-        return array_filter(array_intersect_key($p, self::PERSONA_FIELDS), fn ($v) => $v !== null && trim((string) $v) !== '') ?: null;
+        return array_filter(array_map(fn ($v) => \App\Services\Meta\Queue\QueueRules::withoutPrices($v === null ? null : (string) $v),
+            array_intersect_key($p, self::PERSONA_FIELDS)), fn ($v) => $v !== null) ?: null;
     }
 
     /**

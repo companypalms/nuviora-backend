@@ -118,6 +118,8 @@ describe('El texto del encargo para el editor', function () {
         // .63: el texto es para el editor: nada del proceso del dueño
         expect($text)->not->toContain('U1')->not->toContain('Hipótesis')->not->toContain('sube el CTR')->not->toContain('Caracas')
             ->not->toContain('Ciudad');
+        // .69: ni el precio (la oferta que decía "Precio $23,14" no sale)
+        expect($text)->not->toContain('23,14')->not->toContain('Oferta');
     });
 
     it('sin aprobar todavía no tiene números', function () {

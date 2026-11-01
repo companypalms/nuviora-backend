@@ -156,21 +156,24 @@ final class QueueRules
             $lines[] = "Ángulo: {$b['angle_code']}" . ($b['angle_name'] ? " ({$b['angle_name']})" : '');
         }
         // .64: lo del producto y el buyer persona de este encargo (solo ese)
-        if (!empty($b['product_info'])) {
+        // .69: el editor nunca lee un precio (ni de la ficha, ni de la oferta, ni de lo que escribió la IA)
+        $info = array_filter(array_map([self::class, 'withoutPrices'], (array) ($b['product_info'] ?? [])), fn ($v) => $v !== null);
+        if ($info) {
             $lines[] = 'Sobre el producto:';
             foreach (self::PRODUCT_LABELS as $key => $label) {
-                if (!empty($b['product_info'][$key])) {
-                    $lines[] = "- {$label}: " . trim(preg_replace('/\s*\n+\s*/u', ' / ', (string) $b['product_info'][$key]));
+                if (!empty($info[$key])) {
+                    $lines[] = "- {$label}: " . trim(preg_replace('/\s*\n+\s*/u', ' / ', (string) $info[$key]));
                 }
             }
         }
         if (!empty($b['persona']['name'])) {
-            $lines[] = 'A quién le hablas: ' . \App\Services\Meta\Products\ProductProfileRules::personaLine($b['persona']);
+            $lines[] = 'A quién le hablas: ' . \App\Services\Meta\Products\ProductProfileRules::personaLine(array_map([self::class, 'withoutPrices'], $b['persona']));
         }
         foreach (['test_idea' => 'Qué estamos probando', 'goal' => 'Lo que buscamos', 'keep' => 'Lo que funcionó (no lo cambies)', 'improve' => 'Lo que hay que mejorar',
             'concept' => 'Concepto', 'audience' => 'Dolor o público', 'offer' => 'Oferta'] as $key => $label) {
-            if (($b[$key] ?? null) !== null && trim((string) $b[$key]) !== '') {
-                $lines[] = "{$label}: " . trim((string) $b[$key]);
+            $value = self::withoutPrices(isset($b[$key]) ? (string) $b[$key] : null);
+            if ($value !== null) {
+                $lines[] = "{$label}: {$value}";
             }
         }
         if ($b['format']) {
@@ -182,7 +185,8 @@ final class QueueRules
         if ($b['pieces']) {
             $lines[] = 'Ideas para cada versión (tú decides cómo):';
             foreach ($b['pieces'] as $i => $p) {
-                $lines[] = ($i + 1) . '. ' . ($p['code'] ? "{$p['code']} — " : '') . (trim((string) $p['change']) !== '' ? trim((string) $p['change']) : 'sin detalle')
+                $change = self::withoutPrices((string) $p['change']);
+                $lines[] = ($i + 1) . '. ' . ($p['code'] ? "{$p['code']} — " : '') . ($change ?? 'sin detalle')
                     . ($p['format'] && $p['format'] !== $b['format'] ? ' (' . mb_strtolower(self::FORMATS[$p['format']] ?? $p['format']) . ')' : '');
             }
         }
@@ -194,8 +198,8 @@ final class QueueRules
                 $lines[] = '- ' . ($p['code'] ?? 'Pieza') . ': ' . $p['link'] . (!empty($p['hook']) ? " — hook: {$p['hook']}" : '');
             }
         }
-        if (trim((string) ($b['deliverables'] ?? '')) !== '') {
-            $lines[] = 'Entregables: ' . trim((string) $b['deliverables']);
+        if (($deliverables = self::withoutPrices($b['deliverables'] ?? null)) !== null) {
+            $lines[] = 'Entregables: ' . $deliverables;
         }
         if ($b['due_date']) {
             $d = CarbonImmutable::parse($b['due_date']);
@@ -210,5 +214,45 @@ final class QueueRules
         }
 
         return implode("\n", $lines);
+    }
+
+    /**
+     * `.69` (dueño, 2026-11-01): el editor "no debería ver el precio del producto". Quita de un texto que lee el editor
+     * cada frase que habla de un precio o de un monto de dinero ("Precio $25", "cuesta 40 dólares", "Bs 900"). null si no
+     * queda nada. El dueño ve sus textos completos; esto es solo para lo que le llega al editor.
+     */
+    public static function withoutPrices(?string $text): ?string
+    {
+        if ($text === null || trim($text) === '') {
+            return null;
+        }
+        // Por frases (punto seguido de espacio, punto y coma, signos o salto de línea), conservando cómo terminaba cada una
+        $parts = preg_split('/(?<=[;!?\n]|\.(?=\s|$))/u', $text) ?: [$text];
+        $out = trim(implode('', array_filter($parts, fn ($p) => !self::mentionsPrice($p))));
+
+        return $out === '' ? null : $out;
+    }
+
+    /** ¿Habla de un precio o de un monto de dinero? */
+    public static function mentionsPrice(string $text): bool
+    {
+        $money = '(?:\$|US\$|USD|€|Bs\.?|bol[ií]vares|d[oó]lares|euros)';
+
+        return (bool) preg_match('/\bprecios?\b|\bcuestan?\b|\bvalen?\s+\d|' . $money . '\s?\d|\d[\d.,]*\s?' . $money . '(?![\p{L}])/iu', $text);
+    }
+
+    /** Lo mismo en una lista o en un texto dentro de otra estructura (los textos y el guion de la referencia). */
+    public static function withoutPricesIn(mixed $value): mixed
+    {
+        if (is_string($value)) {
+            return self::withoutPrices($value);
+        }
+        if (is_array($value)) {
+            $out = array_map([self::class, 'withoutPricesIn'], $value);
+
+            return array_is_list($value) ? array_values(array_filter($out, fn ($v) => $v !== null)) : $out;
+        }
+
+        return $value;
     }
 }

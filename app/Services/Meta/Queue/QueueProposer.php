@@ -160,7 +160,8 @@ class QueueProposer
             'goal' => $clean($t['objetivo'] ?? null), 'test_idea' => $clean($t['probando'] ?? null), 'improve' => $clean($t['mejorar'] ?? null),
             'reference_creative_id' => $p['reference_id'], 'learning_city_id' => $p['city_id'], 'format' => $p['format'], 'keep' => $clean($t['conservar'] ?? null),
             'style' => isset(QueueRules::STYLES[$t['estilo'] ?? '']) ? $t['estilo'] : null,
-            'offer' => $p['context']['price'] ? 'Precio ' . $p['context']['price'] : null, 'deliverables' => $clean($t['entregables'] ?? null),
+            // .69: la oferta ya no se llena con el precio (el editor no lo ve)
+            'offer' => null, 'deliverables' => $clean($t['entregables'] ?? null),
             'urgency' => $p['urgency'], 'source' => 'rules', 'proposed_on' => $today, 'status' => 'proposed', 'status_at' => now(), 'created_by' => $userId,
         ]);
         // .63: una idea por versión (sugerencias; el editor decide cómo)
@@ -170,12 +171,11 @@ class QueueProposer
         }
     }
 
-    /** Lo del producto para la IA: su ficha, sus avales reales, el precio, sus ángulos y los textos y el video de la referencia. */
+    /** Lo del producto para la IA: su ficha, sus avales reales, sus ángulos y los textos y el video de la referencia (.69: sin el precio). */
     private function context(array $p, array $decisions): array
     {
         $pid = $p['product_id'];
         $profile = ProductProfiles::get($pid);
-        $price = DB::table('products')->where('id', $pid)->value('price');
         $refTexts = $p['reference_id'] ? DB::table('meta_ads')->where('meta_creative_ref_id', $p['reference_id'])
             ->where(fn ($q) => $q->whereNotNull('ad_body')->orWhereNotNull('ad_title'))->orderByDesc('created_time')->limit(2)->get(['ad_title', 'ad_body'])
             ->map(fn ($a) => trim(($a->ad_title ? $a->ad_title . ' — ' : '') . mb_strimwidth((string) $a->ad_body, 0, 280, '…')))->unique()->values()->all() : [];
@@ -187,7 +187,6 @@ class QueueProposer
             // .66: lo que sabemos de este producto (lo que funcionó, lo que no y las notas del dueño)
             'memory' => \App\Services\Meta\Products\ProductMemories::forWriter($pid),
             'proof' => ProductAdSetting::where('product_id', $pid)->value('proof'),
-            'price' => $price !== null ? '$' . number_format((float) $price, 2, ',', '.') : null,
             'angles' => AdAngle::where('product_id', $pid)->whereNull('alias_of')->orderBy('code')->get(['code', 'name', 'hypothesis'])
                 ->mapWithKeys(fn ($a) => [$a->code => trim(($a->name ?? '') . ($a->hypothesis ? ": {$a->hypothesis}" : ''))])->all(),
             'reference_texts' => $refTexts,

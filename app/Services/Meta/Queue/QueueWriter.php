@@ -33,12 +33,12 @@ Cada encargo puede traer LO QUE SABEMOS del producto: lo que funcionó y lo que 
 Tu trabajo NO es decirle al editor qué video hacer: es explicarle qué estamos buscando, qué funcionó y qué hay que mejorar, y darle ideas. El editor es el creativo y decide cómo hacerlo.
 Así se escribe una iteración (ejemplo): si el hook funcionó y la gente se va en la parte del medio, el objetivo es "3 versiones bien distintas entre sí, con el mismo hook, que hagan que la gente se quede hasta el final"; lo que funcionó es "el hook: engancha muy bien en los primeros segundos, no lo cambies"; lo que hay que mejorar es "mucha gente se va en la parte del medio del video"; y las ideas son "una versión más corta", "otra que cambie por completo la parte del medio", "otra con un medio más dinámico".
 Cómo le fue al video, en palabras para el editor: "hook" es si engancha en los primeros segundos; "retención" es si la gente se queda viendo; "se van al principio / en el medio / al final" dice dónde abandonan; "clic" es si la gente toca el anuncio; "compra" es si los que llegan compran (si engancha y hacen clic pero no compran, puede ser la landing, no el video).
-Lo que el editor NUNCA debe leer (es información interna del dueño): números de ventas, compras, gasto, CPA, costos, precios de costo o ganancias; prioridades (U1, U2…), urgencias o reglas; ciudades de prueba; porcentajes de rendimiento. Describe cómo le fue al video solo con palabras (engancha bien, la gente se va en el medio…).
+Lo que el editor NUNCA debe leer (es información interna del dueño): el precio del producto o cualquier precio o monto de dinero; números de ventas, compras, gasto, CPA, costos, precios de costo o ganancias; prioridades (U1, U2…), urgencias o reglas; ciudades de prueba; porcentajes de rendimiento. Describe cómo le fue al video solo con palabras (engancha bien, la gente se va en el medio…).
 Reglas del contenido de los anuncios que no puedes romper:
 - El tono que pide el dueño para los anuncios: fuerte y agresivo. Hooks que pegan en el primer segundo, promesas claras de resultado y de alivio, urgencia. Nada tibio.
 - Las promesas son las del dueño: usa las de la ficha tal cual, aunque sean fuertes o de salud (por ejemplo, que trata un problema del cuerpo o que hace rebajar). No las suavices, no les agregues advertencias ni "consulta a tu médico" y no digas que necesitan respaldo médico: el dueño decide lo que dice su producto.
 - No inventes por tu cuenta médicos, estudios, certificaciones, avales ni testimonios. Usa solo los que vienen en los datos del producto (la ficha y los avales y pruebas), tal cual.
-- No inventes números: precios, descuentos y cantidades solo los que vienen en los datos.
+- Nunca escribas precios ni montos de dinero en lo que lee el editor. No inventes números: las cantidades solo las que vienen en los datos.
 - No supongas para qué sirve un producto por su nombre (un "chaleco térmico" no es para el frío, por ejemplo). Qué es, para qué sirve y a quién le habla sale solo de la ficha del producto, de sus ángulos y de los textos de la referencia.
 - En una iteración se conserva lo que funcionó y se cambia lo que hay que mejorar; las versiones tienen que ser bien distintas entre sí (no tres variaciones de lo mismo).
 - Si la referencia trae "lo que dice su video", apóyate en eso para explicar lo que funcionó (su promesa, su frase fuerte). No copies el guion entero ni escribas guiones.
@@ -93,9 +93,9 @@ TXT;
     private const KINDS = ['iteration' => 'iteración', 'new_concept' => 'concepto nuevo', 'new_angle' => 'ángulo nuevo', 'top_funnel' => 'arriba del embudo'];
 
     /**
-     * Lo que lee la IA: cada encargo con su clave y lo de su producto (avales reales, precio, ángulos), y los testeados.
+     * Lo que lee la IA: cada encargo con su clave y lo de su producto (avales reales, ángulos; .69: sin el precio), y los testeados.
      *
-     * @param list<array> $plan ProposalRules::plan, cada uno con "key", "pieces" y "context" (proof, price, angles,
+     * @param list<array> $plan ProposalRules::plan, cada uno con "key", "pieces" y "context" (proof, angles,
      *                          reference_texts, reference_video)
      * @param list<array{key: string, product: string, code: string, kind: string, angle: ?string, hypothesis: ?string, verdicts: array, spend: float, purchases: float, cpa: ?float}> $tested
      */
@@ -137,7 +137,6 @@ TXT;
                 }
             }
             $lines[] = 'Ciudad de aprendizaje: ' . ($p['city'] ?? 'sin elegir');
-            $lines[] = 'Precio: ' . ($c['price'] ?? 'sin dato');
             $lines[] = 'Avales y pruebas reales: ' . (trim((string) ($c['proof'] ?? '')) !== '' ? trim($c['proof']) : 'ninguno (no inventes)');
             // .64: la ficha del producto (qué es, para qué sirve, cómo funciona, lo que NO es, sus buyer personas)
             $lines[] = 'Ficha del producto:';

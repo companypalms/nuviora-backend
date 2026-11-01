@@ -154,7 +154,10 @@ class EditorWork
         $scripts = \App\Services\Meta\Videos\Scripts::forCreatives($refIds);
         $profiles = \App\Services\Meta\Products\ProductProfiles::many($batches->pluck('product_id')->unique()->all());
 
-        return self::sorted($batches)->map(function (CreativeBatch $b) use ($angles, $refs, $scripts, $profiles, $who) {
+        // .69: el editor no ve precios ni montos en ningún texto (la ficha, la oferta, lo que escribió la IA, la referencia)
+        $clean = fn (?string $v) => QueueRules::withoutPrices($v);
+
+        return self::sorted($batches)->map(function (CreativeBatch $b) use ($angles, $refs, $scripts, $profiles, $who, $clean) {
             $out = [
                 'id' => $b->id, 'code' => $b->code(), 'product' => $b->product?->showable_name ?: $b->product?->title,
                 'status' => $b->status, 'status_label' => QueueRules::STATUSES[$b->status] ?? $b->status, 'status_at' => $b->status_at?->toIso8601String(),
@@ -162,14 +165,15 @@ class EditorWork
                 'angle_code' => $b->angle_code, 'angle_name' => $angles["{$b->product_id}:{$b->angle_code}"] ?? null,
                 // .63: lo que buscamos, lo que funcionó y lo que hay que mejorar; nada del proceso del dueño (ni la hipótesis, ni
                 // la prioridad, ni la ciudad de prueba): el editor ve solo lo que necesita para hacer su trabajo
-                'test_idea' => $b->test_idea, 'goal' => $b->goal, 'keep' => $b->keep, 'improve' => $b->improve, 'concept' => $b->concept, 'audience' => $b->audience,
+                'test_idea' => $clean($b->test_idea), 'goal' => $clean($b->goal), 'keep' => $clean($b->keep), 'improve' => $clean($b->improve),
+                'concept' => $clean($b->concept), 'audience' => $clean($b->audience),
             ] + self::product($b, $profiles) + [
                 'reference' => $b->reference?->label, 'reference_thumbnail' => $refs[$b->reference_creative_id]['thumbnail'] ?? null,
-                'reference_texts' => $refs[$b->reference_creative_id]['texts'] ?? [],
-                'reference_script' => $scripts[$b->reference_creative_id] ?? null,
+                'reference_texts' => QueueRules::withoutPricesIn($refs[$b->reference_creative_id]['texts'] ?? []),
+                'reference_script' => QueueRules::withoutPricesIn($scripts[$b->reference_creative_id] ?? null),
                 'format' => $b->format, 'style' => $b->style, 'style_label' => $b->style ? (QueueRules::STYLES[$b->style] ?? $b->style) : null,
-                'offer' => $b->offer, 'deliverables' => $b->deliverables, 'due_date' => $b->due_date?->toDateString(),
-                'pieces' => $b->pieces->map(fn (CreativeBatchPiece $p) => ['id' => $p->id, 'code' => $p->code(), 'change' => $p->change, 'format' => $p->format,
+                'offer' => $clean($b->offer), 'deliverables' => $clean($b->deliverables), 'due_date' => $b->due_date?->toDateString(),
+                'pieces' => $b->pieces->map(fn (CreativeBatchPiece $p) => ['id' => $p->id, 'code' => $p->code(), 'change' => $clean($p->change), 'format' => $p->format,
                     'link' => $p->link, 'hook' => $p->hook])->values()->all(),
                 'meta_names' => QueueRules::metaNames($b->number, $b->angle_code, $b->pieces->pluck('number')->all()),
             ] + self::fields($b, $who);
