@@ -186,6 +186,11 @@ class ExampleModel implements AssistantModel
             default => $now->toDateString(),
         };
 
+        // .64: "Ficha de ZenPulse: qué es: …; para qué sirve: …; cómo funciona: …; no es: …; buyer: Nombre / quién es / qué le duele"
+        if (preg_match('/^\s*ficha de\s+(.+?):\s*(.+)$/isu', $message, $m)) {
+            return ['name' => 'proponer_ficha_producto', 'arguments' => self::profile(trim($m[1]), $m[2])];
+        }
+
         // Paso 7: compras, ciudades y agencias, y cuentas
         if (preg_match('/^(compre|pedi)\s+(\d+)\s+(.+?)\s+a\s+(.+?)\s+por\s+\d/u', $t, $m) && $amount) {
             $purchase = ['producto' => $m[3], 'tallas' => null, 'almacen' => null, 'cantidad' => (int) $m[2], 'proveedor' => $m[4],
@@ -257,6 +262,30 @@ class ExampleModel implements AssistantModel
         }
 
         return null;
+    }
+
+    /** `.64`: las partes "clave: valor" separadas por ";" de un mensaje de ficha (solo el modo ejemplo). */
+    private static function profile(string $product, string $text): array
+    {
+        $keys = ['que es' => 'que_es', 'para que sirve' => 'para_que_sirve', 'como funciona' => 'como_funciona', 'no es' => 'lo_que_no_es',
+            'lo que no es' => 'lo_que_no_es', 'info' => 'info_clave', 'informacion clave' => 'info_clave', 'fotos' => 'fotos'];
+        $args = ['producto' => $product] + array_fill_keys(array_unique(array_values($keys)), null) + ['buyer_personas' => [], 'quitar_buyer_personas' => []];
+        foreach (preg_split('/\s*;\s*/u', $text) as $part) {
+            if (!preg_match('/^([^:]+):\s*(.+)$/su', $part, $kv)) {
+                continue;
+            }
+            $key = Lookup::normalize($kv[1]);
+            if ($key === 'buyer') {
+                $p = array_map('trim', explode('/', $kv[2]));
+                $args['buyer_personas'][] = ['nombre' => $p[0], 'quien_es' => $p[1] ?? null, 'que_le_duele' => $p[2] ?? null, 'que_quiere' => $p[3] ?? null, 'que_lo_frena' => $p[4] ?? null];
+            } elseif ($key === 'quitar buyer') {
+                $args['quitar_buyer_personas'][] = trim($kv[2]);
+            } elseif (isset($keys[$key])) {
+                $args[$keys[$key]] = trim($kv[2]);
+            }
+        }
+
+        return $args;
     }
 
     private static function period(string $t): array

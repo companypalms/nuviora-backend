@@ -8,6 +8,8 @@ use App\Models\ProductAdSetting;
 use App\Models\Setting;
 use App\Services\Meta\Analysis\MetaAnalyzer;
 use App\Services\Meta\Decisions\DecisionSettings;
+use App\Services\Meta\Products\ProductProfileRules;
+use App\Services\Meta\Products\ProductProfiles;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -20,6 +22,8 @@ use RuntimeException;
  * 3. nunca una landing con un encargo abierto o en test (nunca dos cambios a la vez), ni una que ya se propuso hoy;
  * 4. como mucho `landing_proposals_max` (3) por día, lo más grave primero; los productos pausados o abandonados, no;
  * 5. la IA los redacta (LandingWriter) y quedan "Propuesto": nada se manda a nadie ni se toca Meta o Shopify.
+ * `.64`: los encargos de textos (ángulo, contenido) solo de productos con la ficha completa; los técnicos (sin píxel,
+ * lenta) van igual, porque no escriben nada del producto.
  */
 class LandingProposer
 {
@@ -27,6 +31,9 @@ class LandingProposer
 
     /** Lo más grave primero. */
     public const PRIORITY = ['no_pixel', 'slow', 'angle_mismatch', 'angle_weak', 'beaten'];
+
+    /** .64: los que no escriben textos del producto (van aunque no tenga ficha). */
+    public const TECHNICAL = ['no_pixel', 'slow'];
 
     public function __construct(
         private DecisionSettings $settings = new DecisionSettings(),
@@ -51,13 +58,20 @@ class LandingProposer
         $report = $this->report ?? new LandingReport($this->settings);
 
         $candidates = [];
-        foreach (array_diff($productIds ?? MetaAnalyzer::products(), $skipModes) as $pid) {
+        $pids = array_values(array_diff($productIds ?? MetaAnalyzer::products(), $skipModes));
+        $complete = ProductProfiles::completeIds($pids);
+        $missingProfile = [];
+        foreach ($pids as $pid) {
             $r = $report->forProduct((int) $pid, 'last_7d');
             foreach ($r['landings'] as $l) {
                 if ($l['task'] !== null || in_array($l['id'], $proposedToday, true)) {
                     continue;
                 }
                 $f = self::worst($l['findings']);
+                if ($f !== null && !in_array($f['key'], self::TECHNICAL, true) && !in_array((int) $pid, $complete, true)) {
+                    $missingProfile[(int) $pid] = true;
+                    continue;
+                }
                 if ($f !== null) {
                     $candidates[] = ['product_id' => (int) $pid, 'landing' => $l, 'finding' => $f];
                 }
@@ -67,7 +81,9 @@ class LandingProposer
             <=> [array_search($b['finding']['key'], self::PRIORITY, true), -$b['landing']['totals']['spend']]);
         $plan = array_slice($candidates, 0, max(0, (int) $s['landing_proposals_max'] - $todayCount));
 
-        $run = ['at' => now()->toIso8601String(), 'created' => 0, 'replaced' => $replaced, 'status' => 'nothing', 'model' => null, 'error' => null];
+        $run = ['at' => now()->toIso8601String(), 'created' => 0, 'replaced' => $replaced, 'status' => 'nothing', 'model' => null, 'error' => null,
+            'missing_profile' => array_values(DB::table('products')->whereIn('id', array_keys($missingProfile) ?: [0])->get(['title', 'showable_name'])
+                ->map(fn ($p) => $p->showable_name ?: $p->title)->all())];
         if ($plan !== []) {
             $rows = $this->rows($plan);
             [$text, $run] = $this->write($rows, $run);
@@ -109,8 +125,9 @@ class LandingProposer
         $proof = ProductAdSetting::whereIn('product_id', $productIds)->pluck('proof', 'product_id');
         $angles = AdAngle::whereIn('product_id', $productIds)->whereNull('alias_of')->get(['product_id', 'code', 'name', 'hypothesis'])
             ->keyBy(fn ($a) => "{$a->product_id}:{$a->code}");
+        $profiles = ProductProfiles::many($productIds);
 
-        return array_values(array_map(function (array $p, int $i) use ($names, $proof, $angles) {
+        return array_values(array_map(function (array $p, int $i) use ($names, $proof, $angles, $profiles) {
             $f = $p['finding'];
             $l = $p['landing'];
             $angle = $f['angle'] ?? null;
@@ -121,6 +138,7 @@ class LandingProposer
                 'key' => 'L' . ($i + 1), 'product' => ($names[$p['product_id']]->showable_name ?? null) ?: ($names[$p['product_id']]->title ?? 'el producto'),
                 'url' => $l['url'], 'kind' => LandingTaskRules::kindFor([$f['key']]), 'finding' => $f['key'], 'angle' => $angle, 'angle_name' => $a?->name, 'angle_hypothesis' => $a?->hypothesis,
                 'best' => $f['best'] ?? null, 'proof' => $proof[$p['product_id']] ?? null,
+                'profile' => ProductProfileRules::forAi($profiles[$p['product_id']]['profile'] ?? null, $profiles[$p['product_id']]['personas'] ?? []),
                 'observed' => $f['text'] . ' (últimos 7 días en «' . $l['label'] . '»: ' . number_format($l['totals']['link_clicks'], 0, ',', '.') . ' clics, '
                     . number_format($l['totals']['visits'], 0, ',', '.') . ' visitas, ' . $l['totals']['purchases'] . ' compras'
                     . ($m['visit'] !== null ? ', visita ' . str_replace('.', ',', (string) $m['visit']) . ' %' : '')

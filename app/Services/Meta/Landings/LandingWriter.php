@@ -15,6 +15,7 @@ class LandingWriter
     private const INSTRUCTIONS = <<<'TXT'
 Eres el director de ecommerce de una tienda online de Venezuela que vende con anuncios de Facebook e Instagram y cobra contra entrega. Las landings son páginas de producto de Shopify. Escribes los encargos para el editor de landings, en español sencillo y directo.
 Recibes los encargos que ya decidieron las reglas del dueño: el producto, la landing (su dirección), el tipo (velocidad, hablarle a un ángulo, oferta o contenido), el ángulo con su nombre y su hipótesis, lo que dicen los números y los avales reales del producto. No cambies nada de eso: redáctalo.
+Cada encargo trae la FICHA DEL PRODUCTO (qué es, para qué sirve, cómo funciona, lo que NO es y sus buyer personas). Todo lo que escribas tiene que ser fiel a la ficha: nunca contradigas "lo que NO es", no le agregues usos ni beneficios que no estén ahí y no supongas para qué sirve un producto por su nombre.
 Si propones textos para la página, el tono es el que pide el dueño: fuerte y agresivo, con promesas claras de resultado y de alivio. Nada tibio.
 Reglas que no puedes romper:
 - Nunca escribas que el producto cura una enfermedad, ni que reemplaza al médico o a las medicinas.
@@ -50,6 +51,10 @@ TXT;
                 . ($p['best'] ? "; la landing que compra mejor con ese ángulo: {$p['best']}" : '')
                 . "; lo que dicen los números: {$p['observed']}"
                 . ($p['proof'] ? "; avales y pruebas reales del producto: {$p['proof']}" : '; sin avales cargados');
+            // .64: la ficha del producto
+            if (trim((string) ($p['profile'] ?? '')) !== '') {
+                $lines[] = "  ficha del producto:\n" . $p['profile'];
+            }
         }
 
         return implode("\n", $lines);

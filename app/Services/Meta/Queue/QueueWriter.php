@@ -25,6 +25,7 @@ class QueueWriter
     private const INSTRUCTIONS = <<<'TXT'
 Eres el director creativo de una tienda online de Venezuela que vende con anuncios de Facebook e Instagram y cobra contra entrega. Escribes los encargos de creativos para los editores de video, en español sencillo, claro y directo, como si le hablaras al editor.
 Recibes los encargos que ya decidieron las reglas del dueño: el producto, el tipo (iteración, concepto nuevo, ángulo nuevo o arriba del embudo), el ángulo, el creativo de referencia con sus textos, lo que dice su video y cómo le fue a cada parte del video, y cuántas versiones lleva. No cambies nada de eso: redáctalo.
+Cada encargo trae la FICHA DEL PRODUCTO (qué es, para qué sirve, cómo funciona, lo que NO es, la información clave y sus buyer personas). Léela primero: todo lo que escribas tiene que ser fiel a la ficha. Nunca contradigas "lo que NO es" y no le agregues usos ni beneficios que no estén en la ficha.
 Tu trabajo NO es decirle al editor qué video hacer: es explicarle qué estamos buscando, qué funcionó y qué hay que mejorar, y darle ideas. El editor es el creativo y decide cómo hacerlo.
 Así se escribe una iteración (ejemplo): si el hook funcionó y la gente se va en la parte del medio, el objetivo es "3 versiones bien distintas entre sí, con el mismo hook, que hagan que la gente se quede hasta el final"; lo que funcionó es "el hook: engancha muy bien en los primeros segundos, no lo cambies"; lo que hay que mejorar es "mucha gente se va en la parte del medio del video"; y las ideas son "una versión más corta", "otra que cambie por completo la parte del medio", "otra con un medio más dinámico".
 Cómo le fue al video, en palabras para el editor: "hook" es si engancha en los primeros segundos; "retención" es si la gente se queda viendo; "se van al principio / en el medio / al final" dice dónde abandonan; "clic" es si la gente toca el anuncio; "compra" es si los que llegan compran (si engancha y hacen clic pero no compran, puede ser la landing, no el video).
@@ -34,7 +35,7 @@ Reglas del contenido de los anuncios que no puedes romper:
 - Nunca escribas que el producto cura una enfermedad, ni que reemplaza al médico o a las medicinas.
 - No inventes médicos, estudios, certificaciones, avales ni testimonios. Usa solo los avales y pruebas reales que vienen en los datos del producto, tal cual.
 - No inventes números: precios, descuentos y cantidades solo los que vienen en los datos.
-- No supongas para qué sirve un producto por su nombre (un "chaleco térmico" no es para el frío, por ejemplo). Qué es, para qué sirve y a quién le habla sale solo de los datos del producto, de sus ángulos y de los textos de la referencia.
+- No supongas para qué sirve un producto por su nombre (un "chaleco térmico" no es para el frío, por ejemplo). Qué es, para qué sirve y a quién le habla sale solo de la ficha del producto, de sus ángulos y de los textos de la referencia.
 - En una iteración se conserva lo que funcionó y se cambia lo que hay que mejorar; las versiones tienen que ser bien distintas entre sí (no tres variaciones de lo mismo).
 - Si la referencia trae "lo que dice su video", apóyate en eso para explicar lo que funcionó (su promesa, su frase fuerte). No copies el guion entero ni escribas guiones.
 Para cada encargo escribe, con su clave:
@@ -44,6 +45,7 @@ Para cada encargo escribe, con su clave:
 - conservar: lo que funcionó y no hay que cambiar (en una iteración); si no hay referencia, qué tienen que tener en común todas las versiones. Vacío si no aplica.
 - mejorar: lo que hay que mejorar respecto a la referencia, en palabras (en una iteración); vacío en un concepto o ángulo nuevo.
 - publico: el dolor o el público al que le habla.
+- buyer: el nombre exacto de UNO de los buyer personas de la ficha al que le habla este encargo (el que mejor encaje con el ángulo y la referencia). El editor solo conoce ese. null si la ficha no trae buyer personas.
 - concepto: el concepto en pocas palabras.
 - ideas: exactamente la cantidad de versiones pedida; una idea por versión, como sugerencia ("una versión más corta", "otra que…"), no como orden ni guion.
 - entregables: qué entrega el editor (cantidad de videos o imágenes, formato 9:16, duración aproximada).
@@ -58,7 +60,7 @@ TXT;
         'properties' => [
             'encargos' => ['type' => 'array', 'items' => [
                 'type' => 'object', 'additionalProperties' => false,
-                'required' => ['clave', 'hipotesis', 'probando', 'objetivo', 'conservar', 'mejorar', 'publico', 'concepto', 'ideas', 'entregables', 'angulo_codigo', 'angulo_nombre'],
+                'required' => ['clave', 'hipotesis', 'probando', 'objetivo', 'conservar', 'mejorar', 'publico', 'buyer', 'concepto', 'ideas', 'entregables', 'angulo_codigo', 'angulo_nombre'],
                 'properties' => [
                     'clave' => ['type' => 'string'],
                     'hipotesis' => ['type' => 'string'],
@@ -67,6 +69,7 @@ TXT;
                     'conservar' => ['type' => 'string'],
                     'mejorar' => ['type' => 'string'],
                     'publico' => ['type' => 'string'],
+                    'buyer' => ['type' => ['string', 'null']],
                     'concepto' => ['type' => 'string'],
                     'ideas' => ['type' => 'array', 'items' => ['type' => 'string']],
                     'entregables' => ['type' => 'string'],
@@ -118,6 +121,9 @@ TXT;
             $lines[] = 'Ciudad de aprendizaje: ' . ($p['city'] ?? 'sin elegir');
             $lines[] = 'Precio: ' . ($c['price'] ?? 'sin dato');
             $lines[] = 'Avales y pruebas reales: ' . (trim((string) ($c['proof'] ?? '')) !== '' ? trim($c['proof']) : 'ninguno (no inventes)');
+            // .64: la ficha del producto (qué es, para qué sirve, cómo funciona, lo que NO es, sus buyer personas)
+            $lines[] = 'Ficha del producto:';
+            $lines[] = trim((string) ($c['profile'] ?? '')) !== '' ? $c['profile'] : '  · (sin ficha)';
             if ($c['angles'] ?? []) {
                 $lines[] = 'Ángulos del producto: ' . implode('; ', array_map(fn ($code, $name) => $code . ($name ? " ({$name})" : ''), array_keys($c['angles']), $c['angles']));
             }
@@ -220,6 +226,7 @@ TXT;
                 'conservar' => $p['kind'] === 'iteration' ? 'El concepto, la promesa y el cierre de la referencia.' : '',
                 'mejorar' => $p['kind'] === 'iteration' ? ucfirst($p['iterate']) . '.' : '',
                 'publico' => '',
+                'buyer' => $p['context']['personas'][0]['name'] ?? null,
                 'concepto' => $p['kind'] === 'iteration' ? 'El mismo de la referencia' : '',
                 'ideas' => array_map(fn ($i) => 'Versión ' . ($i + 1) . ': tú decides cómo.', range(0, $p['pieces'] - 1)),
                 'entregables' => "{$p['pieces']} " . ($p['format'] === 'image' ? 'imágenes' : 'videos 9:16'),

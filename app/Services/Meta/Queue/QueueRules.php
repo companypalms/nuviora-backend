@@ -128,6 +128,12 @@ final class QueueRules
         ];
     }
 
+    /** .64: lo del producto en el encargo, como lo lee el editor. */
+    public const PRODUCT_LABELS = [
+        'what_it_is' => 'Qué es', 'benefits' => 'Para qué sirve', 'mechanism' => 'Cómo funciona',
+        'not_this' => 'Lo que NO es (nunca lo digas)', 'key_info' => 'Información clave', 'photos_url' => 'Fotos',
+    ];
+
     /**
      * El encargo en texto, para mandárselo al editor (botón "Copiar"). `.63`: es para el editor, así que no lleva nada del
      * proceso del dueño (ni la prioridad, ni la hipótesis, ni la ciudad de prueba): lo que buscamos, lo que funcionó, lo
@@ -142,6 +148,18 @@ final class QueueRules
         $lines[] = "Tipo: {$kind}" . ($b['reference'] ? " (referencia: {$b['reference']})" : '');
         if ($b['angle_code']) {
             $lines[] = "Ángulo: {$b['angle_code']}" . ($b['angle_name'] ? " ({$b['angle_name']})" : '');
+        }
+        // .64: lo del producto y el buyer persona de este encargo (solo ese)
+        if (!empty($b['product_info'])) {
+            $lines[] = 'Sobre el producto:';
+            foreach (self::PRODUCT_LABELS as $key => $label) {
+                if (!empty($b['product_info'][$key])) {
+                    $lines[] = "- {$label}: " . trim(preg_replace('/\s*\n+\s*/u', ' / ', (string) $b['product_info'][$key]));
+                }
+            }
+        }
+        if (!empty($b['persona']['name'])) {
+            $lines[] = 'A quién le hablas: ' . \App\Services\Meta\Products\ProductProfileRules::personaLine($b['persona']);
         }
         foreach (['test_idea' => 'Qué estamos probando', 'goal' => 'Lo que buscamos', 'keep' => 'Lo que funcionó (no lo cambies)', 'improve' => 'Lo que hay que mejorar',
             'concept' => 'Concepto', 'audience' => 'Dolor o público', 'offer' => 'Oferta'] as $key => $label) {

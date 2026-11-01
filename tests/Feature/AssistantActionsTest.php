@@ -223,7 +223,7 @@ describe('Las tarjetas de cambios', function () {
 });
 
 describe('Lo que ve OpenAI de las herramientas', function () {
-    it('las 45 son estrictas: cada objeto con todo requerido y nada de más (si no, OpenAI rechaza todas las preguntas)', function () {
+    it('todas son estrictas: cada objeto con todo requerido y nada de más (si no, OpenAI rechaza todas las preguntas)', function () {
         $check = function (array $schema, string $where) use (&$check) {
             if (isset($schema['anyOf'])) {
                 foreach ($schema['anyOf'] as $i => $branch) {
@@ -246,7 +246,7 @@ describe('Lo que ve OpenAI de las herramientas', function () {
             }
         };
         $definitions = app(ToolCatalog::class)->definitions();
-        expect(count($definitions))->toBe(46); // con "reporte_negocio" de la .48b-2
+        expect(count($definitions))->toBe(48); // con "reporte_negocio" de la .48b-2 y las dos de la ficha del producto (.64)
         foreach ($definitions as $d) {
             expect($d['strict'])->toBeTrue();
             $check($d['parameters'], $d['name']);

@@ -1,0 +1,182 @@
+<?php
+
+namespace App\Services\Assistant\Actions\Tools;
+
+use App\Models\Product;
+use App\Services\Assistant\Actions\ActionContext;
+use App\Services\Assistant\Actions\ChangeTool;
+use App\Services\Assistant\Actions\Outcome;
+use App\Services\Assistant\Actions\Proposal;
+use App\Services\Assistant\Lookup;
+use App\Services\Assistant\Tools\ToolProblem;
+use App\Services\Meta\Products\ProductProfileRules;
+use App\Services\Meta\Products\ProductProfiles;
+
+/**
+ * `.64` (dueño, 2026-11-01): "toda la info del producto debo poder colocársela al asistente de IA, y que él rellene por
+ * completo la ficha, y solo me dé la tarjeta para aprobar". Llena o cambia la ficha de un producto (lo mismo que guarda
+ * Configuración › Meta Ads › Ficha del producto) con lo que el dueño le pasó: texto, PDF o fotos.
+ */
+class ProductProfileTool extends ChangeTool
+{
+    /** Lo que recibe la IA → el campo de la ficha. */
+    public const ARGS = [
+        'que_es' => 'what_it_is', 'para_que_sirve' => 'benefits', 'como_funciona' => 'mechanism',
+        'lo_que_no_es' => 'not_this', 'info_clave' => 'key_info', 'fotos' => 'photos_url',
+    ];
+
+    public const PERSONA_ARGS = ['nombre' => 'name', 'quien_es' => 'who', 'que_le_duele' => 'pain', 'que_quiere' => 'wants', 'que_lo_frena' => 'objections'];
+
+    public function __construct(private Lookup $lookup)
+    {
+    }
+
+    public function name(): string
+    {
+        return 'proponer_ficha_producto';
+    }
+
+    public function description(): string
+    {
+        return 'Propone llenar o cambiar la ficha de un producto (qué es, para qué sirve, cómo funciona, lo que NO es y nunca se dice, información clave, link de las fotos y sus buyer personas) con la información que te dio el dueño en el chat, en un PDF o en fotos. La IA que escribe los encargos para los editores y las landings lee esta ficha. El dueño ve una tarjeta con toda la ficha y la confirma. Un campo en null queda como está; para cambiar un campo escríbelo completo (ya con lo de antes que siga valiendo: usa ficha_producto para leerlo).';
+    }
+
+    public function parameters(): array
+    {
+        $text = fn (string $d) => ['type' => ['string', 'null'], 'description' => $d];
+
+        return [
+            'type' => 'object',
+            'properties' => [
+                'producto' => ['type' => 'string', 'description' => 'El nombre del producto.'],
+                'que_es' => $text('Qué es, en 1 o 2 frases: "Chaleco térmico reductor de neopreno para hombre". null = no cambia.'),
+                'para_que_sirve' => $text('Para qué sirve: los resultados y beneficios que promete, tal como los dio el dueño. null = no cambia.'),
+                'como_funciona' => $text('Cómo funciona (el mecanismo), en palabras sencillas. null = no cambia.'),
+                'lo_que_no_es' => $text('Lo que NO es y nunca se dice (para qué no sirve, lo que se confunde, lo prohibido). null = no cambia.'),
+                'info_clave' => $text('Información clave: tallas, colores, cómo se usa, cuánto tiempo, garantía, lo que trae. null = no cambia.'),
+                'fotos' => $text('El link de la carpeta de fotos (Drive), https://… null = no cambia.'),
+                'buyer_personas' => [
+                    'type' => 'array',
+                    'description' => 'Los buyer personas que se agregan o cambian (se buscan por nombre). Lista vacía = ninguno cambia.',
+                    'items' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'nombre' => ['type' => 'string', 'description' => 'Un nombre corto que lo describe: "Hombre con ginecomastia".'],
+                            'quien_es' => $text('Quién es: edad, sexo, a qué se dedica, cómo vive. null = no cambia.'),
+                            'que_le_duele' => $text('Qué le duele o le molesta, con sus palabras. null = no cambia.'),
+                            'que_quiere' => $text('Qué quiere lograr. null = no cambia.'),
+                            'que_lo_frena' => $text('Qué lo frena para comprar (dudas, miedos). null = no cambia.'),
+                        ],
+                        'required' => array_keys(self::PERSONA_ARGS),
+                        'additionalProperties' => false,
+                    ],
+                ],
+                'quitar_buyer_personas' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Los nombres de los buyer personas que se quitan de la ficha. Lista vacía = ninguno.'],
+            ],
+            'required' => ['producto', ...array_keys(self::ARGS), 'buyer_personas', 'quitar_buyer_personas'],
+            'additionalProperties' => false,
+        ];
+    }
+
+    public function working(array $args): string
+    {
+        return 'Preparando la ficha del producto…';
+    }
+
+    public function propose(array $args, ActionContext $context): Proposal
+    {
+        $productId = $this->lookup->productId($args['producto'] ?? null) ?? throw new ToolProblem('Falta el producto: pregúntale al dueño de cuál es la ficha.');
+        $product = Product::find($productId, ['id', 'title', 'showable_name']);
+        $name = $product->showable_name ?: $product->title;
+        $now = ProductProfiles::get($productId);
+
+        return self::proposal($productId, $name, $now['profile'], $now['personas'], $args);
+    }
+
+    /** La tarjeta, sin base de datos (para las pruebas). */
+    public static function proposal(int $productId, string $name, ?array $before, array $beforePersonas, array $args): Proposal
+    {
+        $changes = [];
+        foreach (self::ARGS as $arg => $field) {
+            $changes[$field] = $args[$arg] ?? null;
+        }
+        $personaChanges = array_map(function ($p) {
+            $x = [];
+            foreach (self::PERSONA_ARGS as $arg => $field) {
+                $x[$field] = is_array($p) ? ($p[$arg] ?? null) : null;
+            }
+
+            return ProductProfileRules::normalizePersona($x);
+        }, array_values((array) ($args['buyer_personas'] ?? [])));
+        $m = ProductProfileRules::merge($before, $beforePersonas, $changes, $personaChanges, array_values((array) ($args['quitar_buyer_personas'] ?? [])));
+        if ($m['unknown'] !== []) {
+            throw new ToolProblem('En la ficha de ' . $name . ' no hay ningún buyer persona que se llame "' . implode('", "', $m['unknown']) . '". '
+                . ($beforePersonas ? 'Los que hay: ' . implode(', ', array_column($beforePersonas, 'name')) . '.' : 'Todavía no tiene ninguno.'));
+        }
+        if ($problems = ProductProfileRules::problems($m['profile'], $m['personas'])) {
+            throw new ToolProblem(implode(' ', $problems));
+        }
+
+        $old = ProductProfileRules::normalize($before ?? []);
+        $lines = [Proposal::line('Producto', $name)];
+        $changed = [];
+        foreach (ProductProfileRules::FIELDS as $k => $label) {
+            $differs = $m['profile'][$k] !== $old[$k];
+            if ($differs) {
+                $changed[] = mb_strtolower($label);
+            }
+            $lines[] = Proposal::line($label, $m['profile'][$k], $differs ? $old[$k] : null);
+        }
+        $newPersonas = 0;
+        foreach ($m['personas'] as $p) {
+            $was = ProductProfileRules::findByName($beforePersonas, $p['name']);
+            $text = ProductProfileRules::personaText($p);
+            $wasText = $was ? ProductProfileRules::personaText($was) : null;
+            if ($was === null) {
+                $newPersonas++;
+            } elseif ($wasText !== $text) {
+                $changed[] = "el buyer persona {$p['name']}";
+            }
+            $lines[] = Proposal::line("Buyer persona: {$p['name']}", $text !== '' ? $text : '(sin detalles)', $was !== null && $wasText !== $text ? $wasText : null);
+        }
+        if ($m['removed'] !== []) {
+            $lines[] = Proposal::line('Se quita de la ficha', implode(', ', array_column($m['removed'], 'name')));
+        }
+        if ($changed === [] && $newPersonas === 0 && $m['removed'] === []) {
+            throw new ToolProblem('Con eso la ficha de ' . $name . ' queda igual: no hay nada que cambiar.');
+        }
+
+        $warnings = [];
+        if ($missing = ProductProfileRules::missing($m['profile'], $m['personas'])) {
+            $warnings[] = 'La ficha queda incompleta: falta ' . self::join(array_map('mb_strtolower', $missing)) . '. Mientras falte, la IA no escribe encargos ni landings de ' . $name . '.';
+        }
+        $first = $before === null && $beforePersonas === [];
+        $what = array_merge($changed, $newPersonas ? [$newPersonas . ($newPersonas === 1 ? ' buyer persona nuevo' : ' buyer personas nuevos')] : [],
+            $m['removed'] ? ['quitar ' . count($m['removed']) . ' buyer persona' . (count($m['removed']) === 1 ? '' : 's')] : []);
+
+        return new Proposal(
+            $first ? "Llenar la ficha de {$name}" : "Cambiar la ficha de {$name}",
+            ($first ? "Llenar la ficha de {$name}" : "Cambiar la ficha de {$name}: ") . ($first ? '' : self::join($what)),
+            Proposal::lines($lines),
+            ['product_id' => $productId, 'profile' => $m['profile'], 'personas' => $m['personas']],
+            $warnings,
+        );
+    }
+
+    public function execute(array $payload, ActionContext $context): Outcome
+    {
+        ProductProfiles::save((int) $payload['product_id'], $payload['profile'], $payload['personas'], $context->user->id, 'assistant');
+        $f = ProductProfiles::get((int) $payload['product_id']);
+        $missing = ProductProfileRules::missing($f['profile'], $f['personas']);
+
+        return new Outcome('Ficha guardada.' . ($missing ? ' Todavía falta: ' . self::join(array_map('mb_strtolower', $missing)) . '.' : ' Está completa: la IA ya la usa en los encargos.'),
+            ['label' => 'Ver la ficha', 'to' => '/admin/integraciones?seccion=meta&tab=profile&producto=' . (int) $payload['product_id']]);
+    }
+
+    private static function join(array $parts): string
+    {
+        $parts = array_values($parts);
+
+        return count($parts) > 1 ? implode(', ', array_slice($parts, 0, -1)) . ' y ' . end($parts) : ($parts[0] ?? '');
+    }
+}

@@ -110,6 +110,9 @@ class MetaQueueController extends Controller
             'cities' => DB::table('meta_campaigns as c')->join('cities as ci', 'ci.id', '=', 'c.city_id')->where('c.product_id', $pid)
                 ->distinct()->orderBy('ci.name')->get(['ci.id', 'ci.name']),
             'price' => ($p = Product::find($pid, ['price'])) && $p->price !== null ? (float) $p->price : null,
+            // .64: los buyer personas de su ficha y lo que le falta a la ficha
+            'personas' => array_map(fn ($x) => ['id' => $x['id'], 'name' => $x['name']], ($f = \App\Services\Meta\Products\ProductProfiles::get($pid))['personas']),
+            'profile_missing' => \App\Services\Meta\Products\ProductProfileRules::missing($f['profile'], $f['personas']),
         ]);
     }
 
@@ -220,6 +223,8 @@ class MetaQueueController extends Controller
             'test_idea' => 'sometimes|nullable|string|max:2000',
             'improve' => 'sometimes|nullable|string|max:2000',
             'audience' => 'sometimes|nullable|string|max:255',
+            // .64: el buyer persona de la ficha de este producto al que le habla
+            'persona_id' => ['sometimes', 'nullable', 'integer', Rule::exists('product_personas', 'id')->where('product_id', $productId)],
             'reference_creative_id' => ['sometimes', 'nullable', 'integer', Rule::exists('meta_creatives', 'id')->where('product_id', $productId)],
             'learning_city_id' => 'sometimes|nullable|integer|exists:cities,id',
             'format' => ['sometimes', 'nullable', Rule::in(array_keys(QueueRules::FORMATS))],
@@ -304,8 +309,9 @@ class MetaQueueController extends Controller
             ->mapWithKeys(fn ($a) => ["{$a->product_id}:{$a->code}" => $a->name]);
 
         $who = ['id' => (int) Auth::id(), 'role' => 'Admin'];
+        $profiles = \App\Services\Meta\Products\ProductProfiles::many($batches->pluck('product_id')->unique()->all());
 
-        return EditorWork::sorted($batches)->map(function (CreativeBatch $b) use ($angles, $who) {
+        return EditorWork::sorted($batches)->map(function (CreativeBatch $b) use ($angles, $who, $profiles) {
                 $pieces = $b->pieces->map(fn (CreativeBatchPiece $p) => ['id' => $p->id, 'code' => $p->code(), 'change' => $p->change, 'format' => $p->format,
                     'link' => $p->link, 'hook' => $p->hook])->values()->all();
                 $out = [
@@ -314,6 +320,8 @@ class MetaQueueController extends Controller
                     'status_by' => $b->statusUser?->names, 'position' => $b->position, 'source' => $b->source,
                     'kind' => $b->kind, 'angle_code' => $b->angle_code, 'angle_name' => $angles["{$b->product_id}:{$b->angle_code}"] ?? null,
                     'concept' => $b->concept, 'hypothesis' => $b->hypothesis, 'goal' => $b->goal, 'test_idea' => $b->test_idea, 'improve' => $b->improve, 'audience' => $b->audience,
+                    'persona_id' => $b->persona_id,
+                ] + EditorWork::product($b, $profiles) + [
                     'reference_id' => $b->reference_creative_id, 'reference' => $b->reference?->label,
                     'city_id' => $b->learning_city_id, 'city' => $b->learningCity?->name, 'format' => $b->format, 'keep' => $b->keep, 'offer' => $b->offer,
                     'deliverables' => $b->deliverables, 'urgency' => $b->urgency, 'due_date' => $b->due_date?->toDateString(),

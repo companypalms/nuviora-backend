@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Model;
  */
 class CreativeBatch extends Model
 {
-    protected $fillable = ['product_id', 'number', 'position', 'status', 'kind', 'angle_code', 'concept', 'hypothesis', 'goal', 'test_idea', 'improve', 'audience',
+    protected $fillable = ['product_id', 'number', 'position', 'status', 'kind', 'angle_code', 'concept', 'hypothesis', 'goal', 'test_idea', 'improve', 'audience', 'persona_id',
         'reference_creative_id', 'learning_city_id', 'format', 'keep', 'offer', 'deliverables', 'urgency', 'due_date', 'source', 'proposed_on',
         'approved_at', 'approved_by', 'status_at', 'status_by', 'discard_reason', 'testing_at', 'tested_at', 'result', 'learning', 'created_by',
         'editor_id', 'assigned_at', 'assigned_by', 'started_at', 'delivered_at'];
@@ -57,6 +57,12 @@ class CreativeBatch extends Model
     public function statusUser()
     {
         return $this->belongsTo(User::class, 'status_by');
+    }
+
+    /** .64: el buyer persona de la ficha al que le habla (el editor solo ve ese). */
+    public function persona()
+    {
+        return $this->belongsTo(ProductPersona::class, 'persona_id');
     }
 
     /** El editor que lo hace (paso 5a). */

@@ -22,7 +22,7 @@ class EditorWork
     public const REVIEWS = ['pending' => 'Por revisar', 'approved' => 'Aprobada', 'returned' => 'Devuelta'];
 
     /** Lo que se carga para mostrar un encargo. */
-    public const WITH = ['pieces', 'product:id,title,showable_name', 'reference:id,label', 'learningCity:id,name', 'editor:id,names,surnames',
+    public const WITH = ['pieces', 'product:id,title,showable_name', 'persona', 'reference:id,label', 'learningCity:id,name', 'editor:id,names,surnames',
         'deliveries.editor:id,names,surnames', 'deliveries.reviewer:id,names,surnames'];
 
     /** @return array{id: int, role: ?string} */
@@ -152,8 +152,9 @@ class EditorWork
         $refs = self::references($refIds);
         // .56: lo que dice el video de cada referencia (si es un ganador transcrito)
         $scripts = \App\Services\Meta\Videos\Scripts::forCreatives($refIds);
+        $profiles = \App\Services\Meta\Products\ProductProfiles::many($batches->pluck('product_id')->unique()->all());
 
-        return self::sorted($batches)->map(function (CreativeBatch $b) use ($angles, $refs, $scripts, $who) {
+        return self::sorted($batches)->map(function (CreativeBatch $b) use ($angles, $refs, $scripts, $profiles, $who) {
             $out = [
                 'id' => $b->id, 'code' => $b->code(), 'product' => $b->product?->showable_name ?: $b->product?->title,
                 'status' => $b->status, 'status_label' => QueueRules::STATUSES[$b->status] ?? $b->status, 'status_at' => $b->status_at?->toIso8601String(),
@@ -162,6 +163,7 @@ class EditorWork
                 // .63: lo que buscamos, lo que funcionó y lo que hay que mejorar; nada del proceso del dueño (ni la hipótesis, ni
                 // la prioridad, ni la ciudad de prueba): el editor ve solo lo que necesita para hacer su trabajo
                 'test_idea' => $b->test_idea, 'goal' => $b->goal, 'keep' => $b->keep, 'improve' => $b->improve, 'concept' => $b->concept, 'audience' => $b->audience,
+            ] + self::product($b, $profiles) + [
                 'reference' => $b->reference?->label, 'reference_thumbnail' => $refs[$b->reference_creative_id]['thumbnail'] ?? null,
                 'reference_texts' => $refs[$b->reference_creative_id]['texts'] ?? [],
                 'reference_script' => $scripts[$b->reference_creative_id] ?? null,
@@ -173,6 +175,22 @@ class EditorWork
 
             return $out + ['brief' => QueueRules::brief($out)];
         })->values()->all();
+    }
+
+    /**
+     * `.64`: lo del producto que ve el editor (qué es, para qué sirve, cómo funciona, lo que NO es, la información clave y
+     * las fotos) y SOLO el buyer persona de su encargo: nunca la lista completa, ni los ángulos, ni los aprendizajes.
+     *
+     * @param array<int, array{profile: ?array, personas: list<array>}> $profiles ProductProfiles::many
+     */
+    public static function product(CreativeBatch $b, array $profiles): array
+    {
+        $rules = \App\Services\Meta\Products\ProductProfileRules::class;
+
+        return [
+            'product_info' => $rules::forEditor($profiles[$b->product_id]['profile'] ?? null),
+            'persona' => $rules::personaForEditor($b->persona?->only(array_keys($rules::PERSONA_FIELDS))),
+        ];
     }
 
     /**

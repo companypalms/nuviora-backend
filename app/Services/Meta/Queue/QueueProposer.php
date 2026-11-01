@@ -10,6 +10,8 @@ use App\Models\Setting;
 use App\Services\Meta\Analysis\MetaAnalyzer;
 use App\Services\Meta\Decisions\DecisionSettings;
 use App\Services\Meta\Decisions\MetaDecisions;
+use App\Services\Meta\Products\ProductProfileRules;
+use App\Services\Meta\Products\ProductProfiles;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -18,6 +20,7 @@ use RuntimeException;
  * "Proponer ahora" en la cola:
  * 1. las propuestas de días anteriores que nadie aprobó se reemplazan (quedan descartadas, "reemplazada");
  * 2. las reglas deciden cuántos encargos, de qué productos y de qué tipo (ProposalRules), sin repetir lo ya propuesto hoy;
+ *    `.64`: solo de los productos con la ficha completa (los demás quedan en missing_profile, para avisarle al dueño);
  * 3. la IA los redacta (QueueWriter) y escribe el aprendizaje de los batches que ya se testearon;
  * 4. quedan en "Para aprobar": nada se manda a nadie ni se toca Meta.
  */
@@ -36,7 +39,7 @@ class QueueProposer
     ) {
     }
 
-    /** @return array{at: string, created: int, replaced: int, learnings: int, status: string, model: ?string, error: ?string} */
+    /** @return array{at: string, created: int, replaced: int, learnings: int, status: string, model: ?string, error: ?string, missing_profile: list<string>} */
     public function run(?int $userId = null): array
     {
         $now = now(config('app.timezone'));
@@ -52,7 +55,15 @@ class QueueProposer
         $already = $todayRows->whereIn('status', ['proposed', 'discarded'])->countBy('product_id')->all();
         $capacity = max(0, (int) round($s['video_editors'] * $s['batches_per_editor'] / (1 + $s['corrections_pct'] / 100)) - $todayRows->count());
         $pieces = max(1, (int) $s['batch_pieces']);
-        $plan = ProposalRules::plan($decisions, $already, $capacity);
+        // .64: sin ficha completa, la IA no escribe encargos de ese producto (no sabría qué es ni para qué sirve)
+        $complete = ProductProfiles::completeIds(array_keys($decisions));
+        $missingProfile = [];
+        foreach ($decisions as $pid => $d) {
+            if (!in_array((int) $pid, $complete, true) && ($d['product']['mode'] ?? 'normal') === 'normal') {
+                $missingProfile[] = (string) ($d['product']['name'] ?? $pid);
+            }
+        }
+        $plan = ProposalRules::plan(array_intersect_key($decisions, array_flip($complete)), $already, $capacity);
         foreach ($plan as $i => &$p) {
             $p['key'] = 'E' . ($i + 1);
             $p['pieces'] = $pieces;
@@ -67,7 +78,8 @@ class QueueProposer
             'spend' => (float) ($b->result['spend'] ?? 0), 'purchases' => (float) ($b->result['purchases'] ?? 0), 'cpa' => $b->result['cpa'] ?? null,
         ])->values()->all();
 
-        $run = ['at' => now()->toIso8601String(), 'created' => 0, 'replaced' => $replaced, 'learnings' => 0, 'status' => 'nothing', 'model' => null, 'error' => null];
+        $run = ['at' => now()->toIso8601String(), 'created' => 0, 'replaced' => $replaced, 'learnings' => 0, 'status' => 'nothing', 'model' => null, 'error' => null,
+            'missing_profile' => $missingProfile];
         if ($plan !== [] || $testedRows !== []) {
             [$text, $run] = $this->write($plan, $testedRows, $run);
             DB::transaction(function () use ($plan, $text, $testedRows, $tested, $today, $userId, &$run) {
@@ -125,6 +137,8 @@ class QueueProposer
         $batch = CreativeBatch::create([
             'product_id' => $p['product_id'], 'kind' => $p['kind'], 'angle_code' => $angle, 'concept' => mb_substr((string) $clean($t['concepto'] ?? null), 0, 120) ?: null,
             'hypothesis' => $hypothesis, 'audience' => mb_substr((string) $clean($t['publico'] ?? null), 0, 255) ?: null,
+            // .64: el buyer persona de la ficha que eligió la IA (el editor solo ve ese)
+            'persona_id' => ProductProfileRules::findByName($p['context']['personas'] ?? [], is_string($t['buyer'] ?? null) ? $t['buyer'] : null)['id'] ?? null,
             // .63: lo que buscamos y lo que hay que mejorar, para el editor
             'goal' => $clean($t['objetivo'] ?? null), 'test_idea' => $clean($t['probando'] ?? null), 'improve' => $clean($t['mejorar'] ?? null),
             'reference_creative_id' => $p['reference_id'], 'learning_city_id' => $p['city_id'], 'format' => $p['format'], 'keep' => $clean($t['conservar'] ?? null),
@@ -138,16 +152,20 @@ class QueueProposer
         }
     }
 
-    /** Lo del producto para la IA: sus avales reales, el precio, sus ángulos y los textos y el video de la referencia. */
+    /** Lo del producto para la IA: su ficha, sus avales reales, el precio, sus ángulos y los textos y el video de la referencia. */
     private function context(array $p, array $decisions): array
     {
         $pid = $p['product_id'];
+        $profile = ProductProfiles::get($pid);
         $price = DB::table('products')->where('id', $pid)->value('price');
         $refTexts = $p['reference_id'] ? DB::table('meta_ads')->where('meta_creative_ref_id', $p['reference_id'])
             ->where(fn ($q) => $q->whereNotNull('ad_body')->orWhereNotNull('ad_title'))->orderByDesc('created_time')->limit(2)->get(['ad_title', 'ad_body'])
             ->map(fn ($a) => trim(($a->ad_title ? $a->ad_title . ' — ' : '') . mb_strimwidth((string) $a->ad_body, 0, 280, '…')))->unique()->values()->all() : [];
 
         return [
+            // .64: la ficha del producto, en texto para la IA, y sus buyer personas (con su id, para guardar el que elija)
+            'profile' => ProductProfileRules::forAi($profile['profile'], $profile['personas']),
+            'personas' => $profile['personas'],
             'proof' => ProductAdSetting::where('product_id', $pid)->value('proof'),
             'price' => $price !== null ? '$' . number_format((float) $price, 2, ',', '.') : null,
             'angles' => AdAngle::where('product_id', $pid)->whereNull('alias_of')->orderBy('code')->get(['code', 'name', 'hypothesis'])

@@ -637,6 +637,9 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::post('/angles/propose', [\App\Http\Controllers\MetaAnglesController::class, 'propose'])->middleware('throttle:10,1');
         Route::get('/product-modes', [\App\Http\Controllers\MetaAnglesController::class, 'modes']);
         Route::put('/product-modes/{product}', [\App\Http\Controllers\MetaAnglesController::class, 'setMode']);
+        // .64: la ficha de cada producto (la lee la IA de los encargos y las landings)
+        Route::get('/product-profiles', [\App\Http\Controllers\MetaProductProfileController::class, 'index']);
+        Route::put('/product-profiles/{product}', [\App\Http\Controllers\MetaProductProfileController::class, 'update']);
 
         Route::get('/report/overview', [\App\Http\Controllers\MetaReportController::class, 'overview']);
         Route::get('/report/rows', [\App\Http\Controllers\MetaReportController::class, 'rows']);
