@@ -27,7 +27,7 @@ final class MetaReminderRules
     public const RETURNED_DAYS = 2;
 
     /** Lo que se quedó quieto, en el orden en que se muestra. */
-    public const STUCK = ['late' => 'Atrasado', 'unassigned' => 'Sin editor', 'waiting' => 'Esperando al líder', 'returned' => 'Devuelto'];
+    public const STUCK = ['late' => 'Atrasado', 'unassigned' => 'Sin editor', 'waiting' => 'Esperando', 'returned' => 'Devuelto'];
 
     /** Cómo se cuentan en la frase ("2 atrasados y 1 sin editor"). */
     private const STUCK_COUNT = ['late' => ['atrasado', 'atrasados'], 'unassigned' => ['sin editor', 'sin editor'],
