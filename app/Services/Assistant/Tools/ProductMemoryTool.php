@@ -50,17 +50,17 @@ class ProductMemoryTool implements Tool
         $p = ProductMemories::page($productId);
         $data = ['producto' => $product->showable_name ?: $product->title, 'batches_testeados' => $p['tested']];
         if ($p['summary']) {
-            $data['resumen'] = array_filter(['funciona' => $p['summary']['works'] ?? [], 'no_funciona' => $p['summary']['fails'] ?? [],
+            $data['resumen_de_la_ia'] = array_filter(['funciona' => $p['summary']['works'] ?? [], 'no_funciona' => $p['summary']['fails'] ?? [],
                 'falta_probar' => $p['summary']['untested'] ?? []]);
             $data['resumen_del'] = $p['generated_at'];
             if ($p['stale']) {
                 $data['ojo'] = 'El resumen es de antes de los últimos batches o notas; los números de abajo están al día.';
             }
         }
-        foreach (ProductMemoryRules::DIMENSIONS as $dim => $title) {
+        foreach (['angle' => 'por_angulo', 'persona' => 'por_buyer_persona', 'style' => 'por_estilo'] as $dim => $key) {
             $rows = array_map(fn ($g) => "{$g['label']}: " . ProductMemoryRules::score($g), $p['groups'][$dim]);
             if ($rows) {
-                $data['por_' . $dim] = $rows;
+                $data[$key] = $rows;
             }
         }
         $data['falta_probar'] = array_filter(['angulos' => $p['untested']['angle'], 'buyer_personas' => $p['untested']['persona'],
