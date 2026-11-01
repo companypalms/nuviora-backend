@@ -36,6 +36,7 @@ class ReminderFacts
         private GoalSettings $goals,
         private DayBuilder $reconciliation,
         private OtherPayments $payments,
+        private MetaReminderFacts $meta,
     ) {
     }
 
@@ -156,6 +157,36 @@ class ReminderFacts
         $inventory = $this->inventory();
         if ($inventory !== null) {
             $facts['inventory'] = $inventory;
+        }
+        // .67: Meta Ads y los editores (si falla, esos recordatorios se muestran sin el dato)
+        try {
+            $facts['meta_work'] = $this->meta->now($now);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        return $facts;
+    }
+
+    /**
+     * .67: lo de cada semana de Meta Ads: el trabajo de los editores (por el lunes de la semana que se revisa) y los batches
+     * que terminaron su test (por el día del recordatorio). Solo de lo que ya empezó.
+     *
+     * @param list<string> $editorWeeks lunes "Y-m-d"
+     * @param list<string> $learningDays "Y-m-d"
+     */
+    public function metaWeeks(array $editorWeeks, array $learningDays): array
+    {
+        $facts = ['editor_weeks' => [], 'learnings' => []];
+        try {
+            foreach (array_unique($editorWeeks) as $monday) {
+                $facts['editor_weeks'][$monday] = $this->meta->editorWeek($monday);
+            }
+            foreach (array_unique($learningDays) as $day) {
+                $facts['learnings'][$day] = $this->meta->learnings($day);
+            }
+        } catch (\Throwable $e) {
+            report($e);
         }
 
         return $facts;

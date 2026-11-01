@@ -25,7 +25,7 @@ class CalendarTool implements Tool
 
     public function description(): string
     {
-        return 'El calendario del dueño: sus pagos (vendedoras, agencias, gastos fijos), su rutina diaria, las revisiones de números y sus notas, con lo hecho, lo pendiente y lo atrasado. "hoy" trae lo de hoy y lo atrasado; "fechas" trae los días de desde a hasta (máximo 31). Solo lee: para anotar o tildar, usa proponer_nota_calendario y proponer_marca_calendario (con la clave y la fecha que trae cada cosa).';
+        return 'El calendario del dueño: sus pagos (vendedoras, agencias, gastos fijos), su rutina diaria, el trabajo de Meta Ads y de los editores (encargos por aprobar, entregas por revisar, lo atrasado, la banca, el trabajo de cada editor y lo que aprendimos), las revisiones de números y sus notas, con lo hecho, lo pendiente y lo atrasado. "hoy" trae lo de hoy y lo atrasado; "fechas" trae los días de desde a hasta (máximo 31). Solo lee: para anotar o tildar, usa proponer_nota_calendario y proponer_marca_calendario (con la clave y la fecha que trae cada cosa).';
     }
 
     public function parameters(): array

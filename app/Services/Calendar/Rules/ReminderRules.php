@@ -18,6 +18,9 @@ use Carbon\CarbonImmutable;
  *   van aparte (ExpenseRules).
  * - Se tildan solos cuando el sistema ve que ya está hecho (la tasa guardada, nada por conciliar, nada por aprobar, nada en
  *   rojo, las metas puestas). Las revisiones de números las tilda el dueño.
+ * - `.67`: Meta Ads y los editores van en su propio bloque (group "meta"): el análisis de campañas, los encargos por
+ *   aprobar, las entregas que esperan al dueño, que los editores vayan al día y la banca; y cada semana, el trabajo de los
+ *   editores (lunes) y lo que aprendimos (sábado). Lo que dicen lo arma MetaReminderRules.
  */
 final class ReminderRules
 {
@@ -25,7 +28,7 @@ final class ReminderRules
     public const DEFAULT_WEEKDAY = 4;
 
     /** Los que son "cada semana" y su día por defecto (el dueño los puede mover de lunes a sábado). */
-    public const WEEKDAY_RULES = ['sellers_pay' => 1, 'agencies_pay' => 3, 'review_week' => self::DEFAULT_WEEKDAY];
+    public const WEEKDAY_RULES = ['sellers_pay' => 1, 'agencies_pay' => 3, 'review_week' => self::DEFAULT_WEEKDAY, 'editors_week' => 1, 'learnings_week' => 6];
 
     public const RULES = [
         'sellers_pay' => [
@@ -65,10 +68,36 @@ final class ReminderRules
             'link' => '/reabastecimiento',
         ],
         'meta_analysis' => [
-            'type' => 'review', 'group' => 'daily', 'repeat' => 'daily', 'accumulates' => false, 'auto' => true,
+            'type' => 'review', 'group' => 'meta', 'repeat' => 'daily', 'accumulates' => false, 'auto' => true,
             'title' => 'Revisar el análisis de campañas',
             'help' => 'Cada mañana a las 7:00 queda listo el análisis de Meta Ads con tus reglas: lo más urgente primero (qué subir, bajar, pausar o apagar) y el trabajo para los editores. Se tilda solo al abrirlo.',
             'link' => '/meta-ads/analisis',
+        ],
+        // .67 (dueño, 2026-11-01): "que en el calendario se vea todo lo que tengo que revisar en sus respectivos tiempos,
+        // por ejemplo, revisar lo que tenga que ver con el flujo correcto de trabajo del editor de contenido"
+        'meta_queue' => [
+            'type' => 'task', 'group' => 'meta', 'repeat' => 'daily', 'accumulates' => false, 'auto' => true,
+            'title' => 'Encargos por aprobar',
+            'help' => 'Cada mañana, después de las 7:00, la IA propone los encargos del día: mientras no los apruebas, los editores no tienen trabajo nuevo. También avisa si un testeo terminó sin ganador y te toca decidir, o si a un producto activo le falta la ficha (sin ficha, la IA no le propone encargos). Se tilda solo cuando no queda nada.',
+            'link' => '/meta-ads/cola',
+        ],
+        'meta_deliveries' => [
+            'type' => 'review', 'group' => 'meta', 'repeat' => 'daily', 'accumulates' => false, 'auto' => true,
+            'title' => 'Entregas que esperan por ti',
+            'help' => 'Lo que solo tú puedes revisar: las entregas del editor líder (no puede aprobarse a sí mismo), las de los editores si no hay otro líder y las de landings; y las landings aprobadas que falta publicar. Mientras esperan, no llegan a la banca ni a Meta. Se tilda solo cuando no queda ninguna.',
+            'link' => '/meta-ads/cola',
+        ],
+        'meta_flow' => [
+            'type' => 'review', 'group' => 'meta', 'repeat' => 'daily', 'accumulates' => false, 'auto' => true,
+            'title' => 'Que los editores vayan al día',
+            'help' => 'El camino de cada encargo: aprobado → asignado → en producción → entregado → revisado. Avisa lo que se quedó quieto: un encargo atrasado (pasó su fecha y no se entregó), uno sin editor más de 1 día, una entrega esperando al líder más de 1 día o un devuelto que no se volvió a entregar en 2 días. Se tilda solo cuando todo va al día.',
+            'link' => '/meta-ads/cola',
+        ],
+        'meta_bank' => [
+            'type' => 'task', 'group' => 'meta', 'repeat' => 'daily', 'accumulates' => false, 'auto' => true,
+            'title' => 'Batches listos para lanzar',
+            'help' => 'Los batches aprobados que esperan en la banca para lanzarse en Meta (primero los del testeo). El análisis de campañas te dice cuál lanzar en cada producto; si hoy no lanzas más, tíldalo tú. Se tilda solo cuando la banca está vacía.',
+            'link' => '/meta-ads/cola',
         ],
         // .48b-2: cada revisión abre su reporte del negocio y se tilda sola al abrirlo (decisión del dueño, 2026-10-31)
         'review_3days' => [
@@ -82,6 +111,18 @@ final class ReminderRules
             'title' => 'Revisar la semana pasada',
             'help' => 'El jueves ya llegaron los cierres de las agencias: se puede ver cuánto se ganó, cuánto se perdió y por producto, de lunes a domingo. Tu reporte semanal sale a las 7:15 y se tilda solo al abrirlo.',
             'link' => null,
+        ],
+        'editors_week' => [
+            'type' => 'review', 'group' => null, 'repeat' => 'weekly', 'accumulates' => true, 'auto' => true,
+            'title' => 'Revisar el trabajo de los editores',
+            'help' => 'La semana pasada de cada editor, de lunes a domingo: cuántos encargos entregó y cuántos a tiempo, cuántos se le devolvieron y cómo les fue a los que terminaron su test. Es lo mismo de Panel del dueño › Equipo. Se tilda solo si nadie tuvo trabajo esa semana.',
+            'link' => '/panel-dueno',
+        ],
+        'learnings_week' => [
+            'type' => 'review', 'group' => null, 'repeat' => 'weekly', 'accumulates' => true, 'auto' => true,
+            'title' => 'Lo que aprendimos esta semana',
+            'help' => 'Los batches que terminaron su test en los 7 días anteriores: qué ganó, qué perdió y lo que aprendimos de cada uno. Revisa que el aprendizaje esté bien (si no, "Corregir"): la IA lo usa en los encargos siguientes. Se tilda solo si ninguno terminó.',
+            'link' => '/meta-ads/lo-que-sabemos',
         ],
         'review_month' => [
             'type' => 'review', 'group' => null, 'repeat' => 'monthly', 'day' => 8, 'accumulates' => true, 'auto' => true,
@@ -252,6 +293,15 @@ final class ReminderRules
                 $out['auto_note'] = $seen !== null ? "Lo abriste a las {$seen}." : null;
                 $out['details'] = 'Lo más urgente de tus campañas primero, con los montos de tus reglas, y el trabajo para los editores.';
                 $out['actions'] = [['label' => 'Abrir el análisis', 'link' => $rule['link']]];
+                break;
+
+            case 'meta_queue':
+            case 'meta_deliveries':
+            case 'meta_flow':
+            case 'meta_bank':
+            case 'editors_week':
+            case 'learnings_week':
+                MetaReminderRules::fill($key, $out, $due, $today, $facts);
                 break;
 
             case 'review_3days':

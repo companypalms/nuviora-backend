@@ -46,6 +46,9 @@ class Calendar
 
     private const TYPE_ORDER = ['payment' => 0, 'task' => 1, 'review' => 2];
 
+    /** Primero lo propio del día, después Meta Ads y los editores (.67) y al final la rutina de todos los días. */
+    private const GROUP_ORDER = ['meta' => 1, 'daily' => 2];
+
     public function __construct(private CalendarSettings $settings, private ReminderFacts $facts)
     {
     }
@@ -389,6 +392,13 @@ class Calendar
         if ($weeks['sellers_pay'] !== [] || $weeks['agencies_pay'] !== []) {
             $facts += $this->facts->weeks($weeks['sellers_pay'], $weeks['agencies_pay']);
         }
+        // .67: el trabajo de los editores (la semana que se revisa) y lo que aprendimos (los 7 días antes), si ya empezó
+        $editorWeeks = array_values(array_filter(array_map(fn ($d) => ReminderRules::lastWeek(CarbonImmutable::parse($d['due']))[0]->toDateString(), $dates['editors_week'] ?? []),
+            fn ($monday) => $monday <= $today));
+        $learningDays = array_values(array_filter(array_column($dates['learnings_week'] ?? [], 'due'), fn ($due) => $due <= $today));
+        if ($editorWeeks !== [] || $learningDays !== []) {
+            $facts += $this->facts->metaWeeks($editorWeeks, $learningDays);
+        }
 
         $items = [];
         foreach ($dates as $key => $list) {
@@ -460,11 +470,17 @@ class Calendar
             $out[] = $item;
         }
 
-        // Primero lo pendiente; después lo propio del día antes que la rutina, por hora (sin hora al final), tipo y título
-        usort($out, fn ($a, $b) => [self::closed($a), $a['group'] === 'daily' ? 1 : 0, $a['time'] ?? '99:99', self::TYPE_ORDER[$a['type']] ?? 9, $a['title']]
-            <=> [self::closed($b), $b['group'] === 'daily' ? 1 : 0, $b['time'] ?? '99:99', self::TYPE_ORDER[$b['type']] ?? 9, $b['title']]);
+        // Primero lo pendiente; después lo propio del día, Meta Ads y la rutina, por hora (sin hora al final), tipo y título
+        usort($out, fn ($a, $b) => [self::closed($a), self::GROUP_ORDER[$a['group']] ?? 0, $a['time'] ?? '99:99', self::metaOrder($a), self::TYPE_ORDER[$a['type']] ?? 9, $a['title']]
+            <=> [self::closed($b), self::GROUP_ORDER[$b['group']] ?? 0, $b['time'] ?? '99:99', self::metaOrder($b), self::TYPE_ORDER[$b['type']] ?? 9, $b['title']]);
 
         return $out;
+    }
+
+    /** .67: el bloque de Meta Ads va en el orden del trabajo (análisis, aprobar, entregas, al día, banca), no por tipo. */
+    private static function metaOrder(array $item): int
+    {
+        return $item['group'] === 'meta' ? (int) array_search(substr($item['item_key'], 5), array_keys(ReminderRules::RULES), true) : 0;
     }
 
     private static function closed(array $item): int
