@@ -114,7 +114,7 @@ describe('Lo que lee la IA', function () {
         $t = QueueWriter::example([$p], [])['encargos'][0];
         expect($t['clave'])->toBe('E1')->and($t['ideas'])->toHaveCount(3)->and($t['entregables'])->toBe('3 videos 9:16');
         // .63: la plantilla también explica el objetivo, sin dictar las piezas
-        expect($t['objetivo'])->toContain('3 versiones bien distintas')->and($t['mejorar'])->not->toBe('');
+        expect($t['objetivo'])->toContain('3 versiones bien distintas')->and($t['mejorar'])->not->toBe('')->and($t['probando'])->toStartWith('Probamos');
     });
 });
 

@@ -98,6 +98,7 @@ describe('El texto del encargo para el editor', function () {
             'code' => 'B0123', 'product' => 'FlexiStep', 'urgency' => 1, 'kind' => 'iteration', 'reference' => 'C0400 FASP', 'angle_code' => 'FASP',
             'angle_name' => 'Dolor de tobillo', 'concept' => 'Antes y después', 'hypothesis' => 'Un hook con la pregunta del dolor sube el CTR.',
             'goal' => '3 versiones bien distintas, con el mismo hook, que hagan que la gente se quede.', 'improve' => 'La gente se va en el medio.',
+            'test_idea' => 'Probamos si preguntarle por su dolor al empezar hace que se reconozca.',
             'audience' => 'Mujeres de 40+ con dolor al caminar', 'city' => 'Caracas', 'offer' => 'Precio $23,14', 'keep' => 'El cuerpo y el cierre',
             'format' => 'video', 'deliverables' => '3 videos 9:16', 'due_date' => '2026-10-31',
             'pieces' => [['code' => 'C0457', 'change' => 'Hook 1: la pregunta', 'format' => null], ['code' => 'C0458', 'change' => 'Hook 2: el dato', 'format' => 'image']],
@@ -105,6 +106,7 @@ describe('El texto del encargo para el editor', function () {
         ]);
         expect($text)->toStartWith("ENCARGO B0123 · FlexiStep\n")
             ->toContain('Tipo: Iteración (referencia: C0400 FASP)')
+            ->toContain('Qué estamos probando: Probamos si preguntarle por su dolor al empezar hace que se reconozca.')
             ->toContain('Lo que buscamos: 3 versiones bien distintas, con el mismo hook, que hagan que la gente se quede.')
             ->toContain('Lo que funcionó (no lo cambies): El cuerpo y el cierre')
             ->toContain('Lo que hay que mejorar: La gente se va en el medio.')

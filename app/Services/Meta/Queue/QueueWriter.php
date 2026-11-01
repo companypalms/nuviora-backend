@@ -38,6 +38,7 @@ Reglas del contenido de los anuncios que no puedes romper:
 - Si la referencia trae "lo que dice su video", apóyate en eso para explicar lo que funcionó (su promesa, su frase fuerte). No copies el guion entero ni escribas guiones.
 Para cada encargo escribe, con su clave:
 - hipotesis: SOLO PARA EL DUEÑO (el editor no la ve): qué crees que va a pasar y por qué, en 1 o 2 frases. Aquí sí puedes nombrar lo que dicen los datos.
+- probando: la misma hipótesis contada PARA EL EDITOR, en 1 o 2 frases: qué idea estamos probando y por qué creemos que puede funcionar, en términos del cliente (qué siente, qué le pasa, qué lo detiene) y del video. Le da contexto para que haga bien su trabajo. Sin números, sin métricas, sin ciudades, sin reglas ni cómo decide el dueño. Ejemplo: "Probamos si abrir con una situación cotidiana de frío, antes de mostrar el chaleco, engancha a gente que todavía no está buscando una solución."
 - objetivo: lo que buscamos con este encargo, en 1 o 2 frases para el editor.
 - conservar: lo que funcionó y no hay que cambiar (en una iteración); si no hay referencia, qué tienen que tener en común todas las versiones. Vacío si no aplica.
 - mejorar: lo que hay que mejorar respecto a la referencia, en palabras (en una iteración); vacío en un concepto o ángulo nuevo.
@@ -56,10 +57,11 @@ TXT;
         'properties' => [
             'encargos' => ['type' => 'array', 'items' => [
                 'type' => 'object', 'additionalProperties' => false,
-                'required' => ['clave', 'hipotesis', 'objetivo', 'conservar', 'mejorar', 'publico', 'concepto', 'ideas', 'entregables', 'angulo_codigo', 'angulo_nombre'],
+                'required' => ['clave', 'hipotesis', 'probando', 'objetivo', 'conservar', 'mejorar', 'publico', 'concepto', 'ideas', 'entregables', 'angulo_codigo', 'angulo_nombre'],
                 'properties' => [
                     'clave' => ['type' => 'string'],
                     'hipotesis' => ['type' => 'string'],
+                    'probando' => ['type' => 'string'],
                     'objetivo' => ['type' => 'string'],
                     'conservar' => ['type' => 'string'],
                     'mejorar' => ['type' => 'string'],
@@ -208,6 +210,9 @@ TXT;
             'encargos' => array_map(fn ($p) => [
                 'clave' => $p['key'],
                 'hipotesis' => ucfirst(self::KINDS[$p['kind']] ?? $p['kind']) . ($p['reference'] ? " de {$p['reference']}" : '') . ": {$p['iterate']}.",
+                'probando' => $p['kind'] === 'iteration'
+                    ? 'Probamos si mejorar ' . $p['iterate'] . ', sin tocar lo que ya funciona, hace que el video rinda todavía mejor.'
+                    : 'Probamos una idea nueva para este producto, para ver si conecta con el cliente.',
                 'objetivo' => $p['kind'] === 'iteration'
                     ? "{$p['pieces']} versiones bien distintas entre sí que mejoren {$p['iterate']}, conservando lo que ya funciona de la referencia."
                     : "{$p['pieces']} versiones bien distintas entre sí para probar este " . (self::KINDS[$p['kind']] ?? $p['kind']) . '.',

@@ -161,7 +161,7 @@ class EditorWork
                 'angle_code' => $b->angle_code, 'angle_name' => $angles["{$b->product_id}:{$b->angle_code}"] ?? null,
                 // .63: lo que buscamos, lo que funcionó y lo que hay que mejorar; nada del proceso del dueño (ni la hipótesis, ni
                 // la prioridad, ni la ciudad de prueba): el editor ve solo lo que necesita para hacer su trabajo
-                'goal' => $b->goal, 'keep' => $b->keep, 'improve' => $b->improve, 'concept' => $b->concept, 'audience' => $b->audience,
+                'test_idea' => $b->test_idea, 'goal' => $b->goal, 'keep' => $b->keep, 'improve' => $b->improve, 'concept' => $b->concept, 'audience' => $b->audience,
                 'reference' => $b->reference?->label, 'reference_thumbnail' => $refs[$b->reference_creative_id]['thumbnail'] ?? null,
                 'reference_texts' => $refs[$b->reference_creative_id]['texts'] ?? [],
                 'reference_script' => $scripts[$b->reference_creative_id] ?? null,

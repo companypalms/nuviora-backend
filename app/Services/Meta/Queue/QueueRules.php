@@ -143,7 +143,7 @@ final class QueueRules
         if ($b['angle_code']) {
             $lines[] = "Ángulo: {$b['angle_code']}" . ($b['angle_name'] ? " ({$b['angle_name']})" : '');
         }
-        foreach (['goal' => 'Lo que buscamos', 'keep' => 'Lo que funcionó (no lo cambies)', 'improve' => 'Lo que hay que mejorar',
+        foreach (['test_idea' => 'Qué estamos probando', 'goal' => 'Lo que buscamos', 'keep' => 'Lo que funcionó (no lo cambies)', 'improve' => 'Lo que hay que mejorar',
             'concept' => 'Concepto', 'audience' => 'Dolor o público', 'offer' => 'Oferta'] as $key => $label) {
             if (($b[$key] ?? null) !== null && trim((string) $b[$key]) !== '') {
                 $lines[] = "{$label}: " . trim((string) $b[$key]);
