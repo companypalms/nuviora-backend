@@ -49,6 +49,7 @@ class ToolCatalog
         MetaQueueTool::class, // paso 4: la cola de producción y la banca
         MetaLandingsTool::class, // paso 6: las landings y sus encargos
         ProductProfileReadTool::class, // .64: la ficha de un producto
+        ProductMemoryTool::class, // .66: lo que sabemos de un producto
         // Paso 5: cambios, siempre con la tarjeta de Confirmar (Actions\ChangeTool)
         Change\CalendarNoteTool::class,
         Change\CalendarMarkTool::class,
@@ -68,6 +69,8 @@ class ToolCatalog
         Change\UserReactivateTool::class,
         // .64: llenar o cambiar la ficha de un producto
         Change\ProductProfileTool::class,
+        // .66: anotar algo en lo que sabemos de un producto
+        Change\ProductNoteTool::class,
     ];
 
     /** @var array<string, Tool>|null */

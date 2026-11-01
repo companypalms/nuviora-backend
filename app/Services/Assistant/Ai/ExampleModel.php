@@ -72,6 +72,10 @@ class ExampleModel implements AssistantModel
         if (($has('landing') && !$has('editor')) || preg_match('/\bL\d{4,}\b/', $message)) {
             return ['name' => 'landings', 'arguments' => ['producto' => $name]];
         }
+        // .66: "¿qué sabemos de Comprimax?", "¿qué funciona en FlexiStep?"
+        if ($has('que sabemos', 'lo que sabemos', 'que funciona en', 'que falta probar')) {
+            return ['name' => 'lo_que_sabemos', 'arguments' => ['producto' => $name]];
+        }
         if ($has('cola', 'banca', 'encargo') || preg_match('/\bB\d{3,}\b/', $message, $b)) {
             return ['name' => 'cola_produccion', 'arguments' => ['producto' => $name, 'estado' => $has('aprobar') ? 'para_aprobar' : null, 'numero' => $b[0] ?? null]];
         }
@@ -186,6 +190,12 @@ class ExampleModel implements AssistantModel
             default => $now->toDateString(),
         };
 
+        // .66: "Anota en lo que sabemos de Comprimax que con modelo masculino no funciona"
+        if (preg_match('/^\s*anota(?:me)?\s+en\s+lo\s+que\s+sabemos\s+de\s+(.+?)\s*(?:que|:)\s*(.+)$/isu', $message, $m)) {
+            $kind = preg_match('/\bno\s+(funciona|sirve|vende)/iu', $m[2]) ? 'no_funciona' : (preg_match('/\b(funciona|vende|sirve)/iu', $m[2]) ? 'funciona' : 'idea');
+
+            return ['name' => 'proponer_nota_producto', 'arguments' => ['producto' => trim($m[1]), 'tipo' => $kind, 'texto' => ucfirst(trim($m[2]))]];
+        }
         // .64: "Ficha de ZenPulse: qué es: …; para qué sirve: …; cómo funciona: …; no es: …; buyer: Nombre / quién es / qué le duele"
         if (preg_match('/^\s*ficha de\s+(.+?):\s*(.+)$/isu', $message, $m)) {
             return ['name' => 'proponer_ficha_producto', 'arguments' => self::profile(trim($m[1]), $m[2])];

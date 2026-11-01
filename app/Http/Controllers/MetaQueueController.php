@@ -63,7 +63,7 @@ class MetaQueueController extends Controller
                 // 2 batches por editor por día, menos el tiempo de las correcciones
                 'capacity' => round($s['video_editors'] * $s['batches_per_editor'] / (1 + $s['corrections_pct'] / 100), 1),
             ],
-            'statuses' => QueueRules::STATUSES, 'kinds' => QueueRules::KINDS, 'formats' => QueueRules::FORMATS,
+            'statuses' => QueueRules::STATUSES, 'kinds' => QueueRules::KINDS, 'formats' => QueueRules::FORMATS, 'styles' => QueueRules::STYLES,
             'last_run' => Setting::get(QueueProposer::LAST_RUN),
             'editors' => EditorWork::editors(),
             // Paso 6b: los tests de landing en curso (nunca cambiar creativo y landing a la vez)
@@ -229,6 +229,7 @@ class MetaQueueController extends Controller
             'reference_creative_id' => ['sometimes', 'nullable', 'integer', Rule::exists('meta_creatives', 'id')->where('product_id', $productId)],
             'learning_city_id' => 'sometimes|nullable|integer|exists:cities,id',
             'format' => ['sometimes', 'nullable', Rule::in(array_keys(QueueRules::FORMATS))],
+            'style' => ['sometimes', 'nullable', Rule::in(array_keys(QueueRules::STYLES))], // .66
             'keep' => 'sometimes|nullable|string|max:2000',
             'offer' => 'sometimes|nullable|string|max:255',
             'deliverables' => 'sometimes|nullable|string|max:2000',
@@ -331,7 +332,7 @@ class MetaQueueController extends Controller
                     'persona_id' => $b->persona_id, 'testing_round' => $b->testing_round,
                 ] + EditorWork::product($b, $profiles) + [
                     'reference_id' => $b->reference_creative_id, 'reference' => $b->reference?->label,
-                    'city_id' => $b->learning_city_id, 'city' => $b->learningCity?->name, 'format' => $b->format, 'keep' => $b->keep, 'offer' => $b->offer,
+                    'city_id' => $b->learning_city_id, 'city' => $b->learningCity?->name, 'format' => $b->format, 'style' => $b->style, 'keep' => $b->keep, 'offer' => $b->offer,
                     'deliverables' => $b->deliverables, 'urgency' => $b->urgency, 'due_date' => $b->due_date?->toDateString(),
                     'approved_at' => $b->approved_at?->toIso8601String(), 'approved_by' => $b->approver?->names,
                     'discard_reason' => $b->discard_reason, 'testing_at' => $b->testing_at?->toIso8601String(), 'tested_at' => $b->tested_at?->toIso8601String(),

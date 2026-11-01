@@ -84,12 +84,14 @@ class QueueProposer
             $p['context'] = $this->context($p, $decisions);
         }
         unset($p);
-        $tested = CreativeBatch::with('product:id,title,showable_name')->where('status', 'tested')->whereNull('learning')->whereNotNull('result')
+        $tested = CreativeBatch::with(['product:id,title,showable_name', 'persona:id,name'])->where('status', 'tested')->whereNull('learning')->whereNotNull('result')
             ->orderBy('tested_at')->limit(self::MAX_LEARNINGS)->get();
         $testedRows = $tested->map(fn (CreativeBatch $b) => [
             'key' => 'T' . $b->id, 'product' => $b->product?->showable_name ?: $b->product?->title, 'code' => (string) $b->code(), 'kind' => $b->kind,
             'angle' => $b->angle_code, 'hypothesis' => $b->hypothesis, 'verdicts' => $b->result['verdicts'] ?? [],
             'spend' => (float) ($b->result['spend'] ?? 0), 'purchases' => (float) ($b->result['purchases'] ?? 0), 'cpa' => $b->result['cpa'] ?? null,
+            // .66: qué se probó (para que el aprendizaje diga qué hipótesis ganó o perdió)
+            'test_idea' => $b->test_idea, 'persona' => $b->persona?->name, 'style' => $b->style, 'concept' => $b->concept,
         ])->values()->all();
 
         $run = ['at' => now()->toIso8601String(), 'created' => 0, 'replaced' => $replaced, 'learnings' => 0, 'status' => 'nothing', 'model' => null, 'error' => null,
@@ -157,6 +159,7 @@ class QueueProposer
             // .63: lo que buscamos y lo que hay que mejorar, para el editor
             'goal' => $clean($t['objetivo'] ?? null), 'test_idea' => $clean($t['probando'] ?? null), 'improve' => $clean($t['mejorar'] ?? null),
             'reference_creative_id' => $p['reference_id'], 'learning_city_id' => $p['city_id'], 'format' => $p['format'], 'keep' => $clean($t['conservar'] ?? null),
+            'style' => isset(QueueRules::STYLES[$t['estilo'] ?? '']) ? $t['estilo'] : null,
             'offer' => $p['context']['price'] ? 'Precio ' . $p['context']['price'] : null, 'deliverables' => $clean($t['entregables'] ?? null),
             'urgency' => $p['urgency'], 'source' => 'rules', 'proposed_on' => $today, 'status' => 'proposed', 'status_at' => now(), 'created_by' => $userId,
         ]);
@@ -181,6 +184,8 @@ class QueueProposer
             // .64: la ficha del producto, en texto para la IA, y sus buyer personas (con su id, para guardar el que elija)
             'profile' => ProductProfileRules::forAi($profile['profile'], $profile['personas']),
             'personas' => $profile['personas'],
+            // .66: lo que sabemos de este producto (lo que funcionó, lo que no y las notas del dueño)
+            'memory' => \App\Services\Meta\Products\ProductMemories::forWriter($pid),
             'proof' => ProductAdSetting::where('product_id', $pid)->value('proof'),
             'price' => $price !== null ? '$' . number_format((float) $price, 2, ',', '.') : null,
             'angles' => AdAngle::where('product_id', $pid)->whereNull('alias_of')->orderBy('code')->get(['code', 'name', 'hypothesis'])

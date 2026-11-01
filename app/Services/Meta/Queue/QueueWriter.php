@@ -27,6 +27,7 @@ Eres el director creativo de una tienda online de Venezuela que vende con anunci
 Recibes los encargos que ya decidieron las reglas del dueño: el producto, el tipo (iteración, concepto nuevo, ángulo nuevo o arriba del embudo), el ángulo, el creativo de referencia con sus textos, lo que dice su video y cómo le fue a cada parte del video, y cuántas versiones lleva. No cambies nada de eso: redáctalo.
 Cada encargo trae la FICHA DEL PRODUCTO (qué es, para qué sirve, cómo funciona, lo que NO es, la información clave y sus buyer personas). Léela primero: todo lo que escribas tiene que ser fiel a la ficha. Nunca contradigas "lo que NO es" y no le agregues usos ni beneficios que no estén en la ficha.
 Los encargos que dicen "Testeo" son la primera prueba de un producto: se prueban sus ángulos principales, sin creativo de referencia. Explícale al editor la idea del ángulo para su buyer persona. Si un ángulo lleva más de un batch en el testeo, cada uno prueba una hipótesis distinta: otro concepto u otro formato (por ejemplo: video animado, testimonio, venta directa, demostración). Dilo claro en "probando" y en "concepto", y nunca hagas dos iguales.
+Cada encargo puede traer LO QUE SABEMOS del producto: lo que funcionó y lo que falló en batches anteriores (por ángulo, buyer persona y estilo, con sus números) y las notas del dueño. Úsalo para decidir el concepto, el estilo y la hipótesis: repite y mejora lo que funcionó, no repitas lo que falló (salvo que la hipótesis nueva sea claramente distinta, y dilo en la hipótesis) y prefiere probar lo que falta. Es información interna del dueño: en lo que lee el editor (probando, objetivo, conservar, mejorar, publico, concepto, ideas, entregables) nunca digas que algo ya se probó, ganó o falló, ni números ni cuántos batches.
 Tu trabajo NO es decirle al editor qué video hacer: es explicarle qué estamos buscando, qué funcionó y qué hay que mejorar, y darle ideas. El editor es el creativo y decide cómo hacerlo.
 Así se escribe una iteración (ejemplo): si el hook funcionó y la gente se va en la parte del medio, el objetivo es "3 versiones bien distintas entre sí, con el mismo hook, que hagan que la gente se quede hasta el final"; lo que funcionó es "el hook: engancha muy bien en los primeros segundos, no lo cambies"; lo que hay que mejorar es "mucha gente se va en la parte del medio del video"; y las ideas son "una versión más corta", "otra que cambie por completo la parte del medio", "otra con un medio más dinámico".
 Cómo le fue al video, en palabras para el editor: "hook" es si engancha en los primeros segundos; "retención" es si la gente se queda viendo; "se van al principio / en el medio / al final" dice dónde abandonan; "clic" es si la gente toca el anuncio; "compra" es si los que llegan compran (si engancha y hacen clic pero no compran, puede ser la landing, no el video).
@@ -48,10 +49,11 @@ Para cada encargo escribe, con su clave:
 - publico: el dolor o el público al que le habla.
 - buyer: el nombre exacto de UNO de los buyer personas de la ficha al que le habla este encargo (el que mejor encaje con el ángulo y la referencia). El editor solo conoce ese. Si el encargo trae "Buyer persona del ángulo", usa ese. null si la ficha no trae buyer personas.
 - concepto: el concepto en pocas palabras.
+- estilo: el estilo del video, uno de: testimonio, animado (video animado), venta_directa, demostracion, ugc, antes_despues, problema_solucion u otro. En una iteración, el de la referencia, salvo que lo que se pruebe sea otro estilo. Si un ángulo lleva más de un batch en el testeo, estilos distintos.
 - ideas: exactamente la cantidad de versiones pedida; una idea por versión, como sugerencia ("una versión más corta", "otra que…"), no como orden ni guion.
 - entregables: qué entrega el editor (cantidad de videos o imágenes, formato 9:16, duración aproximada).
 - angulo_codigo y angulo_nombre: solo en un ángulo nuevo cuyo ángulo dice "nuevo (proponlo)", un código de 3 a 6 letras que no esté en la lista de ángulos del producto y su nombre; en los demás, null.
-Y para cada batch testeado que venga en los datos, su aprendizaje en 1 o 2 frases (qué funcionó o no, y qué hacer distinto), con su clave. El aprendizaje es para el dueño.
+Y para cada batch testeado que venga en los datos, su aprendizaje en 1 o 2 frases, con su clave: qué hipótesis se probó (el ángulo, el buyer persona, el estilo, el concepto) y qué nos enseña, qué repetir o qué evitar. Solo con lo que dicen los datos. El aprendizaje es para el dueño: se guarda en "Lo que sabemos" del producto y lo lees antes de los encargos siguientes.
 TXT;
 
     private const SCHEMA = [
@@ -61,7 +63,7 @@ TXT;
         'properties' => [
             'encargos' => ['type' => 'array', 'items' => [
                 'type' => 'object', 'additionalProperties' => false,
-                'required' => ['clave', 'hipotesis', 'probando', 'objetivo', 'conservar', 'mejorar', 'publico', 'buyer', 'concepto', 'ideas', 'entregables', 'angulo_codigo', 'angulo_nombre'],
+                'required' => ['clave', 'hipotesis', 'probando', 'objetivo', 'conservar', 'mejorar', 'publico', 'buyer', 'concepto', 'estilo', 'ideas', 'entregables', 'angulo_codigo', 'angulo_nombre'],
                 'properties' => [
                     'clave' => ['type' => 'string'],
                     'hipotesis' => ['type' => 'string'],
@@ -72,6 +74,7 @@ TXT;
                     'publico' => ['type' => 'string'],
                     'buyer' => ['type' => ['string', 'null']],
                     'concepto' => ['type' => 'string'],
+                    'estilo' => ['type' => 'string', 'enum' => ['testimonio', 'animado', 'venta_directa', 'demostracion', 'ugc', 'antes_despues', 'problema_solucion', 'otro']],
                     'ideas' => ['type' => 'array', 'items' => ['type' => 'string']],
                     'entregables' => ['type' => 'string'],
                     'angulo_codigo' => ['type' => ['string', 'null']],
@@ -140,12 +143,23 @@ TXT;
             if ($c['angles'] ?? []) {
                 $lines[] = 'Ángulos del producto: ' . implode('; ', array_map(fn ($code, $name) => $code . ($name ? " ({$name})" : ''), array_keys($c['angles']), $c['angles']));
             }
+            // .66: lo que sabemos de este producto (interno: nunca se le cuenta al editor)
+            if (trim((string) ($c['memory'] ?? '')) !== '') {
+                $lines[] = 'Lo que sabemos de este producto (interno: úsalo para decidir, nunca se lo cuentes al editor):';
+                $lines[] = $c['memory'];
+            }
             $lines[] = '';
         }
         foreach ($tested as $t) {
             $lines[] = "== TESTEADO {$t['key']} · {$t['product']} · {$t['code']} · " . (self::KINDS[$t['kind']] ?? $t['kind']) . ($t['angle'] ? " · {$t['angle']}" : '');
             if ($t['hypothesis']) {
                 $lines[] = "Hipótesis: {$t['hypothesis']}";
+            }
+            // .66: qué se probó, para el aprendizaje
+            foreach (['test_idea' => 'Qué se probaba', 'persona' => 'Buyer persona', 'style' => 'Estilo', 'concept' => 'Concepto'] as $k => $label) {
+                if (!empty($t[$k])) {
+                    $lines[] = "{$label}: " . ($k === 'style' ? (QueueRules::STYLES[$t[$k]] ?? $t[$k]) : $t[$k]);
+                }
             }
             $lines[] = 'Resultado: ' . implode('; ', array_map(fn ($v) => ($v['city'] ?? 'Meta') . ": {$v['label']}", $t['verdicts']))
                 . ' · gasto $' . number_format($t['spend'], 2, ',', '.') . ', ' . rtrim(rtrim(number_format($t['purchases'], 1, ',', ''), '0'), ',') . ' compras'
@@ -240,6 +254,7 @@ TXT;
                 'mejorar' => $p['kind'] === 'iteration' ? ucfirst($p['iterate']) . '.' : '',
                 'publico' => '',
                 'buyer' => $p['context']['personas'][0]['name'] ?? null,
+                'estilo' => isset($p['testing']) ? (['problema_solucion', 'testimonio'][$p['testing']['n'] - 1] ?? 'demostracion') : 'otro',
                 'concepto' => $p['kind'] === 'iteration' ? 'El mismo de la referencia' : '',
                 'ideas' => array_map(fn ($i) => 'Versión ' . ($i + 1) . ': tú decides cómo.', range(0, $p['pieces'] - 1)),
                 'entregables' => "{$p['pieces']} " . ($p['format'] === 'image' ? 'imágenes' : 'videos 9:16'),

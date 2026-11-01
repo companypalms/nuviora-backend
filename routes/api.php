@@ -641,6 +641,12 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::get('/product-profiles', [\App\Http\Controllers\MetaProductProfileController::class, 'index']);
         Route::put('/product-profiles/{product}', [\App\Http\Controllers\MetaProductProfileController::class, 'update']);
         Route::post('/product-profiles/{product}/next-round', [\App\Http\Controllers\MetaProductProfileController::class, 'nextRound']); // .65
+        // .66: lo que sabemos de cada producto
+        Route::get('/memory', [\App\Http\Controllers\MetaMemoryController::class, 'index']);
+        Route::post('/memory/{product}/summarize', [\App\Http\Controllers\MetaMemoryController::class, 'summarize'])->middleware('throttle:10,1');
+        Route::post('/memory/{product}/notes', [\App\Http\Controllers\MetaMemoryController::class, 'storeNote']);
+        Route::put('/memory/notes/{note}', [\App\Http\Controllers\MetaMemoryController::class, 'updateNote'])->whereNumber('note');
+        Route::delete('/memory/notes/{note}', [\App\Http\Controllers\MetaMemoryController::class, 'deleteNote'])->whereNumber('note');
 
         Route::get('/report/overview', [\App\Http\Controllers\MetaReportController::class, 'overview']);
         Route::get('/report/rows', [\App\Http\Controllers\MetaReportController::class, 'rows']);

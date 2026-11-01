@@ -29,6 +29,12 @@ final class QueueRules
 
     public const FORMATS = ['video' => 'Video', 'image' => 'Imagen', 'mixed' => 'Video e imagen'];
 
+    /** .66: el estilo del encargo (para aprender qué formato funciona en cada producto). */
+    public const STYLES = [
+        'testimonio' => 'Testimonio', 'animado' => 'Video animado', 'venta_directa' => 'Venta directa', 'demostracion' => 'Demostración',
+        'ugc' => 'UGC', 'antes_despues' => 'Antes y después', 'problema_solucion' => 'Problema–solución', 'otro' => 'Otro',
+    ];
+
     /** Los veredictos de las reglas que cierran el test de un batch; sin datos o en evaluación todavía no dicen nada. */
     public const FINAL_VERDICTS = ['promising', 'proven', 'intermediate', 'loser', 'failing'];
 
@@ -169,6 +175,9 @@ final class QueueRules
         }
         if ($b['format']) {
             $lines[] = 'Formato: ' . (self::FORMATS[$b['format']] ?? $b['format']);
+        }
+        if (!empty($b['style'])) {
+            $lines[] = 'Estilo: ' . (self::STYLES[$b['style']] ?? $b['style']);
         }
         if ($b['pieces']) {
             $lines[] = 'Ideas para cada versión (tú decides cómo):';

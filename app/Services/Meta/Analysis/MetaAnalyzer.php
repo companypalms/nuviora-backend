@@ -76,6 +76,12 @@ class MetaAnalyzer
         } catch (\Throwable $e) {
             report($e);
         }
+        // .66: el resumen de "Lo que sabemos" de los productos con batches testeados o notas nuevas
+        try {
+            app(\App\Services\Meta\Products\ProductMemories::class)->refreshChanged();
+        } catch (\Throwable $e) {
+            report($e);
+        }
         // Paso 6c: y los encargos de landing (lo más grave de cada landing)
         try {
             (new LandingProposer())->run($userId);

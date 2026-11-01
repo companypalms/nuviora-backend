@@ -110,9 +110,9 @@ class TestingPhase
         $available = TestingRules::available(array_keys($ordered), self::usedBefore($productId, $round));
         $slots = TestingRules::slots($available);
         $batches = CreativeBatch::where('product_id', $productId)->where('testing_round', $round)->where('status', '!=', 'discarded')->orderBy('id')
-            ->get(['id', 'number', 'angle_code', 'status', 'result', 'concept']);
+            ->get(['id', 'number', 'angle_code', 'status', 'result', 'concept', 'style']);
         $rows = $batches->map(fn ($b) => ['id' => $b->id, 'angle' => (string) $b->angle_code, 'status' => $b->status, 'code' => $b->code(),
-            'verdicts' => $b->result['verdicts'] ?? [], 'concept' => $b->concept])->all();
+            'verdicts' => $b->result['verdicts'] ?? [], 'concept' => trim(($b->concept ?? '') . ($b->style ? ' (estilo: ' . mb_strtolower(\App\Services\Meta\Queue\QueueRules::STYLES[$b->style] ?? $b->style) . ')' : '')) ?: null])->all();
         $pool = $rows;
         $out = [];
         foreach ($slots as $angle) {
