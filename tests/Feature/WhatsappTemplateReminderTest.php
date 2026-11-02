@@ -253,3 +253,40 @@ describe('Recordatorios de la confirmación', function () {
         expect(consultar($this, $order, $client)['should_send_next_template'])->toBeTrue();
     });
 });
+
+// Paso 2 de n8n (dueño, 2026-11-02): "Sin Stock" sale una sola vez por pedido; n8n lo sabe por check-window.
+describe('Plantillas ya enviadas a la orden', function () {
+    function enviadas($test, int $orderId, int $clientId): array
+    {
+        return $test->withHeader('X-API-KEY', 'clave-de-prueba')
+            ->getJson("/api/external/whatsapp/check-window?internal_id={$orderId}&client_id={$clientId}")
+            ->assertOk()->json('order.sent_templates');
+    }
+
+    it('sin mensajes, la lista está vacía', function () {
+        [, $order, $client] = pedido('+584120000701', 9200000011);
+
+        expect(enviadas($this, $order, $client))->toBe([]);
+    });
+
+    it('trae las de esta orden: por su nombre, las viejas por "Plantilla: …", sin repetir', function () {
+        [$shopify, $order, $client] = pedido('+584120000702', 9200000012);
+        enviarPlantilla($this, '584120000702', $shopify, 'sin_stock_basico')->assertCreated();
+        enviarPlantilla($this, '584120000702', $shopify, 'sin_stock_basico')->assertCreated();
+        WhatsappMessage::create(['client_id' => $client, 'order_id' => $order, 'body' => 'Plantilla: cancelado_basico',
+            'is_from_client' => false, 'message_type' => WhatsappMessage::TYPE_AUTOMATED, 'sent_at' => now()->subDay()]);
+
+        expect(enviadas($this, $order, $client))->toEqualCanonicalizing(['sin_stock_basico', 'cancelado_basico']);
+    });
+
+    it('no cuenta las que Meta rechazó, las de otra orden ni lo que escribió el cliente', function () {
+        [, $order, $client] = pedido('+584120000703', 9200000013);
+        $otra = DB::table('orders')->insertGetId(['order_id' => 9200000014, 'client_id' => $client, 'status_id' => 1, 'created_at' => now(), 'updated_at' => now()]);
+        $base = ['client_id' => $client, 'is_from_client' => false, 'message_type' => WhatsappMessage::TYPE_AUTOMATED, 'sent_at' => now()];
+        WhatsappMessage::create($base + ['order_id' => $order, 'body' => 'Plantilla: sin_stock_basico', 'template_name' => 'sin_stock_basico', 'status' => 'failed']);
+        WhatsappMessage::create($base + ['order_id' => $otra, 'body' => 'Plantilla: en_ruta_basico', 'template_name' => 'en_ruta_basico']);
+        WhatsappMessage::create(['order_id' => $order, 'body' => 'Plantilla: hola', 'is_from_client' => true] + $base);
+
+        expect(enviadas($this, $order, $client))->toBe([]);
+    });
+});

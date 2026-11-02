@@ -50,6 +50,22 @@ class WhatsappMessage extends Model
             ->orWhere('body', 'like', 'Plantilla: confirmacion%'));
     }
 
+    /**
+     * Los nombres de las plantillas que ya se le mandaron a una orden (las que Meta rechazó no cuentan). Con esto n8n
+     * manda "Sin Stock" una sola vez por pedido (dueño, 2026-11-02). Los mensajes de antes de guardar template_name
+     * se reconocen por el texto "Plantilla: …"; los de plantillas importadas de antes guardaban su texto y no se ven.
+     */
+    public static function templatesSentToOrder(int $orderId): array
+    {
+        return static::where('order_id', $orderId)
+            ->where('is_from_client', false)
+            ->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', 'failed'))
+            ->where(fn ($q) => $q->whereNotNull('template_name')->orWhere('body', 'like', 'Plantilla:%'))
+            ->get(['template_name', 'body'])
+            ->map(fn ($m) => $m->template_name ?: trim(substr($m->body, strlen('Plantilla:'))))
+            ->filter()->unique()->values()->all();
+    }
+
     public function order()
     {
         return $this->belongsTo(Order::class);

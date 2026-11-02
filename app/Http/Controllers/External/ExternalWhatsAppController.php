@@ -557,6 +557,8 @@ class ExternalWhatsAppController extends Controller
                                 : 0,
                 'items' => $products,
                 'store_is_open' => $order->is_store_open,
+                // Las plantillas que ya se le mandaron a esta orden: n8n no repite "Sin Stock" (dueño, 2026-11-02)
+                'sent_templates' => WhatsappMessage::templatesSentToOrder($order->id),
             ] : null,
             'agency' => $agency ? [
                 'id' => $agency->id,
