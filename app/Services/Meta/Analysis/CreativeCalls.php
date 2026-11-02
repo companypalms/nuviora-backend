@@ -250,7 +250,7 @@ final class CreativeCalls
     }
 
     /** "Aragua", "Aragua y Carabobo", "Aragua, Carabobo y Caracas". */
-    private static function join(array $items): string
+    public static function join(array $items): string
     {
         $last = array_pop($items);
 

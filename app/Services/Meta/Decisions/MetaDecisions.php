@@ -436,6 +436,10 @@ class MetaDecisions
                 'bank_ready' => $ops['bank']['ready'] ?? [],
             ]);
             $out['campaigns'][$id]['action'] = $action;
+            // .82: los números de la ciudad, para la frase de cada tarea del análisis ("$10,29 por compra; tu límite es $7,22")
+            $out['campaigns'][$id]['numbers'] = ['spend3' => (float) ($w3['totals']['spend'] ?? 0), 'purchases3' => (float) ($w3['totals']['purchases'] ?? 0),
+                'c' => $c['target'], 'be' => $c['break_even'], 'source' => $c['target_source'] ?? null, 'budget' => $budget,
+                'streak' => $streak['days'], 'prune' => $prune, 'bank' => $ops['bank']['ready'][0] ?? null];
             $out['campaigns'][$id]['budget_notes'] = $cr->budgetNotes($budget, (float) $h['mins'], $newBatches, $c['target']);
             $actions[$id] = $action['key'];
 

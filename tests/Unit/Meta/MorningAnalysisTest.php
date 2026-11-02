@@ -55,6 +55,68 @@ describe('La lista urgente', function () {
     });
 });
 
+// .82: cada punto, una cosa que hacer en Ads Manager, con su frase, su porqué y su grupo
+function numeros(float $spend, float $purchases, float $c, ?float $be, ?float $budget = null, int $streak = 0, array $prune = [], ?string $bank = null): array
+{
+    return ['spend3' => $spend, 'purchases3' => $purchases, 'c' => $c, 'be' => $be, 'source' => null, 'budget' => $budget, 'streak' => $streak,
+        'prune' => $prune, 'bank' => $bank];
+}
+
+describe('.82: tu día en Meta Ads', function () {
+    it('cada punto dice qué hacer con los montos exactos, por qué y en qué grupo va', function () {
+        $sube = ciudad('c1', 'Caracas', 'scale', 'Subir $51,60 → $61,92');
+        $sube['action']['from'] = 51.6;
+        $sube['action']['to'] = 61.92;
+        $sube['numbers'] = numeros(35.4, 10, 5.39, 7.22, 51.6);
+        $interviene = ciudad('c2', 'Aragua', 'intervene', 'Intervenir');
+        $interviene['numbers'] = numeros(72, 7, 5.39, 7.22, 30, 1, ['AD 1', 'AD 2']);
+        $poda = ciudad('c3', 'Carabobo', 'hold_prune', 'Mantener y podar');
+        $poda['numbers'] = numeros(36.75, 5, 5.39, 7.22, 20, 0, ['AD 3'], 'B0104');
+        $list = UrgentList::build([producto(1, 'FlexiStep', 1, 72, [$sube, $interviene, $poda], ['Poco stock en Caracas: quedan 3 unidades.'])]);
+        $by = collect($list)->keyBy('kind');
+
+        expect($by['scale']['title'])->toBe('Sube FlexiStep en Caracas: $51,60 → $61,92')
+            ->and($by['scale']['why'])->toBe('+20 % · $3,54 por compra; tu objetivo es $5,39')
+            ->and($by['scale']['group'])->toBe('crecer')
+            ->and($by['intervene']['title'])->toBe('Interviene FlexiStep en Aragua: apaga 2 anuncios caros y lanza un batch nuevo, sin tocar el presupuesto')
+            ->and($by['intervene']['why'])->toBe('$10,29 por compra; tu límite es $7,22 · 1 día encima')
+            ->and($by['intervene']['group'])->toBe('arreglar')
+            ->and($by['intervene']['detail'][0])->toBe('En 3 días: gastaste $72,00 y Meta vio 7 compras = $10,29 por compra.')
+            ->and($by['intervene']['detail'][1])->toBe('Tu objetivo (C) aquí es $5,39 y tu límite para no perder (BE) es $7,22.')
+            ->and($by['hold_prune']['title'])->toBe('Poda FlexiStep en Carabobo: apaga 1 anuncio caro y mete creativos nuevos')
+            ->and($by['hold_prune']['why'])->toBe('$7,35 por compra: entre tu objetivo ($5,39) y tu límite ($7,22)')
+            ->and($by['alarm']['group'])->toBe('aviso')
+            ->and($by['alarm']['title'])->toBe('Poco stock en Caracas: quedan 3 unidades.');
+    });
+
+    it('suma los creativos que hay que apagar: los perdedores en todas las ciudades y los demás solo donde pierden', function () {
+        $interviene = ciudad('c2', 'Aragua', 'intervene', 'Intervenir');
+        $interviene['numbers'] = numeros(72, 7, 5.39, 7.22, 30, 1, ['AD 1']);
+        $p = producto(1, 'FlexiStep', 1, 72, [$interviene, ciudad('c4', 'Carabobo', 'pause_city', 'Pausar la ciudad')]);
+        $p['stop_all'] = ['C004'];
+        $p['stop_by_city'] = ['Aragua' => ['CRE008', 'C004', 'CRE003'], 'Carabobo' => ['CRE009']];
+        $p['creatives'] = [['id' => 8, 'label' => 'CRE008', 'reading' => 'Gana en Caracas', 'cities' => [['city' => 'Aragua', 'verdict' => 'Perdedor', 'data' => '3 días: gasto $20,00 · 0 compras']]]];
+        $list = UrgentList::build([$p]);
+        $stops = array_values(array_filter($list, fn ($i) => $i['kind'] === 'stop_creatives'));
+
+        expect(array_column($stops, 'title'))->toBe(['Apaga C004 de FlexiStep en todas las ciudades', 'Apaga 2 creativos de FlexiStep en Aragua'])
+            ->and($stops[1]['why'])->toBe('CRE008, CRE003 · ahí pierden')
+            ->and($stops[1]['detail'][0])->toBe('CRE008 en Aragua: 3 días: gasto $20,00 · 0 compras')
+            ->and($stops[1]['group'])->toBe('frenar')
+            // Carabobo se pausa entera: ahí no hace falta apagar creativos
+            ->and(collect($stops)->pluck('city')->all())->not->toContain('Carabobo')
+            // Aragua ya apaga sus creativos: intervenir solo lanza
+            ->and(collect($list)->firstWhere('kind', 'intervene')['title'])->toBe('Interviene FlexiStep en Aragua: lanza un batch nuevo, sin tocar el presupuesto')
+            ->and(UrgentList::build([$p])[1]['key'])->toBe($stops[1]['key']);
+    });
+
+    it('los análisis sin números (de antes) siguen funcionando', function () {
+        $list = UrgentList::build([producto(1, 'Loli', 1, 0, [ciudad('c', 'Valencia', 'decrease', 'Bajar $30,00 → $24,00')])]);
+        expect($list[0]['title'])->toBe('Baja Loli en Valencia')->and($list[0]['why'])->toBe('lectura Bajar $30,00 → $24,00')
+            ->and($list[0]['group'])->toBe('frenar');
+    });
+});
+
 describe('Que la IA no invente montos', function () {
     it('lee los montos como se escriben en español', function () {
         expect(MoneyCheck::amounts('subir $39,60 → $43,56; gastó $1.412,06 y $30; o $2.5'))->toBe([39.6, 43.56, 1412.06, 30.0, 2.5]);

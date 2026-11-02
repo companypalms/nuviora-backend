@@ -35,6 +35,8 @@ final class AnalysisFacts
                     'notes' => array_map(fn ($n) => $n['label'] . ': ' . $n['text'], $c['notes'] ?? []),
                     'budget_notes' => $c['budget_notes'] ?? [],
                     'price_option' => $c['price_option']['text'] ?? null,
+                    // .82: gasto y compras de 3 días, C, BE, presupuesto, días encima, qué podar y qué lanzar (para la frase de la tarea)
+                    'numbers' => $c['numbers'] ?? null,
                 ];
             }
             // .70: lo que dice la regla de cada ciudad, para "ESCALAR" (cuánto subir y dónde)
@@ -48,9 +50,14 @@ final class AnalysisFacts
             $creatives = array_values(array_filter($p['creatives'] ?? [], fn ($cr) => $cr['active'] ?? false));
             // .80: qué apagar hoy, por ciudad (de todos los activos, no solo de los 12 que más gastaron)
             $stopByCity = [];
+            $stopAll = [];
             foreach ($creatives as $cr) {
                 foreach (CreativeCalls::stopIn($cr) as $city) {
                     $stopByCity[$city][] = (string) $cr['label'];
+                }
+                // .82: los perdedores (PARAR), que se apagan en todas las ciudades
+                if (($cr['verdict']['key'] ?? null) === 'loser') {
+                    $stopAll[] = (string) $cr['label'];
                 }
             }
             usort($creatives, fn ($a, $b) => ($b['week']['spend'] ?? 0) <=> ($a['week']['spend'] ?? 0));
@@ -78,7 +85,7 @@ final class AnalysisFacts
                 'urgency' => $plan['urgency'] ?? null, 'money_at_risk' => $plan['money_at_risk'] ?? 0,
                 'next_work' => $plan['next_work'] ?? [], 'price' => $plan['price'] ?? [], 'price_watch' => $plan['price_watch'] ?? null,
                 'alarms' => $plan['alarms'] ?? [], 'tracking' => $p['tracking'] ?? null,
-                'cities' => $cities, 'creatives' => $creatives, 'batches' => $batches, 'stop_by_city' => $stopByCity,
+                'cities' => $cities, 'creatives' => $creatives, 'batches' => $batches, 'stop_by_city' => $stopByCity, 'stop_all' => $stopAll,
             ];
         }
         usort($out, fn ($a, $b) => [($a['urgency']['level'] ?? 9), -$a['money_at_risk'], $a['product']] <=> [($b['urgency']['level'] ?? 9), -$b['money_at_risk'], $b['product']]);
