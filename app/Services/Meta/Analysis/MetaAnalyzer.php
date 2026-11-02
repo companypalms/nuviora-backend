@@ -18,6 +18,10 @@ use RuntimeException;
  * 5b. `.71`: lo que hay que iterar (y los ganadores) se le manda solo al editor líder como encargo aprobado (AnalysisSender).
  * 6. Paso 6c: los encargos de landing ya no se proponen solos (`.70`, el dueño las hace él): "Proponer ahora" en Landings.
  * Nada se cambia en Meta ni se manda a nadie.
+ *
+ * `.84` (2026-11-02): con "Volver a analizar" ($later), los pasos 5, 5b y "Lo que sabemos" se hacen después de responder,
+ * para que la página no espere de más (en producción el servidor cortaba la espera y salía un error rojo, aunque el análisis
+ * sí se guardaba). A las 7:00 se hace todo seguido.
  */
 class MetaAnalyzer
 {
@@ -28,7 +32,7 @@ class MetaAnalyzer
     {
     }
 
-    public function run(?int $userId = null, ?string $date = null): MetaAnalysis
+    public function run(?int $userId = null, ?string $date = null, bool $later = false): MetaAnalysis
     {
         $date ??= now(config('app.timezone'))->toDateString();
         $productIds = self::products();
@@ -70,7 +74,19 @@ class MetaAnalyzer
                 'requested_by' => $userId,
             ]);
         });
-        // Paso 4b: los encargos que faltan quedan en la cola para aprobar (si algo falla, el análisis queda igual)
+        if ($later) {
+            \Illuminate\Support\defer(fn () => $this->afterwards($analysis, $userId));
+        } else {
+            $this->afterwards($analysis, $userId);
+        }
+
+        return $analysis;
+    }
+
+    /** Lo que sigue al análisis guardado: los encargos, lo que va al editor líder y "Lo que sabemos". Si algo falla, el análisis queda igual. */
+    private function afterwards(MetaAnalysis $analysis, ?int $userId): void
+    {
+        // Paso 4b: los encargos que faltan quedan en la cola para aprobar
         try {
             (new QueueProposer($this->decisions))->run($userId);
         } catch (\Throwable $e) {
@@ -89,7 +105,6 @@ class MetaAnalyzer
         } catch (\Throwable $e) {
             report($e);
         }
-        return $analysis;
     }
 
     /** ¿Cuántas veces más se puede tocar "Volver a analizar" hoy? */
