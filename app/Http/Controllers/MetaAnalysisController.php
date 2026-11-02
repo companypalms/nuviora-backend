@@ -103,6 +103,9 @@ class MetaAnalysisController extends Controller
             'facts' => $a->facts ?? [], 'text' => $a->text,
             // .71: lo que ya tiene el equipo de cada creativo (el encargo que se le mandó al editor líder)
             'sent' => (object) self::sent($a->facts ?? []),
+            // .78: por producto, su turno: el creativo que va primero y sus encargos en camino o en la banca
+            'turns' => (object) collect(AnalysisSender::turns($a->facts ?? [], app(\App\Services\Meta\Decisions\DecisionSettings::class)->get()))
+                ->mapWithKeys(fn ($t) => [(string) $t['product_id'] => ['pick' => (int) $t['creative']['id'], 'open' => $t['open'], 'full' => $t['full']]])->all(),
             'versions' => MetaAnalysis::where('date', $a->date)->orderBy('version')->get(['version', 'created_at', 'requested_by'])
                 ->map(fn ($v) => ['version' => $v->version, 'created_at' => $v->created_at?->toIso8601String(), 'auto' => $v->requested_by === null]),
         ];

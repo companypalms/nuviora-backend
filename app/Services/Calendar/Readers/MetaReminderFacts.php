@@ -81,11 +81,11 @@ class MetaReminderFacts
                 }
             }
         }
-        $ids = array_map(fn ($c) => (int) $c['creative']['id'], \App\Services\Meta\Analysis\AnalysisSender::candidates($a->facts ?? []));
-        $open = $ids ? CreativeBatch::whereIn('reference_creative_id', $ids)->whereIn('status', \App\Services\Meta\Analysis\AnalysisSender::OPEN)
-            ->distinct()->pluck('reference_creative_id')->count() : 0;
+        // .78: un turno por producto; "le llegó" = el producto ya tiene su encargo en camino o en la banca
+        $turns = \App\Services\Meta\Analysis\AnalysisSender::turns($a->facts ?? [], app(\App\Services\Meta\Decisions\DecisionSettings::class)->get());
+        $sent = count(array_filter($turns, fn ($t) => $t['full']));
 
-        return ['ready' => true, 'urgent' => $urgent, 'calls' => array_filter($calls), 'sent' => $open, 'waiting' => count(array_unique($ids)) - $open];
+        return ['ready' => true, 'urgent' => $urgent, 'calls' => array_filter($calls), 'sent' => $sent, 'waiting' => count($turns) - $sent];
     }
 
     public function editorWeek(string $monday): array

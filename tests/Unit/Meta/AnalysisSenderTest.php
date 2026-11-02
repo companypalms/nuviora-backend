@@ -32,6 +32,40 @@ describe('Qué se le manda al editor líder', function () use ($creative) {
     });
 });
 
+describe('Por turnos: uno por producto, el más importante (.78)', function () {
+    // Dueño, 2026-11-02: "solo subimos un batch a la vez por producto… primero los ganadores, luego los que tienen un
+    // rendimiento mediocre pero que se pueden mejorar cambiando algún aspecto como el hook, el hold". Los creativos ya
+    // vienen de más a menos gasto.
+    $cr = fn (int $id, string $verdict, string $key = 'keep') => ['id' => $id, 'label' => "C{$id}", 'verdict_key' => $verdict,
+        'call' => ['key' => $key, 'label' => strtoupper($key), 'tone' => 'info', 'todo' => '', 'editor' => $key === 'stop' ? null : 'Haz versiones.']];
+
+    it('de cada producto uno solo, del más urgente al menos (FlexiStep ya no se lleva los 3)', function () use ($cr) {
+        $facts = [
+            ['product_id' => 1, 'mode' => 'normal', 'urgency' => ['level' => 1], 'creatives' => [$cr(10, 'intermediate', 'iterate'), $cr(11, 'proven'), $cr(12, 'failing', 'iterate')]],
+            ['product_id' => 2, 'mode' => 'normal', 'urgency' => ['level' => 1], 'creatives' => [$cr(20, 'intermediate', 'iterate')]],
+            ['product_id' => 3, 'mode' => 'normal', 'urgency' => ['level' => 2], 'creatives' => [$cr(30, 'loser', 'stop')]],
+        ];
+        $p = AnalysisSender::picks($facts);
+        expect(array_column($p, 'product_id'))->toBe([1, 2])
+            ->and(array_map(fn ($x) => $x['creative']['id'], $p))->toBe([11, 20]); // el ganador, aunque gaste menos que el intermedio
+    });
+
+    it('primero los ganadores, después los que empezaron a fallar, después los mediocres; a igual nivel, el que más gastó', function () use ($cr) {
+        $one = fn (array $creatives) => AnalysisSender::picks([['product_id' => 1, 'mode' => 'normal', 'urgency' => ['level' => 1], 'creatives' => $creatives]])[0]['creative']['id'];
+        expect($one([$cr(1, 'intermediate', 'iterate'), $cr(2, 'failing', 'iterate')]))->toBe(2)
+            ->and($one([$cr(1, 'failing', 'iterate'), $cr(2, 'promising'), $cr(3, 'proven')]))->toBe(2)
+            ->and($one([$cr(1, 'intermediate', 'iterate'), $cr(2, 'intermediate', 'iterate')]))->toBe(1);
+    });
+
+    it('un producto sin nada para el editor no tiene turno', function () use ($cr) {
+        expect(AnalysisSender::picks([['product_id' => 1, 'mode' => 'normal', 'urgency' => ['level' => 2], 'creatives' => [$cr(1, 'loser', 'stop')]]]))->toBe([]);
+    });
+
+    it('con "Tiempo de correcciones" en 0 %, 2 editores hacen 4 por día', function () {
+        expect(AnalysisSender::capacity(['video_editors' => 2, 'batches_per_editor' => 2, 'corrections_pct' => 0]))->toBe(4);
+    });
+});
+
 describe('Lo que dice el encargo', function () {
     it('iterar: qué conservar y qué cambiar, en palabras', function () {
         $b = AnalysisSender::brief(['key' => 'iterate', 'editor' => 'Cambia los primeros 3 segundos: el gancho no engancha.'], 'hook', 3);

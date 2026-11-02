@@ -19,7 +19,12 @@ use Illuminate\Support\Facades\DB;
  * se aprueba esa; si no, se crea una con las indicaciones del análisis, en palabras. El líder la ve en "Encargos del equipo"
  * y se la asigna a un editor, que la ve en "Mis encargos".
  *
- * - Nunca dos encargos abiertos del mismo creativo.
+ * - `.78` (dueño, 2026-11-02: "en Meta Ads solo subimos un batch a la vez por producto… debió haber mandado lo más
+ *   importante del FlexiStep y luego lo más importante de otro producto"): por turnos, del producto más urgente al menos,
+ *   como mucho uno por producto: el de su creativo más importante (primero los ganadores, después los ganadores que
+ *   empezaron a fallar y después los mediocres con algo que arreglar; a igual nivel, el que más gastó; los perdedores no
+ *   se iteran). Un producto que ya tiene un encargo en camino o listo en la banca (la "banca por producto: desde", 1) no
+ *   recibe otro: "que cada producto activo siempre tenga un batch en la banca listo para lanzar".
  * - Solo lo que cabe en el día según los editores (como la cola: editores × encargos por editor, menos las correcciones);
  *   lo que no cabe sale al día siguiente si sigue igual.
  * - Solo productos en modo normal (en pausa, abandonados o en liquidación no reciben creativos nuevos) y con trabajo (U5,
@@ -27,8 +32,11 @@ use Illuminate\Support\Facades\DB;
  */
 class AnalysisSender
 {
-    /** Un encargo de ese creativo que ya está en manos del equipo (o esperando lanzarse). */
+    /** Un encargo que ya está en manos del equipo (o esperando lanzarse). */
     public const OPEN = ['approved', 'production', 'review', 'bank'];
+
+    /** `.78`: qué creativo de un producto va primero (menos = antes). Los perdedores no se iteran. */
+    public const PRIORITY = ['proven' => 0, 'promising' => 0, 'failing' => 1, 'intermediate' => 2];
 
     public function __construct(private DecisionSettings $settings = new DecisionSettings(), private BatchQueue $queue = new BatchQueue())
     {
@@ -42,9 +50,9 @@ class AnalysisSender
         $left = self::capacity($s) - CreativeBatch::whereNotNull('approved_at')->whereDate('approved_at', $today)->count();
         $pieces = max(1, (int) $s['batch_pieces']);
         $out = ['sent' => [], 'already' => 0, 'waiting' => 0];
-        foreach (self::candidates($analysis->facts ?? []) as $c) {
+        foreach (self::turns($analysis->facts ?? [], $s) as $c) {
             $id = (int) $c['creative']['id'];
-            if (CreativeBatch::where('reference_creative_id', $id)->whereIn('status', self::OPEN)->exists()) {
+            if ($c['full']) {
                 $out['already']++;
                 continue;
             }
@@ -72,8 +80,48 @@ class AnalysisSender
     }
 
     /**
-     * Los creativos del análisis que se le mandan al editor líder, en el orden del análisis (el producto más urgente
-     * primero y, dentro de cada uno, el que más gastó): los que traen algo para el editor (ITERAR o ganadores).
+     * `.78`: el turno de cada producto, del más urgente al menos: su creativo más importante (picks) y sus encargos en
+     * camino o en la banca. "full" = ya tiene los que pide la banca (1): hoy no recibe otro.
+     *
+     * @return list<array{product_id: int, urgency: ?int, creative: array, tier: int, open: list<string>, full: bool}>
+     */
+    public static function turns(array $facts, array $s): array
+    {
+        $picks = self::picks($facts);
+        $open = [];
+        if ($picks !== []) {
+            foreach (CreativeBatch::whereIn('product_id', array_column($picks, 'product_id'))->whereIn('status', self::OPEN)->orderBy('id')->get() as $b) {
+                $open[(int) $b->product_id][] = (string) $b->code();
+            }
+        }
+        $target = max(1, (int) ($s['bank_min'] ?? 1));
+
+        return array_map(fn ($c) => $c + ['open' => $open[$c['product_id']] ?? [], 'full' => count($open[$c['product_id']] ?? []) >= $target], $picks);
+    }
+
+    /**
+     * `.78` (PHP puro): de cada producto, en el orden del análisis (el más urgente primero), su creativo más importante:
+     * primero los ganadores, después los que empezaron a fallar, después los mediocres con algo que arreglar; a igual
+     * nivel, el que más gastó (los creativos ya vienen de más a menos gasto).
+     *
+     * @return list<array{product_id: int, urgency: ?int, creative: array, tier: int}>
+     */
+    public static function picks(array $facts): array
+    {
+        $out = [];
+        foreach (self::candidates($facts) as $c) {
+            $tier = self::PRIORITY[$c['creative']['verdict_key'] ?? ''] ?? 3;
+            if (!isset($out[$c['product_id']]) || $tier < $out[$c['product_id']]['tier']) {
+                $out[$c['product_id']] = $c + ['tier' => $tier];
+            }
+        }
+
+        return array_values($out);
+    }
+
+    /**
+     * Los creativos del análisis que traen algo para el editor (ITERAR o ganadores), en el orden del análisis (el producto
+     * más urgente primero y, dentro de cada uno, el que más gastó).
      *
      * @return list<array{product_id: int, urgency: ?int, creative: array}>
      */
