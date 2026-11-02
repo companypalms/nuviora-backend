@@ -122,6 +122,16 @@ describe('Los encargos por aprobar y la banca', function () use ($work, $occ) {
         expect($none['auto_done'])->toBeTrue()->and($none['details'])->toBe('No hay encargos por aprobar ni testeos por decidir.');
     });
 
+    it('.79: los productos nuevos sin CPA de referencia, con dónde ponerlo', function () use ($work, $occ) {
+        $o = $occ('meta_queue', ['meta_work' => $work(['no_reference' => [['product' => 'Termafit', 'no_cost' => false], ['product' => 'Nuevo', 'no_cost' => true]]])]);
+        expect($o['details'])->toBe('2 productos sin CPA de referencia: el análisis no los puede juzgar.')
+            ->and(array_column($o['lines'], 'value', 'label'))->toBe(['Termafit' => 'Sin CPA', 'Nuevo' => 'Sin CPA'])
+            ->and($o['lines'][0]['note'])->toBe('escribe "CPA $X | BE $Y" en el nombre de su campaña o ponlo en Meta Ads › Productos y objetivos')
+            ->and($o['lines'][1]['note'])->toContain('registra la compra de inventario')
+            ->and($o['auto_done'])->toBeFalse()
+            ->and(array_column($o['actions'], 'link'))->toBe(['/meta-ads/cola', '/admin/meta-ads?tab=targets']);
+    });
+
     it('otro día dice lo general (lo de ahora solo sirve para hoy)', function () use ($work) {
         $o = ReminderRules::occurrence('meta_queue', '2026-11-03', '2026-11-02', ['meta_work' => $work(['no_profile' => ['Solo Brillo']])]);
         expect($o['details'])->toStartWith('Después de las 7:00 la IA propone')->and($o['lines'])->toBe([])->and($o['auto_done'])->toBeFalse();

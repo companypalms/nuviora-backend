@@ -354,10 +354,15 @@ class MetaAdsReport
 
     private ?array $financialCpa = null;
 
+    /** `.79`: lo que el dueño escribe en el nombre de sus campañas ("CPA $4 | BE $5.6"), por "p|c" y "p|". */
+    private ?array $nameTargets = null;
+
     /**
      * R12 (Fran, 2026-10-12): el CPA financiero calculado (Módulo 4, §70 a §72) reemplaza al cargado a mano: el de
      * producto + ciudad, si no el del producto. Sin cálculo (o sin compras en su ventana) vale el manual, que además se
      * sigue mostrando como referencia.
+     * `.79` (dueño, 2026-11-02): un producto nuevo, mientras el sistema no tiene sus 30 compras de Meta maduras, usa la
+     * referencia del dueño: la de Productos y objetivos o, si no la puso, la del nombre de la campaña (source "name").
      * @return array{target_cpa: ?float, break_even_cpa: ?float, source: string, financial: ?array}
      */
     private function effectiveTarget(array $manual, ?int $productId, ?int $cityId = null): array
@@ -375,6 +380,17 @@ class MetaAdsReport
             ]];
         }
         $v = collect($versions)->first(fn ($v) => $v->target !== null);
+        $product = $productId !== null ? ($this->financialCpa["{$productId}|"] ?? null) : null;
+        $young = $product === null || (float) $product->purchases < \App\Services\Finance\FinancialCpa::cityMinPurchases();
+        if ($productId !== null && ($young || !$v)) {
+            if ($manual['target_cpa'] !== null) {
+                return ['target_cpa' => $manual['target_cpa'], 'break_even_cpa' => $manual['break_even_cpa'], 'source' => 'manual', 'financial' => null];
+            }
+            $this->nameTargets ??= CampaignNameTargets::load();
+            if ($n = $this->nameTargets["{$productId}|{$cityId}"] ?? $this->nameTargets["{$productId}|"] ?? null) {
+                return $n + ['source' => 'name', 'financial' => null];
+            }
+        }
         if ($v) {
             return ['target_cpa' => $v->target, 'break_even_cpa' => $v->break_even, 'source' => 'financial', 'financial' => [
                 'target' => $v->target, 'break_even' => $v->break_even, 'fully_loaded' => $v->fully_loaded, 'viable' => $v->viable,

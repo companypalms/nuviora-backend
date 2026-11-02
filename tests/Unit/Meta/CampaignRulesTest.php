@@ -23,20 +23,46 @@ describe('Escalar', function () {
         expect($a['key'])->toBe('scale')->and($a['to'])->toBe(48.0)->and($a['label'])->toBe('Subir $40,00 → $48,00');
     });
 
-    it('+10 % si está apenas debajo (Caracas $39,60 → $43,56)', function () {
-        expect(accion(['budget' => 39.60, 'spend3' => 42, 'purchases3' => 12])['to'])->toBe(43.56);
+    it('.79: +15 % si está entre un 10 % y un 25 % debajo (Caracas $39,60 → $45,54)', function () {
+        expect(accion(['budget' => 39.60, 'spend3' => 42, 'purchases3' => 12])['to'])->toBe(45.54);
+    });
+
+    it('.79: cuánto subir según qué tan debajo de C está el CPA de 3 días, nunca más del 20 % (los de hoy, 2/11)', function () {
+        // FlexiStep Caracas $3,54 con C $5,39 (34 % debajo); Cervimax Caracas $3,36 con C $6,29 (47 %); ZenPulse Caracas $3,72 con C $3,96 (6 %)
+        $hoy = fn (float $cpa, float $c, float $budget, int $p) => campana()->action(['c' => $c, 'be' => $c * 1.5, 'mode' => 'normal', 'budget' => $budget,
+            'spend3' => $cpa * $p, 'purchases3' => $p, 'cpa7' => $cpa, 'freq3' => 1.2]);
+        expect($hoy(3.54, 5.39, 51.60, 46)['to'])->toBe(61.92)
+            ->and($hoy(3.36, 6.29, 30.0, 30)['to'])->toBe(36.0)
+            ->and($hoy(3.72, 3.96, 30.0, 21)['to'])->toBe(33.0)
+            ->and($hoy(3.36, 6.29, 30.0, 30)['reading'])->toBe('CPA 47 % debajo de C con 30 compras en 3 días.');
+        // "el tope que podemos subir por 24 horas es 20 %, no más": ni cambiándolo en Reglas
+        expect(CampaignRules::scalePct(1.0, 4.0, ['scale_big_pct' => 50.0] + DecisionSettings::defaults()))->toBe(20.0)
+            ->and(DecisionSettings::normalize(['scale_big_pct' => 30])['scale_big_pct'])->toBe(20.0);
+    });
+
+    it('.79: el stock no frena la subida ni pide pausar: es un aviso en lo que se propone', function () {
+        $a = accion(['stock_alert' => 'quedan 14 unidades (≈1,6 días de ventas): pide mercancía']);
+        expect($a['key'])->toBe('scale')->and($a['proposal'])->toEndWith('Ojo: quedan 14 unidades (≈1,6 días de ventas): pide mercancía.');
+        $z = accion(['spend3' => 30, 'purchases3' => 6, 'stock_alert' => 'sin stock en esta ciudad: pide al proveedor (no hace falta pausar)']);
+        expect($z['key'])->toBe('hold_prune')->and($z['proposal'])->toContain('pide al proveedor (no hace falta pausar)');
+        expect(accion(['mode' => 'paused', 'stock_alert' => 'sin stock'])['proposal'])->not->toContain('Ojo');
+    });
+
+    it('.79: dice cuando la C es la referencia de un producto nuevo', function () {
+        expect(accion(['c_source' => 'name'])['data'])->toContain('BE $5,70 (referencia del nombre de la campaña)')
+            ->and(accion(['c_source' => 'manual'])['data'])->toContain('(tu referencia)')
+            ->and(accion(['c_source' => 'financial'])['data'])->not->toContain('referencia');
     });
 
     it('Carabobo $25 → $30', function () {
         expect(accion(['budget' => 25.0, 'spend3' => 30.8, 'purchases3' => 11])['to'])->toBe(30.0);
     });
 
-    it('no escala sin volumen, sin stock, con 7 días malos, saturada, si ya subió hoy o si entraron creativos hoy', function (array $in, string $why) {
+    it('no escala sin volumen, con 7 días malos, saturada, si ya subió hoy o si entraron creativos hoy', function (array $in, string $why) {
         $a = accion($in);
         expect($a['key'])->toBe('hold')->and($a['reading'])->toContain($why);
     })->with([
         'Maracay: poco volumen' => [['purchases3' => 6, 'spend3' => 15], 'poco volumen'],
-        'sin stock' => [['stock_ok' => false, 'stock_note' => 'quedan 5 unidades'], 'no hay stock'],
         '7 días encima del BE' => [['cpa7' => 6.0], 'Los 7 días no acompañan'],
         'saturada' => [['freq3' => 1.7], 'saturada'],
         'ya subió' => [['increased_24h' => true], 'últimas 24 horas'],
@@ -133,6 +159,13 @@ describe('Presupuesto, urgencia y trabajo siguiente', function () {
             ->and($u(['cities' => ['hold'], 'stock_all_out' => true])['level'])->toBe(5);
         expect(campana()->urgency(['mode' => 'liquidation', 'healthy' => 0, 'cities' => ['hold_prune']])['batches'])->toBe('0')
             ->and($u(['cities' => ['intervene']])['batches'])->toBe('2–3');
+    });
+
+    it('.79: un producto sin C ni BE no es urgente ni pide batches (Termafit, nuevo, salía "U1 · sin ganadores sanos")', function () {
+        $u = campana()->urgency(['mode' => 'normal', 'healthy' => 0, 'cities' => ['no_target', 'no_target', 'no_target']]);
+        expect($u['level'])->toBe(5)->and($u['label'])->toBe('U5 · sin CPA de referencia')->and($u['batches'])->toBe('0')
+            ->and($u['reasons'])->toBe(['Sin CPA objetivo ni break-even: no se puede juzgar']);
+        expect(campana()->urgency(['mode' => 'normal', 'healthy' => 0, 'cities' => ['no_target', 'intervene']])['level'])->toBe(1);
     });
 
     it('iteraciones de un ganador, un concepto nuevo o un ángulo nuevo, y creativos de arriba si está saturada', function () {

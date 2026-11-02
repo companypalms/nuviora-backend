@@ -47,9 +47,12 @@ class DecisionSettings
         'archive_days' => [14, 1, 365],
         // Paso 2b — qué hacer con cada campaña (producto × ciudad)
         'scale_min_purchases' => [10, 1, 1000],  // escalar con 10+ compras en los 3 días
-        'scale_big_below_pct' => [25, 1, 90],    // +20 % si el CPA de 3 días está un 25 % o más debajo de C
-        'scale_big_pct' => [20, 1, 100],
-        'scale_small_pct' => [10, 1, 100],
+        // .79 (dueño, 2026-11-02): cuánto subir según qué tan debajo de C está el CPA de 3 días; nunca más del 20 % en 24 horas
+        'scale_mid_below_pct' => [10, 1, 90],    // +15 % si está entre un 10 % y un 25 % debajo de C
+        'scale_big_below_pct' => [25, 1, 90],    // +20 % si está un 25 % o más debajo de C
+        'scale_big_pct' => [20, 1, 20],
+        'scale_mid_pct' => [15, 1, 20],
+        'scale_small_pct' => [10, 1, 20],        // menos de un 10 % debajo de C
         'decrease_pct' => [20, 1, 90],           // −20 % si sigue en el BE o encima…
         'decrease_after_days' => [2, 1, 30],     // …2 días cerrados después de intervenir
         'pause_after_days' => [5, 1, 60],        // pausar la ciudad a los 5 días cerrados
@@ -61,7 +64,7 @@ class DecisionSettings
         'mins_ok_pct' => [40, 0, 100],           // hasta 40 % bien
         'mins_review_pct' => [50, 0, 100],       // hasta 50 % revisar; más, no
         'price_step' => [2, 0.1, 100],           // probar bajar el precio de a $2
-        'stock_days_min' => [7, 1, 90],          // escalar solo con stock para 7 días de ventas en la ciudad
+        'stock_warn_days' => [3, 1, 90],         // .79: avisar "poco stock" con menos de 3 días de ventas (el stock ya no frena la subida)
         // Paso 4 — la cola de producción y la banca (el manual: 1–2 batches aprobados sin testear por producto)
         'bank_min' => [1, 0, 10],
         'bank_max' => [2, 0, 10],

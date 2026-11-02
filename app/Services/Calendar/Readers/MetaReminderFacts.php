@@ -39,6 +39,7 @@ class MetaReminderFacts
             ],
             'testing' => $this->testing($names),
             'no_profile' => $this->noProfile($names),
+            'no_reference' => $this->noReference($names),
             'open' => array_merge($this->openBatches($names), $this->openLandings($names)),
             'leaders' => $leaders,
             'landing_editor' => $this->editors([LandingTaskRules::ROLE]) !== [],
@@ -209,6 +210,28 @@ class MetaReminderFacts
         $missing = array_diff($ids, ProductProfiles::completeIds($ids));
         $out = array_map(fn ($id) => $names[$id] ?? "Producto {$id}", $missing);
         sort($out);
+
+        return $out;
+    }
+
+    /**
+     * `.79`: los productos activos sin CPA objetivo (nuevos sin referencia en el nombre de la campaña ni en Productos y
+     * objetivos, o sin la compra de inventario con su costo): el análisis no los puede juzgar.
+     *
+     * @return list<array{product: string, no_cost: bool}>
+     */
+    private function noReference(array $names): array
+    {
+        $stopped = ProductAdSetting::where('mode', '!=', 'normal')->pluck('product_id')->map(fn ($v) => (int) $v)->all();
+        $report = new \App\Services\Meta\MetaAdsReport([], 'last_3d');
+        $out = [];
+        foreach (array_diff(MetaAnalyzer::products(), $stopped) as $id) {
+            $t = $report->targetFor((int) $id, null);
+            if ($t['target_cpa'] === null) {
+                $out[] = ['product' => $names[$id] ?? "Producto {$id}", 'no_cost' => (bool) ($t['financial']['no_cost'] ?? false)];
+            }
+        }
+        usort($out, fn ($a, $b) => $a['product'] <=> $b['product']);
 
         return $out;
     }

@@ -385,14 +385,17 @@ class MetaDecisions
                 }
                 $lastTest = ['days' => $days, 'cpa' => $sum['purchases'] > 0 ? $sum['spend'] / $sum['purchases'] : null];
             }
-            $stockOk = null;
-            $stockNote = null;
+            // .79 (dueño, 2026-11-02): el stock ya no frena la subida ni pide pausar ("al día siguiente ya tenemos productos"):
+            // es un aviso, en la alarma del producto y en lo que se propone para la ciudad
+            $stockAlert = null;
             if ($city) {
-                $stockOk = $city['days_of_stock'] === null ? $city['stock'] > 0 : $city['days_of_stock'] >= $s['stock_days_min'];
+                $low = $city['days_of_stock'] === null ? $city['stock'] <= 0 : $city['days_of_stock'] < $s['stock_warn_days'];
                 $stockNote = 'quedan ' . $city['stock'] . ' unidades' . ($city['days_of_stock'] !== null ? ' (≈' . AdRules::num($city['days_of_stock']) . ' días de ventas)' : '');
                 if ($city['stock'] <= 0) {
-                    $alarms[] = 'Sin stock en ' . ($c['city'] ?? 'una ciudad') . ' y la campaña sigue activa.';
-                } elseif ($stockOk === false) {
+                    $stockAlert = 'sin stock en esta ciudad: pide al proveedor (no hace falta pausar)';
+                    $alarms[] = 'Sin stock en ' . ($c['city'] ?? 'una ciudad') . ': pide al proveedor.';
+                } elseif ($low) {
+                    $stockAlert = $stockNote . ': pide mercancía';
                     $alarms[] = 'Poco stock en ' . ($c['city'] ?? 'una ciudad') . ': ' . $stockNote . '.';
                 }
                 if ($city['sizes_out']) {
@@ -414,7 +417,7 @@ class MetaDecisions
             $action = $cr->action([
                 'c' => $c['target'], 'be' => $c['break_even'], 'mode' => $mode, 'budget' => $budget,
                 'spend3' => $w3['totals']['spend'] ?? 0, 'purchases3' => $w3['totals']['purchases'] ?? 0, 'cpa7' => $cpa7, 'freq3' => $w3['metrics']['frequency'] ?? null,
-                'stock_ok' => $stockOk, 'stock_note' => $stockNote,
+                'stock_alert' => $stockAlert, 'c_source' => $c['target_source'] ?? null,
                 'increased_24h' => collect($h['budget_events'])->contains(fn ($e) => $e['to'] > $e['from'] && strtotime($e['at']) >= strtotime('-24 hours')),
                 'budget_changed_today' => collect($h['budget_events'])->contains(fn ($e) => $e['date'] === $today),
                 'new_ads_today' => in_array($today, $h['new_ads'], true),
@@ -467,6 +470,12 @@ class MetaDecisions
             }
         }
         $activeCities = array_filter($f['campaigns'], fn ($c) => $c['active']);
+        // .79: un producto (nuevo) sin C ni BE: dónde ponerlos, para que no se olvide
+        if ($activeCities && !array_filter($activeCities, fn ($c) => $c['target'])) {
+            array_unshift($alarms, collect($activeCities)->contains(fn ($c) => $c['target_no_cost'] ?? false)
+                ? 'Sin CPA: falta registrar la compra de inventario de este producto con su costo.'
+                : 'Sin CPA de referencia: escribe "CPA $X | BE $Y" en el nombre de la campaña o ponlo en Meta Ads › Productos y objetivos.');
+        }
         $stockAllOut = $ops && $activeCities && !array_filter($activeCities, fn ($c) => ($ops['cities'][$c['city_id']]['stock'] ?? 1) > 0);
         $urgency = $cr->urgency(['mode' => $mode, 'cities' => array_values($actions), 'healthy' => $healthy, 'failing' => $failing, 'stock_all_out' => $stockAllOut]);
         // Paso 4a: lo que ya está en la banca (aprobado sin testear) se resta de lo que hay que pedir

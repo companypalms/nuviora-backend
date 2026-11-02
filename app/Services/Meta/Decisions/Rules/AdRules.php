@@ -45,7 +45,7 @@ class AdRules
         $cpa = $purchases > 0 ? $spend / $purchases : null;
         if ($c === null || $c <= 0) {
             return $this->verdict('no_target', $this->spendText($spend, $purchases, null), 'La campaña no tiene CPA objetivo.',
-                'Clasifica la campaña (producto y ciudad) para poder medirlo.');
+                CampaignRules::NO_TARGET);
         }
         $data = $this->spendText($spend, $purchases, $c) . ($cpa !== null ? ' · CPA ' . self::money($cpa) : '')
             . ' · C ' . self::money($c) . ($be !== null ? ' · BE ' . self::money($be) : '');

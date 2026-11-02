@@ -5,8 +5,9 @@ namespace App\Services\Meta\Decisions\Rules;
 /**
  * Qué hacer con cada campaña (producto × ciudad, CBO), con montos, y lo del producto: el precio, la urgencia y el
  * trabajo siguiente (Etapa 5, paso 2b). PHP puro, con las reglas que decidió el dueño el 2026-10-30:
- * - escalar con CPA 3D ≤ C, 10+ compras en 3D, stock, 7D coherente y sin saturar: +20 % si va un 25 % o más debajo de C,
- *   si no +10 %; como mucho un aumento por día;
+ * - escalar con CPA 3D ≤ C, 10+ compras en 3D, 7D coherente y sin saturar; como mucho un aumento por día. `.79`
+ *   (2026-11-02): cuánto, según qué tan debajo de C está el CPA de 3 días (+10 %, +15 % o +20 %), nunca más del 20 %; el
+ *   stock ya no frena la subida ni pide pausar: queda como aviso ("al día siguiente ya tenemos stock");
  * - entre C y BE: mantener, podar y meter creativos;
  * - en el BE o encima: intervenir (podar y lanzar); 2 días cerrados después, −20 %; 5 días, pausar la ciudad; después el
  *   último test (1,5×C por día, 3 días) y, si falla, recomendar dejar el producto;
@@ -29,6 +30,18 @@ class CampaignRules
     ];
 
     public const URGENCY = [1 => 'U1 · urgente', 2 => 'U2 · atención', 3 => 'U3 · escalando', 4 => 'U4 · sano', 5 => 'U5 · sin trabajo'];
+
+    /** `.79` (dueño, 2026-11-02): "el tope que podemos subir por 24 horas es 20 %, no más". */
+    public const SCALE_CAP = 20;
+
+    /** `.79`: de dónde salió la C cuando no es la del sistema (productos nuevos). */
+    public const SOURCES = ['manual' => 'tu referencia', 'name' => 'referencia del nombre de la campaña'];
+
+    /** `.79`: qué hacer si una campaña (de un producto nuevo) no tiene C. */
+    public const NO_TARGET = 'Escribe "CPA $X | BE $Y" en el nombre de la campaña o ponlo en Meta Ads › Productos y objetivos (si no tiene costo, registra la compra de inventario).';
+
+    /** Las acciones de una campaña activa que llevan el aviso de stock. */
+    private const WITH_STOCK_ALERT = ['scale', 'hold', 'hold_prune', 'intervene', 'decrease', 'wait'];
     public const BATCHES = [1 => '2–3', 2 => '1–2', 3 => '1', 4 => '0–1', 5 => '0'];
 
     public function __construct(private array $s)
@@ -42,10 +55,22 @@ class CampaignRules
      *                  increased_24h, budget_changed_today, new_ads_today, streak_days, intervention (fecha o null),
      *                  closed_since_intervention, decreased_since_intervention, history_since, last_test (null o
      *                  ['days' => n, 'cpa' => x]), prune (nombres de anuncios perdedores), new_batches, bank_ready (los B####
-     *                  en banca, listos para lanzar)
+     *                  en banca, listos para lanzar), c_source (manual o name si la C es una referencia), stock_alert (el
+     *                  aviso de stock de la ciudad, sin frenar nada)
      * @return array{key: string, label: string, tone: string, data: string, reading: string, proposal: ?string, from: ?float, to: ?float}
      */
     public function action(array $in): array
+    {
+        $out = $this->decide($in);
+        $alert = $in['stock_alert'] ?? null;
+        if ($alert && in_array($out['key'], self::WITH_STOCK_ALERT, true)) {
+            $out['proposal'] = trim(($out['proposal'] ?? '') . ' Ojo: ' . $alert . '.');
+        }
+
+        return $out;
+    }
+
+    private function decide(array $in): array
     {
         $c = $in['c'] ?? null;
         $be = $in['be'] ?? null;
@@ -55,13 +80,16 @@ class CampaignRules
             return $this->out('none', '', $mode === 'paused' ? 'El producto está en pausa.' : 'El producto está abandonado.', 'No escalar ni pedir creativos.');
         }
         if (!$c) {
-            return $this->out('no_target', '', 'La campaña no tiene CPA objetivo.', 'Clasifícala o recalcula el CPA en Finanzas.');
+            // .79: un producto nuevo: dónde poner su referencia
+            return $this->out('no_target', '', 'La campaña no tiene CPA objetivo.', self::NO_TARGET);
         }
         $spend = (float) ($in['spend3'] ?? 0);
         $purchases = (float) ($in['purchases3'] ?? 0);
         $cpa = $purchases > 0 ? $spend / $purchases : null;
         $data = '3 días: gasto ' . AdRules::money($spend) . ' · ' . AdRules::num($purchases) . ' compras' . ($cpa !== null ? ' · CPA ' . AdRules::money($cpa) : '')
-            . ' · C ' . AdRules::money($c) . ($be ? ' · BE ' . AdRules::money($be) : '') . ($budget ? ' · presupuesto ' . AdRules::money($budget) . '/día' : '');
+            . ' · C ' . AdRules::money($c) . ($be ? ' · BE ' . AdRules::money($be) : '')
+            . (isset(self::SOURCES[$in['c_source'] ?? '']) ? ' (' . self::SOURCES[$in['c_source']] . ')' : '')
+            . ($budget ? ' · presupuesto ' . AdRules::money($budget) . '/día' : '');
         $prune = $in['prune'] ?? [];
         $pruneText = $prune ? ' Apagar: ' . implode(', ', array_slice($prune, 0, 6)) . (count($prune) > 6 ? '…' : '') . '.' : '';
 
@@ -132,7 +160,6 @@ class CampaignRules
         $block = match (true) {
             $mode === 'liquidation' => 'En liquidación: no se escala.',
             $purchases < $this->s['scale_min_purchases'] => 'Va bien, pero con poco volumen: ' . AdRules::num($purchases) . ' compras en 3 días (hacen falta ' . (int) $this->s['scale_min_purchases'] . ').',
-            ($in['stock_ok'] ?? true) === false => 'Va bien, pero no hay stock para escalar' . (($in['stock_note'] ?? null) ? ': ' . $in['stock_note'] : '') . '.',
             $be && ($in['cpa7'] ?? null) !== null && $in['cpa7'] > $be => 'Los 7 días no acompañan (CPA 7D ' . AdRules::money($in['cpa7']) . ', encima del BE).',
             ($in['freq3'] ?? null) !== null && $in['freq3'] >= $this->s['saturation_from'] => 'Va bien, pero la campaña está saturada (frecuencia ' . AdRules::num($in['freq3']) . '): primero creativos de arriba del embudo.',
             (bool) ($in['increased_24h'] ?? false) => 'Ya se subió el presupuesto en las últimas 24 horas.',
@@ -142,12 +169,27 @@ class CampaignRules
         if ($block !== null) {
             return $this->out('hold', $data, $block, 'Mantener.');
         }
-        $big = $cpa <= $c * (1 - $this->s['scale_big_below_pct'] / 100);
-        $pct = $big ? $this->s['scale_big_pct'] : $this->s['scale_small_pct'];
+        $pct = self::scalePct($cpa, (float) $c, $this->s);
         $to = $budget ? round($budget * (1 + $pct / 100), 2) : null;
 
-        return $this->out('scale', $data, ($big ? 'Muy por debajo de C' : 'Debajo de C') . ' con ' . AdRules::num($purchases) . ' compras en 3 días.',
+        return $this->out('scale', $data, 'CPA ' . AdRules::num(round(($c - $cpa) / $c * 100)) . ' % debajo de C con ' . AdRules::num($purchases) . ' compras en 3 días.',
             'Subir ' . AdRules::num($pct) . ' %' . ($to ? ': ' . AdRules::money($budget) . ' → ' . AdRules::money($to) : '') . '. Vigilar CPA y frecuencia.', $budget, $to);
+    }
+
+    /**
+     * `.79` (PHP puro): cuánto subir según qué tan debajo de C está el CPA de 3 días: menos de un 10 % → +10 %, del 10 % al
+     * 25 % → +15 %, un 25 % o más → +20 %. Nunca más del 20 % (SCALE_CAP), aunque se cambie en Reglas.
+     */
+    public static function scalePct(float $cpa, float $c, array $s): float
+    {
+        $below = $c > 0 ? ($c - $cpa) / $c * 100 : 0;
+        $pct = match (true) {
+            $below >= $s['scale_big_below_pct'] => $s['scale_big_pct'],
+            $below >= $s['scale_mid_below_pct'] => $s['scale_mid_pct'],
+            default => $s['scale_small_pct'],
+        };
+
+        return (float) min(self::SCALE_CAP, $pct);
     }
 
     /**
@@ -283,16 +325,24 @@ class CampaignRules
     {
         $actions = $p['cities'] ?? [];
         $reasons = [];
+        // .79: sin C ni BE en ninguna ciudad no se puede juzgar nada: no es "urgente" ni se piden creativos (2026-11-02,
+        // Termafit salía "U1 · sin creativos ganadores sanos" solo porque era nuevo)
+        $noTarget = $actions !== [] && array_diff($actions, ['no_target']) === [];
         $level = match (true) {
             in_array($p['mode'] ?? 'normal', ['paused', 'abandoned'], true) => 5,
             (bool) ($p['stock_all_out'] ?? false) => 5,
+            $noTarget => 5,
             (bool) array_intersect($actions, ['intervene', 'decrease', 'pause_city', 'last_test', 'drop']) || (int) ($p['healthy'] ?? 0) === 0 && $actions => 1,
             in_array('hold_prune', $actions, true) || (int) ($p['failing'] ?? 0) > 0 => 2,
             in_array('scale', $actions, true) => 3,
             default => 4,
         };
         if ($level === 5) {
-            $reasons[] = ($p['stock_all_out'] ?? false) ? 'Sin stock' : 'Producto en pausa o abandonado';
+            $reasons[] = match (true) {
+                in_array($p['mode'] ?? 'normal', ['paused', 'abandoned'], true) => 'Producto en pausa o abandonado',
+                (bool) ($p['stock_all_out'] ?? false) => 'Sin stock',
+                default => 'Sin CPA objetivo ni break-even: no se puede juzgar',
+            };
         }
         if (array_intersect($actions, ['intervene', 'decrease', 'pause_city', 'last_test', 'drop'])) {
             $reasons[] = 'Ciudades en el break-even o encima';
@@ -304,8 +354,10 @@ class CampaignRules
             $reasons[] = $p['failing'] . ' ' . ($p['failing'] == 1 ? 'ganador que empieza a fallar' : 'ganadores que empiezan a fallar');
         }
         $batches = ($p['mode'] ?? 'normal') === 'liquidation' ? '0' : self::BATCHES[$level];
+        $label = $noTarget && $level === 5 && !in_array($p['mode'] ?? 'normal', ['paused', 'abandoned'], true) && !($p['stock_all_out'] ?? false)
+            ? 'U5 · sin CPA de referencia' : self::URGENCY[$level];
 
-        return ['level' => $level, 'label' => self::URGENCY[$level], 'batches' => $batches, 'reasons' => $reasons];
+        return ['level' => $level, 'label' => $label, 'batches' => $batches, 'reasons' => $reasons];
     }
 
     /**

@@ -35,6 +35,7 @@ final class MetaReminderRules
 
     private const QUEUE_LINK = '/meta-ads/cola';
     private const LANDINGS_LINK = '/meta-ads/landings?tab=encargos';
+    private const TARGETS_LINK = '/admin/meta-ads?tab=targets';
 
     /**
      * Completa lo que dice un recordatorio de Meta Ads en una fecha ($out viene armado por ReminderRules::occurrence).
@@ -168,6 +169,12 @@ final class MetaReminderRules
         foreach ($work['no_profile'] as $name) {
             $out['lines'][] = ['label' => $name, 'value' => 'Sin ficha', 'note' => 'la IA no le propone encargos hasta que llenes su ficha'];
         }
+        // .79: un producto nuevo sin CPA de referencia no se puede juzgar
+        foreach ($work['no_reference'] ?? [] as $r) {
+            $out['lines'][] = ['label' => $r['product'], 'value' => 'Sin CPA', 'note' => $r['no_cost']
+                ? 'registra la compra de inventario con su costo: sin eso no hay CPA ni break-even'
+                : 'escribe "CPA $X | BE $Y" en el nombre de su campaña o ponlo en Meta Ads › Productos y objetivos'];
+        }
 
         $parts = [];
         if ($videos + $landings > 0) {
@@ -179,6 +186,13 @@ final class MetaReminderRules
         }
         if ($work['no_profile'] !== []) {
             $parts[] = self::count(count($work['no_profile']), 'producto activo sin ficha', 'productos activos sin ficha') . (count($work['no_profile']) === 1 ? ': no recibe encargos.' : ': no reciben encargos.');
+        }
+        if (($work['no_reference'] ?? []) !== []) {
+            $n = count($work['no_reference']);
+            $parts[] = self::count($n, 'producto sin CPA de referencia', 'productos sin CPA de referencia') . ($n === 1 ? ': el análisis no lo puede juzgar.' : ': el análisis no los puede juzgar.');
+            if (array_filter($work['no_reference'], fn ($r) => !$r['no_cost'])) {
+                $out['actions'][] = ['label' => 'Poner el CPA de referencia', 'link' => self::TARGETS_LINK];
+            }
         }
         $out['details'] = $parts ? implode(' ', $parts) : 'No hay encargos por aprobar ni testeos por decidir.';
         $out['auto_done'] = $parts === [];
