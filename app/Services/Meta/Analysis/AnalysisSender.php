@@ -150,27 +150,36 @@ class AnalysisSender
      */
     public static function brief(array $call, ?string $iterate, int $pieces): array
     {
-        $versions = $pieces === 1 ? 'Una versión nueva' : "{$pieces} versiones bien distintas entre sí";
+        // .80: lo que arregla el encargo es el primer tramo flojo del video (o el cansancio); null = un ganador con todo bien
+        $fix = array_key_exists('fix', $call) ? $call['fix'] : (CreativeCalls::fix($iterate) !== null ? $iterate : null);
+        $versions = $pieces === 1 ? 'Una versión nueva' : "{$pieces} versiones";
+        $hooks = fn (string $rest) => $pieces === 1 ? "Una versión nueva con otro hook, {$rest}." : "{$pieces} versiones: un hook distinto en cada una, {$rest}.";
+        $stage = \App\Services\Meta\Decisions\Rules\AdRules::STAGES[$fix] ?? null;
+        $keep = match ($fix) {
+            'hook', 'fatigue' => 'Todo lo que viene después de los primeros 3 segundos: déjalo igual (en este encargo solo cambia el hook).',
+            'after_hook' => 'El hook (los primeros 3 segundos): funciona.',
+            'middle' => 'El inicio (el hook y lo que sigue): funciona.',
+            'close' => 'Todo el video hasta el cierre: funciona.',
+            'click' => 'Lo que ya engancha: funciona.',
+            'format' => 'La idea y la promesa.',
+            default => 'Todo lo que viene después del hook: funciona.',
+        };
         if ($call['key'] !== 'iterate') {
             return [
-                'test_idea' => 'Probamos si versiones nuevas de un creativo que ya está vendiendo, con otras aperturas, venden igual o más.',
-                'goal' => "{$versions}, con aperturas nuevas.",
-                'keep' => 'El gancho y la promesa: funcionan, no los cambies.',
-                'improve' => CreativeCalls::fix($iterate),
+                'test_idea' => $stage ? "Probamos si mejorando {$stage}, este creativo que ya vende vende todavía más."
+                    : 'Probamos si hooks nuevos le alargan la vida a un creativo que ya está vendiendo.',
+                'goal' => $stage ? "{$versions} que mejoren {$stage}, conservando todo lo demás." : $hooks('con el mismo cuerpo'),
+                'keep' => $keep,
+                'improve' => $call['editor'],
             ];
         }
-        $fix = CreativeCalls::fix($iterate);
 
         return [
-            'test_idea' => $fix ? 'Probamos si arreglando lo que falla, este creativo vuelve a vender.'
-                : 'Probamos si con otra apertura este creativo vuelve a enganchar a la gente que ya lo vio.',
-            'goal' => $fix ? "{$versions} que arreglen lo que falla." : "{$versions}, con otra apertura y otras imágenes.",
-            'keep' => match ($iterate) {
-                'hook' => 'Todo lo que viene después de los primeros segundos: funciona.',
-                'duration', 'cta' => 'El inicio: el gancho funciona.',
-                'format' => 'La idea y la promesa.',
-                default => 'La promesa.',
-            },
+            'test_idea' => $fix === 'fatigue' || $fix === null ? 'Probamos si con hooks nuevos este creativo vuelve a enganchar a la gente que ya lo vio.'
+                : 'Probamos si arreglando ' . ($stage ?? 'el formato') . ', este creativo vuelve a vender.',
+            'goal' => $fix === 'fatigue' || $fix === null ? $hooks('con otras primeras imágenes')
+                : "{$versions} que arreglen " . ($stage ?? 'el formato') . '.',
+            'keep' => $keep,
             'improve' => $call['editor'],
         ];
     }

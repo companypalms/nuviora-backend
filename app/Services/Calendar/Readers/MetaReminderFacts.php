@@ -77,8 +77,9 @@ class MetaReminderFacts
         }
         foreach ($a->facts ?? [] as $p) {
             foreach ($p['creatives'] ?? [] as $cr) {
-                if (isset($cr['call']['label'])) {
-                    $calls[$cr['call']['label']]++;
+                // .80: por su clave ("PARAR EN ARAGUA" cuenta como "PARAR EN UNA CIUDAD")
+                if (isset(\App\Services\Meta\Analysis\CreativeCalls::CALLS[$cr['call']['key'] ?? ''])) {
+                    $calls[\App\Services\Meta\Analysis\CreativeCalls::CALLS[$cr['call']['key']]['label']]++;
                 }
             }
         }

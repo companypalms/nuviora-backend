@@ -178,7 +178,8 @@ TXT;
         'conversion' => ['good' => 'los que llegan compran', 'weak' => 'los que llegan compran poco'],
     ];
 
-    private const LEAVES_WORDS = ['opening' => 'se van al principio', 'body' => 'se van en la parte del medio', 'end' => 'se van al final'];
+    private const LEAVES_WORDS = ['after_hook' => 'se van justo después del hook', 'opening' => 'se van al principio', 'body' => 'se van en la parte del medio',
+        'end' => 'se van al final'];
 
     /** `.63`: cómo le fue al video, en palabras, sin números: "el hook engancha muy bien; la gente no se queda viendo; se van en la parte del medio". */
     public static function videoWords(array $grades, ?string $leaves): string

@@ -23,7 +23,8 @@ class MetaDecisions
     public const MIN_IMPRESSIONS = 1000;
 
     /** Qué iterar primero, en palabras del dueño. */
-    private const ITERATE = ['hook' => 'el hook (los primeros segundos)', 'duration' => 'la duración o el ritmo', 'cta' => 'el cierre (CTA)',
+    private const ITERATE = ['hook' => 'el hook (los primeros segundos)', 'after_hook' => 'lo que viene justo después del hook',
+        'middle' => 'el medio del video (el ritmo y la duración)', 'close' => 'el cierre (CTA)', 'click' => 'la oferta y el llamado a la acción',
         'landing' => 'la landing', 'format' => 'el formato'];
 
     public function __construct(
@@ -271,15 +272,21 @@ class MetaDecisions
                 if (in_array($states[$cid][$campaignId]['key'], ['proven', 'promising'], true)) {
                     $pick = $this->window($w);
                     if ($pick) {
-                        $winners[] = $pick['metrics'];
+                        $winners[] = ['id' => $cid, 'metrics' => $pick['metrics']];
                     }
                 }
             }
         }
-        $median = [];
-        foreach (['hook_rate', 'hold_rate', 'unique_ctr', 'conversion_rate'] as $k) {
-            $median[$k] = AdRules::median(array_map(fn ($m) => $m[$k] ?? null, $winners));
-        }
+        // .80: cada creativo se compara con los OTROS ganadores del producto (no consigo mismo)
+        $medianFor = function (int $cid) use ($winners): array {
+            $others = array_column(array_filter($winners, fn ($x) => (int) $x['id'] !== $cid), 'metrics');
+            $median = [];
+            foreach (['hook_rate', 'hold_rate', 'retention_middle', 'retention_close', 'unique_ctr', 'conversion_rate'] as $k) {
+                $median[$k] = AdRules::median(array_map(fn ($m) => $m[$k] ?? null, $others));
+            }
+
+            return $median;
+        };
         foreach ($f['creatives'] as $cid => $cr) {
             $byCity = $states[$cid] ?? [];
             $cityNames = [];
@@ -300,9 +307,11 @@ class MetaDecisions
             $out['creatives'][$cid] = [
                 'id' => $cid, 'label' => $cr['label'], 'active' => collect($cr['ads'])->contains(fn ($m) => $f['ads'][$m]['active'] ?? false),
                 'verdict' => $overall, 'cross' => $cross,
-                'cities' => collect($byCity)->map(fn ($v, $campaignId) => ['campaign_meta_id' => $campaignId, 'city' => $campaigns[$campaignId]['city'] ?? null] + $v)->values()->all(),
+                // .80: si sigue activo en esa ciudad (para "qué apagar hoy, por ciudad")
+                'cities' => collect($byCity)->map(fn ($v, $campaignId) => ['campaign_meta_id' => $campaignId, 'city' => $campaigns[$campaignId]['city'] ?? null,
+                    'active' => collect($agg[$cid]['ads_by_city'][$campaignId] ?? [])->contains(fn ($m) => $f['ads'][$m]['active'] ?? false)] + $v)->values()->all(),
                 'funnel' => $funnel ? ['key' => $funnel, 'label' => AdRules::FUNNEL[$funnel], 'frequency' => $freq3] : null,
-                'video' => $w ? $rules->video($w, $isVideo, $length, $median, $cityCpm, $w['metrics']['cpa'] ?? null, $mainC) + ['window' => $w['window']] : null,
+                'video' => $w ? $rules->video($w, $isVideo, $length, $medianFor((int) $cid), $cityCpm, $w['metrics']['cpa'] ?? null, $mainC) + ['window' => $w['window']] : null,
                 // .70: sus números (hook rate, hold rate, CTR, frecuencia, CPM, cuánta gente llega a cada parte y el tiempo
                 // promedio), para que el dueño vea en qué se basa la decisión del análisis
                 'metrics' => $w ? ['window' => $w['window'], 'hook_rate' => $w['metrics']['hook_rate'] ?? null, 'hold_rate' => $w['metrics']['hold_rate'] ?? null,

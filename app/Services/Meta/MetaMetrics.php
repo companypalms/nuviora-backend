@@ -51,6 +51,9 @@ class MetaMetrics
             'retention' => $v('video_plays') ? array_map(fn ($k) => self::pct($v($k), $v('video_plays')),
                 ['p25' => 'video_p25', 'p50' => 'video_p50', 'p75' => 'video_p75', 'p95' => 'video_p95', 'p100' => 'video_p100']) : null,
             'avg_watch_time' => self::div($v('video_watch_time'), $v('video_plays')),
+            // .80: los tramos del medio y del cierre, sobre los que llegaron al tramo anterior
+            'retention_middle' => self::pct($v('video_p75'), $v('video_p25')),
+            'retention_close' => self::pct($v('video_p100'), $v('video_p75')),
         ];
     }
 

@@ -67,23 +67,26 @@ describe('Por turnos: uno por producto, el más importante (.78)', function () {
 });
 
 describe('Lo que dice el encargo', function () {
-    it('iterar: qué conservar y qué cambiar, en palabras', function () {
-        $b = AnalysisSender::brief(['key' => 'iterate', 'editor' => 'Cambia los primeros 3 segundos: el gancho no engancha.'], 'hook', 3);
+    it('.80 iterar: el primer tramo flojo, qué conservar y qué cambiar', function () {
+        $b = AnalysisSender::brief(['key' => 'iterate', 'editor' => 'Qué hacer: …', 'fix' => 'after_hook'], 'after_hook', 3);
         expect($b)->toBe([
-            'test_idea' => 'Probamos si arreglando lo que falla, este creativo vuelve a vender.',
-            'goal' => '3 versiones bien distintas entre sí que arreglen lo que falla.',
-            'keep' => 'Todo lo que viene después de los primeros segundos: funciona.',
-            'improve' => 'Cambia los primeros 3 segundos: el gancho no engancha.',
+            'test_idea' => 'Probamos si arreglando justo después del hook, este creativo vuelve a vender.',
+            'goal' => '3 versiones que arreglen justo después del hook.',
+            'keep' => 'El hook (los primeros 3 segundos): funciona.',
+            'improve' => 'Qué hacer: …',
         ]);
-        $tired = AnalysisSender::brief(['key' => 'iterate', 'editor' => 'La gente ya lo vio mucho.'], null, 3);
-        expect($tired['keep'])->toBe('La promesa.')->and($tired['goal'])->toBe('3 versiones bien distintas entre sí, con otra apertura y otras imágenes.');
+        $tired = AnalysisSender::brief(['key' => 'iterate', 'editor' => 'Qué hacer: …', 'fix' => 'fatigue'], null, 3);
+        expect($tired['keep'])->toBe('Todo lo que viene después de los primeros 3 segundos: déjalo igual (en este encargo solo cambia el hook).')
+            ->and($tired['goal'])->toBe('3 versiones: un hook distinto en cada una, con otras primeras imágenes.');
     });
 
-    it('un ganador: conservar el gancho y la promesa, con aperturas nuevas', function () {
-        $b = AnalysisSender::brief(['key' => 'scale', 'editor' => 'Haz versiones nuevas.'], null, 1);
-        expect($b['keep'])->toBe('El gancho y la promesa: funcionan, no los cambies.')->and($b['goal'])->toBe('Una versión nueva, con aperturas nuevas.')
-            ->and($b['improve'])->toBeNull();
-        expect(AnalysisSender::brief(['key' => 'scale', 'editor' => 'x'], 'duration', 3)['improve'])->toStartWith('Acorta el video');
+    it('.80 un ganador sano: hooks nuevos con el mismo cuerpo; con un tramo flojo, mejorar ese tramo', function () {
+        $b = AnalysisSender::brief(['key' => 'scale', 'editor' => 'Qué hacer: …', 'fix' => null], null, 1);
+        expect($b['goal'])->toBe('Una versión nueva con otro hook, con el mismo cuerpo.')->and($b['keep'])->toBe('Todo lo que viene después del hook: funciona.')
+            ->and($b['improve'])->toBe('Qué hacer: …');
+        $mid = AnalysisSender::brief(['key' => 'keep', 'editor' => 'x', 'fix' => 'middle'], 'middle', 3);
+        expect($mid['test_idea'])->toBe('Probamos si mejorando el medio, este creativo que ya vende vende todavía más.')
+            ->and($mid['keep'])->toBe('El inicio (el hook y lo que sigue): funciona.');
     });
 });
 

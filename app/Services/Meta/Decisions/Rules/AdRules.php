@@ -231,82 +231,112 @@ class AdRules
     }
 
     /**
-     * El diagnóstico de un video (o de una imagen, sin lo de video): cada métrica contra los valores fijos y contra la
-     * mediana de los ganadores del producto, dónde se va la gente y qué iterar primero.
+     * `.80` (dueño, 2026-11-02): el video se lee por tramos, en orden; el editor recibe solo el primero flojo ("si no pasan
+     * el hook, el cierre no importa"). Cada tramo se mide sobre la gente que llega a él.
+     */
+    public const STAGES = ['hook' => 'el hook', 'after_hook' => 'justo después del hook', 'middle' => 'el medio', 'close' => 'el cierre', 'click' => 'el clic'];
+
+    /** `.80`: con menos que esto entrando a un tramo, no se juzga (impresiones, vistas de 3 s, al 25 %, al 75 %). */
+    private const STAGE_MIN = ['hook' => 1000, 'after_hook' => 100, 'middle' => 50, 'close' => 30, 'click' => 1000];
+
+    /** La mediana de los ganadores con la que se compara cada tramo. */
+    private const STAGE_MEDIAN = ['hook' => 'hook_rate', 'after_hook' => 'hold_rate', 'middle' => 'retention_middle', 'close' => 'retention_close', 'click' => 'unique_ctr'];
+
+    /**
+     * El diagnóstico de un video (o de una imagen, sin lo de video). `.80`: por tramos (STAGES): el hook (hook rate: de los
+     * que lo ven, cuántos se quedan 3 s), justo después del hook (hold rate: de los que pasan los 3 s, cuántos llegan a los
+     * 15), el medio (del 25 % al 75 %), el cierre (del 75 % al final) y el clic (CTR único). Cada uno es flojo si está debajo
+     * de tu mínimo (Reglas) o bastante debajo de la mediana de tus ganadores del producto; "iterate" es el primero flojo.
+     * Lo que no es del video (la landing, el CPM) solo cuenta si el creativo está caro (CPA encima de C).
      *
      * @param array $w ventana con totals y metrics
-     * @param array $winners mediana de los ganadores: hook_rate, hold_rate, unique_ctr, conversion_rate
-     * @return array{grades: array, leaves: ?string, retention: array, watch_pct: ?float, diagnosis: array, iterate: ?string}
+     * @param array $winners mediana de los ganadores: hook_rate, hold_rate, retention_middle, retention_close, unique_ctr, conversion_rate
+     * @return array{grades: array, stages: array, leaves: ?string, retention: array, watch_pct: ?float, diagnosis: array, iterate: ?string}
      */
     public function video(array $w, bool $isVideo, ?float $length, array $winners = [], ?float $cityCpm = null, ?float $cpa = null, ?float $c = null): array
     {
         $m = $w['metrics'] ?? [];
         $t = $w['totals'] ?? [];
-        $ctr = $m['unique_ctr'] ?? null;
+        $share = fn (?float $a, ?float $b) => $a !== null && $b !== null && $b > 0 ? $a / $b * 100 : null;
+        $enough = fn (string $stage, $base) => (float) ($base ?? 0) >= self::STAGE_MIN[$stage];
+        $values = [
+            'hook' => $isVideo && $enough('hook', $t['impressions'] ?? 0) ? ($m['hook_rate'] ?? null) : null,
+            'after_hook' => $isVideo && $enough('after_hook', $t['video_3s_plays'] ?? 0) ? ($m['hold_rate'] ?? null) : null,
+            'middle' => $isVideo && $enough('middle', $t['video_p25'] ?? 0) ? $share($t['video_p75'] ?? null, $t['video_p25'] ?? null) : null,
+            'close' => $isVideo && $enough('close', $t['video_p75'] ?? 0) ? $share($t['video_p100'] ?? null, $t['video_p75'] ?? null) : null,
+            'click' => $enough('click', $t['impressions'] ?? 0) ? ($m['unique_ctr'] ?? null) : null,
+        ];
+        $floor = ['hook' => $this->s['hook_weak'], 'after_hook' => $this->s['hold_weak'], 'middle' => $this->s['retention_body'],
+            'close' => $this->s['retention_end'], 'click' => $this->s['ctr_weak']];
+        $goodFrom = ['hook' => $this->s['hook_good'], 'after_hook' => $this->s['hold_good'], 'middle' => null, 'close' => null, 'click' => $this->s['ctr_good']];
+        $stages = [];
+        foreach (self::STAGES as $k => $label) {
+            if (($v = $values[$k]) === null) {
+                continue;
+            }
+            $median = $winners[self::STAGE_MEDIAN[$k]] ?? null;
+            $stages[$k] = ['label' => $label, 'value' => round((float) $v, 1), 'median' => $median !== null ? round((float) $median, 1) : null,
+                'grade' => match (true) {
+                    $v < $floor[$k] => 'weak',
+                    $median !== null && $v <= $median * (1 - $this->s['winners_gap_pct'] / 100) => 'weak',
+                    ($goodFrom[$k] !== null && $v >= $goodFrom[$k]) || ($median !== null && $v >= $median) => 'good',
+                    default => 'ok',
+                }];
+        }
+        $grade = fn (string $k) => $stages[$k]['grade'] ?? null;
         $grades = [
-            'hook' => $isVideo ? $this->grade($m['hook_rate'] ?? null, 'hook', $winners['hook_rate'] ?? null) : null,
-            'hold' => $isVideo ? $this->grade($m['hold_rate'] ?? null, 'hold', $winners['hold_rate'] ?? null) : null,
-            'ctr' => $this->grade($ctr, 'ctr', $winners['unique_ctr'] ?? null),
+            'hook' => $grade('hook'), 'hold' => $grade('after_hook'), 'middle' => $grade('middle'), 'close' => $grade('close'), 'ctr' => $grade('click'),
             'visit' => ($m['lpv_rate'] ?? null) === null ? null : ($m['lpv_rate'] < $this->s['visit_leak'] ? 'weak' : ($m['lpv_rate'] >= $this->s['visit_ok'] ? 'good' : 'ok')),
             'conversion' => ($m['conversion_rate'] ?? null) !== null && ($winners['conversion_rate'] ?? null) !== null
                 ? ($m['conversion_rate'] <= $winners['conversion_rate'] * (1 - $this->s['winners_gap_pct'] / 100) ? 'weak' : 'good') : null,
         ];
-        $share = fn (?float $a, ?float $b) => $a !== null && $b !== null && $b > 0 ? $a / $b * 100 : null;
         $retention = $isVideo ? [
             'reach_25' => $share($t['video_p25'] ?? null, $t['video_plays'] ?? null),
-            'from_25_to_75' => $share($t['video_p75'] ?? null, $t['video_p25'] ?? null),
-            'from_75_to_end' => $share($t['video_p100'] ?? null, $t['video_p75'] ?? null),
+            'from_25_to_75' => $values['middle'],
+            'from_75_to_end' => $values['close'],
         ] : [];
-        $leaves = null;
-        if ($isVideo) {
-            $leaves = match (true) {
-                $retention['reach_25'] !== null && $retention['reach_25'] < $this->s['retention_open'] => 'opening',
-                $retention['from_25_to_75'] !== null && $retention['from_25_to_75'] < $this->s['retention_body'] => 'body',
-                $retention['from_75_to_end'] !== null && $retention['from_75_to_end'] < $this->s['retention_end'] => 'end',
-                default => null,
-            };
-        }
         $watchPct = $isVideo && $length && ($m['avg_watch_time'] ?? null) !== null ? $m['avg_watch_time'] / $length * 100 : null;
         $grades['watch'] = $watchPct === null ? null : ($watchPct >= $this->s['watch_good'] ? 'good' : ($watchPct < $this->s['watch_weak'] ? 'weak' : 'ok'));
 
+        $first = array_key_first(array_filter($stages, fn ($st) => $st['grade'] === 'weak'));
+        $leaves = ['after_hook' => 'after_hook', 'middle' => 'body', 'close' => 'end'][$first] ?? null;
+        $expensive = $c !== null && ($cpa === null || $cpa > $c);
         $dx = [];
-        $iterate = null;
-        $set = function (string $what) use (&$iterate) {
-            $iterate ??= $what;
-        };
-        if ($isVideo && $grades['hook'] === 'weak' && in_array($grades['hold'], ['good', 'ok'], true)) {
-            $dx[] = 'Hook flojo y hold bueno: iterar los primeros segundos y mantener el cuerpo.';
-            $set('hook');
+        foreach ($stages as $k => $st) {
+            if ($st['grade'] === 'weak') {
+                $dx[] = self::stageText($k, $st);
+            }
         }
-        if ($isVideo && in_array($grades['hook'], ['good', 'ok'], true) && $grades['hold'] === 'weak') {
-            $dx[] = 'Hook bueno y hold flojo: acortar el video.';
-            $set('duration');
-        }
-        if ((!$isVideo || ($grades['hook'] !== 'weak' && $grades['hold'] !== 'weak')) && in_array($grades['ctr'], ['good', 'ok'], true)
-            && $grades['conversion'] === 'weak') {
+        $iterate = $first;
+        if ($first === null && $expensive && in_array($grades['ctr'], ['good', 'ok'], true) && $grades['conversion'] === 'weak') {
             $dx[] = 'Engancha y hace clic pero no compra: revisar que la landing hable de lo mismo que el anuncio (probar una landing del ángulo, sin cambiar el creativo).';
-            $set('landing');
+            $iterate = 'landing';
         }
         if ($grades['visit'] === 'weak') {
             $dx[] = 'Solo el ' . self::num($m['lpv_rate']) . ' % de los clics llega a la página: revisar la velocidad de la landing.';
         }
-        if ($leaves === 'opening') {
-            $dx[] = 'Se van al principio: solo el ' . self::num($retention['reach_25']) . ' % llega al 25 % del video.';
-            $set('hook');
-        } elseif ($leaves === 'body') {
-            $dx[] = 'Se van en el medio: del 25 % al 75 % del video sigue solo el ' . self::num($retention['from_25_to_75']) . ' %. Revisar el ritmo o la duración.';
-            $set('duration');
-        } elseif ($leaves === 'end') {
-            $dx[] = 'Se van al final: del 75 % al final sigue solo el ' . self::num($retention['from_75_to_end']) . ' %. Revisar el cierre (CTA).';
-            $set('cta');
-        }
-        if ($isVideo && $cityCpm !== null && ($m['cpm'] ?? null) !== null && $m['cpm'] >= $cityCpm * 1.3 && $c !== null && ($cpa === null || $cpa > $c)) {
+        if ($isVideo && $cityCpm !== null && ($m['cpm'] ?? null) !== null && $m['cpm'] >= $cityCpm * 1.3 && $expensive) {
             $dx[] = 'CPM ' . self::money($m['cpm']) . ', mucho más alto que el de la ciudad (' . self::money($cityCpm) . '), y no compensa: probar el concepto en imagen.';
-            $set('format');
+            $iterate ??= 'format';
         }
 
-        return ['grades' => $grades, 'leaves' => $leaves, 'retention' => $retention, 'watch_pct' => $watchPct !== null ? round($watchPct, 1) : null,
-            'diagnosis' => $dx, 'iterate' => $iterate];
+        return ['grades' => $grades, 'stages' => $stages, 'leaves' => $leaves, 'retention' => $retention,
+            'watch_pct' => $watchPct !== null ? round($watchPct, 1) : null, 'diagnosis' => $dx, 'iterate' => $iterate];
+    }
+
+    /** `.80`: un tramo flojo, para el dueño: "El medio pierde gente: del 25 % al 75 % sigue solo el 37 % (tus ganadores: 52 %)." */
+    public static function stageText(string $k, array $st): string
+    {
+        $v = self::num($st['value']) . ' %';
+        $vs = $st['median'] !== null ? ' (tus ganadores: ' . self::num($st['median']) . ' %)' : '';
+
+        return match ($k) {
+            'hook' => "El hook está flojo: solo el {$v} de los que lo ven se queda 3 segundos{$vs}.",
+            'after_hook' => "Se van justo después del hook: de los que pasan los 3 segundos, solo el {$v} llega a los 15 (hold rate){$vs}.",
+            'middle' => "El medio pierde gente: del 25 % al 75 % del video sigue solo el {$v}{$vs}.",
+            'close' => "El cierre pierde gente: del 75 % al final sigue solo el {$v}{$vs}.",
+            default => "Poca gente hace clic: CTR único {$v}{$vs}.",
+        };
     }
 
     /** Mediana de una lista (null si está vacía). */

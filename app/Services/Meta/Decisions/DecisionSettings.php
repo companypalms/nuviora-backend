@@ -38,7 +38,7 @@ class DecisionSettings
         'hold_good' => [40, 0, 100], 'hold_weak' => [30, 0, 100],
         'ctr_good' => [3, 0, 100], 'ctr_weak' => [2, 0, 100],
         'visit_ok' => [70, 0, 100], 'visit_leak' => [55, 0, 100],
-        'retention_open' => [40, 0, 100],       // menos del 40 % de las reproducciones llega al 25 % = se van al principio
+        // .80: "justo después del hook" es el hold rate (hold_weak); el 25 % sobre las reproducciones ya no decide nada
         'retention_body' => [40, 0, 100],       // de los que llegan al 25 %, menos del 40 % llega al 75 % = se van en el medio
         'retention_end' => [50, 0, 100],        // de los que llegan al 75 %, menos del 50 % termina = se van al final
         'watch_good' => [30, 0, 100], 'watch_weak' => [15, 0, 100], // tiempo medio sobre la duración

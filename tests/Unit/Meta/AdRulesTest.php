@@ -141,41 +141,73 @@ describe('Entre ciudades, embudo y saturación', function () {
 });
 
 describe('Diagnóstico del video', function () {
+    // .80 (dueño, 2026-11-02): el video por tramos, cada uno sobre la gente que llega a él; el editor recibe solo el primero
+    // flojo. Base: hook 45 %, después del hook (hold) 44 %, medio 50 %, cierre 67 %, CTR único 3,6 %: todo bien.
     $video = fn (array $t) => ventana(array_merge(['spend' => 20, 'impressions' => 10000, 'reach' => 9000, 'link_clicks' => 350,
         'unique_link_clicks' => 320, 'landing_page_views' => 280, 'purchases' => 5, 'video_plays' => 5000, 'video_3s_plays' => 4500,
         'thruplays' => 2000, 'video_p25' => 3000, 'video_p75' => 1500, 'video_p100' => 1000, 'video_watch_time' => 5000 * 9], $t));
 
-    it('hook flojo y hold bueno: iterar los primeros segundos', function () use ($video) {
+    it('el hook flojo es el primer tramo: hooks nuevos', function () use ($video) {
         $v = reglas()->video($video(['video_3s_plays' => 2500, 'thruplays' => 1200]), true, 30);
         expect($v['grades']['hook'])->toBe('weak')->and($v['grades']['hold'])->toBe('good')->and($v['iterate'])->toBe('hook')
-            ->and($v['diagnosis'][0])->toContain('primeros segundos');
+            ->and($v['diagnosis'][0])->toBe('El hook está flojo: solo el 25 % de los que lo ven se queda 3 segundos.');
     });
 
-    it('hook bueno y hold flojo: acortar', function () use ($video) {
+    it('hook bueno y se van justo después: el hold rate (del segundo 3 al 15)', function () use ($video) {
         $v = reglas()->video($video(['thruplays' => 1000]), true, 30);
-        expect($v['grades']['hook'])->toBe('good')->and($v['grades']['hold'])->toBe('weak')->and($v['iterate'])->toBe('duration');
+        expect($v['grades']['hook'])->toBe('good')->and($v['grades']['hold'])->toBe('weak')->and($v['iterate'])->toBe('after_hook')
+            ->and($v['leaves'])->toBe('after_hook');
     });
 
-    it('dónde se va la gente y el tiempo medio contra la duración', function () use ($video) {
-        expect(reglas()->video($video(['video_p25' => 1500]), true, 30)['leaves'])->toBe('opening')
-            ->and(reglas()->video($video(['video_p75' => 900]), true, 30)['leaves'])->toBe('body')
-            ->and(reglas()->video($video(['video_p100' => 500]), true, 30)['leaves'])->toBe('end');
+    it('el medio y el cierre, sobre los que llegaron a ese tramo; el tiempo medio contra la duración', function () use ($video) {
+        $mid = reglas()->video($video(['video_p75' => 900]), true, 30);
+        expect($mid['iterate'])->toBe('middle')->and($mid['leaves'])->toBe('body')->and($mid['stages']['middle']['value'])->toBe(30.0);
+        $end = reglas()->video($video(['video_p100' => 500]), true, 30);
+        expect($end['iterate'])->toBe('close')->and($end['leaves'])->toBe('end');
         $v = reglas()->video($video([]), true, 30);
-        expect($v['leaves'])->toBeNull()->and($v['watch_pct'])->toBe(30.0)->and($v['grades']['watch'])->toBe('good');
+        expect($v['iterate'])->toBeNull()->and($v['diagnosis'])->toBe([])->and($v['watch_pct'])->toBe(30.0)->and($v['grades']['watch'])->toBe('good')
+            ->and(array_keys($v['stages']))->toBe(['hook', 'after_hook', 'middle', 'close', 'click']);
     });
 
-    it('engancha y hace clic pero no compra (contra los ganadores): la landing', function () use ($video) {
-        $v = reglas()->video($video(['purchases' => 2]), true, 30, ['conversion_rate' => 2.0]);
-        expect($v['grades']['conversion'])->toBe('weak')->and($v['iterate'])->toBe('landing');
+    it('si no pasan el hook, el cierre no importa: decide el primer tramo flojo', function () use ($video) {
+        $v = reglas()->video($video(['video_3s_plays' => 2500, 'thruplays' => 1200, 'video_p100' => 500]), true, 30);
+        expect($v['iterate'])->toBe('hook')->and($v['diagnosis'])->toHaveCount(2);
     });
 
-    it('debajo de la mediana de los ganadores también es flojo', function () use ($video) {
-        expect(reglas()->video($video([]), true, 30, ['hook_rate' => 60.0])['grades']['hook'])->toBe('weak');
+    it('contra los ganadores del producto: flojo si está bastante debajo de su mediana', function () use ($video) {
+        $v = reglas()->video($video([]), true, 30, ['hook_rate' => 60.0, 'retention_middle' => 70.0]);
+        expect($v['grades']['hook'])->toBe('weak')->and($v['grades']['middle'])->toBe('weak')
+            ->and($v['diagnosis'][0])->toBe('El hook está flojo: solo el 45 % de los que lo ven se queda 3 segundos (tus ganadores: 60 %).');
+    });
+
+    it('ZenPulse CREATIVO 6 (2/11): con hook de 51 % ya no dice que el gancho no engancha', function () use ($video) {
+        // hook 51,2 %, hold 41 %, de cada 100 que empiezan: 33,7 al 25 %, 15,8 al 75 %, 10,3 al final; CTR único 6,8 %
+        $v = reglas()->video($video(['video_plays' => 10000, 'video_3s_plays' => 5120, 'thruplays' => 2099, 'video_p25' => 3370, 'video_p75' => 1580,
+            'video_p100' => 1030, 'unique_link_clicks' => 612]), true, 30);
+        expect($v['grades']['hook'])->toBe('good')->and($v['iterate'])->toBeNull()->and($v['diagnosis'])->toBe([]);
+    });
+
+    it('engancha y hace clic pero no compra: la landing, solo si está caro (CPA encima de C)', function () use ($video) {
+        $caro = reglas()->video($video(['purchases' => 2]), true, 30, ['conversion_rate' => 2.0], null, 10.0, 4.0);
+        expect($caro['grades']['conversion'])->toBe('weak')->and($caro['iterate'])->toBe('landing');
+        $barato = reglas()->video($video(['purchases' => 2]), true, 30, ['conversion_rate' => 2.0], null, 3.0, 4.0);
+        expect($barato['iterate'])->toBeNull()->and($barato['diagnosis'])->toBe([]);
+    });
+
+    it('CPM alto: probar en imagen, solo si está caro', function () use ($video) {
+        expect(reglas()->video($video([]), true, 30, [], 1.0, 6.0, 4.0)['iterate'])->toBe('format')
+            ->and(reglas()->video($video([]), true, 30, [], 1.0, 3.0, 4.0)['diagnosis'])->toBe([]);
     });
 
     it('una imagen no se mide por hook ni retención', function () use ($video) {
         $v = reglas()->video($video([]), false, null);
-        expect($v['grades']['hook'])->toBeNull()->and($v['leaves'])->toBeNull()->and($v['grades']['ctr'])->toBe('good');
+        expect($v['grades']['hook'])->toBeNull()->and($v['leaves'])->toBeNull()->and($v['grades']['ctr'])->toBe('good')
+            ->and(array_keys($v['stages']))->toBe(['click']);
+    });
+
+    it('con pocos datos un tramo no se juzga', function () use ($video) {
+        $v = reglas()->video($video(['video_p75' => 20, 'video_p100' => 5]), true, 30);
+        expect($v['stages'])->not->toHaveKey('close');
     });
 
     it('la mediana', function () {

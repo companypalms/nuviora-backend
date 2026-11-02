@@ -46,13 +46,21 @@ final class AnalysisFacts
                 }
             }
             $creatives = array_values(array_filter($p['creatives'] ?? [], fn ($cr) => $cr['active'] ?? false));
+            // .80: qué apagar hoy, por ciudad (de todos los activos, no solo de los 12 que más gastaron)
+            $stopByCity = [];
+            foreach ($creatives as $cr) {
+                foreach (CreativeCalls::stopIn($cr) as $city) {
+                    $stopByCity[$city][] = (string) $cr['label'];
+                }
+            }
             usort($creatives, fn ($a, $b) => ($b['week']['spend'] ?? 0) <=> ($a['week']['spend'] ?? 0));
             $creatives = array_map(fn ($cr) => [
                 'id' => $cr['id'], 'label' => $cr['label'], 'verdict' => $cr['verdict']['label'], 'verdict_key' => $cr['verdict']['key'],
                 'tone' => $cr['verdict']['tone'], 'reading' => $cr['verdict']['reading'], 'proposal' => $cr['verdict']['proposal'],
                 'cross' => $cr['cross']['label'] ?? null, 'funnel' => $cr['funnel']['label'] ?? null, 'week' => $cr['week'] ?? null,
                 'cities' => array_map(fn ($c) => ['city' => $c['city'], 'verdict' => $c['label'], 'data' => $c['data']], $cr['cities'] ?? []),
-                'video' => $cr['video'] ? ['window' => $cr['video']['window'], 'diagnosis' => $cr['video']['diagnosis'], 'iterate' => $cr['video']['iterate']] : null,
+                'video' => $cr['video'] ? ['window' => $cr['video']['window'], 'diagnosis' => $cr['video']['diagnosis'], 'iterate' => $cr['video']['iterate'],
+                    'stages' => $cr['video']['stages'] ?? [], 'watch_pct' => $cr['video']['watch_pct'] ?? null] : null,
                 'status' => $cr['status'] ?? null,
                 // .70: ESCALAR, MANTENER, PARAR o ITERAR, sus números (para el dueño) y qué hacer el editor (en palabras)
                 'type' => $cr['type'] ?? null,
@@ -70,7 +78,7 @@ final class AnalysisFacts
                 'urgency' => $plan['urgency'] ?? null, 'money_at_risk' => $plan['money_at_risk'] ?? 0,
                 'next_work' => $plan['next_work'] ?? [], 'price' => $plan['price'] ?? [], 'price_watch' => $plan['price_watch'] ?? null,
                 'alarms' => $plan['alarms'] ?? [], 'tracking' => $p['tracking'] ?? null,
-                'cities' => $cities, 'creatives' => $creatives, 'batches' => $batches,
+                'cities' => $cities, 'creatives' => $creatives, 'batches' => $batches, 'stop_by_city' => $stopByCity,
             ];
         }
         usort($out, fn ($a, $b) => [($a['urgency']['level'] ?? 9), -$a['money_at_risk'], $a['product']] <=> [($b['urgency']['level'] ?? 9), -$b['money_at_risk'], $b['product']]);
@@ -113,6 +121,9 @@ final class AnalysisFacts
                 foreach (array_merge($c['notes'], $c['budget_notes'], array_filter([$c['price_option']])) as $n) {
                     $lines[] = "  · {$n}";
                 }
+            }
+            foreach ($p['stop_by_city'] ?? [] as $city => $labels) {
+                $lines[] = "Apagar hoy en {$city} (ahí pierden): " . implode(', ', $labels);
             }
             foreach ($p['creatives'] as $i => $cr) {
                 $week = $cr['week'] ? ' · 7 días: gasto ' . self::money($cr['week']['spend']) . ', ' . rtrim(rtrim(number_format((float) $cr['week']['purchases'], 1, ',', ''), '0'), ',')
