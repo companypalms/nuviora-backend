@@ -17,6 +17,10 @@ use Illuminate\Support\Facades\DB;
  *   (7 días) y la larga (28), y se queda la más prudente: la de CPA objetivo más bajo. Si la última semana empeoró se nota
  *   enseguida; si mejoró, no se confía hasta que se sostenga. Con menos de N compras de Meta en 7 días vale la de 28; una
  *   ciudad que tampoco llega usa el número de su producto.
+ * - Dueño, 2026-11-02 (Aragua salía "va bien" con un BE de $26 en Comprimax): los pedidos de antes del primer día con datos
+ *   de Meta de ese producto en esa ciudad no cuentan (venían de campañas que el sistema no tiene, y 3 semanas de pedidos
+ *   sin compras de Meta hacían que cada compra pareciera traer 4 pedidos); y una ciudad que usa la de 28 días por tener
+ *   pocas compras nunca queda más generosa que su producto.
  * - R = lo cobrado de lo entregado (principal + upsell − devuelto). V = costos variables: producto, logística, envío
  *   (también los fallidos), comisiones de todos los roles y otros variables (gastos del producto o de la ciudad y merma).
  *   Una carrera sin costo cuenta lo que cuesta en promedio una carrera en esa ciudad (28 días), no $0.
@@ -79,8 +83,9 @@ class FinancialCpa
         [$sFrom, $sTo] = self::window($today, self::shortDays());
         [$lFrom, $lTo] = self::window($today, self::longDays());
         $tripCost = $this->tripCost($lFrom, $lTo);
-        $short = $this->levels($sFrom, $sTo, $tripCost);
-        $long = $this->levels($lFrom, $lTo, $tripCost);
+        $starts = $this->metaStarts();
+        $short = $this->levels($sFrom, $sTo, $tripCost, $starts);
+        $long = $this->levels($lFrom, $lTo, $tripCost, $starts);
         $keys = array_values(array_unique(array_merge(array_keys($short), array_keys($long))));
         if ($keys === []) {
             return 0;
@@ -162,6 +167,7 @@ class FinancialCpa
                     'chosen' => $choice,
                     'basis' => $choice === 'product' ? 'product' : 'own',
                     'city_min_purchases' => $min,
+                    'meta_from' => $cityId !== null ? ($starts[$key] ?? null) : null,
                     'short' => $summary($s, 'short', $short[$key] ?? null),
                     'long' => $summary($l, 'long', $long[$key] ?? null),
                     'fixed' => $fixed,
@@ -261,7 +267,11 @@ class FinancialCpa
             return [(float) $long['target'], (float) $long['break_even']] < [(float) $short['target'], (float) $short['break_even']] ? 'long' : 'short';
         }
         if ($enough($long)) {
-            return 'long';
+            // Una ciudad con pocas compras nunca más generosa que su producto (2026-11-02)
+            $prudent = $product !== null && $product['target'] !== null && $long['target'] !== null
+                && [(float) $product['target'], (float) $product['break_even']] < [(float) $long['target'], (float) $long['break_even']];
+
+            return $prudent ? 'product' : 'long';
         }
         if ($product !== null && $product['target'] !== null) {
             return 'product';
@@ -276,10 +286,25 @@ class FinancialCpa
         return TripCostAverage::between($from->toDateString(), $to->toDateString());
     }
 
-    /** Las sumas de una cohorte por producto + ciudad ("p|c") y por producto ("p|"). */
-    private function levels(CarbonInterface $from, CarbonInterface $to, array $tripCost): array
+    /**
+     * El primer día con gasto en Meta de cada producto + ciudad ("p|c" => "AAAA-MM-DD"): los pedidos de antes no cuentan
+     * para su CPA (2026-11-02).
+     */
+    private function metaStarts(): array
     {
-        $cells = $this->cells($from, $to, $tripCost);
+        return DB::table('meta_insights_daily as d')
+            ->join('meta_campaigns as c', 'c.meta_id', '=', 'd.campaign_meta_id')
+            ->where('d.level', 'campaign')->where('d.spend', '>', 0)
+            ->whereNotNull('c.product_id')->whereNotNull('c.city_id')
+            ->groupBy('c.product_id', 'c.city_id')
+            ->selectRaw('c.product_id, c.city_id, MIN(d.date) AS first_day')
+            ->get()->mapWithKeys(fn ($r) => ["{$r->product_id}|{$r->city_id}" => substr((string) $r->first_day, 0, 10)])->all();
+    }
+
+    /** Las sumas de una cohorte por producto + ciudad ("p|c") y por producto ("p|"). */
+    private function levels(CarbonInterface $from, CarbonInterface $to, array $tripCost, array $starts = []): array
+    {
+        $cells = $this->cells($from, $to, $tripCost, $starts);
         // §69: el producto es la suma de sus ciudades
         $byProduct = [];
         foreach ($cells as $c) {
@@ -310,8 +335,12 @@ class FinancialCpa
         return $out;
     }
 
-    /** R, V, P y la efectividad de la cohorte, por producto + ciudad. */
-    private function cells(CarbonInterface $from, CarbonInterface $to, array $tripCost): array
+    /**
+     * R, V, P y la efectividad de la cohorte, por producto + ciudad. Los pedidos de antes del primer día con datos de Meta
+     * de esa celda ($starts) no cuentan; sin ningún dato de Meta cuentan todos. Los gastos y la merma, del período entero
+     * (de más, nunca de menos).
+     */
+    private function cells(CarbonInterface $from, CarbonInterface $to, array $tripCost, array $starts = []): array
     {
         $cells = [];
         $cell = function (int $product, int $city) use (&$cells): string {
@@ -322,8 +351,8 @@ class FinancialCpa
             return $key;
         };
         $rows = DB::table('order_financials')->whereBetween('created_date', [$from->toDateString(), $to->toDateString()])
-            ->whereNotNull('product_id')->whereNotNull('city_id')->groupBy('product_id', 'city_id')
-            ->selectRaw("product_id, city_id,
+            ->whereNotNull('product_id')->whereNotNull('city_id')->groupBy('product_id', 'city_id', 'created_date')
+            ->selectRaw("product_id, city_id, created_date,
                 SUM(kind = 'normal') AS created, SUM(kind = 'normal' AND outcome = 'delivered') AS delivered,
                 SUM(revenue_main + revenue_upsell - revenue_refunded) AS revenue,
                 SUM(cogs_main + cogs_upsell) AS cogs,
@@ -332,6 +361,10 @@ class FinancialCpa
                 SUM(delivery_missing_trips) AS missing_trips")
             ->get();
         foreach ($rows as $r) {
+            $start = $starts["{$r->product_id}|{$r->city_id}"] ?? null;
+            if ($start !== null && substr((string) $r->created_date, 0, 10) < $start) {
+                continue;
+            }
             $k = $cell((int) $r->product_id, (int) $r->city_id);
             foreach (['created', 'delivered', 'revenue', 'cogs', 'variable', 'missing_trips'] as $f) {
                 $cells[$k][$f] += (float) $r->{$f};

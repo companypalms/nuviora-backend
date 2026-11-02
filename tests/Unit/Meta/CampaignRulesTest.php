@@ -144,3 +144,15 @@ describe('Presupuesto, urgencia y trabajo siguiente', function () {
             ->and($r->nextWork(['mode' => 'liquidation'], '0')[0])->toContain('liquidación');
     });
 });
+
+describe('Comprimax en Aragua (2026-11-02)', function () {
+    it('$7,51 por compra con el límite de su producto (BE $7,31): intervenir, no "va bien"', function () {
+        $a = accion(['c' => 4.66, 'be' => 7.31, 'budget' => 30.0, 'spend3' => 90.08, 'purchases3' => 12, 'cpa7' => 8.0, 'freq3' => 2.2, 'streak_days' => 1]);
+        expect($a['key'])->toBe('intervene');
+    });
+
+    it('con el límite inflado de antes (C $16,22, BE $26,05) decía mantener', function () {
+        $a = accion(['c' => 16.22, 'be' => 26.05, 'budget' => 30.0, 'spend3' => 90.08, 'purchases3' => 12, 'cpa7' => 8.0, 'freq3' => 2.2]);
+        expect($a['key'])->toBe('hold');
+    });
+});

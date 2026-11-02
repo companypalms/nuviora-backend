@@ -89,4 +89,29 @@ describe('Qué cohorte vale', function () {
     it('con mínimo 0 basta una compra', function () use ($e) {
         expect(FinancialCpa::pick($e(1, 2.00), $e(4, 3.00), 0))->toBe('short');
     });
+
+    it('una ciudad con pocas compras nunca queda más generosa que su producto (Comprimax en Aragua, 2026-11-02)', function () use ($e) {
+        // 7 días: 23 compras (C $3,77, BE $6,31); 28 días: 38 compras con C $16,22 y BE $26,05; el producto: C $4,66, BE $7,31
+        expect(FinancialCpa::pick($e(23, 3.77, 6.31), $e(38, 16.22, 26.05), 30, $e(149, 4.66, 7.31)))->toBe('product');
+        // Si sus 28 días son más prudentes que el producto, valen los suyos
+        expect(FinancialCpa::pick($e(23, 3.77, 6.31), $e(38, 3.90, 6.50), 30, $e(149, 4.66, 7.31)))->toBe('long');
+    });
+
+    it('con muestra en 7 días la ciudad usa la suya aunque sea más generosa que el producto (Caracas)', function () use ($e) {
+        expect(FinancialCpa::pick($e(70, 5.97, 9.01), $e(110, 7.50, 11.00), 30, $e(149, 4.66, 7.31)))->toBe('short');
+    });
+});
+
+describe('Comprimax con los números reales del 2026-11-02', function () {
+    $margen = ['type' => 'sales', 'pct' => 20];
+
+    it('el producto (21 al 27/10): C $4,66 y BE $7,31', function () use ($margen) {
+        $e = FinancialCpa::economics(['created' => 155, 'delivered' => 53, 'revenue' => 1974, 'variable' => 687.88, 'cogs' => 0, 'purchases' => 149, 'spend' => 780.10], 10, $margen);
+        expect($e['target'])->toBe(4.66)->and($e['break_even'])->toBe(7.31);
+    });
+
+    it('Aragua en su última semana: C $3,77 y BE $6,31', function () use ($margen) {
+        $e = FinancialCpa::economics(['created' => 22, 'delivered' => 8, 'revenue' => 292, 'variable' => 117.74, 'cogs' => 0, 'purchases' => 23, 'spend' => 215.05], 10, $margen);
+        expect($e['target'])->toBe(3.77)->and($e['break_even'])->toBe(6.31);
+    });
 });
