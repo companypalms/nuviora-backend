@@ -173,8 +173,10 @@ class EditorWork
                 'reference_script' => QueueRules::withoutPricesIn($scripts[$b->reference_creative_id] ?? null),
                 'format' => $b->format, 'style' => $b->style, 'style_label' => $b->style ? (QueueRules::STYLES[$b->style] ?? $b->style) : null,
                 'offer' => $clean($b->offer), 'deliverables' => $clean($b->deliverables), 'due_date' => $b->due_date?->toDateString(),
+                // .81: qué prueba cada pieza y su hipótesis (por qué ese formato y el resultado son del dueño)
                 'pieces' => $b->pieces->map(fn (CreativeBatchPiece $p) => ['id' => $p->id, 'code' => $p->code(), 'change' => $clean($p->change), 'format' => $p->format,
-                    'link' => $p->link, 'hook' => $p->hook])->values()->all(),
+                    'link' => $p->link, 'hook' => $p->hook, 'test_label' => PieceRules::TESTS[$p->test] ?? null, 'style_label' => PieceRules::formatLabel($p->style),
+                    'hypothesis' => $clean($p->hypothesis)])->values()->all(),
                 'meta_names' => QueueRules::metaNames($b->number, $b->angle_code, $b->pieces->pluck('number')->all()),
             ] + self::fields($b, $who);
 

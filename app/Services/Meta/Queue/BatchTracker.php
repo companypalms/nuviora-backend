@@ -59,6 +59,18 @@ class BatchTracker
             }
             $b->forceFill(['status' => 'tested', 'tested_at' => now(), 'status_at' => now(), 'status_by' => null,
                 'result' => ['verdicts' => $outcome] + self::numbers($level, array_keys($entities))])->save();
+            // .81: el resultado de cada pieza (sus anuncios en todas las ciudades), para aprender pieza por pieza
+            foreach ($b->pieces as $p) {
+                $keys = [];
+                foreach ($f['codes'] ?? [] as $metaId => $code) {
+                    if ($p->code() !== null && $code === $p->code()) {
+                        $keys[] = $d['ads'][$metaId]['key'] ?? 'no_data';
+                    }
+                }
+                if (($r = PieceRules::outcome($keys)) !== null) {
+                    $p->forceFill(['result' => $r, 'result_at' => now()])->save();
+                }
+            }
             $out['tested']++;
         }
 
@@ -94,6 +106,7 @@ class BatchTracker
             $out[$b->id] = [
                 'adsets' => $sets->mapWithKeys(fn ($s) => [(string) $s->meta_id => (string) $s->campaign_meta_id])->all(),
                 'ads' => $loose->mapWithKeys(fn ($a) => [(string) $a->meta_id => (string) $a->campaign_meta_id])->all(),
+                'codes' => $loose->mapWithKeys(fn ($a) => [(string) $a->meta_id => (string) $a->creative_code])->all(),
                 'first' => $sets->pluck('created_time')->merge($loose->pluck('created_time'))->filter()->min(),
             ];
         }

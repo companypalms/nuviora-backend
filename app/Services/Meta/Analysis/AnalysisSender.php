@@ -8,6 +8,8 @@ use App\Models\MetaAnalysis;
 use App\Models\MetaCreative;
 use App\Services\Meta\Decisions\DecisionSettings;
 use App\Services\Meta\Queue\BatchQueue;
+use App\Services\Meta\Queue\PieceFacts;
+use App\Services\Meta\Queue\PieceRules;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -148,7 +150,7 @@ class AnalysisSender
      * @param array{key: string, editor: ?string} $call
      * @return array{test_idea: string, goal: string, keep: string, improve: ?string}
      */
-    public static function brief(array $call, ?string $iterate, int $pieces): array
+    public static function brief(array $call, ?string $iterate, int $pieces, array $formats = []): array
     {
         // .80: lo que arregla el encargo es el primer tramo flojo del video (o el cansancio); null = un ganador con todo bien
         $fix = array_key_exists('fix', $call) ? $call['fix'] : (CreativeCalls::fix($iterate) !== null ? $iterate : null);
@@ -164,6 +166,18 @@ class AnalysisSender
             'format' => 'La idea y la promesa.',
             default => 'Todo lo que viene después del hook: funciona.',
         };
+        // .81: un ganador sano: 1 hook nuevo y el mismo mensaje en otros formatos (cada pieza dice qué hacer y qué prueba)
+        if ($call['key'] !== 'iterate' && $stage === null && $formats !== []) {
+            $list = \App\Services\Meta\Products\TestingRules::join(array_map(fn ($f) => $f === 'UGC' ? $f : mb_strtolower($f), $formats));
+
+            return [
+                'test_idea' => "Probamos si un hook nuevo le alarga la vida a este ganador y si el mismo mensaje también vende en {$list}.",
+                'goal' => '1 hook nuevo con el mismo cuerpo y ' . count($formats) . ' ' . (count($formats) === 1 ? 'versión' : 'versiones')
+                    . " del mismo mensaje en otro formato ({$list}). Mira qué hacer en cada pieza.",
+                'keep' => 'El mensaje y la promesa: funcionan.',
+                'improve' => $call['editor'],
+            ];
+        }
         if ($call['key'] !== 'iterate') {
             return [
                 'test_idea' => $stage ? "Probamos si mejorando {$stage}, este creativo que ya vende vende todavía más."
@@ -184,18 +198,35 @@ class AnalysisSender
         ];
     }
 
-    /** Una iteración nueva de ese creativo, con las indicaciones del análisis (queda propuesta; enseguida se aprueba). */
+    /**
+     * Una iteración nueva de ese creativo, con las indicaciones del análisis (queda propuesta; enseguida se aprueba).
+     * `.81`: cada pieza con qué prueba, qué hacer y su hipótesis; un ganador sano, 2 formatos + 1 hook (PieceRules).
+     */
     private function create(array $c, int $pieces, string $today): CreativeBatch
     {
         $cr = $c['creative'];
         $creative = MetaCreative::find((int) $cr['id'], ['id', 'product_id', 'angle_code', 'type']);
-        $batch = CreativeBatch::create(self::brief($cr['call'], $cr['video']['iterate'] ?? null, $pieces) + [
-            'product_id' => $creative?->product_id ?? $c['product_id'], 'kind' => 'iteration', 'reference_creative_id' => (int) $cr['id'],
-            'angle_code' => $creative?->angle_code, 'format' => ($creative?->type ?? $cr['type'] ?? null) === 'image' ? 'image' : 'video',
+        $productId = (int) ($creative?->product_id ?? $c['product_id']);
+        $base = ($creative?->type ?? $cr['type'] ?? null) === 'image' ? 'image' : 'video';
+        $call = $cr['call'];
+        $fix = array_key_exists('fix', $call) ? $call['fix'] : (CreativeCalls::fix($cr['video']['iterate'] ?? null) !== null ? $cr['video']['iterate'] : null);
+        $healthy = $call['key'] !== 'iterate' && $fix === null;
+        $formats = [];
+        if ($healthy) {
+            $stats = PieceFacts::formatStats();
+            $formats = PieceRules::pickFormats($pieces - 1, $stats[$productId] ?? [], PieceFacts::others($stats, $productId),
+                PieceFacts::exclude($productId, (int) $cr['id']));
+        }
+        $plan = PieceRules::plan($healthy ? null : ($fix ?? 'fatigue'), $pieces, $formats, $base);
+        $kinds = array_unique(array_column($plan, 'format'));
+        $batch = CreativeBatch::create(self::brief($call, $cr['video']['iterate'] ?? null, $pieces,
+            array_map(fn ($f) => (string) PieceRules::formatLabel($f['style']), array_slice($formats, 0, $pieces - 1))) + [
+            'product_id' => $productId, 'kind' => 'iteration', 'reference_creative_id' => (int) $cr['id'],
+            'angle_code' => $creative?->angle_code, 'format' => count($kinds) > 1 ? 'mixed' : ($kinds[0] ?? $base),
             'urgency' => $c['urgency'], 'source' => 'rules', 'proposed_on' => $today, 'status' => 'proposed', 'status_at' => now(),
         ]);
-        for ($i = 1; $i <= $pieces; $i++) {
-            CreativeBatchPiece::create(['creative_batch_id' => $batch->id, 'position' => $i]);
+        foreach ($plan as $i => $p) {
+            CreativeBatchPiece::create(['creative_batch_id' => $batch->id, 'position' => $i + 1] + $p);
         }
 
         return $batch;

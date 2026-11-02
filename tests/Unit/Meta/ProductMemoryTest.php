@@ -38,7 +38,27 @@ describe('Los números de lo que sabemos', function () use ($b) {
     it('lo que falta probar: ángulos de la ficha, buyer personas y estilos sin ningún batch testeado', function () use ($batches) {
         $f = ProductMemoryRules::facts($batches(), ['GINE', 'ABDO', 'FAJA'], ['Hombre con ginecomastia', 'Gym', 'Mujer'], []);
         expect($f['untested']['angle'])->toBe(['FAJA'])->and($f['untested']['persona'])->toBe(['Mujer'])
-            ->and($f['untested']['style'])->toBe(['demostracion', 'ugc', 'antes_despues', 'problema_solucion']);
+            ->and($f['untested']['style'])->toBe(['demostracion', 'ugc', 'antes_despues', 'problema_solucion', 'entrevista']);
+    });
+
+    it('.81 pieza por pieza: qué probó cada una y si ganó; un formato probado en una pieza ya no falta probar', function () use ($batches) {
+        $pieces = [
+            ['code' => 'C0461', 'test' => 'winner_hook', 'style' => null, 'outcome' => 'Ganó'],
+            ['code' => 'C0462', 'test' => 'format', 'style' => 'imagen', 'outcome' => 'Perdió'],
+            ['code' => 'C0463', 'test' => 'format', 'style' => 'ugc', 'outcome' => 'Ganó'],
+            ['code' => 'C0470', 'test' => 'winner_hook', 'style' => null, 'outcome' => 'Empate'],
+            ['code' => 'C0480', 'test' => 'new_concept', 'style' => null, 'outcome' => 'Perdió'],
+        ];
+        $f = ProductMemoryRules::facts($batches(), ['GINE', 'ABDO', 'FAJA'], [], [], $pieces);
+        expect(array_column($f['piece_groups'], 'label'))->toBe(['Formato UGC', 'Hook nuevo en un ganador', 'Concepto nuevo', 'Formato Imagen'])
+            ->and(ProductMemoryRules::pieceScore($f['piece_groups'][1]))->toBe('ganó 1 de 2 piezas (empate en 1)')
+            ->and($f['untested']['style'])->not->toContain('ugc');
+        $s = ProductMemoryRules::example($f);
+        expect($s['works'])->toContain('Formato UGC: ganó 1 de 1 pieza.')->and($s['fails'])->toContain('Formato Imagen: ganó 0 de 1 pieza (perdió 1).')
+            ->and(ProductMemoryRules::input('Comprimax', $f))->toContain("PIEZA POR PIEZA (qué probó cada una):
+- Formato UGC: ganó 1 de 1 pieza");
+        // Si cambian las piezas con resultado, el resumen se vuelve a escribir
+        expect(ProductMemoryRules::hash($f))->not->toBe(ProductMemoryRules::hash(ProductMemoryRules::facts($batches(), ['GINE', 'ABDO', 'FAJA'], [], [])));
     });
 
     it('sin IA, el resumen sale de los números', function () use ($batches) {

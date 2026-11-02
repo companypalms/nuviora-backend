@@ -37,9 +37,13 @@ class ProductMemories
         ])->values()->all();
         $notes = ProductNote::where('product_id', $productId)->whereNull('archived_at')->orderBy('id')->get(['id', 'kind', 'text'])
             ->map(fn (ProductNote $n) => ['id' => $n->id, 'kind' => $n->kind, 'text' => $n->text])->all();
+        // .81: cada pieza con resultado: qué probó (o el tipo de su encargo) y su formato
+        $pieces = \App\Models\CreativeBatchPiece::with('batch:id,product_id,kind')->whereNotNull('result')
+            ->whereHas('batch', fn ($q) => $q->where('product_id', $productId))->orderByDesc('result_at')->orderByDesc('id')->get()
+            ->map(fn ($p) => ['code' => $p->code(), 'test' => $p->test ?? $p->batch?->kind, 'style' => $p->style, 'outcome' => (string) $p->result])->values()->all();
 
         return ProductMemoryRules::facts($rows, array_column(TestingPhase::angles($productId), 'code'),
-            array_column(ProductProfiles::get($productId)['personas'], 'name'), $notes);
+            array_column(ProductProfiles::get($productId)['personas'], 'name'), $notes, $pieces);
     }
 
     /** Lo que sabemos para la IA que escribe los encargos (vacío si todavía no hay nada). */
@@ -113,6 +117,7 @@ class ProductMemories
             // El resumen se escribió con otros datos (hay batches testeados o notas nuevas desde entonces)
             'stale' => $row !== null && $row->facts_hash !== ProductMemoryRules::hash($f),
             'tested' => $f['tested'], 'totals' => $f['totals'], 'groups' => $f['groups'], 'untested' => $f['untested'],
+            'piece_groups' => $f['piece_groups'],
             'batches' => $f['batches'], 'notes' => $notes,
         ];
     }

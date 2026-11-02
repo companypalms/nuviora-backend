@@ -11,7 +11,11 @@ use Illuminate\Database\Eloquent\Model;
  */
 class CreativeBatchPiece extends Model
 {
-    protected $fillable = ['creative_batch_id', 'number', 'position', 'change', 'format', 'link', 'hook'];
+    protected $fillable = ['creative_batch_id', 'number', 'position', 'change', 'format', 'link', 'hook',
+        // .81: qué prueba, el formato que prueba, su hipótesis, por qué ese formato y, al terminar el test, si ganó
+        'test', 'style', 'hypothesis', 'reason', 'result', 'result_at'];
+
+    protected $casts = ['result_at' => 'datetime'];
 
     public function batch()
     {

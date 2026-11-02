@@ -44,8 +44,8 @@ final class CreativeCalls
         'format' => 'Prueba la misma idea en imagen: en video está saliendo caro mostrarlo.',
     ];
 
-    /** `.80`: un ganador con todo bien (por ahora: hooks nuevos; en la `.81`, 2 formatos + 1 hook). */
-    private const HEALTHY = 'Este creativo funciona en todo: no lo toques. Haz hooks nuevos, uno distinto en cada pieza, con el mismo cuerpo, para que dure más.';
+    /** `.81`: un ganador con todo bien: 1 hook nuevo y el mismo mensaje en otros formatos (cada pieza dice cuál). */
+    private const HEALTHY = 'Este creativo funciona en todo: no lo toques. Haz lo que dice cada pieza: un hook nuevo con el mismo cuerpo y el mismo mensaje en otros formatos, para que dure más y aprendamos qué formato vende.';
 
     /** Lo que no es del video: con estas causas, que un ganador falle no es trabajo del editor. */
     private const NOT_VIDEO = ['auction', 'landing_offer', 'landing_speed', 'tracking'];

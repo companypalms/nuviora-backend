@@ -31,7 +31,7 @@ describe('La decisión de cada creativo', function () use ($cr, $subir, $pausar,
         $c = CreativeCalls::call($cr('proven'), $subir);
         expect($c['label'])->toBe('ESCALAR')->and($c['tone'])->toBe('success')
             ->and($c['todo'])->toBe('Va ganando: no toques el anuncio, sube el presupuesto y pide iteraciones de él. En Caracas: Subir $30,00 → $36,00.')
-            ->and($c['editor'])->toStartWith('Qué hacer: Este creativo funciona en todo: no lo toques. Haz hooks nuevos, uno distinto en cada pieza');
+            ->and($c['editor'])->toStartWith('Qué hacer: Este creativo funciona en todo: no lo toques. Haz lo que dice cada pieza: un hook nuevo con el mismo cuerpo y el mismo mensaje en otros formatos');
     });
 
     it('si va ganando pero su ciudad no está para subir, MANTENER (y avisa lo de la ciudad)', function () use ($cr, $pausar) {

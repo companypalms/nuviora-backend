@@ -321,8 +321,11 @@ class MetaQueueController extends Controller
         $profiles = \App\Services\Meta\Products\ProductProfiles::many($batches->pluck('product_id')->unique()->all());
 
         return EditorWork::sorted($batches)->map(function (CreativeBatch $b) use ($angles, $who, $profiles) {
+                // .81: qué prueba cada pieza, su hipótesis, por qué ese formato y, al terminar el test, si ganó
                 $pieces = $b->pieces->map(fn (CreativeBatchPiece $p) => ['id' => $p->id, 'code' => $p->code(), 'change' => $p->change, 'format' => $p->format,
-                    'link' => $p->link, 'hook' => $p->hook])->values()->all();
+                    'link' => $p->link, 'hook' => $p->hook, 'test_label' => \App\Services\Meta\Queue\PieceRules::TESTS[$p->test ?? $b->kind] ?? null,
+                    'style_label' => \App\Services\Meta\Queue\PieceRules::formatLabel($p->style), 'hypothesis' => $p->hypothesis, 'reason' => $p->reason,
+                    'result' => $p->result])->values()->all();
                 $out = [
                     'id' => $b->id, 'code' => $b->code(), 'product_id' => $b->product_id, 'product' => $b->product?->showable_name ?: $b->product?->title,
                     'status' => $b->status, 'status_label' => QueueRules::STATUSES[$b->status] ?? $b->status, 'status_at' => $b->status_at?->toIso8601String(),

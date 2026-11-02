@@ -32,7 +32,9 @@ final class QueueRules
     /** .66: el estilo del encargo (para aprender qué formato funciona en cada producto). */
     public const STYLES = [
         'testimonio' => 'Testimonio', 'animado' => 'Video animado', 'venta_directa' => 'Venta directa', 'demostracion' => 'Demostración',
-        'ugc' => 'UGC', 'antes_despues' => 'Antes y después', 'problema_solucion' => 'Problema–solución', 'otro' => 'Otro',
+        'ugc' => 'UGC', 'antes_despues' => 'Antes y después', 'problema_solucion' => 'Problema–solución',
+        'entrevista' => 'Entrevista', // .81 (dueño, 2026-11-02)
+        'otro' => 'Otro',
     ];
 
     /** Los veredictos de las reglas que cierran el test de un batch; sin datos o en evaluación todavía no dicen nada. */
@@ -183,11 +185,15 @@ final class QueueRules
             $lines[] = 'Estilo: ' . (self::STYLES[$b['style']] ?? $b['style']);
         }
         if ($b['pieces']) {
-            $lines[] = 'Ideas para cada versión (tú decides cómo):';
+            // .81: si las piezas traen qué prueba cada una, se dice pieza por pieza con su hipótesis
+            $planned = array_filter($b['pieces'], fn ($p) => !empty($p['hypothesis']));
+            $lines[] = $planned ? 'Qué hacer en cada pieza:' : 'Ideas para cada versión (tú decides cómo):';
             foreach ($b['pieces'] as $i => $p) {
                 $change = self::withoutPrices((string) $p['change']);
-                $lines[] = ($i + 1) . '. ' . ($p['code'] ? "{$p['code']} — " : '') . ($change ?? 'sin detalle')
-                    . ($p['format'] && $p['format'] !== $b['format'] ? ' (' . mb_strtolower(self::FORMATS[$p['format']] ?? $p['format']) . ')' : '');
+                $hypothesis = self::withoutPrices((string) ($p['hypothesis'] ?? ''));
+                $lines[] = ($i + 1) . '. ' . ($p['code'] ? "{$p['code']} — " : '') . (!empty($p['test_label']) && $planned ? "{$p['test_label']}: " : '') . ($change ?? 'sin detalle')
+                    . ($p['format'] && $p['format'] !== $b['format'] ? ' (' . mb_strtolower(self::FORMATS[$p['format']] ?? $p['format']) . ')' : '')
+                    . ($hypothesis !== null ? " Qué probamos: {$hypothesis}" : '');
             }
         }
         // Paso 5a: los enlaces de Drive de la última entrega, para subirlos a Meta

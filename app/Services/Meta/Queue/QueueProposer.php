@@ -167,7 +167,8 @@ class QueueProposer
         // .63: una idea por versión (sugerencias; el editor decide cómo)
         $texts = array_values(array_slice((array) ($t['ideas'] ?? []), 0, $p['pieces']));
         for ($i = 0; $i < $p['pieces']; $i++) {
-            CreativeBatchPiece::create(['creative_batch_id' => $batch->id, 'position' => $i + 1, 'change' => $clean($texts[$i] ?? null)]);
+            // .81: cada pieza sabe qué prueba (el tipo del encargo); su hipótesis es la del encargo
+            CreativeBatchPiece::create(['creative_batch_id' => $batch->id, 'position' => $i + 1, 'change' => $clean($texts[$i] ?? null), 'test' => $p['kind']]);
         }
     }
 
