@@ -16,7 +16,9 @@ use App\Services\Meta\Decisions\Rules\CampaignRules;
  * cosa que hacer en Ads Manager, en una frase con los montos exactos (`title`), su porqué en una línea (`why`), el detalle
  * para "¿Por qué?" (`detail`) y su grupo en la pantalla (`group`: frenar pérdidas, arreglar, crecer o un aviso, que no es
  * de Ads Manager). Suma los creativos que hay que apagar: los perdedores (en todas las ciudades) y los que pierden en una
- * ciudad (ahí).
+ * ciudad (ahí). Como un juego (dueño: "que todo tenga la lógica y la usabilidad de un juego"): cada punto es una misión,
+ * "hecho" o "no estoy de acuerdo" la resuelven (`tally`) y `money` dice cuánto presupuesto por día mueve (lo que se baja o
+ * se pausa y lo que se sube; apagar creativos no cuenta: con CBO, Meta pasa esa plata a los otros anuncios).
  */
 final class UrgentList
 {
@@ -43,7 +45,7 @@ final class UrgentList
 
     /**
      * @param list<array> $facts AnalysisFacts::build
-     * @return list<array{key: string, product_id: int, product: string, city: ?string, kind: string, label: string, text: string, tone: string, urgency: ?string, severity: int, group: string, title: string, why: ?string, detail: list<string>}>
+     * @return list<array{key: string, product_id: int, product: string, city: ?string, kind: string, label: string, text: string, tone: string, urgency: ?string, severity: int, group: string, title: string, why: ?string, detail: list<string>, money: ?array{cut: ?float, add: ?float}}>
      */
     public static function build(array $facts): array
     {
@@ -85,7 +87,8 @@ final class UrgentList
                     'label' => $a['label'], 'text' => trim($a['reading'] . ' ' . ($a['proposal'] ?? '')), 'tone' => $a['tone'],
                     'title' => self::title($kind, $name, $c['city'], $a, $n, isset($stopCity[(string) $c['city']]), $p['mode'] ?? 'normal'),
                     'why' => self::why($kind, $a, $n),
-                    'detail' => array_values(array_filter([...self::numbers($n), $a['reading'], $a['proposal'], ...$c['notes'], ...$c['budget_notes']]))];
+                    'detail' => array_values(array_filter([...self::numbers($n), $a['reading'], $a['proposal'], ...$c['notes'], ...$c['budget_notes']])),
+                    'money' => self::money($kind, $a, $n)];
                 if ($c['price_option']) {
                     $items[] = $base + ['key' => "{$p['product_id']}:{$c['campaign_meta_id']}:price", 'city' => $c['city'], 'kind' => 'price',
                         'label' => 'Precio', 'text' => $c['price_option'], 'tone' => 'info',
@@ -109,12 +112,41 @@ final class UrgentList
         foreach ($items as &$i) {
             $i['severity'] = self::SEVERITY[$i['kind']];
             $i['group'] = self::GROUP[$i['kind']];
+            $i['money'] ??= null;
         }
         unset($i);
         usort($items, fn ($a, $b) => [$a['severity'], $a['_level'], -$a['_risk'], $a['product'], (string) $a['city']]
             <=> [$b['severity'], $b['_level'], -$b['_risk'], $b['product'], (string) $b['city']]);
 
         return array_map(fn ($i) => array_diff_key($i, ['_level' => 1, '_risk' => 1]), $items);
+    }
+
+    /**
+     * `.82`: las misiones de un análisis (lo que no es un aviso) y cuántas están resueltas: "hecho" o "no estoy de acuerdo"
+     * (el dueño decidió no hacerlo: nunca se traba). Sirve para la racha y para el calendario.
+     *
+     * @return array{tasks: int, resolved: int}
+     */
+    public static function tally(array $urgent, array $marks): array
+    {
+        $tasks = array_filter($urgent, fn ($u) => ($u['group'] ?? self::GROUP[$u['kind']] ?? 'aviso') !== 'aviso');
+
+        return ['tasks' => count($tasks), 'resolved' => count(array_filter($tasks, fn ($u) => in_array($marks[$u['key']]['status'] ?? null, ['done', 'disagree'], true)))];
+    }
+
+    /** `.82`: cuánto presupuesto por día mueve la tarea: lo que se baja o se pausa (cut) y lo que se sube (add). */
+    private static function money(string $kind, array $a, ?array $n): ?array
+    {
+        $from = $a['from'] ?? null;
+        $to = $a['to'] ?? null;
+        $budget = $from ?? ($n['budget'] ?? null);
+
+        return match (true) {
+            $kind === 'scale' && $from && $to => ['cut' => null, 'add' => round($to - $from, 2)],
+            $kind === 'decrease' && $from && $to => ['cut' => round($from - $to, 2), 'add' => null],
+            in_array($kind, ['pause_city', 'drop'], true) && $budget => ['cut' => round((float) $budget, 2), 'add' => null],
+            default => null,
+        };
     }
 
     /** La clase de cosa que pide la regla de una ciudad ("No se vende aquí" es pausarla). */

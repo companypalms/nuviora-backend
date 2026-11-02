@@ -70,8 +70,9 @@ class MetaReminderFacts
             return ['ready' => false, 'urgent' => 0, 'calls' => [], 'sent' => 0, 'waiting' => 0];
         }
         $marks = $a->marks ?? [];
-        // .82: lo que hay que hacer en Ads Manager (los avisos de stock y precio no cuentan, como en la pantalla)
-        $urgent = count(array_filter($a->urgent ?? [], fn ($u) => ($marks[$u['key']]['status'] ?? null) !== 'done' && ($u['group'] ?? null) !== 'aviso'));
+        // .82: las misiones que faltan (los avisos de stock y precio no cuentan, y "no estoy de acuerdo" la resuelve, como en la pantalla)
+        $tally = \App\Services\Meta\Analysis\UrgentList::tally($a->urgent ?? [], $marks);
+        $urgent = $tally['tasks'] - $tally['resolved'];
         $calls = [];
         foreach (array_keys(\App\Services\Meta\Analysis\CreativeCalls::CALLS) as $k) {
             $calls[\App\Services\Meta\Analysis\CreativeCalls::CALLS[$k]['label']] = 0;

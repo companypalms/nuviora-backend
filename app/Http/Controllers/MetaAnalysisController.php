@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\CreativeBatch;
 use App\Models\MetaAnalysis;
 use App\Services\Meta\Analysis\AnalysisSender;
+use App\Services\Meta\Analysis\DayStreak;
 use App\Services\Meta\Analysis\MetaAnalyzer;
 use App\Services\Meta\Queue\QueueRules;
 use Illuminate\Http\Request;
@@ -101,6 +102,8 @@ class MetaAnalysisController extends Controller
             'model' => $a->model, 'error' => $a->error, 'warnings' => $a->warnings ?? [],
             'urgent' => $a->urgent ?? [], 'marks' => (object) ($a->marks ?? []),
             'facts' => $a->facts ?? [], 'text' => $a->text,
+            // .82: la racha: cuántos días seguidos, hasta el día anterior a este análisis, se resolvieron todas las misiones
+            'streak' => ['before' => DayStreak::before($a->date->toDateString())],
             // .71: lo que ya tiene el equipo de cada creativo (el encargo que se le mandó al editor líder)
             'sent' => (object) self::sent($a->facts ?? []),
             // .78: por producto, su turno: el creativo que va primero y sus encargos en camino o en la banca

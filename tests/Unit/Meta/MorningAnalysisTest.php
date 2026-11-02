@@ -3,6 +3,7 @@
 use App\Services\Calendar\Rules\ReminderRules;
 use App\Services\Meta\Analysis\AnalysisFacts;
 use App\Services\Meta\Analysis\AnalysisWriter;
+use App\Services\Meta\Analysis\DayStreak;
 use App\Services\Meta\Analysis\MoneyCheck;
 use App\Services\Meta\Analysis\UrgentList;
 
@@ -108,6 +109,45 @@ describe('.82: tu día en Meta Ads', function () {
             // Aragua ya apaga sus creativos: intervenir solo lanza
             ->and(collect($list)->firstWhere('kind', 'intervene')['title'])->toBe('Interviene FlexiStep en Aragua: lanza un batch nuevo, sin tocar el presupuesto')
             ->and(UrgentList::build([$p])[1]['key'])->toBe($stops[1]['key']);
+    });
+
+    it('como un juego: cuánto presupuesto mueve cada misión, y "no estoy de acuerdo" también la resuelve', function () {
+        $sube = ciudad('a', 'Caracas', 'scale', 'Subir $51,60 → $61,92');
+        $sube['action']['from'] = 51.6;
+        $sube['action']['to'] = 61.92;
+        $baja = ciudad('b', 'Valencia', 'decrease', 'Bajar $30,00 → $24,00');
+        $baja['action']['from'] = 30.0;
+        $baja['action']['to'] = 24.0;
+        $pausa = ciudad('c', 'Carabobo', 'pause_city', 'Pausar la ciudad');
+        $pausa['action']['from'] = 25.0;
+        $p = producto(1, 'FlexiStep', 1, 0, [$sube, $baja, $pausa], ['Poco stock en Caracas.']);
+        $p['stop_all'] = ['C004'];
+        $list = collect(UrgentList::build([$p]))->keyBy('kind');
+
+        expect($list['scale']['money'])->toBe(['cut' => null, 'add' => 10.32])
+            ->and($list['decrease']['money'])->toBe(['cut' => 6.0, 'add' => null])
+            ->and($list['pause_city']['money'])->toBe(['cut' => 25.0, 'add' => null])
+            // con CBO, apagar creativos no baja el gasto: Meta pasa esa plata a los otros anuncios
+            ->and($list['stop_creatives']['money'])->toBeNull();
+
+        $marks = [$list['scale']['key'] => ['status' => 'done'], $list['decrease']['key'] => ['status' => 'disagree'], $list['alarm']['key'] => ['status' => 'done']];
+        expect(UrgentList::tally($list->values()->all(), $marks))->toBe(['tasks' => 4, 'resolved' => 2])
+            // los análisis de antes de la .82 (sin grupo): los avisos tampoco cuentan
+            ->and(UrgentList::tally([['key' => 'x', 'kind' => 'alarm'], ['key' => 'y', 'kind' => 'scale']], []))->toBe(['tasks' => 1, 'resolved' => 0]);
+    });
+
+    it('la racha: días seguidos con todo resuelto; un día sin misiones no la corta', function () {
+        $days = [
+            '2026-11-02' => ['tasks' => 5, 'resolved' => 1], // hoy: se suma en la pantalla al terminar
+            '2026-11-01' => ['tasks' => 3, 'resolved' => 3],
+            '2026-10-31' => ['tasks' => 0, 'resolved' => 0],
+            '2026-10-30' => ['tasks' => 2, 'resolved' => 2],
+            '2026-10-29' => ['tasks' => 4, 'resolved' => 3],
+            '2026-10-28' => ['tasks' => 1, 'resolved' => 1],
+        ];
+        expect(DayStreak::count($days, '2026-11-02'))->toBe(2)
+            ->and(DayStreak::count($days, '2026-10-30'))->toBe(0)
+            ->and(DayStreak::count([], '2026-11-02'))->toBe(0);
     });
 
     it('los análisis sin números (de antes) siguen funcionando', function () {
