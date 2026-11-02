@@ -24,6 +24,7 @@ class WhatsappMessage extends Model
         'body',
         'is_from_client',
         'message_type',
+        'template_name',
         'status',
         'error_code',
         'error_reason',
@@ -37,6 +38,17 @@ class WhatsappMessage extends Model
         'media' => 'array',
         'sent_at' => 'datetime'
     ];
+
+    /**
+     * La plantilla de confirmación del pedido (el ancla de los recordatorios de n8n): por el nombre de la plantilla
+     * (template_name) o, en los mensajes de antes de guardarlo, por el texto "Plantilla: confirmacion…". Los
+     * recordatorios ("no_respondio_confirmacion_…") no empiezan con "confirmacion", así que no mueven el ancla.
+     */
+    public function scopeConfirmationTemplate($query)
+    {
+        return $query->where(fn ($q) => $q->where('template_name', 'like', 'confirmacion%')
+            ->orWhere('body', 'like', 'Plantilla: confirmacion%'));
+    }
 
     public function order()
     {

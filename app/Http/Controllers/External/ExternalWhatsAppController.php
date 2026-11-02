@@ -227,6 +227,9 @@ class ExternalWhatsAppController extends Controller
                 'body'           => $renderedBody,
                 'is_from_client' => false,
                 'message_type'   => $messageType,
+                // La plantilla de Meta, esté o no importada en el sistema: con ella check-window reconoce la
+                // confirmación y n8n sabe cuándo toca el recordatorio (dueño, 2026-11-02)
+                'template_name'  => $templateName ?: null,
                 'status'         => 'sending',
                 'sent_at'        => now(),
             ]);
@@ -478,13 +481,14 @@ class ExternalWhatsAppController extends Controller
         // posterior (un acuse "¡Gracias!", o el propio recordatorio) "tapa" la respuesta del
         // cliente y le reenviamos plantilla aunque ya hubiera contestado. Ese era el bug.
         //
-        // La confirmación se guarda como body "Plantilla: confirmacion_..." (ver send()).
-        // Los recordatorios son "Plantilla: no_respondio_confirmacion_..." y NO matchean
-        // 'Plantilla: confirmacion%', por eso el ancla NO se mueve con ellos.
-        // (Si agregas plantillas de confirmación con otro nombre, amplía este patrón.)
+        // La confirmación se reconoce por el nombre de su plantilla (template_name, ver send()) o, en los
+        // mensajes de antes, por el texto "Plantilla: confirmacion_...". Antes solo por el texto: si la plantilla
+        // estaba importada en el sistema se guardaba su texto completo y nunca salía un recordatorio (2026-11-02).
+        // Los recordatorios son "no_respondio_confirmacion_..." y no empiezan con "confirmacion": el ancla
+        // NO se mueve con ellos. (Si agregas plantillas de confirmación con otro nombre, amplía el patrón.)
         $confirmationMessage = WhatsappMessage::where('client_id', $client->id)
             ->where('is_from_client', false)
-            ->where('body', 'like', 'Plantilla: confirmacion%')
+            ->confirmationTemplate()
             ->when($order, function($q) use ($order) {
                 $q->where('order_id', $order->id);
             })

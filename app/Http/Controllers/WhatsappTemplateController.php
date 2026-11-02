@@ -83,11 +83,12 @@ class WhatsappTemplateController extends Controller
     }
 
     /**
-     * Remove the specified resource from storage.
+     * DELETE /whatsapp-templates/{id}. Antes recibía la plantilla por "enlace de modelo", pero la ruta se llama {id}:
+     * llegaba una plantilla vacía, no se borraba nada y respondía "Plantilla eliminada" igual (dueño, 2026-11-02).
      */
-    public function destroy(WhatsappTemplate $whatsappTemplate)
+    public function destroy($id)
     {
-        $whatsappTemplate->delete();
+        WhatsappTemplate::findOrFail($id)->delete();
         return response()->json(['message' => 'Plantilla eliminada']);
     }
 

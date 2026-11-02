@@ -415,11 +415,16 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
     /**---------------------
      * WHATSAPP MESSAGES
      * ---------------------**/
-    Route::get('/whatsapp-templates/meta', [\App\Http\Controllers\WhatsappTemplateController::class, 'metaTemplates']);
-    Route::post('/whatsapp-templates/import-meta', [\App\Http\Controllers\WhatsappTemplateController::class, 'importFromMeta']);
-    Route::put('/whatsapp-templates/{id}', [\App\Http\Controllers\WhatsappTemplateController::class, 'update']);
-    Route::delete('/whatsapp-templates/{id}', [\App\Http\Controllers\WhatsappTemplateController::class, 'destroy']);
-    Route::apiResource('whatsapp-templates', \App\Http\Controllers\WhatsappTemplateController::class)->except(['update', 'destroy']);
+    // Plantillas: verlas, cualquiera (el chat de las vendedoras las usa); crearlas, editarlas, borrarlas e importarlas
+    // de Meta, solo administración (la pantalla ya era solo del Admin; la API no lo cuidaba) (2026-11-02)
+    Route::middleware('role:Admin,Master')->group(function () {
+        Route::get('/whatsapp-templates/meta', [\App\Http\Controllers\WhatsappTemplateController::class, 'metaTemplates']);
+        Route::post('/whatsapp-templates/import-meta', [\App\Http\Controllers\WhatsappTemplateController::class, 'importFromMeta']);
+        Route::post('/whatsapp-templates', [\App\Http\Controllers\WhatsappTemplateController::class, 'store']);
+        Route::put('/whatsapp-templates/{id}', [\App\Http\Controllers\WhatsappTemplateController::class, 'update']);
+        Route::delete('/whatsapp-templates/{id}', [\App\Http\Controllers\WhatsappTemplateController::class, 'destroy']);
+    });
+    Route::apiResource('whatsapp-templates', \App\Http\Controllers\WhatsappTemplateController::class)->only(['index', 'show']);
     Route::get('/orders/{order}/whatsapp-messages', [\App\Http\Controllers\WhatsappMessageController::class, 'index'])->middleware('order.access');
     Route::post('/orders/{order}/whatsapp-messages', [\App\Http\Controllers\WhatsappMessageController::class, 'store'])->middleware('order.access');
     Route::post('/orders/{order}/whatsapp-media', [\App\Http\Controllers\WhatsappMessageController::class, 'sendMedia'])->middleware('order.access');
