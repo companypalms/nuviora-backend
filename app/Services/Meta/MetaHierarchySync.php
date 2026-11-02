@@ -46,6 +46,9 @@ class MetaHierarchySync
      */
     public const PAGE_SIZES = [200, 50, 25];
 
+    /** Los anuncios con su texto y su landing, directo de a 50: de a 200 Meta ya no los da en ninguna cuenta (.77). */
+    public const AD_PAGE_SIZES = [50, 25];
+
     /** Si la última lista se pidió con los campos nuevos (si no, no se pisan los datos guardados). */
     private bool $full = true;
 
@@ -110,7 +113,7 @@ class MetaHierarchySync
         $this->markMissing(MetaAdset::class, $account, array_keys($adsetIds), $now);
         $adsetIds += MetaAdset::where('meta_ad_account_id', $account->id)->pluck('id', 'meta_id')->all();
 
-        $ads = $this->fetch($client, "{$act}/ads", self::AD_FIELDS_FULL, self::AD_FIELDS);
+        $ads = $this->fetch($client, "{$act}/ads", self::AD_FIELDS_FULL, self::AD_FIELDS, self::AD_PAGE_SIZES);
         $seenAds = [];
         foreach ($ads as $row) {
             $creative = $row['creative'] ?? [];
@@ -277,31 +280,33 @@ class MetaHierarchySync
     }
 
     /**
-     * Pide una lista; si Meta no acepta un campo nuevo (paso 1a), o si ni en páginas chicas acepta tantos datos, se piden
-     * los de siempre ($basic).
+     * Pide una lista; si Meta no acepta un campo nuevo (paso 1a), si ni en páginas chicas acepta tantos datos, o si corta
+     * la conexión o no responde a tiempo (.77: Solobrillo, "Connection reset by peer" de a 50), se piden los de siempre
+     * ($basic), que son livianos.
      */
-    private function fetch(MetaClient $client, string $path, string $fields, ?string $basic = null): array
+    private function fetch(MetaClient $client, string $path, string $fields, ?string $basic = null, array $sizes = self::PAGE_SIZES): array
     {
         $this->full = true;
         try {
-            return $this->fetchInPages($client, $path, $fields);
+            return $this->fetchInPages($client, $path, $fields, $sizes);
         } catch (MetaApiException $e) {
-            if ($basic === null || !in_array($e->kind, [MetaApiException::FIELD, MetaApiException::PERMISSION, MetaApiException::TOO_MUCH_DATA], true)) {
+            $fallback = [MetaApiException::FIELD, MetaApiException::PERMISSION, MetaApiException::TOO_MUCH_DATA, MetaApiException::TIMEOUT];
+            if ($basic === null || !in_array($e->kind, $fallback, true)) {
                 throw $e;
             }
             $this->full = false;
-            return $this->fetchInPages($client, $path, $basic);
+            return $this->fetchInPages($client, $path, $basic, self::PAGE_SIZES);
         }
     }
 
-    /** Con "demasiados datos", la misma lista en páginas más chicas (PAGE_SIZES). */
-    private function fetchInPages(MetaClient $client, string $path, string $fields): array
+    /** Con "demasiados datos", la misma lista en páginas más chicas ($sizes). */
+    private function fetchInPages(MetaClient $client, string $path, string $fields, array $sizes): array
     {
-        foreach (self::PAGE_SIZES as $i => $limit) {
+        foreach ($sizes as $i => $limit) {
             try {
                 return $this->fetchWithStatuses($client, $path, $fields, $limit);
             } catch (MetaApiException $e) {
-                if ($e->kind !== MetaApiException::TOO_MUCH_DATA || $i === array_key_last(self::PAGE_SIZES)) {
+                if ($e->kind !== MetaApiException::TOO_MUCH_DATA || $i === array_key_last($sizes)) {
                     throw $e;
                 }
             }
