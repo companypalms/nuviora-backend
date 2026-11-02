@@ -39,6 +39,13 @@ class MetaHierarchySync
     /** Paso 1a: lo que dice el anuncio y a dónde lleva. */
     private const AD_FIELDS_FULL = 'id,name,adset_id,campaign_id,status,effective_status,created_time,updated_time,creative{id,name,object_type,video_id,image_hash,thumbnail_url,body,title,image_url,url_tags,object_story_spec,asset_feed_spec}';
 
+    /**
+     * Cuántos se piden por página. 2026-11-02: desde el 31/10 Meta respondía "Please reduce the amount of data" a la lista
+     * de anuncios con su texto y su landing (de a 200) en todas las cuentas, y los anuncios se quedaron congelados: si
+     * Meta dice que es mucho, se piden páginas más chicas.
+     */
+    public const PAGE_SIZES = [200, 50, 25];
+
     /** Si la última lista se pidió con los campos nuevos (si no, no se pisan los datos guardados). */
     private bool $full = true;
 
@@ -138,7 +145,9 @@ class MetaHierarchySync
             $seenAds[] = $ad->meta_id;
             $states['ad'][$ad->meta_id] = MetaSnapshots::state('ad', $row);
         }
-        $this->markMissing(MetaAd::class, $account, $seenAds, $now);
+        if (self::marksMissingAds($seenAds, $adsets)) {
+            $this->markMissing(MetaAd::class, $account, $seenAds, $now);
+        }
         $this->linker->run(['account' => $account->id]);
         // Paso 6a: a qué landing lleva cada anuncio y desde cuándo (un error aquí no frena la sincronización)
         try {
@@ -161,6 +170,16 @@ class MetaHierarchySync
         }
 
         return count($campaigns) + count($adsets) + count($ads);
+    }
+
+    /**
+     * Si los anuncios que no llegaron se anotan como "ya no están" (PHP puro). Una lista vacía de una cuenta con ad sets
+     * activos es un error de Meta, no que se borraron todos sus anuncios (2026-10-31: los 589 de la cuenta de Comprimax
+     * quedaron como "ya no están").
+     */
+    public static function marksMissingAds(array $seenAds, array $adsets): bool
+    {
+        return $seenAds !== [] || !collect($adsets)->contains(fn ($row) => ($row['effective_status'] ?? null) === 'ACTIVE');
     }
 
     /**
@@ -257,31 +276,50 @@ class MetaHierarchySync
         }
     }
 
-    /** Pide una lista; si Meta no acepta un campo nuevo (paso 1a), se piden los de siempre ($basic). */
+    /**
+     * Pide una lista; si Meta no acepta un campo nuevo (paso 1a), o si ni en páginas chicas acepta tantos datos, se piden
+     * los de siempre ($basic).
+     */
     private function fetch(MetaClient $client, string $path, string $fields, ?string $basic = null): array
     {
         $this->full = true;
         try {
-            return $this->fetchWithStatuses($client, $path, $fields);
+            return $this->fetchInPages($client, $path, $fields);
         } catch (MetaApiException $e) {
-            if ($basic === null || !in_array($e->kind, [MetaApiException::FIELD, MetaApiException::PERMISSION], true)) {
+            if ($basic === null || !in_array($e->kind, [MetaApiException::FIELD, MetaApiException::PERMISSION, MetaApiException::TOO_MUCH_DATA], true)) {
                 throw $e;
             }
             $this->full = false;
-            return $this->fetchWithStatuses($client, $path, $basic);
+            return $this->fetchInPages($client, $path, $basic);
         }
     }
 
-    private function fetchWithStatuses(MetaClient $client, string $path, string $fields): array
+    /** Con "demasiados datos", la misma lista en páginas más chicas (PAGE_SIZES). */
+    private function fetchInPages(MetaClient $client, string $path, string $fields): array
+    {
+        foreach (self::PAGE_SIZES as $i => $limit) {
+            try {
+                return $this->fetchWithStatuses($client, $path, $fields, $limit);
+            } catch (MetaApiException $e) {
+                if ($e->kind !== MetaApiException::TOO_MUCH_DATA || $i === array_key_last(self::PAGE_SIZES)) {
+                    throw $e;
+                }
+            }
+        }
+
+        return [];
+    }
+
+    private function fetchWithStatuses(MetaClient $client, string $path, string $fields, int $limit): array
     {
         try {
-            return $client->getAll($path, ['fields' => $fields, 'limit' => 200, 'effective_status' => self::STATUSES]);
+            return $client->getAll($path, ['fields' => $fields, 'limit' => $limit, 'effective_status' => self::STATUSES]);
         } catch (MetaApiException $e) {
             if ($e->kind !== MetaApiException::FIELD && $e->kind !== MetaApiException::META) {
                 throw $e;
             }
             // Si Meta no acepta el filtro de estados, se pide sin él (solo llegan los no archivados).
-            return $client->getAll($path, ['fields' => $fields, 'limit' => 200]);
+            return $client->getAll($path, ['fields' => $fields, 'limit' => $limit]);
         }
     }
 
