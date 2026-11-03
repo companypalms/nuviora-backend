@@ -330,11 +330,14 @@ class MetaQueueController extends Controller
         $profiles = \App\Services\Meta\Products\ProductProfiles::many($batches->pluck('product_id')->unique()->all());
         // .87: dónde salió cada uno y para qué ciudades sigue en banca
         $cities = \App\Services\Meta\Queue\BatchCities::of($batches);
+        // .90: el archivo de cada pieza, para verlo ahí mismo
+        $pieceFiles = \App\Models\StoredFile::payloads($batches->flatMap(fn (CreativeBatch $b) => $b->pieces->pluck('file_id'))->all());
 
-        return EditorWork::sorted($batches)->map(function (CreativeBatch $b) use ($angles, $who, $profiles, $cities) {
+        return EditorWork::sorted($batches)->map(function (CreativeBatch $b) use ($angles, $who, $profiles, $cities, $pieceFiles) {
                 // .81: qué prueba cada pieza, su hipótesis, por qué ese formato y, al terminar el test, si ganó
                 $pieces = $b->pieces->map(fn (CreativeBatchPiece $p) => ['id' => $p->id, 'code' => $p->code(), 'change' => $p->change, 'format' => $p->format,
-                    'link' => $p->link, 'hook' => $p->hook, 'test_label' => \App\Services\Meta\Queue\PieceRules::TESTS[$p->test ?? $b->kind] ?? null,
+                    'link' => $p->link, 'file' => $pieceFiles[$p->file_id] ?? null, 'hook' => $p->hook,
+                    'test_label' => \App\Services\Meta\Queue\PieceRules::TESTS[$p->test ?? $b->kind] ?? null,
                     'style_label' => \App\Services\Meta\Queue\PieceRules::formatLabel($p->style), 'hypothesis' => $p->hypothesis, 'reason' => $p->reason,
                     'result' => $p->result])->values()->all();
                 $out = [
@@ -352,6 +355,7 @@ class MetaQueueController extends Controller
                     'discard_reason' => $b->discard_reason, 'testing_at' => $b->testing_at?->toIso8601String(), 'tested_at' => $b->tested_at?->toIso8601String(),
                     'result' => $b->result, 'learning' => $b->learning, 'pieces' => $pieces, 'cities' => $cities[$b->id] ?? null,
                     'meta_names' => QueueRules::metaNames($b->number, $b->angle_code, $b->pieces->pluck('number')->all()),
+                    'uploads' => \App\Services\Files\FileStore::on(), // .90
                 ] + EditorWork::fields($b, $who);
 
                 return $out + ['brief' => QueueRules::brief($out)];

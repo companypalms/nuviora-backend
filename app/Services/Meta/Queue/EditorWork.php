@@ -6,7 +6,10 @@ use App\Models\AdAngle;
 use App\Models\CreativeBatch;
 use App\Models\CreativeBatchDelivery;
 use App\Models\CreativeBatchPiece;
+use App\Models\StoredFile;
 use App\Models\User;
+use App\Services\Files\FileStore;
+use App\Services\Files\Uploads;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -71,10 +74,28 @@ class EditorWork
     }
 
     /**
-     * Entregar: un enlace de Drive de un archivo y su hook por cada pieza, y la ficha (concepto y ángulo). Pasa a "En
-     * revisión" como la versión siguiente (V01, V02…).
+     * `.90` (dueño: "que se suban todos los archivos en el sistema en vez de utilizar Google Drive"): subir el archivo de
+     * una pieza al almacén (el editor del encargo, mientras lo puede entregar). Queda con el nombre de su anuncio
+     * ("C0457 POSP.mp4") y es de la próxima versión. Se confirma con Uploads::confirm y se entrega con deliver.
+     */
+    public function uploadPiece(CreativeBatch $batch, CreativeBatchPiece $piece, User $actor, string $name, string $mime, int $size): array
+    {
+        $this->authorize('deliver', $actor, $batch);
+        abort_unless((int) $piece->creative_batch_id === (int) $batch->id, 404, 'Esa pieza no es de este encargo: vuelve a abrirlo.');
+        $names = QueueRules::metaNames($batch->number, $batch->angle_code, [$piece->number]);
+
+        return app(Uploads::class)->start([
+            'kind' => 'piece', 'name' => $name, 'display' => $names['ads'][0] ?? $piece->code(), 'product_id' => $batch->product_id,
+            'batch' => $names['adset'] ?? $batch->code(), 'piece_id' => $piece->id, 'version' => (int) $batch->deliveries()->max('version') + 1,
+        ], $mime, $size, $actor);
+    }
+
+    /**
+     * Entregar: el archivo (`.90`, con el almacén encendido; si no, un enlace de Drive) y su hook por cada pieza, y la
+     * ficha (concepto y ángulo). Pasa a "En revisión" como la versión siguiente (V01, V02…). En una corrección, la pieza
+     * que no se volvió a subir sigue con su archivo.
      *
-     * @param array{concept: string, angle: string, notes?: ?string, pieces: list<array{id: int, link: ?string, hook: ?string}>} $data
+     * @param array{concept: string, angle: string, notes?: ?string, pieces: list<array{id: int, link?: ?string, file_id?: ?int, hook: ?string}>} $data
      */
     public function deliver(CreativeBatch $batch, User $actor, array $data): CreativeBatchDelivery
     {
@@ -83,6 +104,10 @@ class EditorWork
             $this->authorize('deliver', $actor, $batch);
             $pieces = $batch->pieces()->get();
             $given = collect($data['pieces'])->keyBy(fn ($p) => (int) $p['id']);
+            $files = FileStore::on();
+            // .90: el archivo nuevo de cada pieza, o el que ya tenía (si no lo volvió a subir)
+            $fileOf = fn (CreativeBatchPiece $p) => (int) ($given->get($p->id)['file_id'] ?? 0) ?: (int) $p->file_id;
+            $ready = $files ? StoredFile::whereIn('id', $pieces->map($fileOf)->filter()->values())->where('kind', 'piece')->where('status', 'ready')->get()->keyBy('id') : collect();
             $errors = [];
             if ($given->keys()->diff($pieces->pluck('id'))->isNotEmpty()) {
                 $errors['pieces'] = 'Hay piezas que no son de este encargo: vuelve a abrirlo.';
@@ -90,7 +115,9 @@ class EditorWork
             foreach ($pieces->values() as $i => $p) {
                 $g = $given->get($p->id);
                 $name = $p->code() ?? 'Pieza ' . ($i + 1);
-                if (EditorRules::driveFileId($g['link'] ?? null) === null) {
+                if ($files && (int) ($ready->get($fileOf($p))?->creative_batch_piece_id) !== (int) $p->id) {
+                    $errors["pieces.{$i}.file"] = "{$name}: sube el video o la imagen de esta pieza.";
+                } elseif (!$files && EditorRules::driveFileId($g['link'] ?? null) === null) {
                     $errors["pieces.{$i}.link"] = "{$name}: " . EditorRules::linkProblem($g['link'] ?? null);
                 }
                 if (trim((string) ($g['hook'] ?? '')) === '') {
@@ -102,13 +129,14 @@ class EditorWork
             }
 
             $rows = $pieces->map(fn (CreativeBatchPiece $p) => ['piece_id' => $p->id, 'code' => $p->code(),
-                'link' => trim($given[$p->id]['link']), 'hook' => trim($given[$p->id]['hook'])])->values()->all();
+                'link' => $files ? null : trim($given[$p->id]['link']), 'file_id' => $files ? $fileOf($p) : null,
+                'hook' => trim($given[$p->id]['hook'])])->values()->all();
             $delivery = CreativeBatchDelivery::create([
                 'creative_batch_id' => $batch->id, 'version' => (int) $batch->deliveries()->max('version') + 1, 'editor_id' => $actor->id,
                 'concept' => trim($data['concept']), 'angle' => trim($data['angle']), 'notes' => trim((string) ($data['notes'] ?? '')) ?: null, 'pieces' => $rows,
             ]);
             foreach ($pieces as $i => $p) {
-                $p->forceFill(['link' => $rows[$i]['link'], 'hook' => $rows[$i]['hook']])->save();
+                $p->forceFill(['link' => $rows[$i]['link'], 'file_id' => $rows[$i]['file_id'], 'hook' => $rows[$i]['hook']])->save();
             }
             $now = now();
             // .89 (dueño, 2026-11-03: "él mismo lo aprueba, pero debe quedar en el sistema que esos creativos los hizo él"):
@@ -169,12 +197,18 @@ class EditorWork
         $refs = self::references($refIds);
         // .56: lo que dice el video de cada referencia (si es un ganador transcrito)
         $scripts = \App\Services\Meta\Videos\Scripts::forCreatives($refIds);
-        $profiles = \App\Services\Meta\Products\ProductProfiles::many($batches->pluck('product_id')->unique()->all());
+        $productIds = $batches->pluck('product_id')->unique()->all();
+        $profiles = \App\Services\Meta\Products\ProductProfiles::many($productIds);
+        // .90: la ficha completa (todos los buyer personas y ángulos), las fotos del producto y el archivo de cada pieza
+        $allAngles = \App\Services\Meta\Products\TestingPhase::anglesMany($productIds);
+        $photos = StoredFile::photosOf($productIds);
+        $pieceFiles = StoredFile::payloads($batches->flatMap(fn (CreativeBatch $b) => $b->pieces->pluck('file_id'))->all());
+        $uploads = FileStore::on();
 
         // .69: el editor no ve precios ni montos en ningún texto (la ficha, la oferta, lo que escribió la IA, la referencia)
         $clean = fn (?string $v) => QueueRules::withoutPrices($v);
 
-        return self::sorted($batches)->map(function (CreativeBatch $b) use ($angles, $refs, $scripts, $profiles, $who, $clean) {
+        return self::sorted($batches)->map(function (CreativeBatch $b) use ($angles, $refs, $scripts, $profiles, $who, $clean, $allAngles, $photos, $pieceFiles, $uploads) {
             $out = [
                 'id' => $b->id, 'code' => $b->code(), 'product' => $b->product?->showable_name ?: $b->product?->title,
                 'status' => $b->status, 'status_label' => QueueRules::STATUSES[$b->status] ?? $b->status, 'status_at' => $b->status_at?->toIso8601String(),
@@ -184,7 +218,7 @@ class EditorWork
                 // la prioridad, ni la ciudad de prueba): el editor ve solo lo que necesita para hacer su trabajo
                 'test_idea' => $clean($b->test_idea), 'goal' => $clean($b->goal), 'keep' => $clean($b->keep), 'improve' => $clean($b->improve),
                 'concept' => $clean($b->concept), 'audience' => $clean($b->audience),
-            ] + self::product($b, $profiles) + [
+            ] + self::product($b, $profiles, $allAngles, $photos) + [
                 'reference' => $b->reference?->label, 'reference_thumbnail' => $refs[$b->reference_creative_id]['thumbnail'] ?? null,
                 'reference_texts' => QueueRules::withoutPricesIn($refs[$b->reference_creative_id]['texts'] ?? []),
                 'reference_script' => QueueRules::withoutPricesIn($scripts[$b->reference_creative_id] ?? null),
@@ -192,9 +226,10 @@ class EditorWork
                 'offer' => $clean($b->offer), 'deliverables' => $clean($b->deliverables), 'due_date' => $b->due_date?->toDateString(),
                 // .81: qué prueba cada pieza y su hipótesis (por qué ese formato y el resultado son del dueño)
                 'pieces' => $b->pieces->map(fn (CreativeBatchPiece $p) => ['id' => $p->id, 'code' => $p->code(), 'change' => $clean($p->change), 'format' => $p->format,
-                    'link' => $p->link, 'hook' => $p->hook, 'test_label' => PieceRules::TESTS[$p->test] ?? null, 'style_label' => PieceRules::formatLabel($p->style),
-                    'hypothesis' => $clean($p->hypothesis)])->values()->all(),
+                    'link' => $p->link, 'file' => $pieceFiles[$p->file_id] ?? null, 'hook' => $p->hook, 'test_label' => PieceRules::TESTS[$p->test] ?? null,
+                    'style_label' => PieceRules::formatLabel($p->style), 'hypothesis' => $clean($p->hypothesis)])->values()->all(),
                 'meta_names' => QueueRules::metaNames($b->number, $b->angle_code, $b->pieces->pluck('number')->all()),
+                'uploads' => $uploads, // .90: se entrega subiendo el archivo (no con Drive)
             ] + self::fields($b, $who);
 
             return $out + ['brief' => QueueRules::brief($out)];
@@ -203,17 +238,26 @@ class EditorWork
 
     /**
      * `.64`: lo del producto que ve el editor (qué es, para qué sirve, cómo funciona, lo que NO es, la información clave y
-     * las fotos) y SOLO el buyer persona de su encargo: nunca la lista completa, ni los ángulos, ni los aprendizajes.
+     * las fotos) y el buyer persona de su encargo. `.90` (dueño, 2026-11-03: "cada editor debe poder saber de qué trata
+     * cada buyer persona, de qué trata cada ángulo, cuál es el mecanismo de acción del producto, cuál es el producto"):
+     * también todos los buyer personas y todos los ángulos (con de qué trata cada uno), sin el orden de fuerza, y las
+     * fotos del producto. Nunca los aprendizajes ni los precios.
      *
      * @param array<int, array{profile: ?array, personas: list<array>}> $profiles ProductProfiles::many
+     * @param array<int, list<array>> $angles TestingPhase::anglesMany
+     * @param array<int, list<array>> $photos StoredFile::photosOf
      */
-    public static function product(CreativeBatch $b, array $profiles): array
+    public static function product(CreativeBatch $b, array $profiles, array $angles = [], array $photos = []): array
     {
         $rules = \App\Services\Meta\Products\ProductProfileRules::class;
 
         return [
             'product_info' => $rules::forEditor($profiles[$b->product_id]['profile'] ?? null),
             'persona' => $rules::personaForEditor($b->persona?->only(array_keys($rules::PERSONA_FIELDS))),
+            'personas' => array_values(array_filter(array_map(fn ($p) => $rules::personaForEditor(array_intersect_key($p, $rules::PERSONA_FIELDS)),
+                $profiles[$b->product_id]['personas'] ?? []))),
+            'angles' => $rules::anglesForEditor($angles[$b->product_id] ?? []),
+            'photos' => $photos[$b->product_id] ?? [],
         ];
     }
 
@@ -228,6 +272,8 @@ class EditorWork
         $pending = $b->deliveries->firstWhere('review', 'pending');
         $state = ['status' => $b->status, 'editor_id' => $b->editor_id, 'pending_by' => $pending?->editor_id];
         $last = $b->deliveries->first();
+        // .90: el archivo de cada pieza de cada entrega (para verlo ahí mismo)
+        $files = StoredFile::payloads($b->deliveries->flatMap(fn (CreativeBatchDelivery $d) => array_column((array) $d->pieces, 'file_id'))->all());
 
         return [
             'editor_id' => $b->editor_id, 'editor' => $b->editor ? self::name($b->editor) : null,
@@ -239,7 +285,8 @@ class EditorWork
                 'by' => $last->reviewer ? self::name($last->reviewer) : null] : null,
             'deliveries' => $b->deliveries->map(fn (CreativeBatchDelivery $d) => [
                 'id' => $d->id, 'version' => $d->label(), 'editor' => $d->editor ? self::name($d->editor) : null, 'delivered_at' => $d->created_at?->toIso8601String(),
-                'concept' => $d->concept, 'angle' => $d->angle, 'notes' => $d->notes, 'pieces' => $d->pieces,
+                'concept' => $d->concept, 'angle' => $d->angle, 'notes' => $d->notes,
+                'pieces' => array_map(fn ($p) => $p + ['file' => $files[$p['file_id'] ?? 0] ?? null], (array) $d->pieces),
                 'review' => $d->review, 'review_label' => self::REVIEWS[$d->review] ?? $d->review, 'reviewed_by' => $d->reviewer ? self::name($d->reviewer) : null,
                 'reviewed_at' => $d->reviewed_at?->toIso8601String(), 'comment' => $d->comment,
             ])->values()->all(),

@@ -186,6 +186,22 @@ final class ProductProfileRules
         return $out === [] ? null : $out;
     }
 
+    /**
+     * `.90`: los ángulos del producto como los ve el editor: su código, su nombre, a quién le habla y de qué trata (la
+     * hipótesis, sin precios). Por código, no del más fuerte al más débil (la prioridad es del dueño).
+     *
+     * @param list<array{code: string, name: ?string, hypothesis: ?string, persona: ?string}> $angles TestingPhase::anglesMany
+     * @return list<array{code: string, name: ?string, persona: ?string, about: ?string}>
+     */
+    public static function anglesForEditor(array $angles): array
+    {
+        $out = array_map(fn ($a) => ['code' => (string) $a['code'], 'name' => $a['name'] ?? null, 'persona' => $a['persona'] ?? null,
+            'about' => \App\Services\Meta\Queue\QueueRules::withoutPrices(isset($a['hypothesis']) ? (string) $a['hypothesis'] : null)], $angles);
+        usort($out, fn ($x, $y) => strcmp($x['code'], $y['code']));
+
+        return $out;
+    }
+
     /** El buyer persona de un encargo, como lo ve el editor. */
     public static function personaForEditor(?array $p): ?array
     {

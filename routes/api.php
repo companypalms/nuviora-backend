@@ -53,6 +53,9 @@ Route::get('/internal-chat/attachments/{message}', [\App\Http\Controllers\Intern
 // 🔒 Archivos del chat del asistente (solo los ve el Admin): igual, con el enlace firmado que entrega su chat (12 h)
 Route::get('/assistant/attachments/{message}/{file}', [\App\Http\Controllers\AssistantController::class, 'attachment'])
     ->whereNumber(['message', 'file'])->name('assistant.attachment');
+// 🔒 .90: los archivos de los creativos en el almacén de la PC de pruebas (en el servidor van directo a R2): subir y ver,
+// solo con el enlace firmado que da el sistema
+Route::match(['get', 'put'], '/files/local/{file}', [\App\Http\Controllers\FilesController::class, 'local'])->whereNumber('file')->name('files.local');
 
 // --- WhatsApp Webhook (Meta) ---
 Route::get('whatsapp/webhook', [WhatsAppWebhookController::class, 'verify']);
@@ -646,6 +649,12 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::get('/product-profiles', [\App\Http\Controllers\MetaProductProfileController::class, 'index']);
         Route::put('/product-profiles/{product}', [\App\Http\Controllers\MetaProductProfileController::class, 'update']);
         Route::post('/product-profiles/{product}/next-round', [\App\Http\Controllers\MetaProductProfileController::class, 'nextRound']); // .65
+        // .90: las fotos y el documento de estrategia del producto, en el almacén; y "Probar el almacén"
+        Route::post('/product-profiles/{product}/files', [\App\Http\Controllers\MetaProductProfileController::class, 'upload'])->middleware('throttle:60,1');
+        Route::post('/files/{file}/confirm', [\App\Http\Controllers\MetaProductProfileController::class, 'confirm'])->whereNumber('file');
+        Route::delete('/files/{file}', [\App\Http\Controllers\MetaProductProfileController::class, 'forget'])->whereNumber('file');
+        Route::get('/files/status', [\App\Http\Controllers\FilesController::class, 'status']);
+        Route::post('/files/check', [\App\Http\Controllers\FilesController::class, 'check'])->middleware('throttle:10,1');
         // .66: lo que sabemos de cada producto
         Route::get('/memory', [\App\Http\Controllers\MetaMemoryController::class, 'index']);
         Route::post('/memory/{product}/summarize', [\App\Http\Controllers\MetaMemoryController::class, 'summarize'])->middleware('throttle:10,1');
@@ -683,6 +692,10 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::get('/results', [\App\Http\Controllers\EditorQueueController::class, 'results']); // paso 5b
         Route::post('/queue/{batch}/start', [\App\Http\Controllers\EditorQueueController::class, 'start'])->whereNumber('batch');
         Route::post('/queue/{batch}/deliver', [\App\Http\Controllers\EditorQueueController::class, 'deliver'])->whereNumber('batch')->middleware('throttle:30,1');
+        // .90: cada pieza se sube al almacén (no más enlaces de Drive) y se confirma al terminar
+        Route::post('/queue/{batch}/pieces/{piece}/upload', [\App\Http\Controllers\EditorQueueController::class, 'upload'])
+            ->whereNumber(['batch', 'piece'])->middleware('throttle:60,1');
+        Route::post('/files/{file}/confirm', [\App\Http\Controllers\EditorQueueController::class, 'confirm'])->whereNumber('file');
         Route::put('/queue/{batch}/editor', [\App\Http\Controllers\EditorQueueController::class, 'assign'])->whereNumber('batch');
         Route::post('/queue/{batch}/review', [\App\Http\Controllers\EditorQueueController::class, 'review'])->whereNumber('batch');
     });

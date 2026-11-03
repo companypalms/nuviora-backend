@@ -6,6 +6,9 @@ use App\Models\CreativeBatch;
 use App\Models\MetaAd;
 use App\Models\MetaAdset;
 use App\Models\MetaCampaign;
+use App\Models\StoredFile;
+use App\Services\Files\FileStore;
+use App\Services\Files\Uploads;
 use App\Services\Meta\Queue\EditorRules;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -84,12 +87,15 @@ class UploadPlanner
             $problems[] = 'El anuncio de donde se copia no tiene landing.';
         }
 
-        // Un anuncio por pieza, con su archivo de Drive
+        // Un anuncio por pieza, con su archivo (.90: el del almacén; las entregas viejas, el de Drive)
         $ads = [];
+        $stored = StoredFile::whereIn('id', $batch->pieces->pluck('file_id')->filter()->all() ?: [0])->get()->keyBy('id');
         foreach ($batch->pieces->sortBy('position') as $piece) {
             $fileId = EditorRules::driveFileId($piece->link);
             $file = ['ok' => false, 'note' => null, 'size_mb' => null];
-            if (!$piece->link) {
+            if ($piece->file_id && ($sf = $stored->get($piece->file_id))) {
+                $file = $checkFiles ? $this->checkStored($sf) : ['ok' => true, 'note' => 'Sin revisar.', 'size_mb' => round($sf->size / 1048576, 1)];
+            } elseif (!$piece->link) {
                 $file['note'] = 'La pieza no tiene enlace de Drive (falta la entrega).';
             } elseif ($fileId === null) {
                 $file['note'] = 'El enlace no es de un archivo de Drive (¿es una carpeta?).';
@@ -104,6 +110,7 @@ class UploadPlanner
             $ads[] = [
                 'code' => $piece->code(), 'name' => $piece->code() ? UploadRules::adName($piece->code(), $angle) : null,
                 'format' => $piece->format ?: $batch->format, 'hook' => $piece->hook, 'link' => $piece->link,
+                'file_name' => $piece->file_id ? $stored->get($piece->file_id)?->name : null,
                 'file_ok' => $file['ok'], 'file_note' => $file['note'], 'size_mb' => $file['size_mb'],
             ];
         }
@@ -147,6 +154,27 @@ class UploadPlanner
         }
 
         return $answer + ['size_mb' => $size];
+    }
+
+    /**
+     * `.90`: el archivo en el almacén: que esté y cuánto pesa.
+     *
+     * @return array{ok: bool, note: ?string, size_mb: ?float}
+     */
+    private function checkStored(StoredFile $file): array
+    {
+        $store = FileStore::for($file->driver);
+        if ($store === null) {
+            return ['ok' => false, 'note' => 'El almacén de archivos está apagado en este servidor.', 'size_mb' => null];
+        }
+        try {
+            $size = $store->size($file);
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'note' => Uploads::why($e->getMessage()), 'size_mb' => null];
+        }
+
+        return $size === null ? ['ok' => false, 'note' => 'El archivo ya no está en el almacén.', 'size_mb' => null]
+            : ['ok' => true, 'note' => null, 'size_mb' => round($size / 1048576, 1)];
     }
 
     private function productName(CreativeBatch $batch): string

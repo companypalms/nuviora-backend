@@ -2,14 +2,20 @@
 
 namespace App\Services\Assistant\Actions\Tools;
 
+use App\Models\AssistantMessage;
 use App\Models\Product;
 use App\Models\ProductProfile;
+use App\Models\StoredFile;
 use App\Services\Assistant\Actions\ActionContext;
 use App\Services\Assistant\Actions\ChangeTool;
 use App\Services\Assistant\Actions\Outcome;
 use App\Services\Assistant\Actions\Proposal;
 use App\Services\Assistant\Lookup;
+use App\Services\Assistant\Files\Attachments;
 use App\Services\Assistant\Tools\ToolProblem;
+use App\Services\Files\FileStore;
+use App\Services\Files\StoredFileRules;
+use App\Services\Files\Uploads;
 use App\Services\Meta\Products\ProductProfileRules;
 use App\Services\Meta\Products\ProductProfiles;
 use App\Services\Meta\Products\ShopifyLink;
@@ -26,9 +32,14 @@ use Illuminate\Support\Facades\DB;
  * de Shopify): si no existe, se crea al confirmar, en testeo (sus batches le llegan solos al líder). Con el link, guarda su
  * número de Shopify para que los pedidos se unan a él aunque el nombre no sea igual; si un pedido ya lo creó con ese
  * número, se usa ese (nunca uno repetido).
+ * `.90` (dueño, 2026-11-03): las fotos y los PDF que adjuntó en la última hora se guardan en el producto al confirmar
+ * (fotos → las fotos del producto, que ven los editores; PDF → su documento de estrategia, que solo ve el dueño).
  */
 class ProductProfileTool extends ChangeTool
 {
+    /** `.90`: cuánto hacia atrás se buscan los adjuntos de la conversación. */
+    public const FILES_MINUTES = 60;
+
     /** Lo que recibe la IA → el campo de la ficha. */
     public const ARGS = [
         'que_es' => 'what_it_is', 'para_que_sirve' => 'benefits', 'como_funciona' => 'mechanism',
@@ -120,6 +131,7 @@ class ProductProfileTool extends ChangeTool
     {
         // .89: el link de Shopify da el número del producto en la tienda; con él se encuentra el producto aunque el nombre cambie
         $new = (bool) ($args['producto_nuevo'] ?? false);
+        $files = self::attachments($context);
         $shopify = trim((string) ($args['link_shopify'] ?? '')) !== '' ? ShopifyLink::resolve($args['link_shopify']) : null;
         if ($shopify && $shopify['problem']) {
             throw new ToolProblem($shopify['problem']);
@@ -140,7 +152,7 @@ class ProductProfileTool extends ChangeTool
                 throw new ToolProblem('Falta el producto: pregúntale al dueño de cuál es la ficha.');
             }
 
-            return self::proposal(0, $name, null, [], ['fase' => 'testeo'] + array_diff_key($args, ['fase' => 1]), [], 'iterate', [], ['create' => true, 'shopify' => $shopify]);
+            return self::proposal(0, $name, null, [], ['fase' => 'testeo'] + array_diff_key($args, ['fase' => 1]), [], 'iterate', [], ['create' => true, 'shopify' => $shopify], $files);
         }
         $product = Product::find($productId, ['id', 'title', 'showable_name', 'product_id']);
         $name = $product->showable_name ?: $product->title;
@@ -149,7 +161,67 @@ class ProductProfileTool extends ChangeTool
 
         return self::proposal($productId, $name, $now['profile'], $now['personas'], $args, $angles,
             (string) (ProductProfile::where('product_id', $productId)->value('phase') ?? 'iterate'), TestingPhase::testedAngles($productId),
-            ['create' => false, 'shopify' => $shopify && (int) $product->product_id !== $shopify['id'] ? $shopify : null]);
+            ['create' => false, 'shopify' => $shopify && (int) $product->product_id !== $shopify['id'] ? $shopify : null], $files);
+    }
+
+    /**
+     * `.90`: las fotos y los PDF que el dueño adjuntó en la última hora (con el almacén encendido), para guardarlos en el
+     * producto al confirmar: una foto → foto del producto; un PDF → documento de estrategia.
+     *
+     * @return list<array{message_id: int, index: int, name: string, mime: string, kind: string}>
+     */
+    public static function attachments(ActionContext $context): array
+    {
+        if (!FileStore::on()) {
+            return [];
+        }
+        $messages = AssistantMessage::where('user_id', $context->user->id)->where('role', 'user')->whereNotNull('attachments')
+            ->where('created_at', '>=', $context->now->subMinutes(self::FILES_MINUTES))->orderBy('id')->get(['id', 'attachments']);
+        $out = [];
+        foreach ($messages as $m) {
+            foreach ((array) $m->attachments as $i => $f) {
+                $mime = strtolower((string) ($f['mime'] ?? ''));
+                $kind = isset(StoredFileRules::IMAGES[$mime]) ? 'photo' : ($mime === 'application/pdf' ? 'strategy' : null);
+                if ($kind !== null && !empty($f['path']) && empty($f['problem'])) {
+                    $out[] = ['message_id' => (int) $m->id, 'index' => (int) $i, 'name' => (string) ($f['name'] ?? 'archivo'), 'mime' => $mime, 'kind' => $kind];
+                }
+            }
+        }
+
+        return array_slice($out, 0, 20);
+    }
+
+    /**
+     * `.90`: guarda en el producto lo que se adjuntó (sin repetir lo que ya está: mismo nombre y tamaño).
+     *
+     * @param list<array{message_id: int, index: int, name: string, mime: string, kind: string}> $files
+     * @return array{photos: int, strategy: int, problems: list<string>}
+     */
+    public static function saveFiles(array $files, int $productId, int $userId): array
+    {
+        $out = ['photos' => 0, 'strategy' => 0, 'problems' => []];
+        $disk = \Illuminate\Support\Facades\Storage::disk(Attachments::DISK);
+        foreach ($files as $f) {
+            $att = ((array) AssistantMessage::find($f['message_id'])?->attachments)[$f['index']] ?? null;
+            if (!$att || empty($att['path']) || !$disk->exists($att['path'])) {
+                $out['problems'][] = "{$f['name']}: ya no está en el chat.";
+                continue;
+            }
+            $path = $disk->path($att['path']);
+            if (StoredFile::where('product_id', $productId)->where('kind', $f['kind'])->where('status', 'ready')->where('size', (int) filesize($path))
+                ->where('name', $f['name'])->exists()) {
+                continue;
+            }
+            try {
+                app(Uploads::class)->fromLocal($f['kind'], $productId, $path, $f['name'], $f['mime'], $userId);
+                $out[$f['kind'] === 'photo' ? 'photos' : 'strategy']++;
+            } catch (\Throwable $e) {
+                report($e);
+                $out['problems'][] = "{$f['name']}: no se pudo guardar.";
+            }
+        }
+
+        return $out;
     }
 
     /**
@@ -157,9 +229,10 @@ class ProductProfileTool extends ChangeTool
      *
      * @param list<array> $beforeAngles ProductProfileRules::normalizeAngle, del más fuerte al más débil
      * @param list<string> $tested los ángulos que ya salieron en un testeo (una ronda nueva no los repite)
+     * @param list<array{name: string, kind: string}> $files `.90`: lo adjuntado que se guarda en el producto (self::attachments)
      */
     public static function proposal(int $productId, string $name, ?array $before, array $beforePersonas, array $args, array $beforeAngles = [],
-        string $beforePhase = 'iterate', array $tested = [], array $link = []): Proposal
+        string $beforePhase = 'iterate', array $tested = [], array $link = [], array $files = []): Proposal
     {
         // .89: un producto nuevo (se crea al confirmar) y el enlace con Shopify
         $create = (bool) ($link['create'] ?? false);
@@ -244,7 +317,16 @@ class ProductProfileTool extends ChangeTool
             $lines[] = Proposal::line('El testeo pide', ProductProfileRules::testingText(array_values(array_diff(array_column($angles, 'code'), $tested)))
                 . ($tested !== [] ? ' (los ángulos que ya se probaron no se repiten)' : ''));
         }
-        if ($changed === [] && $newPersonas === 0 && $m['removed'] === []) {
+        // .90: lo que se guarda en el producto (fotos para los editores; el PDF, solo para ti)
+        $photos = array_column(array_filter($files, fn ($f) => $f['kind'] === 'photo'), 'name');
+        $docs = array_column(array_filter($files, fn ($f) => $f['kind'] === 'strategy'), 'name');
+        if ($files !== []) {
+            $lines[] = Proposal::line('Se guarda en el producto', implode("\n", array_filter([
+                $photos ? (count($photos) === 1 ? '1 foto' : count($photos) . ' fotos') . ' (las ven los editores): ' . implode(', ', $photos) : null,
+                $docs ? 'Documento de estrategia (solo tú): ' . implode(', ', $docs) : null,
+            ])));
+        }
+        if ($changed === [] && $newPersonas === 0 && $m['removed'] === [] && $files === []) {
             throw new ToolProblem('Con eso la ficha de ' . $name . ' queda igual: no hay nada que cambiar.');
         }
 
@@ -260,7 +342,8 @@ class ProductProfileTool extends ChangeTool
         }
         $first = $before === null && $beforePersonas === [] && $beforeAngles === [];
         $what = array_merge($changed, $newPersonas ? [$newPersonas . ($newPersonas === 1 ? ' buyer persona nuevo' : ' buyer personas nuevos')] : [],
-            $m['removed'] ? ['quitar ' . count($m['removed']) . ' buyer persona' . (count($m['removed']) === 1 ? '' : 's')] : []);
+            $m['removed'] ? ['quitar ' . count($m['removed']) . ' buyer persona' . (count($m['removed']) === 1 ? '' : 's')] : [],
+            $files ? ['guardar ' . count($files) . (count($files) === 1 ? ' archivo' : ' archivos')] : []);
 
         $title = $create ? "Crear {$name} y llenar su ficha" : ($first ? "Llenar la ficha de {$name}" : "Cambiar la ficha de {$name}");
 
@@ -272,7 +355,8 @@ class ProductProfileTool extends ChangeTool
                 'angles' => $anglesChanged ? $angles : null, 'phase' => $phase !== $beforePhase ? $phase : null,
                 // .89: el producto que se crea y el número de Shopify que se guarda
                 'create' => $create ? ['name' => $name, 'title' => $shopify['title'] ?? $name, 'price' => $shopify['price'] ?? 0, 'shopify_id' => $shopify['id'] ?? 0] : null,
-                'shopify' => !$create && $shopify ? ['id' => $shopify['id']] : null],
+                'shopify' => !$create && $shopify ? ['id' => $shopify['id']] : null,
+                'files' => $files], // .90
             $warnings,
         );
     }
@@ -303,8 +387,16 @@ class ProductProfileTool extends ChangeTool
         $f = ProductProfiles::get($pid);
         $missing = ProductProfileRules::missing($f['profile'], $f['personas']);
         $testing = ($payload['phase'] ?? null) === 'testing' && $missing === [];
+        // .90: las fotos y el documento de estrategia que adjuntó
+        $saved = self::saveFiles($payload['files'] ?? [], $pid, (int) $context->user->id);
+        $savedText = self::join(array_filter([
+            $saved['photos'] ? ($saved['photos'] === 1 ? '1 foto' : "{$saved['photos']} fotos") : null,
+            $saved['strategy'] ? ($saved['strategy'] === 1 ? 'el documento de estrategia' : "{$saved['strategy']} documentos de estrategia") : null,
+        ]));
 
         return new Outcome(($created ? 'Producto creado y ficha guardada.' : 'Ficha guardada.')
+            . ($savedText !== '' ? " Guardé {$savedText} en el producto." : '')
+            . ($saved['problems'] ? ' No pude guardar: ' . implode(' ', $saved['problems']) : '')
             . ($missing ? ' Todavía falta: ' . self::join(array_map('mb_strtolower', $missing)) . '.' : ' Está completa: la IA ya la usa en los encargos.')
             . ($testing ? ' El testeo empieza: sus batches le llegan ya al editor líder.' : '')
             . (($payload['create'] ?? null) && (int) $payload['create']['shopify_id'] === 0 ? ' Cuando esté en tu tienda, pásame el link de Shopify.' : ''),

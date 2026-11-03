@@ -3,6 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\CreativeBatch;
+use App\Models\CreativeBatchPiece;
+use App\Models\StoredFile;
+use App\Services\Files\FileStore;
+use App\Services\Files\Uploads;
 use App\Services\Meta\Queue\EditorFacts;
 use App\Services\Meta\Queue\EditorRules;
 use App\Services\Meta\Queue\EditorWork;
@@ -47,6 +51,8 @@ class EditorQueueController extends Controller
             'today' => now(config('app.timezone'))->toDateString(),
             // .89: entrega + los días de correcciones = lista en la banca
             'corrections_days' => (int) (new \App\Services\Meta\Decisions\DecisionSettings())->get()['corrections_days'],
+            // .90: se entrega subiendo cada archivo al sistema (apagado: con el enlace de Drive)
+            'uploads' => FileStore::on(),
         ]);
     }
 
@@ -75,6 +81,7 @@ class EditorQueueController extends Controller
             'pieces' => 'required|array|max:10',
             'pieces.*.id' => 'required|integer',
             'pieces.*.link' => 'nullable|string|max:1000',
+            'pieces.*.file_id' => 'nullable|integer',
             'pieces.*.hook' => 'nullable|string|max:300',
         ], [
             'concept.required' => 'Escribe el concepto del batch.',
@@ -83,6 +90,23 @@ class EditorQueueController extends Controller
         $work->deliver($batch, $request->user(), $data);
 
         return $this->one($request, $batch);
+    }
+
+    /** `.90`: el enlace para subir el archivo de una pieza directo al almacén. */
+    public function upload(Request $request, CreativeBatch $batch, CreativeBatchPiece $piece, EditorWork $work)
+    {
+        $data = $request->validate(['name' => 'required|string|max:255', 'mime' => 'nullable|string|max:120', 'size' => 'required|integer|min:1']);
+
+        return response()->json($work->uploadPiece($batch, $piece, $request->user(), $data['name'], (string) ($data['mime'] ?? ''), (int) $data['size']));
+    }
+
+    /** `.90`: terminó de subir: se revisa que llegó y queda listo para entregar. */
+    public function confirm(Request $request, StoredFile $file, Uploads $uploads)
+    {
+        abort_unless($file->kind === 'piece', 404);
+        $file = $uploads->confirm($file, $request->user());
+
+        return response()->json(['file' => $file->payload()]);
     }
 
     public function assign(Request $request, CreativeBatch $batch, EditorWork $work)

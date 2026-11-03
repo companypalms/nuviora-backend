@@ -196,17 +196,18 @@ final class QueueRules
                     . ($hypothesis !== null ? " Qué probamos: {$hypothesis}" : '');
             }
         }
-        // .89: la regla de nombres: cada archivo se llama como su anuncio en Meta
+        // .89: la regla de nombres: cada archivo se llama como su anuncio en Meta (.90: subido al sistema, se nombra solo)
         if (!empty($b['meta_names']['ads'])) {
-            $lines[] = 'Nombra cada archivo de Drive con su código: ' . implode(', ', $b['meta_names']['ads'])
-                . (!empty($b['meta_names']['adset']) ? " (van en el ad set {$b['meta_names']['adset']})." : '.');
+            $lines[] = (!empty($b['uploads']) ? 'Sube cada archivo en el sistema, en su pieza (queda con su nombre solo): ' : 'Nombra cada archivo de Drive con su código: ')
+                . implode(', ', $b['meta_names']['ads']) . (!empty($b['meta_names']['adset']) ? " (van en el ad set {$b['meta_names']['adset']})." : '.');
         }
-        // Paso 5a: los enlaces de Drive de la última entrega, para subirlos a Meta
-        $files = array_filter($b['pieces'] ?? [], fn ($p) => !empty($p['link']));
+        // Paso 5a: los archivos de la última entrega, para subirlos a Meta (.90: en el sistema; los viejos, en Drive)
+        $files = array_filter($b['pieces'] ?? [], fn ($p) => !empty($p['link']) || !empty($p['file']));
         if ($files) {
-            $lines[] = 'Archivos (Drive):';
+            $lines[] = array_filter($files, fn ($p) => !empty($p['file'])) ? 'Archivos:' : 'Archivos (Drive):';
             foreach ($files as $p) {
-                $lines[] = '- ' . ($p['code'] ?? 'Pieza') . ': ' . $p['link'] . (!empty($p['hook']) ? " — hook: {$p['hook']}" : '');
+                $lines[] = '- ' . ($p['code'] ?? 'Pieza') . ': ' . (!empty($p['file']) ? "{$p['file']['name']} (en el sistema)" : $p['link'])
+                    . (!empty($p['hook']) ? " — hook: {$p['hook']}" : '');
             }
         }
         if (($deliverables = self::withoutPrices($b['deliverables'] ?? null)) !== null) {

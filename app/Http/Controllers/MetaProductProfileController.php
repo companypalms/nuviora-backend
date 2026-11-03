@@ -4,6 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\Product;
 use App\Models\ProductProfile;
+use App\Models\StoredFile;
+use App\Services\Files\FileStore;
+use App\Services\Files\Uploads;
 use App\Services\Meta\AngleStats;
 use App\Services\Meta\Products\ProductProfileRules;
 use App\Services\Meta\Products\ProductProfiles;
@@ -70,6 +73,49 @@ class MetaProductProfileController extends Controller
         return response()->json(['product_id' => $product->id] + self::present($product->id) + ['products' => self::products()]);
     }
 
+    /**
+     * `.90`: subir una foto del producto o su documento de estrategia directo al almacén (las fotos las ven los editores;
+     * la estrategia, solo el dueño). Se confirma con "confirm".
+     */
+    public function upload(Request $request, Product $product, Uploads $uploads)
+    {
+        $data = $request->validate(['kind' => 'required|in:photo,strategy', 'name' => 'required|string|max:255', 'mime' => 'nullable|string|max:120',
+            'size' => 'required|integer|min:1']);
+
+        return response()->json($uploads->start(['kind' => $data['kind'], 'name' => $data['name'], 'product_id' => $product->id],
+            (string) ($data['mime'] ?? ''), (int) $data['size'], $request->user()));
+    }
+
+    public function confirm(Request $request, StoredFile $file, Uploads $uploads)
+    {
+        abort_unless(in_array($file->kind, ['photo', 'strategy'], true) && $file->product_id, 404);
+        $uploads->confirm($file, $request->user());
+
+        return response()->json(['product_id' => $file->product_id, 'files' => self::files((int) $file->product_id)]);
+    }
+
+    /** Quitar una foto o un documento del producto (se borra del almacén). */
+    public function forget(StoredFile $file)
+    {
+        abort_unless(in_array($file->kind, ['photo', 'strategy'], true) && $file->product_id, 404);
+        $pid = (int) $file->product_id;
+        Uploads::forget($file);
+
+        return response()->json(['product_id' => $pid, 'files' => self::files($pid)]);
+    }
+
+    /** @return array{on: bool, photos: list<array>, strategy: list<array>} */
+    public static function files(int $productId): array
+    {
+        $files = StoredFile::where('product_id', $productId)->whereIn('kind', ['photo', 'strategy'])->where('status', 'ready')->orderBy('id')->get();
+
+        return [
+            'on' => FileStore::on(),
+            'photos' => $files->where('kind', 'photo')->map(fn (StoredFile $f) => $f->payload())->values()->all(),
+            'strategy' => $files->where('kind', 'strategy')->map(fn (StoredFile $f) => $f->payload())->values()->all(),
+        ];
+    }
+
     /** .65: "Probar los siguientes": otra ronda de testeo con los ángulos de la ficha que no se probaron. */
     public function nextRound(Product $product)
     {
@@ -96,6 +142,8 @@ class MetaProductProfileController extends Controller
                 TestingPhase::angles($productId)),
             'testing' => TestingPhase::summary($productId),
             'tested_angles' => TestingPhase::testedAngles($productId),
+            // .90: las fotos (las ven los editores) y el documento de estrategia (solo el dueño), en el almacén
+            'files' => self::files($productId),
         ];
     }
 
