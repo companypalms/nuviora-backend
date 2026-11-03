@@ -129,6 +129,71 @@ class EditorWork
         ], $mime, $size, $actor);
     }
 
+    /** `.95`: el video de una pieza de un batch ya hecho que se está cargando (solo el líder). */
+    public function uploadImport(CreativeBatch $batch, CreativeBatchPiece $piece, User $actor, string $name, string $mime, int $size): array
+    {
+        self::importing($batch, $actor);
+        abort_unless((int) $piece->creative_batch_id === (int) $batch->id, 404, 'Ese video no es de este batch: vuelve a empezar la carga.');
+        $names = QueueRules::metaNames($batch->number, $batch->angle_code, [$piece->number]);
+
+        return app(Uploads::class)->start([
+            'kind' => 'piece', 'name' => $name, 'display' => $names['ads'][0] ?? $piece->code(), 'product_id' => $batch->product_id,
+            'batch' => $names['adset'] ?? $batch->code(), 'piece_id' => $piece->id, 'version' => 1,
+        ], $mime, $size, $actor);
+    }
+
+    /**
+     * `.95`: terminar la carga de un batch ya hecho: cada pieza con su video (y su hook, si se sabe) y el batch a la banca,
+     * como lo que entrega el líder. Si una ciudad lo necesita ya, sale la misión "Lanza B…" (BankArrival).
+     *
+     * @param list<array{id: int, file_id: ?int, hook?: ?string}> $pieces
+     */
+    public function finishImport(CreativeBatch $batch, User $actor, array $pieces): CreativeBatch
+    {
+        $batch = DB::transaction(function () use ($batch, $actor, $pieces) {
+            $batch = CreativeBatch::lockForUpdate()->findOrFail($batch->id);
+            self::importing($batch, $actor);
+            $given = collect($pieces)->keyBy('id');
+            $files = StoredFile::whereIn('id', $given->pluck('file_id')->filter()->all() ?: [0])->get()->keyBy('id');
+            $all = $batch->pieces()->get();
+            foreach ($all as $p) {
+                $f = $files[$given[$p->id]['file_id'] ?? 0] ?? null;
+                if (!$f || $f->status !== 'ready' || (int) $f->creative_batch_piece_id !== (int) $p->id) {
+                    throw ValidationException::withMessages(['pieces' => "{$p->code()}: falta su video (vuelve a subirlo)."]);
+                }
+            }
+            foreach ($all as $p) {
+                $f = $files[$given[$p->id]['file_id']];
+                $p->forceFill(['file_id' => $f->id, 'hook' => trim((string) ($given[$p->id]['hook'] ?? '')) ?: null,
+                    'format' => str_starts_with((string) $f->mime, 'image/') ? 'image' : 'video'])->save();
+            }
+            $batch->forceFill(['status' => 'bank', 'status_at' => now(), 'status_by' => $actor->id])->save();
+
+            return $batch;
+        });
+        BankArrival::safely($batch);
+
+        return $batch->fresh('pieces');
+    }
+
+    /** `.95`: la carga se dejó a medias (se cerró la ventana): el batch se descarta; sus números no se vuelven a usar. */
+    public function cancelImport(CreativeBatch $batch, User $actor): void
+    {
+        self::importing($batch, $actor);
+        $batch->forceFill(['status' => 'discarded', 'discard_reason' => 'Carga sin terminar', 'status_at' => now(), 'status_by' => $actor->id])->save();
+    }
+
+    /** Solo el líder, y solo un batch ya hecho que se está cargando. */
+    private static function importing(CreativeBatch $batch, User $actor): void
+    {
+        if (self::who($actor)['role'] !== EditorRules::LEADER) {
+            throw new HttpResponseException(response()->json(['status' => false, 'message' => 'Cargar batches ya hechos lo hace el editor líder.'], 403));
+        }
+        if ($batch->source !== 'imported' || $batch->status !== 'production') {
+            throw ValidationException::withMessages(['batch' => 'Este batch ya no se está cargando: vuelve a abrir la pantalla.']);
+        }
+    }
+
     /**
      * Entregar: el archivo (`.90`, con el almacén encendido; si no, un enlace de Drive) y su hook por cada pieza, y la
      * ficha (concepto y ángulo). Pasa a "En revisión" como la versión siguiente (V01, V02…). En una corrección, la pieza
@@ -287,6 +352,8 @@ class EditorWork
                     'source' => $p->source, 'reference_id' => $p->source_reference_id])->values()->all(),
                 // .92: si es la iteración de un ganador, "Iteración de …" ya viene elegida en cada pieza
                 'iteration_of' => $b->reference_creative_id ? ($b->reference?->label ?? 'el ganador') : null,
+                // .95: un batch ya hecho que cargó el líder (de antes del sistema, sin hipótesis)
+                'imported' => $b->source === 'imported',
                 'meta_names' => QueueRules::metaNames($b->number, $b->angle_code, $b->pieces->pluck('number')->all()),
                 'uploads' => $uploads, // .90: se entrega subiendo el archivo (no con Drive)
             ] + self::fields($b, $who);

@@ -45,6 +45,34 @@ class BatchQueue
         });
     }
 
+    /**
+     * `.95` (dueño: hay batches ya hechos por el líder, en carpetas de Drive, que deberían estar en la banca, "sin
+     * hipótesis"): cargar uno ya hecho. Recibe sus números (B y C) como al aprobar (nunca se repiten, tampoco con los
+     * nombres que ya están en Meta) y queda en producción mientras se suben sus videos; EditorWork::finishImport lo pasa
+     * a la banca. Sin plazo ni hipótesis: no cuenta para la racha, "a tiempo" ni "a la primera".
+     *
+     * @param array{product_id: int, angle_code: ?string, editor_id: int, concept: ?string, pieces: int} $data
+     */
+    public function import(array $data, int $userId): CreativeBatch
+    {
+        return DB::transaction(function () use ($data, $userId) {
+            $number = self::nextBatchNumber();
+            $piece = self::nextPieceNumber();
+            $now = now();
+            $batch = CreativeBatch::create([
+                'product_id' => $data['product_id'], 'number' => $number, 'status' => 'production', 'kind' => 'new_concept', 'source' => 'imported',
+                'angle_code' => $data['angle_code'], 'concept' => $data['concept'], 'format' => 'video', 'created_by' => $userId,
+                'editor_id' => $data['editor_id'], 'assigned_at' => $now, 'assigned_by' => $userId, 'started_at' => $now,
+                'approved_at' => $now, 'approved_by' => $userId, 'status_at' => $now, 'status_by' => $userId,
+            ]);
+            for ($i = 0; $i < $data['pieces']; $i++) {
+                CreativeBatchPiece::create(['creative_batch_id' => $batch->id, 'number' => $piece++, 'position' => $i + 1, 'format' => 'video']);
+            }
+
+            return $batch->fresh('pieces');
+        });
+    }
+
     /** Las piezas que se agregan a un encargo ya aprobado reciben su número enseguida. */
     public static function numberPiece(CreativeBatchPiece $piece): void
     {

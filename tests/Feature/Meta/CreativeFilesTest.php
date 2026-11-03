@@ -15,8 +15,10 @@ use App\Services\Files\SigV4;
 use App\Services\Files\StoredFileRules;
 use App\Services\Files\Uploads;
 use App\Services\Meta\Products\ProductProfileRules;
+use App\Services\Meta\Queue\BatchQueue;
 use App\Services\Meta\Queue\EditorGame;
 use App\Services\Meta\Queue\EditorWork;
+use App\Services\Meta\Queue\QueueRules;
 use App\Services\Meta\Queue\ReferenceLibrary;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Exceptions\HttpResponseException;
@@ -140,6 +142,13 @@ describe('Las entregas con archivo', function () {
             $t->unsignedBigInteger('reference_creative_id')->nullable();
             $t->unsignedBigInteger('editor_id')->nullable();
             $t->unsignedBigInteger('suggested_reference_id')->nullable();
+            $t->string('source')->nullable();
+            $t->string('concept')->nullable();
+            $t->string('format')->nullable();
+            $t->unsignedBigInteger('created_by')->nullable();
+            $t->timestamp('approved_at')->nullable();
+            $t->unsignedBigInteger('approved_by')->nullable();
+            $t->string('discard_reason')->nullable();
             $t->date('due_date')->nullable();
             $t->timestamp('assigned_at')->nullable();
             $t->unsignedBigInteger('assigned_by')->nullable();
@@ -458,6 +467,52 @@ describe('Las entregas con archivo', function () {
         Notification::assertSentTo(User::find(10), MetaWorkNotification::class,
             fn ($n) => $n->toDatabase(User::find(10)) === ['type' => 'creative_won', 'message' => 'Tu C0457 ganó en Meta: es un ganador.', 'url' => '/editor/resultados']);
         Notification::assertNotSentTo(User::find(11), MetaWorkNotification::class);
+    });
+
+    it('.95: el líder carga un batch ya hecho: recibe sus números, sus videos con su nombre y entra a la banca', function () {
+        Schema::create('meta_adsets', fn ($t) => [$t->id(), $t->string('batch_code')->nullable()]);
+        Schema::create('meta_ads', fn ($t) => [$t->id(), $t->string('creative_code')->nullable()]);
+        DB::table('meta_adsets')->insert(['batch_code' => 'B0115']);
+        DB::table('meta_ads')->insert(['creative_code' => 'C0500']);
+        DB::table('roles')->insert(['id' => 3, 'description' => 'Editor líder']);
+        DB::table('users')->insert(['id' => 12, 'names' => 'Líder', 'role_id' => 3]);
+
+        $batch = app(BatchQueue::class)->import(['product_id' => 5, 'angle_code' => 'POSP', 'editor_id' => 12, 'concept' => null, 'pieces' => 2], 12);
+        expect($batch->code())->toBe('B0116')->and($batch)->status->toBe('production')->source->toBe('imported')->due_date->toBeNull()
+            ->and($batch->pieces->map->code()->all())->toBe(['C0501', 'C0502']);
+
+        // mientras se suben los videos no es un encargo de nadie
+        $up = function (CreativeBatchPiece $piece) use ($batch): StoredFile {
+            $start = (new EditorWork())->uploadImport($batch, $piece, User::find(12), 'video de drive.mp4', 'video/mp4', 5);
+            $this->call('PUT', $start['upload']['url'], [], [], [], ['CONTENT_TYPE' => 'video/mp4'], 'video')->assertNoContent();
+
+            return app(Uploads::class)->confirm(StoredFile::find($start['file']['id']), User::find(12));
+        };
+        [$a, $b] = [$up($batch->pieces[0]), $up($batch->pieces[1])];
+        expect($a->name)->toBe('C0501 POSP.mp4')
+            ->and(fn () => (new EditorWork())->finishImport($batch, User::find(12), [['id' => $batch->pieces[0]->id, 'file_id' => $a->id]]))
+            ->toThrow(ValidationException::class, 'C0502: falta su video');
+
+        $done = (new EditorWork())->finishImport($batch, User::find(12), [
+            ['id' => $batch->pieces[0]->id, 'file_id' => $a->id, 'hook' => '¿Todavía no te cierra?'], ['id' => $batch->pieces[1]->id, 'file_id' => $b->id]]);
+        expect($done->status)->toBe('bank')->and($done->pieces[0])->file_id->toBe($a->id)->hook->toBe('¿Todavía no te cierra?')
+            ->and($done->pieces[1]->hook)->toBeNull()
+            // sin plazo ni revisión: no cuenta para la racha ni "a la primera"
+            ->and(EditorGame::for(['id' => 12, 'role' => 'Editor líder'], now()->toDateString(), 1)['me'])->toMatchArray(['streak' => 0, 'first' => ['ok' => 0, 'total' => 0]]);
+    });
+
+    it('.95: solo el líder carga; una carga a medias se descarta', function () {
+        Schema::create('meta_adsets', fn ($t) => [$t->id(), $t->string('batch_code')->nullable()]);
+        Schema::create('meta_ads', fn ($t) => [$t->id(), $t->string('creative_code')->nullable()]);
+        DB::table('roles')->insert(['id' => 3, 'description' => 'Editor líder']);
+        DB::table('users')->insert(['id' => 12, 'names' => 'Líder', 'role_id' => 3]);
+        $batch = app(BatchQueue::class)->import(['product_id' => 5, 'angle_code' => null, 'editor_id' => 10, 'concept' => 'Rutina', 'pieces' => 1], 12);
+        expect($batch->code())->toBe('B0111')->and(QueueRules::metaNames($batch->number, null, [$batch->pieces[0]->number])['adset'])->toBe('B0111')
+            ->and(fn () => (new EditorWork())->uploadImport($batch, $batch->pieces[0], User::find(10), 'v.mp4', 'video/mp4', 5))->toThrow(HttpResponseException::class);
+
+        (new EditorWork())->cancelImport($batch, User::find(12));
+        expect(CreativeBatch::find($batch->id))->status->toBe('discarded')->discard_reason->toBe('Carga sin terminar')
+            ->and(fn () => (new EditorWork())->finishImport($batch, User::find(12), []))->toThrow(ValidationException::class, 'ya no se está cargando');
     });
 
     it('el asistente guarda en el producto las fotos y el PDF que el dueño adjuntó en la última hora', function () {

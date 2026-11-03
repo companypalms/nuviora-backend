@@ -708,6 +708,13 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::delete('/references/{reference}', [\App\Http\Controllers\CreativeReferenceController::class, 'archive'])->whereNumber('reference');
         Route::put('/queue/{batch}/editor', [\App\Http\Controllers\EditorQueueController::class, 'assign'])->whereNumber('batch');
         Route::post('/queue/{batch}/review', [\App\Http\Controllers\EditorQueueController::class, 'review'])->whereNumber('batch');
+        // .95: el líder carga a la banca los batches ya hechos (de antes del sistema)
+        Route::get('/imports/options', [\App\Http\Controllers\EditorImportController::class, 'options']);
+        Route::post('/imports', [\App\Http\Controllers\EditorImportController::class, 'store'])->middleware('throttle:30,1');
+        Route::post('/imports/{batch}/pieces/{piece}/upload', [\App\Http\Controllers\EditorImportController::class, 'upload'])
+            ->whereNumber(['batch', 'piece'])->middleware('throttle:60,1');
+        Route::post('/imports/{batch}/finish', [\App\Http\Controllers\EditorImportController::class, 'finish'])->whereNumber('batch');
+        Route::delete('/imports/{batch}', [\App\Http\Controllers\EditorImportController::class, 'cancel'])->whereNumber('batch');
     });
 
     /**---------------------

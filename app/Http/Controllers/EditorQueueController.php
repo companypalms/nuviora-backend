@@ -175,6 +175,8 @@ class EditorQueueController extends Controller
     {
         return CreativeBatch::query()
             ->where('status', '!=', 'proposed')
+            // .95: un batch ya hecho mientras se suben sus videos no es un encargo de nadie
+            ->where(fn ($q) => $q->whereNull('source')->orWhere('source', '!=', 'imported')->orWhere('status', '!=', 'production'))
             ->where(fn ($q) => $q->whereIn('status', ['approved', 'production', 'review', 'bank'])->orWhere('status_at', '>=', now()->subDays(self::RECENT_DAYS)))
             ->when($who['role'] !== EditorRules::LEADER, fn ($q) => $q->where('editor_id', $who['id']));
     }
