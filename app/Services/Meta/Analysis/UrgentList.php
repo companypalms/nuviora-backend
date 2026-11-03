@@ -23,6 +23,10 @@ use App\Services\Meta\Decisions\Rules\CampaignRules;
  * `.83` (dueño: "debo poder saber en 3 segundos qué es lo que debo hacer"): cada misión dice dónde (`where`: el nombre corto
  * del producto y la ciudad), qué (`title`: una frase corta que empieza con el verbo) y cómo (`steps`: 2 a 4 pasos en Ads
  * Manager con el nombre exacto de la campaña, los anuncios, el batch y el monto; los nombres van entre « »).
+ *
+ * `.87` (dueño, 2026-11-03): una misión siempre se puede hacer hoy: si depende de algo que no llegó ("cuando llegue un
+ * batch"), es un aviso y no cuenta para la racha. Una campaña prendida nunca con menos de 2 batches vivos, y lo que se
+ * lanza sale de la banca de esa ciudad: también un batch que ya salió en otra ciudad (se duplica su ad set).
  */
 final class UrgentList
 {
@@ -30,7 +34,7 @@ final class UrgentList
     public const SEVERITY = [
         'drop' => 1, 'pause_city' => 1, 'not_sold' => 1, 'stock_out' => 1, 'stop_creatives' => 1,
         'decrease' => 2, 'intervene' => 2, 'last_test' => 2, 'tracking' => 2,
-        'hold_prune' => 3,
+        'hold_prune' => 3, 'few_batches' => 3,
         'scale' => 4,
         'alarm' => 5,
         'price' => 6,
@@ -39,7 +43,7 @@ final class UrgentList
     /** `.82`: en qué grupo de la pantalla va cada cosa. */
     public const GROUP = [
         'drop' => 'frenar', 'pause_city' => 'frenar', 'not_sold' => 'frenar', 'stop_creatives' => 'frenar', 'decrease' => 'frenar',
-        'intervene' => 'arreglar', 'last_test' => 'arreglar', 'tracking' => 'arreglar', 'hold_prune' => 'arreglar',
+        'intervene' => 'arreglar', 'last_test' => 'arreglar', 'tracking' => 'arreglar', 'hold_prune' => 'arreglar', 'few_batches' => 'arreglar',
         'scale' => 'crecer',
         'stock_out' => 'aviso', 'alarm' => 'aviso', 'price' => 'aviso',
     ];
@@ -49,6 +53,15 @@ final class UrgentList
 
     /** `.83`: cuántos nombres de anuncios caben en un paso (los demás, en "¿Por qué?"). */
     private const NAMES_IN_STEP = 8;
+
+    /** `.87`: las ciudades que piden creativos: su misión ya lanza los batches que hagan falta. */
+    private const FEEDS = ['hold_prune', 'intervene'];
+
+    /** `.87`: las ciudades que se pausan o tienen su propio test: ahí no se lanzan batches. */
+    private const NO_BATCHES = ['pause_city', 'not_sold', 'drop', 'last_test'];
+
+    /** `.87`: el mínimo de batches vivos en una campaña prendida (dueño: "por lo menos montar dos batch"). */
+    public const MIN_LIVE = 2;
 
     /**
      * @param list<array> $facts AnalysisFacts::build
@@ -89,19 +102,32 @@ final class UrgentList
             foreach ($p['cities'] as $c) {
                 $a = $c['action'];
                 $kind = self::kind($a);
+                $n = $c['numbers'] ?? null;
+                $mode = $p['mode'] ?? 'normal';
+                // .87: los batches que hay que lanzar aquí (mínimo 2 vivos) y cuáles, de la banca de esta ciudad
+                $need = self::need($kind, $n, $mode);
+                $launch = array_slice(self::offers($n), 0, $need);
+                if ($need > 0 && !in_array($kind, self::FEEDS, true)) {
+                    $items[] = $base + self::few($p['product_id'], $c, $n, $launch, $short);
+                }
                 if (!isset(self::SEVERITY[$kind])) {
                     continue; // mantener, esperar, nada: van en el detalle
                 }
-                $n = $c['numbers'] ?? null;
-                $mission = self::mission($kind, $a, $n, $c['campaign'] ?? null, $c['city'], $short, isset($stopCity[(string) $c['city']]), $p['mode'] ?? 'normal');
+                $mission = self::mission($kind, $a, $n, $c['campaign'] ?? null, $c['city'], $short, isset($stopCity[(string) $c['city']]), $mode, $launch);
+                // .87: nada que hacer hoy en Ads Manager (no hay qué podar ni qué lanzar): un aviso, no una misión
+                $wait = $mission['title'] === null;
+                if ($wait && $mode === 'liquidation') {
+                    continue; // en liquidación no entran creativos: si no hay qué podar, es mantener
+                }
                 $prune = $n['prune'] ?? [];
                 $items[] = $base + ['key' => "{$p['product_id']}:{$c['campaign_meta_id']}:{$kind}", 'city' => $c['city'], 'kind' => $kind,
                     'label' => $a['label'], 'text' => trim($a['reading'] . ' ' . ($a['proposal'] ?? '')), 'tone' => $a['tone'],
-                    'where' => $short . ($c['city'] ? " · {$c['city']}" : ''), 'title' => $mission['title'], 'steps' => $mission['steps'],
+                    'where' => $short . ($c['city'] ? " · {$c['city']}" : ''), 'title' => $wait ? self::waiting($kind, $n) : $mission['title'],
+                    'steps' => $wait ? [] : $mission['steps'],
                     'why' => self::why($kind, $a, $n),
                     'detail' => array_values(array_filter([...self::numbers($n), $a['reading'], $a['proposal'], ...$c['notes'], ...$c['budget_notes'],
-                        count($prune) > self::NAMES_IN_STEP ? 'Todos los anuncios a apagar: ' . CreativeCalls::join($prune) . '.' : null])),
-                    'money' => self::money($kind, $a, $n)];
+                        count($prune) > self::NAMES_IN_STEP ? 'Todos los anuncios a apagar: ' . CreativeCalls::join($prune) . '.' : null, self::liveLine($n)])),
+                    'money' => self::money($kind, $a, $n)] + ($wait ? ['group' => 'aviso'] : []);
                 if ($c['price_option']) {
                     $items[] = $base + ['key' => "{$p['product_id']}:{$c['campaign_meta_id']}:price", 'city' => $c['city'], 'kind' => 'price',
                         'label' => 'Precio', 'text' => $c['price_option'], 'tone' => 'info',
@@ -124,8 +150,9 @@ final class UrgentList
             }
         }
         foreach ($items as &$i) {
-            $i['severity'] = self::SEVERITY[$i['kind']];
-            $i['group'] = self::GROUP[$i['kind']];
+            // .87: una misión que hoy no se puede hacer es un aviso, y va con los avisos (no entre lo más urgente)
+            $i['severity'] = isset($i['group']) && self::GROUP[$i['kind']] !== 'aviso' ? self::SEVERITY['alarm'] : self::SEVERITY[$i['kind']];
+            $i['group'] ??= self::GROUP[$i['kind']];
             $i['money'] ??= null;
         }
         unset($i);
@@ -211,7 +238,7 @@ final class UrgentList
      *
      * @return array{title: string, steps: list<string>}
      */
-    private static function mission(string $kind, array $a, ?array $n, ?string $campaign, ?string $city, string $short, bool $stopHere, string $mode): array
+    private static function mission(string $kind, array $a, ?array $n, ?string $campaign, ?string $city, string $short, bool $stopHere, string $mode, array $launch = []): array
     {
         $from = $a['from'] ?? null;
         $to = $a['to'] ?? null;
@@ -222,8 +249,9 @@ final class UrgentList
         $costly = $count === 1 ? '1 anuncio caro' : "{$count} anuncios caros";
         $off = $count ? 'Apaga ' . CreativeCalls::join(array_map(fn ($x) => self::q($x), array_slice($prune, 0, self::NAMES_IN_STEP)))
             . ($count > self::NAMES_IN_STEP ? ' y ' . ($count - self::NAMES_IN_STEP) . ' más (todos en «¿Por qué?»)' : '') . '.' : null;
-        $bank = $n['bank'] ?? null;
-        $batch = $bank ? 'Activa el ad set ' . self::q($bank) . ' (está listo en la banca).' : 'Cuando llegue un batch nuevo (míralo en Cola y banca), lánzalo en esta campaña.';
+        // .87: qué lanzar (de la banca o duplicado de otra ciudad); si no hay nada, la misión no lo pide ("cuando llegue")
+        $go = $launch ? CreativeCalls::join(array_column($launch, 'code')) : null;
+        $launchSteps = self::launchSteps($launch);
         $pct = $from && $to ? ' (' . ($to > $from ? '+' : '−') . AdRules::num(abs(round(($to / $from - 1) * 100))) . ' %)' : '';
         $switchOff = ['Apágala con el interruptor de la izquierda.'];
         preg_match('/(\$[\d.,]+) por día durante (\d+) días/u', (string) ($a['proposal'] ?? ''), $test);
@@ -239,23 +267,105 @@ final class UrgentList
             'last_test' => ['Si quieres, haz el último test', [$open, $test ? "Lanza un batch nuevo con {$test[1]} por día durante {$test[2]} días." : (string) $a['proposal'],
                 'Si también pierde, deja el producto en esta ciudad.']],
             'intervene' => [match (true) {
-                $count && $bank => "Apaga {$losing} y activa {$bank}",
+                $count && $go => "Apaga {$losing} y lanza {$go}",
                 $count > 0 => "Apaga {$losing}",
-                (bool) $bank => "Activa {$bank} de la banca",
-                default => 'Lanza un batch nuevo cuando llegue',
-            }, array_values(array_filter([$open, $off, $batch, 'No toques el presupuesto hoy.']))],
+                $go !== null => "Lanza {$go}",
+                default => null,
+            }, array_values(array_filter([$open, $off, ...$launchSteps, 'No toques el presupuesto hoy.']))],
             'hold_prune' => $mode === 'liquidation'
-                ? ['Deja solo los anuncios que no pierden', array_values(array_filter([$open, $off]))]
+                ? [$count ? 'Deja solo los anuncios que no pierden' : null, array_values(array_filter([$open, $off]))]
                 : [match (true) {
-                    $count && $bank => "Apaga {$costly} y activa {$bank}",
+                    $count && $go => "Apaga {$costly} y lanza {$go}",
                     $count > 0 => "Apaga {$costly}",
-                    (bool) $bank => "Activa {$bank} de la banca",
-                    default => 'Mete creativos nuevos cuando lleguen',
-                }, array_values(array_filter([$open, $off, $batch]))],
+                    $go !== null => "Lanza {$go}",
+                    default => null,
+                }, array_values(array_filter([$open, $off, ...$launchSteps]))],
             default => [(string) $a['label'], array_values(array_filter([$open, $a['proposal'] ?? null]))],
         };
 
         return ['title' => $title, 'steps' => array_values(array_filter($steps, fn ($s) => $s !== ''))];
+    }
+
+    /**
+     * `.87`: cuántos batches lanzar en una ciudad. Una campaña prendida nunca con menos de 2 batches vivos (dueño: "para
+     * darle un poco más de chance al algoritmo y que el presupuesto… no le pegue tan fuerte a ese batch nuevo"); si la
+     * ciudad pide creativos (podar o intervenir), por lo menos 1. Nada en liquidación ni donde se pausa. Los análisis de
+     * antes de la .87 no traen los vivos: solo el de la banca, como antes.
+     */
+    private static function need(string $kind, ?array $n, string $mode): int
+    {
+        if ($n === null || $mode === 'liquidation' || in_array($kind, self::NO_BATCHES, true)) {
+            return 0;
+        }
+        $live = $n['live'] ?? null;
+        if (in_array($kind, self::FEEDS, true)) {
+            return max(1, self::MIN_LIVE - (int) ($live ?? self::MIN_LIVE));
+        }
+
+        return $live === null ? 0 : max(0, self::MIN_LIVE - (int) $live);
+    }
+
+    /** `.87`: lo que puede lanzar la ciudad, en orden; los análisis de antes solo traían el primero de la banca. */
+    private static function offers(?array $n): array
+    {
+        return $n['offers'] ?? (($n['bank'] ?? null) ? [['code' => (string) $n['bank'], 'how' => 'bank']] : []);
+    }
+
+    /** `.87`: cómo lanzar cada batch: el de la banca, o duplicar el ad set de la ciudad donde ya salió. @return list<string> */
+    private static function launchSteps(array $launch): array
+    {
+        return array_map(fn ($o) => ($o['how'] ?? 'bank') === 'copy'
+            ? 'Duplica el ad set ' . self::q((string) $o['adset']) . ' de ' . (($o['campaign'] ?? null) ? 'la campaña ' . self::q($o['campaign']) : ($o['city'] ?? 'la otra ciudad'))
+                . ' en esta campaña' . (($o['city'] ?? null) && ($o['verdict'] ?? null) ? " (en {$o['city']}: " . mb_strtolower($o['verdict']) . ')' : '') . '.'
+            : 'Lanza el batch ' . self::q((string) $o['code']) . ' de la banca (sus videos están en Cola y banca).', $launch);
+    }
+
+    /**
+     * `.87`: una ciudad que no pide creativos (subir, mantener, esperar o bajar) pero con menos de 2 batches vivos: lanzar
+     * los que falten de su banca o, si no hay, un aviso.
+     */
+    private static function few(int $productId, array $c, array $n, array $launch, string $short): array
+    {
+        $live = (int) $n['live'];
+        $go = CreativeCalls::join(array_column($launch, 'code'));
+        $budget = ($n['budget'] ?? null) ? AdRules::money($n['budget']) . ' por día' : 'el presupuesto';
+
+        return ['key' => "{$productId}:{$c['campaign_meta_id']}:few_batches", 'city' => $c['city'], 'kind' => 'few_batches', 'label' => 'Batches vivos',
+            'text' => self::alive($live) . ' en esta campaña.', 'tone' => 'warning', 'where' => $short . ($c['city'] ? " · {$c['city']}" : ''),
+            'title' => match (true) {
+                $launch === [] => self::alive($live) . ' y no hay más en la banca',
+                $live === 1 && count($launch) === 1 => "Lanza 1 batch más: {$go}",
+                default => "Lanza {$go}",
+            },
+            'steps' => $launch ? [self::open($c['campaign'] ?? null, $short, $c['city']), ...self::launchSteps($launch)] : [],
+            'why' => $live === 0 ? 'No queda ningún batch vivo: la campaña no tiene anuncios que mostrar'
+                : "Solo queda 1 batch vivo: {$budget} cae todo en él; con 2, Meta reparte",
+            'detail' => array_values(array_filter([self::liveLine($n), $launch === [] ? 'Cuando haya un batch en la banca, te sale como misión.' : null])),
+            'money' => null] + ($launch === [] ? ['group' => 'aviso'] : []);
+    }
+
+    /** `.87`: el aviso de una ciudad que pide creativos y hoy no tiene qué podar ni qué lanzar. */
+    private static function waiting(string $kind, ?array $n): string
+    {
+        $live = $n['live'] ?? null;
+        $state = $live !== null && $live < self::MIN_LIVE ? self::alive((int) $live) . '. ' : '';
+
+        return $state . ($kind === 'intervene' ? 'No toques el presupuesto y espera un batch nuevo' : 'Espera un batch nuevo para meter creativos')
+            . ': no hay en la banca. Cuando haya uno, te sale como misión.';
+    }
+
+    private static function alive(int $live): string
+    {
+        return $live === 0 ? 'No queda ningún batch vivo' : ($live === 1 ? 'Solo queda 1 batch vivo' : "Quedan {$live} batches vivos");
+    }
+
+    /** `.87`: los batches vivos de la ciudad, para "¿Por qué?" (solo si son menos de 2). */
+    private static function liveLine(?array $n): ?string
+    {
+        $live = $n['live'] ?? null;
+
+        return $live === null || $live >= self::MIN_LIVE ? null
+            : self::alive((int) $live) . ' aquí (ad sets prendidos con algún anuncio prendido, sin contar lo que apagas hoy). Tu regla: nunca menos de ' . self::MIN_LIVE . '.';
     }
 
     /** `.83`: el primer paso: abrir la campaña por su nombre exacto. */

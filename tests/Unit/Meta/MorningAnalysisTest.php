@@ -24,11 +24,13 @@ function ciudad(string $id, string $city, string $key, string $label, ?string $p
 
 describe('La lista urgente', function () {
     it('primero lo que está en el break-even o encima, después escalar y después el resto', function () {
+        // .87: con un anuncio que apagar (sin nada que hacer hoy serían avisos)
+        $poda = fn (array $c) => $c + ['numbers' => ['spend3' => 30, 'purchases3' => 4, 'c' => 5, 'be' => 7, 'source' => null, 'budget' => 20, 'streak' => 0, 'prune' => ['AD 1']]];
         $facts = [
             producto(1, 'FlexiStep', 3, 0, [ciudad('c1', 'Caracas', 'scale', 'Subir $39,60 → $43,56', 'O probar bajar el precio $2,00'), ciudad('c2', 'Maracay', 'hold', 'Mantener')]),
             producto(2, 'Loli', 1, 60, [ciudad('c3', 'Caracas', 'drop', 'Dejar el producto aquí'), ciudad('c4', 'Valencia', 'decrease', 'Bajar $30,00 → $24,00'),
-                ciudad('c5', 'Maracay', 'hold_prune', 'Mantener y podar')]),
-            producto(3, 'Cervimax', 2, 20, [ciudad('c6', 'Caracas', 'intervene', 'Intervenir')], ['Tracking: Meta ve el 70 % de los pedidos reales…']),
+                $poda(ciudad('c5', 'Maracay', 'hold_prune', 'Mantener y podar'))]),
+            producto(3, 'Cervimax', 2, 20, [$poda(ciudad('c6', 'Caracas', 'intervene', 'Intervenir'))], ['Tracking: Meta ve el 70 % de los pedidos reales…']),
         ];
         $list = UrgentList::build($facts);
         expect(array_map(fn ($i) => "{$i['product']} {$i['kind']}", $list))->toBe([
@@ -86,14 +88,14 @@ describe('.82: tu día en Meta Ads', function () {
             ->and($by['scale']['group'])->toBe('crecer')
             ->and($by['intervene']['where'])->toBe('FlexiStep · Aragua')
             ->and($by['intervene']['title'])->toBe('Apaga 2 anuncios que pierden')
-            ->and($by['intervene']['steps'])->toBe(['Abre la campaña «FLEXISTEP ARAGUA CBO».', 'Apaga «AD 1» y «AD 2».',
-                'Cuando llegue un batch nuevo (míralo en Cola y banca), lánzalo en esta campaña.', 'No toques el presupuesto hoy.'])
+            // .87: sin nada en la banca, no pide "cuando llegue un batch": solo lo que se puede hacer hoy
+            ->and($by['intervene']['steps'])->toBe(['Abre la campaña «FLEXISTEP ARAGUA CBO».', 'Apaga «AD 1» y «AD 2».', 'No toques el presupuesto hoy.'])
             ->and($by['intervene']['why'])->toBe('$10,29 por compra; tu límite es $7,22 · 1 día encima')
             ->and($by['intervene']['group'])->toBe('arreglar')
             ->and($by['intervene']['detail'][0])->toBe('En 3 días: gastaste $72,00 y Meta vio 7 compras = $10,29 por compra.')
             ->and($by['intervene']['detail'][1])->toBe('Tu objetivo (C) aquí es $5,39 y tu límite para no perder (BE) es $7,22.')
-            ->and($by['hold_prune']['title'])->toBe('Apaga 1 anuncio caro y activa B0104')
-            ->and($by['hold_prune']['steps'])->toBe(['Abre la campaña de FlexiStep en Carabobo.', 'Apaga «AD 3».', 'Activa el ad set «B0104» (está listo en la banca).'])
+            ->and($by['hold_prune']['title'])->toBe('Apaga 1 anuncio caro y lanza B0104')
+            ->and($by['hold_prune']['steps'])->toBe(['Abre la campaña de FlexiStep en Carabobo.', 'Apaga «AD 3».', 'Lanza el batch «B0104» de la banca (sus videos están en Cola y banca).'])
             ->and($by['hold_prune']['why'])->toBe('$7,35 por compra: entre tu objetivo ($5,39) y tu límite ($7,22)')
             ->and($by['alarm']['group'])->toBe('aviso')
             ->and($by['alarm']['title'])->toBe('Poco stock en Caracas: quedan 3 unidades.')
@@ -123,8 +125,8 @@ describe('.82: tu día en Meta Ads', function () {
             ->and($stops[1]['group'])->toBe('frenar')
             // Carabobo se pausa entera: ahí no hace falta apagar creativos
             ->and(collect($stops)->pluck('city')->all())->not->toContain('Carabobo')
-            // Aragua ya apaga sus creativos: intervenir solo activa el batch de la banca
-            ->and(collect($list)->firstWhere('kind', 'intervene')['title'])->toBe('Activa B0104 de la banca')
+            // Aragua ya apaga sus creativos: intervenir solo lanza el batch de la banca
+            ->and(collect($list)->firstWhere('kind', 'intervene')['title'])->toBe('Lanza B0104')
             ->and(collect($list)->firstWhere('kind', 'pause_city')['steps'])->toBe(['Abre la campaña de FlexiStep en Carabobo.', 'Apágala con el interruptor de la izquierda.'])
             ->and(UrgentList::build([$p])[1]['key'])->toBe($stops[1]['key']);
     });
@@ -173,6 +175,100 @@ describe('.82: tu día en Meta Ads', function () {
         expect($list[0]['title'])->toBe('Baja el presupuesto')->and($list[0]['where'])->toBe('Loli · Valencia')
             ->and($list[0]['why'])->toBe('lectura Bajar $30,00 → $24,00')
             ->and($list[0]['group'])->toBe('frenar');
+    });
+});
+
+// .87: lo que puede lanzar una ciudad: de la banca o duplicado de otra ciudad
+function oferta(string $code, ?string $from = null): array
+{
+    return $from === null ? ['code' => $code, 'how' => 'bank']
+        : ['code' => $code, 'how' => 'copy', 'adset' => "{$code} FASP", 'campaign' => "FLEXISTEP | {$from}", 'city' => $from, 'verdict' => 'Prometedor'];
+}
+
+describe('.87: los batches por ciudad', function () {
+    it('una misión que no se puede hacer hoy es un aviso: no cuenta para la racha', function () {
+        $poda = ciudad('c3', 'Carabobo', 'hold_prune', 'Mantener y podar');
+        $poda['numbers'] = numeros(37.4, 5, 5.77, 10, 25) + ['live' => 3, 'offers' => []];
+        $poda['campaign'] = 'SOLOBRILLO | CBOBO';
+        $interviene = ciudad('c2', 'Aragua', 'intervene', 'Intervenir');
+        $interviene['numbers'] = numeros(72, 7, 5.39, 7.22, 30, 1) + ['live' => 2, 'offers' => []];
+        $list = UrgentList::build([producto(1, 'Solo Brillo', 2, 0, [$poda, $interviene])]);
+        $by = collect($list)->keyBy('kind');
+
+        expect($by['hold_prune']['group'])->toBe('aviso')
+            ->and($by['hold_prune']['title'])->toBe('Espera un batch nuevo para meter creativos: no hay en la banca. Cuando haya uno, te sale como misión.')
+            ->and($by['hold_prune']['steps'])->toBe([])
+            ->and($by['intervene']['group'])->toBe('aviso')
+            ->and($by['intervene']['title'])->toStartWith('No toques el presupuesto y espera un batch nuevo')
+            ->and(UrgentList::tally($list, []))->toBe(['tasks' => 0, 'resolved' => 0])
+            // con los avisos, no entre lo más urgente
+            ->and($by['intervene']['severity'])->toBe(UrgentList::SEVERITY['alarm']);
+    });
+
+    it('con algo que apagar sigue siendo misión, solo con lo de hoy', function () {
+        $poda = ciudad('c3', 'Carabobo', 'hold_prune', 'Mantener y podar');
+        $poda['numbers'] = numeros(37.4, 5, 5.77, 10, 25, 0, ['AD 3']) + ['live' => 3, 'offers' => []];
+        $poda['campaign'] = 'SOLOBRILLO | CBOBO';
+        $item = UrgentList::build([producto(1, 'Solo Brillo', 2, 0, [$poda])])[0];
+
+        expect($item['title'])->toBe('Apaga 1 anuncio caro')
+            ->and($item['group'])->toBe('arreglar')
+            ->and($item['steps'])->toBe(['Abre la campaña «SOLOBRILLO | CBOBO».', 'Apaga «AD 3».']);
+    });
+
+    it('un batch que salió en otra ciudad se duplica aquí; con menos de 2 vivos se lanzan los que falten', function () {
+        $poda = ciudad('c3', 'Carabobo', 'hold_prune', 'Mantener y podar');
+        $poda['campaign'] = 'FLEXISTEP | CBOBO';
+        $poda['numbers'] = numeros(36.75, 5, 5.36, 8.17, 25) + ['live' => 2, 'offers' => [oferta('B0102', 'Aragua'), oferta('B0103')]];
+        $uno = UrgentList::build([producto(1, 'FlexiStep', 2, 0, [$poda])])[0];
+        $poda['numbers']['live'] = 0;
+        $dos = UrgentList::build([producto(1, 'FlexiStep', 2, 0, [$poda])])[0];
+
+        // con 2 vivos, pide 1 (el que ya gana en Aragua va primero); con 0 vivos, 2
+        expect($uno['title'])->toBe('Lanza B0102')
+            ->and($uno['steps'])->toBe(['Abre la campaña «FLEXISTEP | CBOBO».',
+                'Duplica el ad set «B0102 FASP» de la campaña «FLEXISTEP | Aragua» en esta campaña (en Aragua: prometedor).'])
+            ->and($dos['title'])->toBe('Lanza B0102 y B0103')
+            ->and($dos['steps'][2])->toBe('Lanza el batch «B0103» de la banca (sus videos están en Cola y banca).')
+            ->and($dos['detail'])->toContain('No queda ningún batch vivo aquí (ad sets prendidos con algún anuncio prendido, sin contar lo que apagas hoy). Tu regla: nunca menos de 2.')
+            ->and(collect([$uno, $dos])->pluck('kind')->unique()->all())->toBe(['hold_prune']);
+    });
+
+    it('una ciudad que sube o se mantiene con menos de 2 batches vivos: misión de lanzar lo que falta, o un aviso', function () {
+        $sube = ciudad('c1', 'Aragua', 'scale', 'Subir $25,00 → $30,00');
+        $sube['campaign'] = 'FLEXISTEP | ARAGUA';
+        $sube['numbers'] = numeros(15, 5, 5.36, 8.17, 25) + ['live' => 1, 'offers' => [oferta('B0103'), oferta('B0104')]];
+        $mantiene = ciudad('c2', 'Caracas', 'hold', 'Mantener');
+        $mantiene['numbers'] = numeros(30, 6, 5.36, 8.17, 40) + ['live' => 1, 'offers' => []];
+        $bien = ciudad('c4', 'Carabobo', 'hold', 'Mantener');
+        $bien['numbers'] = numeros(30, 6, 5.36, 8.17, 40) + ['live' => 2, 'offers' => [oferta('B0103')]];
+        $pausa = ciudad('c5', 'Lara', 'pause_city', 'Pausar la ciudad');
+        $pausa['numbers'] = numeros(30, 0, 5.36, 8.17, 20) + ['live' => 0, 'offers' => [oferta('B0103')]];
+        $list = UrgentList::build([producto(1, 'FlexiStep', 2, 0, [$sube, $mantiene, $bien, $pausa])]);
+        $few = collect($list)->where('kind', 'few_batches')->keyBy('city');
+
+        expect($few->keys()->sort()->values()->all())->toBe(['Aragua', 'Caracas'])
+            ->and($few['Aragua']['title'])->toBe('Lanza 1 batch más: B0103')
+            ->and($few['Aragua']['group'])->toBe('arreglar')
+            ->and($few['Aragua']['steps'])->toBe(['Abre la campaña «FLEXISTEP | ARAGUA».', 'Lanza el batch «B0103» de la banca (sus videos están en Cola y banca).'])
+            ->and($few['Aragua']['why'])->toBe('Solo queda 1 batch vivo: $25,00 por día cae todo en él; con 2, Meta reparte')
+            ->and($few['Caracas']['title'])->toBe('Solo queda 1 batch vivo y no hay más en la banca')
+            ->and($few['Caracas']['group'])->toBe('aviso')
+            // subir sigue siendo su propia misión
+            ->and(collect($list)->where('kind', 'scale')->count())->toBe(1)
+            ->and(UrgentList::tally($list, [])['tasks'])->toBe(3); // subir, lanzar en Aragua y pausar Lara
+    });
+
+    it('en liquidación no entran creativos; los análisis de antes siguen con su banca', function () {
+        $poda = ciudad('c3', 'Carabobo', 'hold_prune', 'Mantener y podar');
+        $poda['numbers'] = numeros(37.4, 5, 5.77, 10, 25) + ['live' => 0, 'offers' => [oferta('B0103')]];
+        $p = producto(1, 'Solo Brillo', 2, 0, [$poda]);
+        $p['mode'] = 'liquidation';
+        $viejo = ciudad('c3', 'Carabobo', 'hold_prune', 'Mantener y podar');
+        $viejo['numbers'] = numeros(37.4, 5, 5.77, 10, 25, 0, [], 'B0104');
+
+        expect(UrgentList::build([$p]))->toBe([])
+            ->and(UrgentList::build([producto(1, 'Solo Brillo', 2, 0, [$viejo])])[0]['title'])->toBe('Lanza B0104');
     });
 });
 

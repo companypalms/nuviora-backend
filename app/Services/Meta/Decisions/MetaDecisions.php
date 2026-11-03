@@ -192,6 +192,8 @@ class MetaDecisions
         // Lo que se ve de cada campaña (ciudad): saturación, CTR bajo en todos sus anuncios y cuánto subió el CPM
         $cpmChange = [];
         foreach ($campaigns as $id => $c) {
+            // .87: un número de Meta ("120210…") como llave de un arreglo llega como int; los de adentro son texto
+            $id = (string) $id;
             $w3 = $c['windows']['3d'] ?? null;
             $cpmChange[$id] = MetaMetrics::change($w3['metrics']['cpm'] ?? null, $c['windows']['prev']['metrics']['cpm'] ?? null);
             $notes = [];
@@ -212,6 +214,7 @@ class MetaDecisions
 
         // Batches (ad sets). Si Meta no trajo los números del ad set, se suman los de sus anuncios
         foreach ($f['adsets'] as $id => $set) {
+            $id = (string) $id;
             $c = $campaigns[$set['campaign_meta_id']] ?? null;
             $windows = ($set['windows']['max']['totals']['impressions'] ?? 0) > 0 ? $set['windows']
                 : $this->sumAds(array_keys(array_filter($f['ads'], fn ($a) => $a['adset_meta_id'] === $id)), $f);
@@ -225,6 +228,7 @@ class MetaDecisions
         }
         // .65: un batch es perdedor solo si todos sus creativos perdieron
         foreach ($out['adsets'] as $setId => $v) {
+            $setId = (string) $setId;
             $inside = array_keys(array_filter($f['ads'], fn ($a) => $a['adset_meta_id'] === $setId));
             $out['adsets'][$setId] = self::batchVerdict($v, array_map(fn ($adId) => ['name' => (string) $f['ads'][$adId]['name'], 'active' => (bool) $f['ads'][$adId]['active'],
                 'verdict' => $adVerdicts[$adId]], $inside));
@@ -242,6 +246,7 @@ class MetaDecisions
         }
         // Un batch que falla o pierde dice qué anuncios de adentro lo tiran abajo (para podar)
         foreach ($out['adsets'] as $setId => $v) {
+            $setId = (string) $setId;
             if (!in_array($v['key'], ['failing', 'loser', 'intermediate'], true)) {
                 continue;
             }
@@ -345,6 +350,7 @@ class MetaDecisions
         $alarms = [];
         $minFor = [];
         foreach ($f['campaigns'] as $id => $c) {
+            $id = (string) $id;
             $h = $history['campaigns'][$id] ?? ['daily' => [], 'budget_events' => [], 'status_events' => [], 'ad_pauses' => [], 'new_ads' => [], 'mins' => 0.0];
             $city = $c['city_id'] !== null ? ($ops['cities'][$c['city_id']] ?? null) : null;
             $w3 = $c['windows']['3d'] ?? null;
@@ -427,6 +433,8 @@ class MetaDecisions
                     $newBatches++;
                 }
             }
+            // .87: lo que puede lanzar esta ciudad: la banca y los batches que ya salieron en otra ciudad, no en esta
+            $offers = self::offers($f, $out, $id, $ops['bank']['launched'] ?? [], $ops['bank']['ready'] ?? []);
             $action = $cr->action([
                 'c' => $c['target'], 'be' => $c['break_even'], 'mode' => $mode, 'budget' => $budget,
                 'spend3' => $w3['totals']['spend'] ?? 0, 'purchases3' => $w3['totals']['purchases'] ?? 0, 'cpa7' => $cpa7, 'freq3' => $w3['metrics']['frequency'] ?? null,
@@ -437,13 +445,15 @@ class MetaDecisions
                 'streak_days' => $streak['days'], 'intervention' => $intervention, 'closed_since_intervention' => $closed,
                 'decreased_since_intervention' => $intervention !== null && collect($h['budget_events'])->contains(fn ($e) => $e['to'] < $e['from'] && $e['date'] >= $intervention),
                 'history_since' => $history['history_since'], 'last_test' => $lastTest, 'prune' => $prune,
-                'bank_ready' => $ops['bank']['ready'] ?? [],
+                'bank_ready' => array_column($offers, 'code'),
             ]);
             $out['campaigns'][$id]['action'] = $action;
             // .82: los números de la ciudad, para la frase de cada tarea del análisis ("$10,29 por compra; tu límite es $7,22")
             $out['campaigns'][$id]['numbers'] = ['spend3' => (float) ($w3['totals']['spend'] ?? 0), 'purchases3' => (float) ($w3['totals']['purchases'] ?? 0),
                 'c' => $c['target'], 'be' => $c['break_even'], 'source' => $c['target_source'] ?? null, 'budget' => $budget,
-                'streak' => $streak['days'], 'prune' => $prune, 'bank' => $ops['bank']['ready'][0] ?? null];
+                'streak' => $streak['days'], 'prune' => $prune,
+                // .87: los batches vivos (contando lo que se apaga hoy) y lo que puede lanzar, en orden
+                'live' => self::live($f, $out, $id, in_array($action['key'], ['hold_prune', 'intervene'], true)), 'offers' => $offers];
             $out['campaigns'][$id]['budget_notes'] = $cr->budgetNotes($budget, (float) $h['mins'], $newBatches, $c['target']);
             $actions[$id] = $action['key'];
 
@@ -535,6 +545,73 @@ class MetaDecisions
         ];
 
         return $out;
+    }
+
+    /**
+     * `.87` (dueño, 2026-11-03: "sí estaban activos, pero ninguno de sus anuncios estaban activos"): cuántos batches siguen
+     * vivos en una campaña: ad sets prendidos con al menos un anuncio prendido que hoy no se apaga (un creativo perdedor, uno
+     * que pierde en esta ciudad o, si la ciudad se poda, un anuncio perdedor). PHP puro.
+     */
+    public static function live(array $f, array $out, string $campaignId, bool $prunes): int
+    {
+        $sets = [];
+        foreach ($f['ads'] as $adId => $ad) {
+            $set = $f['adsets'][$ad['adset_meta_id']] ?? null;
+            if ((string) $ad['campaign_meta_id'] !== $campaignId || !$ad['active'] || !($set['active'] ?? false)) {
+                continue;
+            }
+            $cr = $ad['creative_id'] !== null ? ($out['creatives'][$ad['creative_id']] ?? null) : null;
+            $here = collect($cr['cities'] ?? [])->first(fn ($x) => (string) $x['campaign_meta_id'] === $campaignId);
+            $off = ($cr['verdict']['key'] ?? null) === 'loser' || ($here['key'] ?? null) === 'loser'
+                || $prunes && ($out['ads'][$adId]['key'] ?? null) === 'loser';
+            if (!$off) {
+                $sets[(string) $ad['adset_meta_id']] = true;
+            }
+        }
+
+        return count($sets);
+    }
+
+    /**
+     * `.87` (dueño, 2026-11-03: "ese batch debería aparecer como que está lanzado en Maracay, pero que está en banca en
+     * Carabobo y en Caracas"): lo que puede lanzar una campaña, en orden: los batches que ya ganan en otra ciudad (prometedor
+     * o PROVEN), los de la banca y los demás que salieron en otra ciudad pero no en esta (también si allá perdieron: el dueño
+     * eligió ofrecerlos igual, cada ciudad es distinta). De los que ya están en Meta se duplica el ad set que mejor va. PHP puro.
+     *
+     * @param list<string> $launched los B#### del producto en test o testeados
+     * @param list<string> $ready los B#### en banca, listos para lanzar
+     * @return list<array{code: string, how: string, adset?: string, campaign?: ?string, city?: ?string, verdict?: ?string}>
+     */
+    public static function offers(array $f, array $out, string $campaignId, array $launched, array $ready): array
+    {
+        $rank = ['proven' => 0, 'promising' => 1, 'failing' => 2, 'intermediate' => 3, 'evaluation' => 4, 'no_data' => 5, 'no_target' => 6, 'loser' => 7];
+        $rankOf = fn (array $set) => $rank[$out['adsets'][$set['meta_id']]['key'] ?? ''] ?? 9;
+        $cityOf = fn (string $id) => $f['campaigns'][$id]['city_id'] ?? null;
+        $mine = $cityOf($campaignId);
+        $here = fn (array $set) => $mine !== null ? $cityOf((string) $set['campaign_meta_id']) === $mine : (string) $set['campaign_meta_id'] === $campaignId;
+        $good = [];
+        $rest = [];
+        foreach ($launched as $code) {
+            $sets = array_filter($f['adsets'], fn ($set) => ($set['batch_code'] ?? null) === $code);
+            $from = array_values(array_filter($sets, fn ($set) => !($set['missing'] ?? false)));
+            if (!$from || array_filter($sets, $here)) {
+                continue; // ya salió en esta ciudad, o ya no está en Meta para duplicarlo
+            }
+            usort($from, fn ($a, $b) => $rankOf($a) <=> $rankOf($b));
+            $v = $out['adsets'][$from[0]['meta_id']] ?? null;
+            $c = $f['campaigns'][(string) $from[0]['campaign_meta_id']] ?? [];
+            $offer = ['code' => $code, 'how' => 'copy', 'adset' => (string) $from[0]['name'], 'campaign' => $c['name'] ?? null, 'city' => $c['city'] ?? null,
+                'verdict' => $v['label'] ?? null, '_rank' => $rankOf($from[0])];
+            if (in_array($v['key'] ?? null, ['proven', 'promising'], true)) {
+                $good[] = $offer;
+            } else {
+                $rest[] = $offer;
+            }
+        }
+        usort($rest, fn ($a, $b) => $a['_rank'] <=> $b['_rank']);
+        $strip = fn (array $o) => array_diff_key($o, ['_rank' => 1]);
+
+        return [...array_map($strip, $good), ...array_map(fn ($code) => ['code' => (string) $code, 'how' => 'bank'], $ready), ...array_map($strip, $rest)];
     }
 
     /** El veredicto de un batch, anuncio o creativo en una ciudad: el estado de toda su vida y, si fue ganador, si empezó a fallar. */

@@ -120,6 +120,9 @@ class OpsFacts
         // Paso 4a: la banca (aprobados sin testear) y los que están listos para lanzar
         $bank = DB::table('creative_batches')->whereIn('product_id', $productIds)->whereIn('status', QueueRules::BANK)->whereNotNull('number')
             ->orderBy('position')->orderBy('number')->get(['product_id', 'number', 'status'])->groupBy('product_id');
+        // .87: los que ya salieron en Meta (en test o testeados): siguen en banca para las ciudades donde no salieron
+        $launched = DB::table('creative_batches')->whereIn('product_id', $productIds)->whereIn('status', ['testing', 'tested'])->whereNotNull('number')
+            ->orderBy('number')->get(['product_id', 'number'])->groupBy('product_id');
         $since = now($tz)->subDays(7)->toDateString();
         $sales = DB::table('order_financials')->where('kind', 'normal')->where('created_date', '>=', $since)->whereIn('product_id', $productIds)
             ->groupBy('product_id', 'city_id')->selectRaw('product_id, city_id, COUNT(*) n, SUM(units_main) units')->get()
@@ -145,7 +148,8 @@ class OpsFacts
             $out[$pid] = ['price' => isset($prices[$pid]) ? (float) $prices[$pid] : null, 'price_change' => $this->priceChange($pid),
                 'cities' => $cities, 'version' => $versions["{$pid}|"] ?? null,
                 'bank' => ['codes' => ($bank[$pid] ?? collect())->map(fn ($b) => QueueRules::batchCode((int) $b->number))->values()->all(),
-                    'ready' => ($bank[$pid] ?? collect())->where('status', 'bank')->map(fn ($b) => QueueRules::batchCode((int) $b->number))->values()->all()]];
+                    'ready' => ($bank[$pid] ?? collect())->where('status', 'bank')->map(fn ($b) => QueueRules::batchCode((int) $b->number))->values()->all(),
+                    'launched' => ($launched[$pid] ?? collect())->map(fn ($b) => QueueRules::batchCode((int) $b->number))->values()->all()]];
         }
 
         return $out;

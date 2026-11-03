@@ -102,6 +102,8 @@ class AdFacts
             $out[$pid]['adsets'][(string) $s->meta_id] = [
                 'meta_id' => (string) $s->meta_id, 'name' => $s->name, 'campaign_meta_id' => (string) $s->campaign_meta_id,
                 'active' => $s->effective_status === 'ACTIVE' && $s->missing_since === null,
+                // .87: si ya no está en Meta, no se puede duplicar en otra ciudad
+                'missing' => $s->missing_since !== null,
                 'batch_code' => $s->batch_code, 'angle_code' => $s->angle_code, 'concept' => $s->concept, 'stage' => $s->stage,
                 'windows' => $windows['adset'][(string) $s->meta_id] ?? [],
             ];

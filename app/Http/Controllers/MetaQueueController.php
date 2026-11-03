@@ -319,8 +319,10 @@ class MetaQueueController extends Controller
 
         $who = ['id' => (int) Auth::id(), 'role' => 'Admin'];
         $profiles = \App\Services\Meta\Products\ProductProfiles::many($batches->pluck('product_id')->unique()->all());
+        // .87: dónde salió cada uno y para qué ciudades sigue en banca
+        $cities = \App\Services\Meta\Queue\BatchCities::of($batches);
 
-        return EditorWork::sorted($batches)->map(function (CreativeBatch $b) use ($angles, $who, $profiles) {
+        return EditorWork::sorted($batches)->map(function (CreativeBatch $b) use ($angles, $who, $profiles, $cities) {
                 // .81: qué prueba cada pieza, su hipótesis, por qué ese formato y, al terminar el test, si ganó
                 $pieces = $b->pieces->map(fn (CreativeBatchPiece $p) => ['id' => $p->id, 'code' => $p->code(), 'change' => $p->change, 'format' => $p->format,
                     'link' => $p->link, 'hook' => $p->hook, 'test_label' => \App\Services\Meta\Queue\PieceRules::TESTS[$p->test ?? $b->kind] ?? null,
@@ -339,7 +341,7 @@ class MetaQueueController extends Controller
                     'deliverables' => $b->deliverables, 'urgency' => $b->urgency, 'due_date' => $b->due_date?->toDateString(),
                     'approved_at' => $b->approved_at?->toIso8601String(), 'approved_by' => $b->approver?->names,
                     'discard_reason' => $b->discard_reason, 'testing_at' => $b->testing_at?->toIso8601String(), 'tested_at' => $b->tested_at?->toIso8601String(),
-                    'result' => $b->result, 'learning' => $b->learning, 'pieces' => $pieces,
+                    'result' => $b->result, 'learning' => $b->learning, 'pieces' => $pieces, 'cities' => $cities[$b->id] ?? null,
                     'meta_names' => QueueRules::metaNames($b->number, $b->angle_code, $b->pieces->pluck('number')->all()),
                 ] + EditorWork::fields($b, $who);
 
