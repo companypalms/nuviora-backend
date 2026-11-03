@@ -82,6 +82,8 @@ class EditorQueueController extends Controller
             'pieces.*.id' => 'required|integer',
             'pieces.*.link' => 'nullable|string|max:1000',
             'pieces.*.file_id' => 'nullable|integer',
+            'pieces.*.source' => 'nullable|string|in:reference,own,iteration', // .92
+            'pieces.*.reference_id' => 'nullable|integer',
             'pieces.*.hook' => 'nullable|string|max:300',
         ], [
             'concept.required' => 'Escribe el concepto del batch.',
@@ -103,7 +105,7 @@ class EditorQueueController extends Controller
     /** `.90`: terminó de subir: se revisa que llegó y queda listo para entregar. */
     public function confirm(Request $request, StoredFile $file, Uploads $uploads)
     {
-        abort_unless($file->kind === 'piece', 404);
+        abort_unless(in_array($file->kind, ['piece', 'reference'], true), 404); // .92: también el video de una referencia
         $file = $uploads->confirm($file, $request->user());
 
         return response()->json(['file' => $file->payload()]);

@@ -22,6 +22,12 @@ class CreativeBatchPiece extends Model
         return $this->belongsTo(CreativeBatch::class, 'creative_batch_id');
     }
 
+    /** `.92`: la referencia de la biblioteca de la que salió (si salió de una). */
+    public function sourceReference()
+    {
+        return $this->belongsTo(CreativeReference::class, 'source_reference_id');
+    }
+
     /** "C0457", o null si todavía no se aprobó. */
     public function code(): ?string
     {

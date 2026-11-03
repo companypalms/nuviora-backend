@@ -9,11 +9,12 @@ use Illuminate\Support\Str;
  * - una pieza (lo que entrega el editor): un video (mp4, mov o webm, hasta 1 GB) o una imagen (jpg, png o webp, hasta
  *   30 MB), con el nombre exacto de su anuncio ("C0457 POSP.mp4");
  * - una foto del producto: una imagen;
- * - el documento de estrategia del producto: pdf, Word o texto (hasta 50 MB). Solo lo ve el dueño.
+ * - el documento de estrategia del producto: pdf, Word o texto (hasta 50 MB). Solo lo ve el dueño;
+ * - `.92` una referencia de la biblioteca: un video o una imagen, como una pieza.
  */
 final class StoredFileRules
 {
-    public const KINDS = ['piece' => 'Pieza', 'photo' => 'Foto del producto', 'strategy' => 'Documento de estrategia'];
+    public const KINDS = ['piece' => 'Pieza', 'photo' => 'Foto del producto', 'strategy' => 'Documento de estrategia', 'reference' => 'Referencia'];
 
     public const VIDEOS = ['video/mp4' => 'mp4', 'video/quicktime' => 'mov', 'video/webm' => 'webm'];
 
@@ -29,7 +30,7 @@ final class StoredFileRules
     public const DOCUMENT_MAX = 50 * 1024 * 1024;
 
     /** Lo que acepta cada clase de archivo. */
-    private const ACCEPTS = ['piece' => ['video', 'image'], 'photo' => ['image'], 'strategy' => ['document']];
+    private const ACCEPTS = ['piece' => ['video', 'image'], 'photo' => ['image'], 'strategy' => ['document'], 'reference' => ['video', 'image']];
 
     /** video, image, document u other. */
     public static function type(string $mime): string
@@ -64,6 +65,7 @@ final class StoredFileRules
         if (!in_array($type, $accepts, true)) {
             return match ($kind) {
                 'piece' => 'Sube el video (mp4, mov o webm) o la imagen (jpg, png o webp) de la pieza.',
+                'reference' => 'Sube el video (mp4, mov o webm) o la imagen (jpg, png o webp) de la referencia.',
                 'photo' => 'Las fotos van en jpg, png o webp.',
                 default => 'El documento de estrategia va en pdf, Word o texto.',
             };
@@ -97,6 +99,7 @@ final class StoredFileRules
             'piece' => "creativos/{$p}/" . ($slug($batch) ?: 'B') . '/' . ($slug(pathinfo($name, PATHINFO_FILENAME)) ?: 'pieza')
                 . ($version ? "-v{$version}" : '') . '-' . Str::lower(Str::random(8)) . ".{$ext}",
             'photo' => "productos/{$p}/fotos/" . Str::lower(Str::random(12)) . ".{$ext}",
+            'reference' => 'referencias/' . Str::lower(Str::random(16)) . ".{$ext}", // .92
             default => "productos/{$p}/estrategia/" . (($slug(pathinfo($name, PATHINFO_FILENAME)) ?: 'estrategia') . '-' . Str::lower(Str::random(8))) . ".{$ext}",
         };
     }

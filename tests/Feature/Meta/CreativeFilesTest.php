@@ -3,6 +3,7 @@
 use App\Models\AssistantMessage;
 use App\Models\CreativeBatch;
 use App\Models\CreativeBatchPiece;
+use App\Models\CreativeReference;
 use App\Models\StoredFile;
 use App\Models\User;
 use App\Services\Assistant\Actions\ActionContext;
@@ -14,6 +15,7 @@ use App\Services\Files\StoredFileRules;
 use App\Services\Files\Uploads;
 use App\Services\Meta\Products\ProductProfileRules;
 use App\Services\Meta\Queue\EditorWork;
+use App\Services\Meta\Queue\ReferenceLibrary;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\DB;
@@ -132,6 +134,7 @@ describe('Las entregas con archivo', function () {
             $t->string('status');
             $t->string('kind')->nullable();
             $t->string('angle_code')->nullable();
+            $t->unsignedBigInteger('reference_creative_id')->nullable();
             $t->unsignedBigInteger('editor_id')->nullable();
             $t->timestamp('status_at')->nullable();
             $t->unsignedBigInteger('status_by')->nullable();
@@ -147,7 +150,38 @@ describe('Las entregas con archivo', function () {
             $t->string('format')->nullable();
             $t->string('link', 1000)->nullable();
             $t->unsignedBigInteger('file_id')->nullable();
+            $t->string('source')->nullable();
+            $t->unsignedBigInteger('source_reference_id')->nullable();
+            $t->string('result')->nullable();
             $t->string('hook')->nullable();
+            $t->timestamps();
+        });
+        // .92: la biblioteca muestra el nombre del ángulo (TestingPhase::anglesMany)
+        Schema::create('ad_angles', function ($t) {
+            $t->id();
+            $t->unsignedBigInteger('product_id');
+            $t->string('code');
+            $t->string('name')->nullable();
+            $t->text('hypothesis')->nullable();
+            $t->unsignedBigInteger('persona_id')->nullable();
+            $t->unsignedInteger('position')->nullable();
+            $t->unsignedBigInteger('alias_of')->nullable();
+            $t->timestamps();
+        });
+        Schema::create('product_personas', fn ($t) => [$t->id(), $t->unsignedBigInteger('product_id'), $t->string('name'), $t->timestamps()]);
+        Schema::create('creative_references', function ($t) {
+            $t->id();
+            $t->unsignedInteger('number')->unique();
+            $t->string('link', 1000);
+            $t->string('link_key', 64);
+            $t->string('type');
+            $t->string('why', 500);
+            $t->unsignedBigInteger('product_id')->nullable();
+            $t->string('angle_code')->nullable();
+            $t->unsignedBigInteger('file_id')->nullable();
+            $t->unsignedBigInteger('uploaded_by')->nullable();
+            $t->timestamp('archived_at')->nullable();
+            $t->unsignedBigInteger('archived_by')->nullable();
             $t->timestamps();
         });
         Schema::create('creative_batch_deliveries', function ($t) {
@@ -193,7 +227,8 @@ describe('Las entregas con archivo', function () {
 
             return app(Uploads::class)->confirm(StoredFile::find($start['file']['id']), User::find($userId));
         };
-        $this->data = fn (array $pieces) => ['concept' => 'Antes y después', 'angle' => 'Postparto', 'pieces' => $pieces];
+        // .92: cada pieza dice de dónde salió (si la prueba no lo dice, "idea propia")
+        $this->data = fn (array $pieces) => ['concept' => 'Antes y después', 'angle' => 'Postparto', 'pieces' => array_map(fn ($p) => $p + ['source' => 'own'], $pieces)];
     });
 
     it('la pieza se sube con el nombre de su anuncio, se confirma y se entrega sin Drive', function () {
@@ -276,6 +311,58 @@ describe('Las entregas con archivo', function () {
         expect(app(Uploads::class)->check())->toMatchArray(['ok' => false])->and(app(Uploads::class)->check()['message'])->toContain('Drive');
     });
 
+    it('.92: un editor sube una referencia (video, link, tipo y por qué) y queda REF0001; el mismo link avisa', function () {
+        $start = app(Uploads::class)->start(['kind' => 'reference', 'name' => 'ref.mp4'], 'video/mp4', 9, User::find(10));
+        $this->call('PUT', $start['upload']['url'], [], [], [], ['CONTENT_TYPE' => 'video/mp4'], 'referenci')->assertNoContent();
+        app(Uploads::class)->confirm(StoredFile::find($start['file']['id']), User::find(10));
+        $data = ['file_id' => $start['file']['id'], 'link' => 'https://www.facebook.com/ads/library/?id=777', 'type' => 'testimonial',
+            'why' => 'El hook de la balanza engancha en 2 segundos', 'product_id' => 5, 'angle_code' => 'posp'];
+        $ref = app(ReferenceLibrary::class)->create($data, User::find(10));
+
+        expect($ref->code())->toBe('REF0001')->and($ref->angle_code)->toBe('POSP')->and(StoredFile::find($start['file']['id'])->name)->toBe('REF0001.mp4')
+            ->and(fn () => app(ReferenceLibrary::class)->create(['link' => 'https://facebook.com/ads/library?id=777'] + $data, User::find(10)))
+            ->toThrow(ValidationException::class, 'Esa referencia ya está en la biblioteca: REF0001.');
+    });
+
+    it('.92: cada pieza dice de dónde salió; sin decirlo no se entrega; la referencia cuenta sus usos y sus resultados', function () {
+        $ref = CreativeReference::create(['number' => 3, 'link' => 'https://x.com/a', 'link_key' => 'k', 'type' => 'ugc', 'why' => 'Buen hook', 'product_id' => null]);
+        $a = ($this->upload)(21);
+        $b = ($this->upload)(22);
+        $base = ['concept' => 'C', 'angle' => 'A'];
+        expect(fn () => (new EditorWork())->deliver(CreativeBatch::find(1), User::find(10), $base + ['pieces' => [
+            ['id' => 21, 'file_id' => $a->id, 'hook' => 'h', 'source' => 'reference', 'reference_id' => $ref->id],
+            ['id' => 22, 'file_id' => $b->id, 'hook' => 'h']]]))
+            ->toThrow(ValidationException::class, 'C0458: di de dónde salió (una referencia de la biblioteca o idea propia).');
+
+        (new EditorWork())->deliver(CreativeBatch::find(1), User::find(10), $base + ['pieces' => [
+            ['id' => 21, 'file_id' => $a->id, 'hook' => 'h', 'source' => 'reference', 'reference_id' => $ref->id],
+            ['id' => 22, 'file_id' => $b->id, 'hook' => 'h', 'source' => 'own']]]);
+        DB::table('creative_batch_pieces')->where('id', 21)->update(['result' => 'Ganó']);
+
+        $editor = ReferenceLibrary::list(['id' => 10, 'role' => 'Editor de video'])[0];
+        $leader = ReferenceLibrary::list(['id' => 1, 'role' => 'Admin'])[0];
+        expect($editor)->toMatchArray(['code' => 'REF0003', 'uses' => 1])->not->toHaveKey('results')
+            ->and($leader['results'])->toBe(['won' => 1, 'lost' => 0, 'tie' => 0])
+            ->and(CreativeBatchPiece::find(21))->source->toBe('reference')->source_reference_id->toBe($ref->id);
+
+        $uses = ReferenceLibrary::uses($ref, ['id' => 10, 'role' => 'Editor de video']);
+        expect($uses)->toHaveCount(1)->and($uses[0])->toMatchArray(['code' => 'C0457', 'ad_name' => 'C0457 POSP', 'batch' => 'B0110'])->not->toHaveKey('result')
+            ->and(ReferenceLibrary::uses($ref, ['id' => 1, 'role' => 'Admin'])[0]['result'])->toBe('Ganó');
+    });
+
+    it('.92: solo el líder o el dueño quitan una referencia; la iteración solo vale en el encargo de un ganador', function () {
+        $ref = CreativeReference::create(['number' => 1, 'link' => 'https://x.com/a', 'link_key' => 'k', 'type' => 'ugc', 'why' => 'w']);
+        expect(fn () => app(ReferenceLibrary::class)->archive($ref, User::find(10)))->toThrow(HttpResponseException::class);
+        app(ReferenceLibrary::class)->archive($ref, User::find(1));
+        expect(ReferenceLibrary::list(['id' => 1, 'role' => 'Admin']))->toBe([]);
+
+        $a = ($this->upload)(21);
+        $b = ($this->upload)(22);
+        expect(fn () => (new EditorWork())->deliver(CreativeBatch::find(1), User::find(10), ['concept' => 'C', 'angle' => 'A', 'pieces' => [
+            ['id' => 21, 'file_id' => $a->id, 'hook' => 'h', 'source' => 'iteration'], ['id' => 22, 'file_id' => $b->id, 'hook' => 'h', 'source' => 'own']]]))
+            ->toThrow(ValidationException::class, 'este encargo no es la iteración de un ganador');
+    });
+
     it('el asistente guarda en el producto las fotos y el PDF que el dueño adjuntó en la última hora', function () {
         Schema::create('assistant_messages', function ($t) {
             $t->id();
@@ -313,6 +400,23 @@ describe('Las entregas con archivo', function () {
         expect(collect($card->lines)->firstWhere('label', 'Se guarda en el producto')['value'])
             ->toBe("1 foto (las ven los editores): frente.jpg\nDocumento de estrategia (solo tú): estrategia.pdf")
             ->and($card->payload['files'])->toBe($files);
+    });
+});
+
+describe('.92: la biblioteca de referencias (sin base)', function () {
+    it('el mismo anuncio con otro link (www, la barra final, utm) se reconoce como el mismo', function () {
+        $a = ReferenceLibrary::linkKey('https://www.facebook.com/ads/library/?id=123456&utm_source=wa');
+        expect(ReferenceLibrary::linkKey('https://facebook.com/ads/library?id=123456'))->toBe($a)
+            ->and(ReferenceLibrary::linkKey('https://facebook.com/ads/library/?id=999'))->not->toBe($a)
+            ->and(ReferenceLibrary::validLink('https://www.tiktok.com/@marca/video/1'))->toBeTrue()
+            ->and(ReferenceLibrary::validLink('no es un link'))->toBeFalse();
+    });
+
+    it('el líder y el dueño ven si ganaron; los editores no', function () {
+        expect(ReferenceLibrary::seesResults(['id' => 1, 'role' => 'Editor líder']))->toBeTrue()
+            ->and(ReferenceLibrary::seesResults(['id' => 1, 'role' => 'Admin']))->toBeTrue()
+            ->and(ReferenceLibrary::seesResults(['id' => 1, 'role' => 'Editor de video']))->toBeFalse()
+            ->and(CreativeReference::codeOf(7))->toBe('REF0007');
     });
 });
 

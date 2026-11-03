@@ -655,6 +655,10 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::delete('/files/{file}', [\App\Http\Controllers\MetaProductProfileController::class, 'forget'])->whereNumber('file');
         Route::get('/files/status', [\App\Http\Controllers\FilesController::class, 'status']);
         Route::post('/files/check', [\App\Http\Controllers\FilesController::class, 'check'])->middleware('throttle:10,1');
+        // .92: la biblioteca de referencias (el dueño la ve con los resultados y puede quitar una)
+        Route::get('/references', [\App\Http\Controllers\CreativeReferenceController::class, 'index']);
+        Route::get('/references/{reference}/uses', [\App\Http\Controllers\CreativeReferenceController::class, 'uses'])->whereNumber('reference');
+        Route::delete('/references/{reference}', [\App\Http\Controllers\CreativeReferenceController::class, 'archive'])->whereNumber('reference');
         // .66: lo que sabemos de cada producto
         Route::get('/memory', [\App\Http\Controllers\MetaMemoryController::class, 'index']);
         Route::post('/memory/{product}/summarize', [\App\Http\Controllers\MetaMemoryController::class, 'summarize'])->middleware('throttle:10,1');
@@ -696,6 +700,12 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::post('/queue/{batch}/pieces/{piece}/upload', [\App\Http\Controllers\EditorQueueController::class, 'upload'])
             ->whereNumber(['batch', 'piece'])->middleware('throttle:60,1');
         Route::post('/files/{file}/confirm', [\App\Http\Controllers\EditorQueueController::class, 'confirm'])->whereNumber('file');
+        // .92: la biblioteca de referencias (las suben los editores; el líder también las quita)
+        Route::get('/references', [\App\Http\Controllers\CreativeReferenceController::class, 'index']);
+        Route::post('/references/upload', [\App\Http\Controllers\CreativeReferenceController::class, 'upload'])->middleware('throttle:30,1');
+        Route::post('/references', [\App\Http\Controllers\CreativeReferenceController::class, 'store'])->middleware('throttle:30,1');
+        Route::get('/references/{reference}/uses', [\App\Http\Controllers\CreativeReferenceController::class, 'uses'])->whereNumber('reference');
+        Route::delete('/references/{reference}', [\App\Http\Controllers\CreativeReferenceController::class, 'archive'])->whereNumber('reference');
         Route::put('/queue/{batch}/editor', [\App\Http\Controllers\EditorQueueController::class, 'assign'])->whereNumber('batch');
         Route::post('/queue/{batch}/review', [\App\Http\Controllers\EditorQueueController::class, 'review'])->whereNumber('batch');
     });

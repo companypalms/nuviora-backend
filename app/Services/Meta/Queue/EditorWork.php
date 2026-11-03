@@ -98,9 +98,10 @@ class EditorWork
     /**
      * Entregar: el archivo (`.90`, con el almacén encendido; si no, un enlace de Drive) y su hook por cada pieza, y la
      * ficha (concepto y ángulo). Pasa a "En revisión" como la versión siguiente (V01, V02…). En una corrección, la pieza
-     * que no se volvió a subir sigue con su archivo.
+     * que no se volvió a subir sigue con su archivo. `.92`: cada pieza dice de dónde salió (una referencia de la biblioteca,
+     * idea propia o, en una iteración, el ganador); si no lo dice, sigue con lo de su entrega anterior.
      *
-     * @param array{concept: string, angle: string, notes?: ?string, pieces: list<array{id: int, link?: ?string, file_id?: ?int, hook: ?string}>} $data
+     * @param array{concept: string, angle: string, notes?: ?string, pieces: list<array{id: int, link?: ?string, file_id?: ?int, hook: ?string, source?: ?string, reference_id?: ?int}>} $data
      */
     public function deliver(CreativeBatch $batch, User $actor, array $data): CreativeBatchDelivery
     {
@@ -113,6 +114,10 @@ class EditorWork
             // .90: el archivo nuevo de cada pieza, o el que ya tenía (si no lo volvió a subir)
             $fileOf = fn (CreativeBatchPiece $p) => (int) ($given->get($p->id)['file_id'] ?? 0) ?: (int) $p->file_id;
             $ready = $files ? StoredFile::whereIn('id', $pieces->map($fileOf)->filter()->values())->where('kind', 'piece')->where('status', 'ready')->get()->keyBy('id') : collect();
+            // .92: de dónde salió cada pieza (lo nuevo, o lo de su entrega anterior)
+            $sourceOf = fn (CreativeBatchPiece $p) => ($given->get($p->id)['source'] ?? null) ?: $p->source;
+            $refOf = fn (CreativeBatchPiece $p) => $sourceOf($p) === 'reference' ? ((int) ($given->get($p->id)['reference_id'] ?? 0) ?: (int) $p->source_reference_id) : null;
+            $refs = \App\Models\CreativeReference::whereIn('id', $pieces->map($refOf)->filter()->values())->get()->keyBy('id');
             $errors = [];
             if ($given->keys()->diff($pieces->pluck('id'))->isNotEmpty()) {
                 $errors['pieces'] = 'Hay piezas que no son de este encargo: vuelve a abrirlo.';
@@ -128,6 +133,14 @@ class EditorWork
                 if (trim((string) ($g['hook'] ?? '')) === '') {
                     $errors["pieces.{$i}.hook"] = "{$name}: escribe el hook (o el texto principal, si es una imagen).";
                 }
+                $source = $sourceOf($p);
+                if (!isset(ReferenceLibrary::SOURCES[(string) $source])) {
+                    $errors["pieces.{$i}.source"] = "{$name}: di de dónde salió (una referencia de la biblioteca o idea propia).";
+                } elseif ($source === 'reference' && !$refs->has($refOf($p))) {
+                    $errors["pieces.{$i}.source"] = "{$name}: elige la referencia de la que salió (o «Idea propia»).";
+                } elseif ($source === 'iteration' && !$batch->reference_creative_id) {
+                    $errors["pieces.{$i}.source"] = "{$name}: este encargo no es la iteración de un ganador: elige una referencia o «Idea propia».";
+                }
             }
             if ($errors) {
                 throw ValidationException::withMessages($errors);
@@ -135,13 +148,14 @@ class EditorWork
 
             $rows = $pieces->map(fn (CreativeBatchPiece $p) => ['piece_id' => $p->id, 'code' => $p->code(),
                 'link' => $files ? null : trim($given[$p->id]['link']), 'file_id' => $files ? $fileOf($p) : null,
-                'hook' => trim($given[$p->id]['hook'])])->values()->all();
+                'hook' => trim($given[$p->id]['hook']), 'source' => $sourceOf($p), 'reference_id' => $refOf($p)])->values()->all();
             $delivery = CreativeBatchDelivery::create([
                 'creative_batch_id' => $batch->id, 'version' => (int) $batch->deliveries()->max('version') + 1, 'editor_id' => $actor->id,
                 'concept' => trim($data['concept']), 'angle' => trim($data['angle']), 'notes' => trim((string) ($data['notes'] ?? '')) ?: null, 'pieces' => $rows,
             ]);
             foreach ($pieces as $i => $p) {
-                $p->forceFill(['link' => $rows[$i]['link'], 'file_id' => $rows[$i]['file_id'], 'hook' => $rows[$i]['hook']])->save();
+                $p->forceFill(['link' => $rows[$i]['link'], 'file_id' => $rows[$i]['file_id'], 'hook' => $rows[$i]['hook'],
+                    'source' => $rows[$i]['source'], 'source_reference_id' => $rows[$i]['reference_id']])->save();
             }
             $now = now();
             // .89 (dueño, 2026-11-03: "él mismo lo aprueba, pero debe quedar en el sistema que esos creativos los hizo él"):
@@ -215,7 +229,7 @@ class EditorWork
 
         return self::sorted($batches)->map(function (CreativeBatch $b) use ($angles, $refs, $scripts, $profiles, $who, $clean, $allAngles, $photos, $pieceFiles, $uploads) {
             $out = [
-                'id' => $b->id, 'code' => $b->code(), 'product' => $b->product?->showable_name ?: $b->product?->title,
+                'id' => $b->id, 'code' => $b->code(), 'product_id' => $b->product_id, 'product' => $b->product?->showable_name ?: $b->product?->title,
                 'status' => $b->status, 'status_label' => QueueRules::STATUSES[$b->status] ?? $b->status, 'status_at' => $b->status_at?->toIso8601String(),
                 'position' => $b->position, 'kind' => $b->kind, 'kind_label' => QueueRules::KINDS[$b->kind] ?? $b->kind,
                 'angle_code' => $b->angle_code, 'angle_name' => $angles["{$b->product_id}:{$b->angle_code}"] ?? null,
@@ -232,7 +246,11 @@ class EditorWork
                 // .81: qué prueba cada pieza y su hipótesis (por qué ese formato y el resultado son del dueño)
                 'pieces' => $b->pieces->map(fn (CreativeBatchPiece $p) => ['id' => $p->id, 'code' => $p->code(), 'change' => $clean($p->change), 'format' => $p->format,
                     'link' => $p->link, 'file' => $pieceFiles[$p->file_id] ?? null, 'hook' => $p->hook, 'test_label' => PieceRules::TESTS[$p->test] ?? null,
-                    'style_label' => PieceRules::formatLabel($p->style), 'hypothesis' => $clean($p->hypothesis)])->values()->all(),
+                    'style_label' => PieceRules::formatLabel($p->style), 'hypothesis' => $clean($p->hypothesis),
+                    // .92: de dónde salió (para partir de lo mismo en una corrección)
+                    'source' => $p->source, 'reference_id' => $p->source_reference_id])->values()->all(),
+                // .92: si es la iteración de un ganador, "Iteración de …" ya viene elegida en cada pieza
+                'iteration_of' => $b->reference_creative_id ? ($b->reference?->label ?? 'el ganador') : null,
                 'meta_names' => QueueRules::metaNames($b->number, $b->angle_code, $b->pieces->pluck('number')->all()),
                 'uploads' => $uploads, // .90: se entrega subiendo el archivo (no con Drive)
             ] + self::fields($b, $who);
@@ -279,6 +297,8 @@ class EditorWork
         $last = $b->deliveries->first();
         // .90: el archivo de cada pieza de cada entrega (para verlo ahí mismo)
         $files = StoredFile::payloads($b->deliveries->flatMap(fn (CreativeBatchDelivery $d) => array_column((array) $d->pieces, 'file_id'))->all());
+        // .92: de qué referencia salió cada pieza (para verla al revisar)
+        $refs = ReferenceLibrary::brief($b->deliveries->flatMap(fn (CreativeBatchDelivery $d) => array_column((array) $d->pieces, 'reference_id'))->all());
 
         return [
             'editor_id' => $b->editor_id, 'editor' => $b->editor ? self::name($b->editor) : null,
@@ -291,7 +311,8 @@ class EditorWork
             'deliveries' => $b->deliveries->map(fn (CreativeBatchDelivery $d) => [
                 'id' => $d->id, 'version' => $d->label(), 'editor' => $d->editor ? self::name($d->editor) : null, 'delivered_at' => $d->created_at?->toIso8601String(),
                 'concept' => $d->concept, 'angle' => $d->angle, 'notes' => $d->notes,
-                'pieces' => array_map(fn ($p) => $p + ['file' => $files[$p['file_id'] ?? 0] ?? null], (array) $d->pieces),
+                'pieces' => array_map(fn ($p) => $p + ['file' => $files[$p['file_id'] ?? 0] ?? null, 'reference' => $refs[$p['reference_id'] ?? 0] ?? null,
+                    'source_label' => ReferenceLibrary::SOURCES[$p['source'] ?? ''] ?? null], (array) $d->pieces),
                 'review' => $d->review, 'review_label' => self::REVIEWS[$d->review] ?? $d->review, 'reviewed_by' => $d->reviewer ? self::name($d->reviewer) : null,
                 'reviewed_at' => $d->reviewed_at?->toIso8601String(), 'comment' => $d->comment,
             ])->values()->all(),
