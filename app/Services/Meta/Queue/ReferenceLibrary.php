@@ -216,6 +216,8 @@ class ReferenceLibrary
 
         return $ids === [] ? [] : CreativeReference::with('file')->whereIn('id', $ids)->get()
             ->mapWithKeys(fn (CreativeReference $r) => [$r->id => ['id' => $r->id, 'code' => $r->code(), 'type_label' => self::TYPES[$r->type] ?? $r->type,
-                'link' => $r->link, 'file' => $r->file?->status === 'ready' ? $r->file->payload() : null]])->all();
+                'link' => $r->link, 'file' => $r->file?->status === 'ready' ? $r->file->payload() : null,
+                // .93: por qué la eligieron, para tenerlo al comparar
+                'why' => $r->why]])->all();
     }
 }

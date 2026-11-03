@@ -363,6 +363,45 @@ describe('Las entregas con archivo', function () {
             ->toThrow(ValidationException::class, 'este encargo no es la iteración de un ganador');
     });
 
+    it('.93: al revisar una iteración, el video del ganador (C0457 es la pieza 457) o, si es viejo, su miniatura y sus textos sin precios', function () {
+        Schema::create('meta_creatives', fn ($t) => [$t->id(), $t->string('label')->nullable(), $t->string('creative_code')->nullable(), $t->timestamps()]);
+        Schema::create('meta_ads', function ($t) {
+            $t->id();
+            $t->unsignedBigInteger('meta_creative_ref_id')->nullable();
+            $t->string('thumbnail_url')->nullable();
+            $t->string('image_url')->nullable();
+            $t->string('ad_title')->nullable();
+            $t->text('ad_body')->nullable();
+            $t->string('video_id')->nullable();
+            $t->timestamp('created_time')->nullable();
+        });
+        Schema::create('meta_video_transcripts', fn ($t) => [$t->id(), $t->string('video_id'), $t->string('status'), $t->string('hook')->nullable(), $t->text('text')->nullable(),
+            $t->timestamp('transcribed_at')->nullable()]);
+        // el ganador ya se entregó con su archivo
+        DB::table('creative_batch_pieces')->where('id', 21)->update(['file_id' => ($this->upload)(21)->id]);
+        DB::table('meta_creatives')->insert([['id' => 7, 'label' => 'C0457 POSP', 'creative_code' => 'C0457'], ['id' => 8, 'label' => 'Viejo', 'creative_code' => null]]);
+        DB::table('meta_ads')->insert(['meta_creative_ref_id' => 8, 'thumbnail_url' => 'https://x.test/mini.jpg', 'ad_title' => null, 'ad_body' => 'Quema grasa sin dieta. Hoy a $20.']);
+        DB::table('creative_batches')->insert([
+            ['id' => 2, 'product_id' => 5, 'number' => 111, 'status' => 'review', 'reference_creative_id' => 7],
+            ['id' => 3, 'product_id' => 5, 'number' => 112, 'status' => 'production', 'reference_creative_id' => 8],
+            ['id' => 4, 'product_id' => 5, 'number' => 113, 'status' => 'bank', 'reference_creative_id' => 7],
+        ]);
+
+        $winner = EditorWork::iteration(CreativeBatch::find(2));
+        $old = EditorWork::iteration(CreativeBatch::find(3));
+        expect($winner['code'])->toBe('C0457')->and($winner['file'])->toMatchArray(['name' => 'C0457 POSP.mp4', 'type' => 'video'])
+            ->and($old)->toMatchArray(['code' => 'Viejo', 'file' => null, 'thumbnail' => 'https://x.test/mini.jpg'])
+            ->and($old['texts'])->toBe(['Quema grasa sin dieta.'])
+            // ya en la banca (o sin iteración) no se busca
+            ->and(EditorWork::iteration(CreativeBatch::find(4)))->toBeNull()
+            ->and(EditorWork::iteration(CreativeBatch::find(1)))->toBeNull();
+    });
+
+    it('.93: al revisar, la referencia de cada pieza dice por qué la eligieron', function () {
+        $ref = CreativeReference::create(['number' => 2, 'link' => 'https://x.com/a', 'link_key' => 'k', 'type' => 'testimonial', 'why' => 'El hook de la balanza']);
+        expect(ReferenceLibrary::brief([$ref->id])[$ref->id])->toMatchArray(['code' => 'REF0002', 'type_label' => 'Testimonio', 'why' => 'El hook de la balanza']);
+    });
+
     it('el asistente guarda en el producto las fotos y el PDF que el dueño adjuntó en la última hora', function () {
         Schema::create('assistant_messages', function ($t) {
             $t->id();
@@ -417,6 +456,13 @@ describe('.92: la biblioteca de referencias (sin base)', function () {
             ->and(ReferenceLibrary::seesResults(['id' => 1, 'role' => 'Admin']))->toBeTrue()
             ->and(ReferenceLibrary::seesResults(['id' => 1, 'role' => 'Editor de video']))->toBeFalse()
             ->and(CreativeReference::codeOf(7))->toBe('REF0007');
+    });
+});
+
+describe('.93: lo que ve el líder al revisar (sin base)', function () {
+    it('la hipótesis del encargo la ve solo el líder, sin precios; el editor de video y el dueño por esta vía no', function () {
+        expect(EditorWork::hypothesisFor(['id' => 3, 'role' => 'Editor líder'], 'Ángulo nuevo POSP. Con el 2x1 a $35.'))->toBe(['hypothesis' => 'Ángulo nuevo POSP.'])
+            ->and(EditorWork::hypothesisFor(['id' => 4, 'role' => 'Editor de video'], 'Ángulo nuevo POSP'))->toBe([]);
     });
 });
 

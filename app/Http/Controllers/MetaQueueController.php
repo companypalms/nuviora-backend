@@ -323,8 +323,10 @@ class MetaQueueController extends Controller
     /** @param \Illuminate\Support\Collection<int, CreativeBatch> $batches */
     private static function presentAll($batches): array
     {
-        $angles = AdAngle::whereIn('product_id', $batches->pluck('product_id')->unique())->whereNotNull('name')->get(['product_id', 'code', 'name'])
-            ->mapWithKeys(fn ($a) => ["{$a->product_id}:{$a->code}" => $a->name]);
+        $angleRows = AdAngle::whereIn('product_id', $batches->pluck('product_id')->unique())->get(['product_id', 'code', 'name', 'hypothesis']);
+        $angles = $angleRows->whereNotNull('name')->mapWithKeys(fn ($a) => ["{$a->product_id}:{$a->code}" => $a->name]);
+        // .93: de qué trata cada ángulo, para tenerlo a la vista al revisar
+        $angleAbout = $angleRows->whereNotNull('hypothesis')->mapWithKeys(fn ($a) => ["{$a->product_id}:{$a->code}" => $a->hypothesis]);
 
         $who = ['id' => (int) Auth::id(), 'role' => 'Admin'];
         $profiles = \App\Services\Meta\Products\ProductProfiles::many($batches->pluck('product_id')->unique()->all());
@@ -333,7 +335,7 @@ class MetaQueueController extends Controller
         // .90: el archivo de cada pieza, para verlo ahí mismo
         $pieceFiles = \App\Models\StoredFile::payloads($batches->flatMap(fn (CreativeBatch $b) => $b->pieces->pluck('file_id'))->all());
 
-        return EditorWork::sorted($batches)->map(function (CreativeBatch $b) use ($angles, $who, $profiles, $cities, $pieceFiles) {
+        return EditorWork::sorted($batches)->map(function (CreativeBatch $b) use ($angles, $angleAbout, $who, $profiles, $cities, $pieceFiles) {
                 // .81: qué prueba cada pieza, su hipótesis, por qué ese formato y, al terminar el test, si ganó
                 $pieces = $b->pieces->map(fn (CreativeBatchPiece $p) => ['id' => $p->id, 'code' => $p->code(), 'change' => $p->change, 'format' => $p->format,
                     'link' => $p->link, 'file' => $pieceFiles[$p->file_id] ?? null, 'hook' => $p->hook,
@@ -345,6 +347,7 @@ class MetaQueueController extends Controller
                     'status' => $b->status, 'status_label' => QueueRules::STATUSES[$b->status] ?? $b->status, 'status_at' => $b->status_at?->toIso8601String(),
                     'status_by' => $b->statusUser?->names, 'position' => $b->position, 'source' => $b->source,
                     'kind' => $b->kind, 'angle_code' => $b->angle_code, 'angle_name' => $angles["{$b->product_id}:{$b->angle_code}"] ?? null,
+                    'angle_about' => $angleAbout["{$b->product_id}:{$b->angle_code}"] ?? null,
                     'concept' => $b->concept, 'hypothesis' => $b->hypothesis, 'goal' => $b->goal, 'test_idea' => $b->test_idea, 'improve' => $b->improve, 'audience' => $b->audience,
                     'persona_id' => $b->persona_id, 'testing_round' => $b->testing_round,
                 ] + EditorWork::product($b, $profiles) + [

@@ -6,6 +6,7 @@ use App\Models\AdAngle;
 use App\Models\CreativeBatch;
 use App\Models\CreativeBatchDelivery;
 use App\Models\CreativeBatchPiece;
+use App\Models\MetaCreative;
 use App\Models\StoredFile;
 use App\Models\User;
 use App\Services\Files\FileStore;
@@ -237,7 +238,9 @@ class EditorWork
                 // la prioridad, ni la ciudad de prueba): el editor ve solo lo que necesita para hacer su trabajo
                 'test_idea' => $clean($b->test_idea), 'goal' => $clean($b->goal), 'keep' => $clean($b->keep), 'improve' => $clean($b->improve),
                 'concept' => $clean($b->concept), 'audience' => $clean($b->audience),
-            ] + self::product($b, $profiles, $allAngles, $photos) + [
+                // .93: de qué trata el ángulo, para tenerlo a la vista al revisar
+                'angle_about' => $clean(collect($allAngles[$b->product_id] ?? [])->firstWhere('code', $b->angle_code)['hypothesis'] ?? null),
+            ] + self::hypothesisFor($who, $b->hypothesis) + self::product($b, $profiles, $allAngles, $photos) + [
                 'reference' => $b->reference?->label, 'reference_thumbnail' => $refs[$b->reference_creative_id]['thumbnail'] ?? null,
                 'reference_texts' => QueueRules::withoutPricesIn($refs[$b->reference_creative_id]['texts'] ?? []),
                 'reference_script' => QueueRules::withoutPricesIn($scripts[$b->reference_creative_id] ?? null),
@@ -316,9 +319,52 @@ class EditorWork
                 'review' => $d->review, 'review_label' => self::REVIEWS[$d->review] ?? $d->review, 'reviewed_by' => $d->reviewer ? self::name($d->reviewer) : null,
                 'reviewed_at' => $d->reviewed_at?->toIso8601String(), 'comment' => $d->comment,
             ])->values()->all(),
+            // .93: el ganador que se itera, para compararlo al revisar y al entregar
+            'iteration' => self::iteration($b),
             'can' => array_combine(EditorRules::ACTIONS, array_map(fn ($a) => EditorRules::can($a, $who, $state), EditorRules::ACTIONS)),
             // La entrega del líder espera al dueño: se lo dice en vez de esconder el botón sin explicar
             'review_by_owner' => $b->status === 'review' && $pending !== null && $who['role'] === EditorRules::LEADER && (int) $pending->editor_id === $who['id'],
+        ];
+    }
+
+    /**
+     * `.93` (dueño: "que se vea la hipótesis que se quiere probar y lo que se le pidió al editor"): la hipótesis del
+     * encargo la ve solo el líder, que revisa (sin precios). Los editores de video siguen sin verla (`.63`).
+     *
+     * @param array{id: int, role: ?string} $who
+     * @return array{hypothesis?: ?string}
+     */
+    public static function hypothesisFor(array $who, ?string $hypothesis): array
+    {
+        return $who['role'] === EditorRules::LEADER ? ['hypothesis' => QueueRules::withoutPrices($hypothesis)] : [];
+    }
+
+    /**
+     * `.93`: el ganador del que sale una iteración, para ponerlo al lado de lo entregado: su video si está en el sistema
+     * (el creativo C0457 es la pieza 457), y si no, su miniatura, sus textos y lo que dice su video. Solo mientras el
+     * encargo se hace o se revisa (después no hace falta y no se gasta en buscarlo).
+     *
+     * @return array{code: ?string, file: ?array, thumbnail: ?string, texts: list<string>, script: ?array}|null
+     */
+    public static function iteration(CreativeBatch $b): ?array
+    {
+        if (!$b->reference_creative_id || !in_array($b->status, ['approved', 'production', 'review'], true)) {
+            return null;
+        }
+        $creative = MetaCreative::find($b->reference_creative_id, ['id', 'label', 'creative_code']);
+        if (!$creative) {
+            return null;
+        }
+        $fileId = preg_match('/^C(\d+)$/i', (string) $creative->creative_code, $m) ? CreativeBatchPiece::where('number', (int) $m[1])->value('file_id') : null;
+        $ref = self::references([$creative->id])[$creative->id] ?? [];
+        $script = \App\Services\Meta\Videos\Scripts::forCreatives([$creative->id])[$creative->id] ?? null;
+
+        return [
+            'code' => $creative->creative_code ?: $creative->label,
+            'file' => $fileId ? (StoredFile::payloads([$fileId])[$fileId] ?? null) : null,
+            'thumbnail' => $ref['thumbnail'] ?? null,
+            'texts' => QueueRules::withoutPricesIn($ref['texts'] ?? []),
+            'script' => QueueRules::withoutPricesIn($script),
         ];
     }
 
