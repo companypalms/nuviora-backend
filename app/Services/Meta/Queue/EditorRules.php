@@ -158,6 +158,22 @@ final class EditorRules
     }
 
     /**
+     * `.94` (dueño: "el sistema sugiere, él confirma"): a quién conviene asignar el próximo encargo: el que tiene menos
+     * encargos abiertos, después el que tiene menos atrasados; si empatan, uno que no sea el líder (él también revisa).
+     *
+     * @param list<array{id: int, leader: bool, open: int, late: int}> $editors
+     */
+    public static function suggest(array $editors): ?int
+    {
+        if ($editors === []) {
+            return null;
+        }
+        usort($editors, fn ($a, $b) => [$a['open'], $a['late'], (int) $a['leader'], $a['id']] <=> [$b['open'], $b['late'], (int) $b['leader'], $b['id']]);
+
+        return $editors[0]['id'];
+    }
+
+    /**
      * `.63`: el resultado de un batch para el editor, sin números ni ciudades: "Ganó", "Perdió", "Empate" o, si todavía
      * no terminó, "En test" / "Por lanzar". Ganó si en alguna ciudad salió ganador; perdió si en todas salió perdedor.
      *

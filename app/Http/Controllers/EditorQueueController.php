@@ -43,7 +43,8 @@ class EditorQueueController extends Controller
         return response()->json([
             'me' => ['id' => $user->id, 'name' => trim($user->names . ' ' . ($user->surnames ?? '')), 'leader' => $leader],
             'batches' => array_map(fn ($b) => $b + ['need' => $demand['batches'][$b['id']] ?? null], EditorWork::present($batches, $who)),
-            'editors' => $leader ? EditorWork::editors() : [],
+            // .94: cada editor con lo que tiene y el sugerido para el próximo
+            'editors' => $leader ? EditorWork::editorsWithLoad() : [],
             'pending' => EditorRules::pending($who, EditorWork::states($batches)),
             // .88: para el líder, lo que hace falta y no se pudo pedir, y si alcanza el equipo
             'unfilled' => $leader ? $demand['unfilled'] : [],
@@ -53,6 +54,9 @@ class EditorQueueController extends Controller
             'corrections_days' => (int) (new \App\Services\Meta\Decisions\DecisionSettings())->get()['corrections_days'],
             // .90: se entrega subiendo cada archivo al sistema (apagado: con el enlace de Drive)
             'uploads' => FileStore::on(),
+            // .94: los números del juego (racha, a la primera, ganadores; para el líder, también los del equipo)
+            'game' => \App\Services\Meta\Queue\EditorGame::for($who, now(config('app.timezone'))->toDateString(),
+                (int) (new \App\Services\Meta\Decisions\DecisionSettings())->get()['corrections_days']),
         ]);
     }
 
@@ -113,8 +117,9 @@ class EditorQueueController extends Controller
 
     public function assign(Request $request, CreativeBatch $batch, EditorWork $work)
     {
-        $data = $request->validate(['editor_id' => 'present|nullable|integer']);
-        $work->assign($batch, $data['editor_id'] !== null ? (int) $data['editor_id'] : null, $request->user());
+        $data = $request->validate(['editor_id' => 'present|nullable|integer', 'reference_id' => 'sometimes|nullable|integer']);
+        $work->assign($batch, $data['editor_id'] !== null ? (int) $data['editor_id'] : null, $request->user(),
+            array_key_exists('reference_id', $data) ? ['reference_id' => $data['reference_id'] !== null ? (int) $data['reference_id'] : null] : []);
 
         return $this->one($request, $batch);
     }

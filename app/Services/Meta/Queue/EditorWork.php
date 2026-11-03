@@ -44,10 +44,36 @@ class EditorWork
             ->sortByDesc('leader')->values()->all();
     }
 
-    /** Asignar (o cambiar de editor). Sin editor solo puede quedar lo que todavía no se empezó. */
-    public function assign(CreativeBatch $batch, ?int $editorId, User $actor): CreativeBatch
+    /**
+     * `.94`: los editores con lo que tiene cada uno (encargos abiertos y atrasados) y el sugerido para el próximo
+     * (EditorRules::suggest), para asignar sabiendo quién está más libre.
+     *
+     * @return list<array{id: int, name: string, leader: bool, open: int, late: int, suggested: bool}>
+     */
+    public static function editorsWithLoad(): array
     {
-        return DB::transaction(function () use ($batch, $editorId, $actor) {
+        $today = now(config('app.timezone'))->toDateString();
+        $open = CreativeBatch::whereIn('status', ['approved', 'production', 'review'])->whereNotNull('editor_id')
+            ->get(['editor_id', 'status', 'due_date', 'delivered_at'])->groupBy('editor_id');
+        $editors = array_map(fn ($e) => $e + [
+            'open' => count($open[$e['id']] ?? []),
+            'late' => collect($open[$e['id']] ?? [])->filter(fn ($b) => $b->status !== 'review' && $b->delivered_at === null && $b->due_date
+                && $b->due_date->toDateString() < $today)->count(),
+        ], self::editors());
+        $best = EditorRules::suggest($editors);
+
+        return array_map(fn ($e) => $e + ['suggested' => $e['id'] === $best], $editors);
+    }
+
+    /**
+     * Asignar (o cambiar de editor). Sin editor solo puede quedar lo que todavía no se empezó. `.94`: con "reference_id"
+     * en $options, la referencia sugerida para partir (null la quita; sin la llave, queda como estaba).
+     *
+     * @param array{reference_id?: ?int} $options
+     */
+    public function assign(CreativeBatch $batch, ?int $editorId, User $actor, array $options = []): CreativeBatch
+    {
+        return DB::transaction(function () use ($batch, $editorId, $actor, $options) {
             $batch = CreativeBatch::lockForUpdate()->findOrFail($batch->id);
             $this->authorize('assign', $actor, $batch);
             if ($editorId !== null && !in_array($editorId, array_column(self::editors(), 'id'), true)) {
@@ -57,6 +83,13 @@ class EditorWork
                 throw ValidationException::withMessages(['editor_id' => 'Un encargo que ya se empezó tiene que quedar con un editor: elige a quién pasárselo.']);
             }
             $batch->forceFill(['editor_id' => $editorId, 'assigned_at' => $editorId ? now() : null, 'assigned_by' => $editorId ? $actor->id : null])->save();
+            if (array_key_exists('reference_id', $options)) {
+                $ref = $options['reference_id'];
+                if ($ref !== null && !\App\Models\CreativeReference::whereKey($ref)->whereNull('archived_at')->exists()) {
+                    throw ValidationException::withMessages(['reference_id' => 'Esa referencia ya no está en la biblioteca: elige otra.']);
+                }
+                $batch->forceFill(['suggested_reference_id' => $ref])->save();
+            }
 
             return $batch;
         });
@@ -321,6 +354,8 @@ class EditorWork
             ])->values()->all(),
             // .93: el ganador que se itera, para compararlo al revisar y al entregar
             'iteration' => self::iteration($b),
+            // .94: la referencia que sugirió el líder al asignar (de la que conviene partir)
+            'suggested_reference' => $b->suggested_reference_id ? (ReferenceLibrary::brief([$b->suggested_reference_id])[$b->suggested_reference_id] ?? null) : null,
             'can' => array_combine(EditorRules::ACTIONS, array_map(fn ($a) => EditorRules::can($a, $who, $state), EditorRules::ACTIONS)),
             // La entrega del líder espera al dueño: se lo dice en vez de esconder el botón sin explicar
             'review_by_owner' => $b->status === 'review' && $pending !== null && $who['role'] === EditorRules::LEADER && (int) $pending->editor_id === $who['id'],

@@ -3,6 +3,7 @@
 namespace App\Services\Meta\Queue;
 
 use App\Models\CreativeBatch;
+use App\Models\CreativeBatchPiece;
 use App\Services\Meta\Decisions\MetaDecisions;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -69,6 +70,10 @@ class BatchTracker
                 }
                 if (($r = PieceRules::outcome($keys)) !== null) {
                     $p->forceFill(['result' => $r, 'result_at' => now()])->save();
+                    // .94 (dueño: "solo si ganó"): el editor que lo hizo se entera en su campanita
+                    if ($r === 'Ganó') {
+                        self::tellWinner($b, $p);
+                    }
                 }
             }
             $out['tested']++;
@@ -123,5 +128,18 @@ class BatchTracker
         $purchases = (float) ($row->purchases ?? 0);
 
         return ['spend' => $spend, 'purchases' => $purchases, 'cpa' => $purchases > 0 ? round($spend / $purchases, 2) : null];
+    }
+
+    /** `.94`: "Tu C0457 ganó en Meta" al editor del batch, sin que un error del aviso frene el seguimiento. */
+    public static function tellWinner(CreativeBatch $batch, CreativeBatchPiece $piece): void
+    {
+        try {
+            $editor = $batch->editor_id ? \App\Models\User::whereNull('deactivated_at')->find($batch->editor_id) : null;
+            if ($editor && $piece->code() !== null) {
+                $editor->notify(new \App\Notifications\MetaWorkNotification('creative_won', "Tu {$piece->code()} ganó en Meta: es un ganador.", '/editor/resultados'));
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 }

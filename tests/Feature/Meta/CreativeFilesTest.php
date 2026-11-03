@@ -6,6 +6,7 @@ use App\Models\CreativeBatchPiece;
 use App\Models\CreativeReference;
 use App\Models\StoredFile;
 use App\Models\User;
+use App\Notifications\MetaWorkNotification;
 use App\Services\Assistant\Actions\ActionContext;
 use App\Services\Assistant\Actions\Tools\ProductProfileTool;
 use App\Services\Files\FileStore;
@@ -14,12 +15,14 @@ use App\Services\Files\SigV4;
 use App\Services\Files\StoredFileRules;
 use App\Services\Files\Uploads;
 use App\Services\Meta\Products\ProductProfileRules;
+use App\Services\Meta\Queue\EditorGame;
 use App\Services\Meta\Queue\EditorWork;
 use App\Services\Meta\Queue\ReferenceLibrary;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
@@ -136,6 +139,10 @@ describe('Las entregas con archivo', function () {
             $t->string('angle_code')->nullable();
             $t->unsignedBigInteger('reference_creative_id')->nullable();
             $t->unsignedBigInteger('editor_id')->nullable();
+            $t->unsignedBigInteger('suggested_reference_id')->nullable();
+            $t->date('due_date')->nullable();
+            $t->timestamp('assigned_at')->nullable();
+            $t->unsignedBigInteger('assigned_by')->nullable();
             $t->timestamp('status_at')->nullable();
             $t->unsignedBigInteger('status_by')->nullable();
             $t->timestamp('started_at')->nullable();
@@ -153,6 +160,7 @@ describe('Las entregas con archivo', function () {
             $t->string('source')->nullable();
             $t->unsignedBigInteger('source_reference_id')->nullable();
             $t->string('result')->nullable();
+            $t->timestamp('result_at')->nullable();
             $t->string('hook')->nullable();
             $t->timestamps();
         });
@@ -400,6 +408,56 @@ describe('Las entregas con archivo', function () {
     it('.93: al revisar, la referencia de cada pieza dice por qué la eligieron', function () {
         $ref = CreativeReference::create(['number' => 2, 'link' => 'https://x.com/a', 'link_key' => 'k', 'type' => 'testimonial', 'why' => 'El hook de la balanza']);
         expect(ReferenceLibrary::brief([$ref->id])[$ref->id])->toMatchArray(['code' => 'REF0002', 'type_label' => 'Testimonio', 'why' => 'El hook de la balanza']);
+    });
+
+    it('.94: el juego del editor: racha a tiempo, aprobados a la primera y ganadores del mes', function () {
+        $this->travelTo('2026-11-20 12:00:00');
+        DB::table('creative_batches')->insert([
+            ['id' => 2, 'product_id' => 5, 'number' => 111, 'status' => 'bank', 'editor_id' => 10, 'due_date' => '2026-11-19', 'delivered_at' => '2026-11-19 15:00:00'],
+            ['id' => 3, 'product_id' => 5, 'number' => 112, 'status' => 'bank', 'editor_id' => 10, 'due_date' => '2026-11-18', 'delivered_at' => '2026-11-18 09:00:00'],
+            ['id' => 4, 'product_id' => 5, 'number' => 113, 'status' => 'bank', 'editor_id' => 11, 'due_date' => '2026-11-18', 'delivered_at' => '2026-11-19 09:00:00'],
+        ]);
+        DB::table('creative_batch_deliveries')->insert([
+            ['creative_batch_id' => 2, 'version' => 1, 'editor_id' => 10, 'pieces' => '[]', 'review' => 'approved', 'reviewed_by' => 1, 'reviewed_at' => '2026-11-19 18:00:00'],
+            ['creative_batch_id' => 3, 'version' => 1, 'editor_id' => 10, 'pieces' => '[]', 'review' => 'returned', 'reviewed_by' => 1, 'reviewed_at' => '2026-11-18 18:00:00'],
+            ['creative_batch_id' => 3, 'version' => 2, 'editor_id' => 10, 'pieces' => '[]', 'review' => 'approved', 'reviewed_by' => 1, 'reviewed_at' => '2026-11-19 10:00:00'],
+        ]);
+        DB::table('creative_batch_pieces')->where('id', 21)->update(['result' => 'Ganó', 'result_at' => '2026-11-19 08:00:00']);
+        DB::table('creative_batch_pieces')->insert(['id' => 23, 'creative_batch_id' => 4, 'number' => 460, 'position' => 1, 'result' => 'Ganó', 'result_at' => '2026-10-30 08:00:00']);
+
+        $game = EditorGame::for(['id' => 10, 'role' => 'Editor de video'], '2026-11-20', 1);
+        expect($game['team'])->toBeNull()
+            ->and($game['me'])->toMatchArray(['streak' => 2, 'first' => ['ok' => 1, 'total' => 2], 'winners' => 1])
+            ->and($game['me']['recent_wins'][0]['code'])->toBe('C0457')
+            // el otro editor entregó tarde y su ganador es del mes pasado
+            ->and(EditorGame::for(['id' => 11, 'role' => 'Editor de video'], '2026-11-20', 1)['me'])->toMatchArray(['streak' => 0, 'winners' => 0]);
+    });
+
+    it('.94: asignar sabiendo quién está más libre, con una referencia sugerida que el editor ve', function () {
+        DB::table('creative_batches')->insert(['id' => 4, 'product_id' => 5, 'number' => 113, 'status' => 'approved', 'angle_code' => 'POSP']);
+        $editors = collect(EditorWork::editorsWithLoad())->keyBy('id');
+        expect($editors[10])->toMatchArray(['open' => 1, 'suggested' => false])->and($editors[11])->toMatchArray(['open' => 0, 'suggested' => true]);
+
+        $ref = CreativeReference::create(['number' => 3, 'link' => 'https://x.com/a', 'link_key' => 'k', 'type' => 'ugc', 'why' => 'Buen hook']);
+        (new EditorWork())->assign(CreativeBatch::find(4), 11, User::find(1), ['reference_id' => $ref->id]);
+        expect(CreativeBatch::find(4))->editor_id->toBe(11)->suggested_reference_id->toBe($ref->id)
+            ->and(EditorWork::fields(CreativeBatch::with('deliveries')->find(4), ['id' => 11, 'role' => 'Editor de video'])['suggested_reference'])
+            ->toMatchArray(['code' => 'REF0003', 'why' => 'Buen hook']);
+
+        // cambiar de editor sin decir nada de la referencia la deja como estaba; una archivada no se puede sugerir
+        (new EditorWork())->assign(CreativeBatch::find(4), 10, User::find(1));
+        expect(CreativeBatch::find(4)->suggested_reference_id)->toBe($ref->id);
+        $ref->forceFill(['archived_at' => now()])->save();
+        expect(fn () => (new EditorWork())->assign(CreativeBatch::find(4), 10, User::find(1), ['reference_id' => $ref->id]))
+            ->toThrow(ValidationException::class, 'Esa referencia ya no está en la biblioteca');
+    });
+
+    it('.94: cuando un creativo gana, le llega el aviso solo al editor que lo hizo', function () {
+        Notification::fake();
+        \App\Services\Meta\Queue\BatchTracker::tellWinner(CreativeBatch::find(1), CreativeBatchPiece::find(21));
+        Notification::assertSentTo(User::find(10), MetaWorkNotification::class,
+            fn ($n) => $n->toDatabase(User::find(10)) === ['type' => 'creative_won', 'message' => 'Tu C0457 ganó en Meta: es un ganador.', 'url' => '/editor/resultados']);
+        Notification::assertNotSentTo(User::find(11), MetaWorkNotification::class);
     });
 
     it('el asistente guarda en el producto las fotos y el PDF que el dueño adjuntó en la última hora', function () {

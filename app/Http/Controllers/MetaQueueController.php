@@ -82,8 +82,9 @@ class MetaQueueController extends Controller
     /** Asignar el editor (paso 5a): lo mismo que hace el editor líder. */
     public function assign(Request $request, CreativeBatch $batch, EditorWork $work)
     {
-        $data = $request->validate(['editor_id' => 'present|nullable|integer']);
-        $work->assign($batch, $data['editor_id'] !== null ? (int) $data['editor_id'] : null, Auth::user());
+        $data = $request->validate(['editor_id' => 'present|nullable|integer', 'reference_id' => 'sometimes|nullable|integer']);
+        $work->assign($batch, $data['editor_id'] !== null ? (int) $data['editor_id'] : null, Auth::user(),
+            array_key_exists('reference_id', $data) ? ['reference_id' => $data['reference_id'] !== null ? (int) $data['reference_id'] : null] : []);
 
         return response()->json(['batch' => $this->presentOne($batch)]);
     }

@@ -14,7 +14,7 @@ class CreativeBatch extends Model
     protected $fillable = ['product_id', 'number', 'position', 'status', 'kind', 'angle_code', 'concept', 'hypothesis', 'goal', 'test_idea', 'improve', 'audience', 'persona_id', 'testing_round',
         'reference_creative_id', 'learning_city_id', 'format', 'style', 'keep', 'offer', 'deliverables', 'urgency', 'due_date', 'source', 'proposed_on',
         'approved_at', 'approved_by', 'status_at', 'status_by', 'discard_reason', 'testing_at', 'tested_at', 'result', 'learning', 'created_by',
-        'editor_id', 'assigned_at', 'assigned_by', 'started_at', 'delivered_at'];
+        'editor_id', 'assigned_at', 'assigned_by', 'started_at', 'delivered_at', 'suggested_reference_id'];
 
     protected $casts = [
         'due_date' => 'date:Y-m-d',
