@@ -85,6 +85,32 @@ describe('Ganador que empezó a fallar', function () {
     });
 });
 
+describe('.86: el que se cae en los últimos 3 días (C = 4, BE = 5,70)', function () {
+    $intermedio = ['key' => 'intermediate', 'label' => 'Intermedio'];
+
+    it('un intermedio que en 3 días gastó 2×C sin compras se apaga en esa ciudad', function () use ($intermedio) {
+        $v = reglas()->recentLoser(['spend' => 10.43, 'purchases' => 0], $intermedio, 4.0, 5.7);
+        expect($v['key'])->toBe('loser')
+            ->and($v['data'])->toBe('3 días: gastó $10,43 (2,6×C) · 0 compras · C $4,00 · BE $5,70')
+            ->and($v['reading'])->toBe('Perdedor en los últimos 3 días: gastó 2,6×C sin compras (en toda su vida: intermedio).')
+            ->and($v['proposal'])->toBe('Apagarlo en esta ciudad.');
+    });
+
+    it('con compras, solo si el CPA de los 3 días está en el BE o encima', function () use ($intermedio) {
+        expect(reglas()->recentLoser(['spend' => 12.0, 'purchases' => 2], $intermedio, 4.0, 5.7)['key'])->toBe('loser')   // CPA 6 ≥ 5,70
+            ->and(reglas()->recentLoser(['spend' => 10.0, 'purchases' => 2], $intermedio, 4.0, 5.7))->toBeNull();          // CPA 5: todavía gana
+    });
+
+    it('no se apaga antes de 2×C, ni un ganador (tiene su regla), ni sin C', function () use ($intermedio) {
+        expect(reglas()->recentLoser(['spend' => 7.9, 'purchases' => 0], $intermedio, 4.0, 5.7))->toBeNull()
+            ->and(reglas()->recentLoser(['spend' => 20.0, 'purchases' => 0], ['key' => 'proven', 'label' => 'PROVEN'], 4.0, 5.7))->toBeNull()
+            ->and(reglas()->recentLoser(['spend' => 20.0, 'purchases' => 0], ['key' => 'failing', 'label' => 'Ganador que falla'], 4.0, 5.7))->toBeNull()
+            ->and(reglas()->recentLoser(['spend' => 20.0, 'purchases' => 0], $intermedio, null, null))->toBeNull()
+            ->and(reglas()->recentLoser(null, $intermedio, 4.0, 5.7))->toBeNull()
+            ->and(reglas()->recentLoser(['spend' => 9.0, 'purchases' => 0], ['key' => 'evaluation', 'label' => 'En evaluación'], 4.0, 5.7)['key'])->toBe('loser');
+    });
+});
+
 describe('Qué cambió', function () {
     $antes = ventana(['spend' => 30, 'impressions' => 10000, 'reach' => 8000, 'link_clicks' => 300, 'unique_link_clicks' => 280,
         'landing_page_views' => 240, 'purchases' => 8, 'video_3s_plays' => 4000]);

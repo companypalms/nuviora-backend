@@ -386,6 +386,34 @@ class AdRules
         return $value >= $this->s["{$key}_good"] ? 'good' : 'ok';
     }
 
+    /**
+     * `.86` (dueño, 2026-11-03: CRE003-FLEX-FAS-BATCH003 en Carabobo era "Intermedio" por toda su vida, pero llevaba días
+     * sin vender): un creativo intermedio o en evaluación que en los últimos 3 días cerrados gastó 2×C o más en una ciudad
+     * sin compras, o con el CPA en el break-even o encima, es perdedor ahí aunque su vida completa esté bien. Los ganadores
+     * siguen con su regla (si se caen, "ganador que falla"). PHP puro.
+     *
+     * @param array|null $recent los totales de los 3 días en esa ciudad (spend, purchases)
+     * @param array $state el veredicto de toda su vida en esa ciudad
+     */
+    public function recentLoser(?array $recent, array $state, ?float $c, ?float $be): ?array
+    {
+        if (!$c || $c <= 0 || !in_array($state['key'] ?? null, ['intermediate', 'evaluation'], true)) {
+            return null;
+        }
+        $spend = (float) ($recent['spend'] ?? 0);
+        $purchases = (float) ($recent['purchases'] ?? 0);
+        $losing = $purchases == 0 || ($be !== null && $spend / $purchases >= $be);
+        if ($spend < $c * $this->s['loser_spend_cpa'] || !$losing) {
+            return null;
+        }
+        $data = '3 días: ' . lcfirst($this->spendText($spend, $purchases, $c)) . ($purchases > 0 ? ' · CPA ' . self::money($spend / $purchases) : '')
+            . ' · C ' . self::money($c) . ($be !== null ? ' · BE ' . self::money($be) : '');
+
+        return $this->verdict('loser', $data, 'Perdedor en los últimos 3 días: gastó ' . self::num($spend / $c) . '×C '
+            . ($purchases == 0 ? 'sin compras' : 'con el CPA en el break-even o encima') . ' (en toda su vida: ' . mb_strtolower($state['label']) . ').',
+            $this->offProposal('creativo'));
+    }
+
     private function spendText(float $spend, float $purchases, ?float $c): string
     {
         return 'Gastó ' . self::money($spend) . ($c ? ' (' . self::num($spend / $c) . '×C)' : '') . ' · ' . self::num($purchases)
