@@ -227,7 +227,7 @@ describe('.87: los batches por ciudad', function () {
         // con 2 vivos, pide 1 (el que ya gana en Aragua va primero); con 0 vivos, 2
         expect($uno['title'])->toBe('Lanza B0102')
             ->and($uno['steps'])->toBe(['Abre la campaña «FLEXISTEP | CBOBO».',
-                'Duplica el ad set «B0102 FASP» de la campaña «FLEXISTEP | Aragua» en esta campaña (en Aragua: prometedor).'])
+                'Duplica el ad set «B0102 FASP» de la campaña «FLEXISTEP | Aragua» en esta campaña, con el mismo nombre (sin « - Copia») (en Aragua: prometedor).'])
             ->and($dos['title'])->toBe('Lanza B0102 y B0103')
             ->and($dos['steps'][2])->toBe('Lanza el batch «B0103» de la banca (sus videos están en Cola y banca).')
             ->and($dos['detail'])->toContain('No queda ningún batch vivo aquí (ad sets prendidos con algún anuncio prendido, sin contar lo que apagas hoy). Tu regla: nunca menos de 2.')

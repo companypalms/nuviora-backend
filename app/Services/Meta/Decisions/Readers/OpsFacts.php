@@ -119,7 +119,10 @@ class OpsFacts
             ->get(['product_id', 'city_id'])->map(fn ($r) => "{$r->product_id}|{$r->city_id}")->all();
         // Paso 4a: la banca (aprobados sin testear) y los que están listos para lanzar
         $bank = DB::table('creative_batches')->whereIn('product_id', $productIds)->whereIn('status', QueueRules::BANK)->whereNotNull('number')
-            ->orderBy('position')->orderBy('number')->get(['product_id', 'number', 'status', 'testing_round'])->groupBy('product_id');
+            ->orderBy('position')->orderBy('number')->get(['id', 'product_id', 'number', 'status', 'testing_round', 'angle_code'])->groupBy('product_id');
+        // .89: sus nombres exactos en Meta (el ad set "B0110 POSP" y sus anuncios "C0457 POSP"…)
+        $pieces = DB::table('creative_batch_pieces')->whereIn('creative_batch_id', $bank->flatten()->pluck('id')->all() ?: [0])->whereNotNull('number')
+            ->orderBy('position')->get(['creative_batch_id', 'number'])->groupBy('creative_batch_id');
         // .87: los que ya salieron en Meta (en test o testeados): siguen en banca para las ciudades donde no salieron
         $launched = DB::table('creative_batches')->whereIn('product_id', $productIds)->whereIn('status', ['testing', 'tested'])->whereNotNull('number')
             ->orderBy('number')->get(['product_id', 'number'])->groupBy('product_id');
@@ -151,7 +154,9 @@ class OpsFacts
                     // .89: los del testeo se lanzan juntos ("Lanza el testeo"), no sueltos como reserva de una ciudad
                     'ready' => ($bank[$pid] ?? collect())->filter(fn ($b) => $b->status === 'bank' && $b->testing_round === null)
                         ->map(fn ($b) => QueueRules::batchCode((int) $b->number))->values()->all(),
-                    'launched' => ($launched[$pid] ?? collect())->map(fn ($b) => QueueRules::batchCode((int) $b->number))->values()->all()]];
+                    'launched' => ($launched[$pid] ?? collect())->map(fn ($b) => QueueRules::batchCode((int) $b->number))->values()->all(),
+                    'names' => ($bank[$pid] ?? collect())->mapWithKeys(fn ($b) => [QueueRules::batchCode((int) $b->number) => \App\Services\Meta\Naming::batch((int) $b->number,
+                        $b->angle_code, ($pieces[$b->id] ?? collect())->pluck('number')->all())])->all()]];
         }
 
         return $out;

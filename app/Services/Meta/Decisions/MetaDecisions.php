@@ -434,7 +434,7 @@ class MetaDecisions
                 }
             }
             // .87: lo que puede lanzar esta ciudad: la banca y los batches que ya salieron en otra ciudad, no en esta
-            $offers = self::offers($f, $out, $id, $ops['bank']['launched'] ?? [], $ops['bank']['ready'] ?? []);
+            $offers = self::offers($f, $out, $id, $ops['bank']['launched'] ?? [], $ops['bank']['ready'] ?? [], $ops['bank']['names'] ?? []);
             $action = $cr->action([
                 'c' => $c['target'], 'be' => $c['break_even'], 'mode' => $mode, 'budget' => $budget,
                 'spend3' => $w3['totals']['spend'] ?? 0, 'purchases3' => $w3['totals']['purchases'] ?? 0, 'cpa7' => $cpa7, 'freq3' => $w3['metrics']['frequency'] ?? null,
@@ -580,9 +580,10 @@ class MetaDecisions
      *
      * @param list<string> $launched los B#### del producto en test o testeados
      * @param list<string> $ready los B#### en banca, listos para lanzar
-     * @return list<array{code: string, how: string, adset?: string, campaign?: ?string, city?: ?string, verdict?: ?string}>
+     * @param array<string, array{adset: ?string, ads: list<string>}> $names .89: los nombres exactos de los de la banca
+     * @return list<array{code: string, how: string, adset?: string, ads?: list<string>, campaign?: ?string, city?: ?string, verdict?: ?string}>
      */
-    public static function offers(array $f, array $out, string $campaignId, array $launched, array $ready): array
+    public static function offers(array $f, array $out, string $campaignId, array $launched, array $ready, array $names = []): array
     {
         $rank = ['proven' => 0, 'promising' => 1, 'failing' => 2, 'intermediate' => 3, 'evaluation' => 4, 'no_data' => 5, 'no_target' => 6, 'loser' => 7];
         $rankOf = fn (array $set) => $rank[$out['adsets'][$set['meta_id']]['key'] ?? ''] ?? 9;
@@ -611,7 +612,9 @@ class MetaDecisions
         usort($rest, fn ($a, $b) => $a['_rank'] <=> $b['_rank']);
         $strip = fn (array $o) => array_diff_key($o, ['_rank' => 1]);
 
-        return [...array_map($strip, $good), ...array_map(fn ($code) => ['code' => (string) $code, 'how' => 'bank'], $ready), ...array_map($strip, $rest)];
+        $bank = fn ($code) => ['code' => (string) $code, 'how' => 'bank'] + (($names[$code]['adset'] ?? null) ? ['adset' => $names[$code]['adset'], 'ads' => $names[$code]['ads']] : []);
+
+        return [...array_map($strip, $good), ...array_map($bank, $ready), ...array_map($strip, $rest)];
     }
 
     /** El veredicto de un batch, anuncio o creativo en una ciudad: el estado de toda su vida y, si fue ganador, si empezó a fallar. */

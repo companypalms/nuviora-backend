@@ -50,8 +50,10 @@ class TestingLaunch
             }
             $out[] = [
                 'product_id' => $pid, 'product' => (string) ($product?->showable_name ?: $product?->title ?: "Producto {$pid}"), 'round' => (int) $st['round'],
-                'batches' => $batches->map(fn (CreativeBatch $b) => ['code' => (string) $b->code(),
-                    'adset' => QueueRules::metaNames($b->number, $b->angle_code, $b->pieces->pluck('number')->all())['adset']])->values()->all(),
+                // .89: con los nombres exactos (el ad set y sus anuncios) y el día, para el nombre de cada campaña
+                'batches' => $batches->map(fn (CreativeBatch $b) => ['code' => (string) $b->code()]
+                    + \App\Services\Meta\Naming::batch($b->number, $b->angle_code, $b->pieces->pluck('number')->all()))->values()->all(),
+                'date' => now(config('app.timezone'))->toDateString(),
                 'linked' => (int) ($product?->product_id ?? 0) > 0, 'campaigns' => $campaigns,
                 'cities' => $campaigns === [] ? array_values(array_unique(array_filter(array_column(self::campaigns(null), 'city')))) : [],
                 'target' => $target !== null ? (float) $target : null, 'min' => (float) $s['startup_min_mult'], 'max' => (float) $s['startup_max_mult'],

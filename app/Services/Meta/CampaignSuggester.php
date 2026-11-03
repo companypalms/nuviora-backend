@@ -46,7 +46,8 @@ class CampaignSuggester
         foreach (Product::get(['id', 'title', 'showable_name']) as $p) {
             foreach (array_filter([$p->showable_name, $p->title]) as $name) {
                 $brand = preg_split('/[®™©]/u', $name)[0];
-                foreach ([self::norm($brand), self::norm($name)] as $key) {
+                // .89: también su código en la regla de nombres ("SOLOBRILLO" para "Solo Brillo")
+                foreach ([self::norm($brand), self::norm($name), self::norm(Naming::product($name))] as $key) {
                     $this->addKey($this->productKeys, $key, $p->id);
                 }
             }

@@ -44,7 +44,8 @@ class MetaAnalyzer
         // .89: los encargos atrasados, para presionar al editor líder
         $late = \App\Services\Meta\Queue\LateBatches::find($decisions, $date, (int) (new \App\Services\Meta\Decisions\DecisionSettings())->get()['corrections_days']);
         // .89: y los testeos listos para lanzar (todos sus batches en la banca)
-        $urgent = UrgentList::build($facts, $late, \App\Services\Meta\Queue\LateBatches::leader(), \App\Services\Meta\Queue\TestingLaunch::ready());
+        $urgent = UrgentList::build($facts, $late, \App\Services\Meta\Queue\LateBatches::leader(), \App\Services\Meta\Queue\TestingLaunch::ready(),
+            \App\Services\Meta\NameCheck::find()); // .89: y lo que no se puede reconocer por su nombre
         $input = AnalysisFacts::input($facts);
 
         $row = ['status' => 'ok', 'text' => null, 'model' => null, 'tokens_in' => null, 'tokens_out' => null, 'error' => null, 'warnings' => []];

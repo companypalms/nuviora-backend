@@ -40,7 +40,7 @@ final class UrgentList
         'decrease' => 2, 'intervene' => 2, 'last_test' => 2, 'tracking' => 2, 'late_urgent' => 2,
         'hold_prune' => 3, 'few_batches' => 3, 'late_batch' => 3, 'launch_ready' => 3,
         'scale' => 4, 'launch_test' => 4,
-        'alarm' => 5,
+        'alarm' => 5, 'names' => 5,
         'price' => 6,
     ];
 
@@ -50,7 +50,7 @@ final class UrgentList
         'intervene' => 'arreglar', 'last_test' => 'arreglar', 'tracking' => 'arreglar', 'hold_prune' => 'arreglar', 'few_batches' => 'arreglar',
         'late_urgent' => 'arreglar', 'late_batch' => 'arreglar', 'launch_ready' => 'arreglar',
         'scale' => 'crecer', 'launch_test' => 'crecer',
-        'stock_out' => 'aviso', 'alarm' => 'aviso', 'price' => 'aviso',
+        'stock_out' => 'aviso', 'alarm' => 'aviso', 'price' => 'aviso', 'names' => 'aviso',
     ];
 
     /** Cuántos nombres de creativos caben en la línea del porqué. */
@@ -72,7 +72,7 @@ final class UrgentList
      * @param list<array> $facts AnalysisFacts::build
      * @return list<array{key: string, product_id: int, product: string, city: ?string, kind: string, label: string, text: string, tone: string, urgency: ?string, severity: int, group: string, title: string, why: ?string, detail: list<string>, money: ?array{cut: ?float, add: ?float}}>
      */
-    public static function build(array $facts, array $late = [], ?string $leader = null, array $tests = []): array
+    public static function build(array $facts, array $late = [], ?string $leader = null, array $tests = [], array $names = []): array
     {
         // .89: los encargos atrasados, para presionar al editor líder
         $items = self::late($late, $leader);
@@ -166,7 +166,32 @@ final class UrgentList
             <=> [$b['severity'], $b['_level'], -$b['_risk'], $b['product'], (string) $b['city']]);
 
         // .89: los testeos listos para lanzar (TestingLaunch), al final: van en "Crecer"
-        return [...array_map(fn ($i) => array_diff_key($i, ['_level' => 1, '_risk' => 1]), $items), ...array_map(fn ($t) => self::testLaunch($t), $tests)];
+        return [...array_map(fn ($i) => array_diff_key($i, ['_level' => 1, '_risk' => 1]), $items), ...array_map(fn ($t) => self::testLaunch($t), $tests),
+            ...array_map(fn ($n) => self::names($n), $names)];
+    }
+
+    /**
+     * `.89` (dueño: "que el sistema siempre pueda saber de qué creativo, de qué batch y de qué campaña estamos hablando"):
+     * un aviso por campaña con lo que el sistema no puede reconocer y qué nombre ponerle (NameCheck).
+     *
+     * @param array{campaign_meta_id: string, campaign: string, product_id: ?int, product: ?string, unclassified: bool, sets: list<string>, ads: list<string>} $n
+     */
+    public static function names(array $n): array
+    {
+        $list = fn (array $names) => CreativeCalls::join(array_map(fn ($x) => self::q($x), array_slice($names, 0, 3))) . (count($names) > 3 ? ' y ' . (count($names) - 3) . ' más' : '');
+        $parts = array_values(array_filter([
+            $n['unclassified'] ? 'no se reconoce la campaña: nómbrala «PRODUCTO | CIUDAD | CBO | fecha» (como «TERMAFIT | CCS | CBO | 03/11/2026») o clasifícala en Meta Ads › Configuración' : null,
+            $n['sets'] ? (count($n['sets']) === 1 ? 'un ad set sin su número B (' : count($n['sets']) . ' ad sets sin su número B (') . $list($n['sets'])
+                . '): ponle el nombre de su batch, «B#### ÁNGULO» (está en Cola y banca)' : null,
+            $n['ads'] ? (count($n['ads']) === 1 ? 'un anuncio sin su código C (' : count($n['ads']) . ' anuncios sin su código C (') . $list($n['ads'])
+                . '): ponle a cada uno el nombre de su pieza, «C#### ÁNGULO» (está en Cola y banca)' : null,
+        ]));
+
+        return ['key' => "names:{$n['campaign_meta_id']}", 'product_id' => (int) ($n['product_id'] ?? 0), 'product' => (string) ($n['product'] ?? $n['campaign']),
+            'urgency' => null, 'city' => null, 'kind' => 'names', 'label' => 'Nombres', 'tone' => 'warning',
+            'text' => ucfirst(implode('; ', $parts)) . '.', 'where' => self::q($n['campaign']), 'title' => 'Renombra en Meta: ' . implode('; ', $parts) . '.',
+            'steps' => [], 'why' => 'Sin su nombre, el sistema no sabe de qué creativo, batch o campaña se trata', 'detail' => [], 'money' => null,
+            'severity' => self::SEVERITY['names'], 'group' => self::GROUP['names']];
     }
 
     /**
@@ -181,7 +206,8 @@ final class UrgentList
         $short = self::short($t['product']);
         $n = count($t['batches']);
         $codes = CreativeCalls::join(array_column($t['batches'], 'code'));
-        $upload = "sube los {$n} ad sets: " . CreativeCalls::join(array_map(fn ($b) => self::q((string) ($b['adset'] ?? $b['code'])), $t['batches']))
+        // .89: con los nombres exactos de cada ad set y sus anuncios
+        $upload = "crea los {$n} ad sets: " . implode('; ', array_map(fn ($b) => self::adsetWithAds((string) ($b['adset'] ?? $b['code']), $b['ads'] ?? []), $t['batches']))
             . ' (sus videos están en Cola y banca).';
         if ($t['campaigns'] !== []) {
             $title = "Lanza los ángulos nuevos de {$short}: {$codes}";
@@ -195,8 +221,10 @@ final class UrgentList
             $steps = array_values(array_filter([
                 $t['linked'] ? null : "Antes: pásale a tu asistente el link de {$short} en Shopify (así sus pedidos se suman a {$short}).",
                 $c ? null : "Antes: pon el CPA de referencia de {$short} en Meta Ads › Productos y objetivos (sin él no se puede juzgar el testeo).",
-                'Crea una campaña CBO en ' . ($t['cities'] ? 'cada ciudad: ' . CreativeCalls::join($t['cities']) : 'cada ciudad donde vendes')
-                    . '. En el nombre pon «' . mb_strtoupper($short) . '» y la ciudad (así se clasifica sola).',
+                $t['cities'] ? 'Crea una campaña CBO en cada ciudad, con estos nombres: '
+                    . CreativeCalls::join(array_map(fn ($city) => self::q(\App\Services\Meta\Naming::campaign($t['product'], $city, $t['date'] ?? 'today')), $t['cities'])) . '.'
+                    : 'Crea una campaña CBO en cada ciudad donde vendes, con el nombre ' . self::q(\App\Services\Meta\Naming::product($t['product']) . ' | CIUDAD | CBO | '
+                        . date('d/m/Y', strtotime($t['date'] ?? 'today'))) . ' (CIUDAD: CCS, CBOBO, MCAY…).',
                 'En cada una, ' . $upload,
                 $c ? 'Presupuesto de arranque por campaña: entre ' . AdRules::money($c * $n * $t['min']) . ' y ' . AdRules::money($c * $n * $t['max'])
                     . " por día (tu regla: C × {$n} batches × " . AdRules::num($t['min']) . ' a ' . AdRules::num($t['max']) . ').' : null,
@@ -361,10 +389,20 @@ final class UrgentList
     /** `.87`: cómo lanzar cada batch: el de la banca, o duplicar el ad set de la ciudad donde ya salió. @return list<string> */
     private static function launchSteps(array $launch): array
     {
-        return array_map(fn ($o) => ($o['how'] ?? 'bank') === 'copy'
-            ? 'Duplica el ad set ' . self::q((string) $o['adset']) . ' de ' . (($o['campaign'] ?? null) ? 'la campaña ' . self::q($o['campaign']) : ($o['city'] ?? 'la otra ciudad'))
-                . ' en esta campaña' . (($o['city'] ?? null) && ($o['verdict'] ?? null) ? " (en {$o['city']}: " . mb_strtolower($o['verdict']) . ')' : '') . '.'
-            : 'Lanza el batch ' . self::q((string) $o['code']) . ' de la banca (sus videos están en Cola y banca).', $launch);
+        // .89: con los nombres exactos (el ad set y sus anuncios), para que todos hablen de lo mismo
+        return array_map(fn ($o) => match (true) {
+            ($o['how'] ?? 'bank') === 'copy' => 'Duplica el ad set ' . self::q((string) $o['adset']) . ' de '
+                . (($o['campaign'] ?? null) ? 'la campaña ' . self::q($o['campaign']) : ($o['city'] ?? 'la otra ciudad'))
+                . ' en esta campaña, con el mismo nombre (sin « - Copia»)' . (($o['city'] ?? null) && ($o['verdict'] ?? null) ? " (en {$o['city']}: " . mb_strtolower($o['verdict']) . ')' : '') . '.',
+            !empty($o['adset']) => 'Crea el ad set ' . self::adsetWithAds($o['adset'], $o['ads'] ?? []) . ' (sus videos están en Cola y banca).',
+            default => 'Lanza el batch ' . self::q((string) $o['code']) . ' de la banca (sus videos están en Cola y banca).',
+        }, $launch);
+    }
+
+    /** `.89`: "«B0110 POSP» con los anuncios «C0457 POSP», «C0458 POSP» y «C0459 POSP»". */
+    private static function adsetWithAds(string $adset, array $ads): string
+    {
+        return self::q($adset) . ($ads ? ' con ' . (count($ads) === 1 ? 'el anuncio ' : 'los anuncios ') . CreativeCalls::join(array_map(fn ($a) => self::q($a), $ads)) : '');
     }
 
     /**

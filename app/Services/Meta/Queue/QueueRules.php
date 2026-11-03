@@ -196,6 +196,11 @@ final class QueueRules
                     . ($hypothesis !== null ? " Qué probamos: {$hypothesis}" : '');
             }
         }
+        // .89: la regla de nombres: cada archivo se llama como su anuncio en Meta
+        if (!empty($b['meta_names']['ads'])) {
+            $lines[] = 'Nombra cada archivo de Drive con su código: ' . implode(', ', $b['meta_names']['ads'])
+                . (!empty($b['meta_names']['adset']) ? " (van en el ad set {$b['meta_names']['adset']})." : '.');
+        }
         // Paso 5a: los enlaces de Drive de la última entrega, para subirlos a Meta
         $files = array_filter($b['pieces'] ?? [], fn ($p) => !empty($p['link']));
         if ($files) {
