@@ -149,7 +149,7 @@ describe('La ficha con sus ángulos, en la tarjeta del asistente', function () {
         ]));
         $lines = array_column($p->lines, null, 'label');
         expect($lines['Ángulos (del más fuerte al más débil)']['value'])->toBe("1. GINE · Ginecomastia → Hombre con ginecomastia\n2. ABDO · Abdomen plano");
-        expect($lines['Hipótesis de los ángulos (solo tú)']['value'])->toBe('GINE: El que más vergüenza da');
+        expect($lines['De qué trata cada ángulo (lo ven los editores)']['value'])->toBe('GINE: El que más vergüenza da');
         expect($lines['Fase'])->toBe(['label' => 'Fase', 'value' => 'En testeo', 'before' => 'Iterar lo que funciona']);
         expect($lines['El testeo pide']['value'])->toBe('2 batches de GINE (con conceptos o formatos distintos) y 1 batch de ABDO');
         expect($p->summary)->toBe('Cambiar la ficha de Comprimax: los ángulos y la fase');

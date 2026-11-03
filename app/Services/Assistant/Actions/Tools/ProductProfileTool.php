@@ -105,7 +105,7 @@ class ProductProfileTool extends ChangeTool
                         'properties' => [
                             'codigo' => ['type' => 'string', 'description' => 'El código corto que va en los nombres de Meta, de 2 a 12 letras o números: "GINE". Si el ángulo ya existe, su mismo código.'],
                             'nombre' => ['type' => 'string', 'description' => 'El nombre del ángulo: "Ginecomastia".'],
-                            'hipotesis' => $text('Por qué puede vender: a quién le habla, qué dolor o deseo toca y por qué compraría. Solo la ve el dueño.'),
+                            'hipotesis' => $text('Por qué puede vender: a quién le habla, qué dolor o deseo toca y por qué compraría. Los editores la ven como "de qué trata" el ángulo (sin precios).'),
                             'buyer' => $text('El nombre exacto del buyer persona de la ficha al que apunta, o null.'),
                         ],
                         'required' => array_keys(self::ANGLE_ARGS),
@@ -308,7 +308,8 @@ class ProductProfileTool extends ChangeTool
         $oldAngles = ProductProfileRules::anglesText($beforeAngles);
         $lines[] = Proposal::line('Ángulos (del más fuerte al más débil)', ProductProfileRules::anglesText($angles), $anglesChanged && $oldAngles !== '' ? $oldAngles : null);
         $hyp = array_filter(array_map(fn ($a) => $a['hypothesis'] ? "{$a['code']}: {$a['hypothesis']}" : null, $angles));
-        $lines[] = Proposal::line('Hipótesis de los ángulos (solo tú)', $hyp ? implode("\n", $hyp) : null);
+        // .90: el editor la ve como "de qué trata" el ángulo (sin precios); el orden de fuerza sigue siendo solo del dueño
+        $lines[] = Proposal::line('De qué trata cada ángulo (lo ven los editores)', $hyp ? implode("\n", $hyp) : null);
         if ($phase !== $beforePhase) {
             $changed[] = 'la fase';
         }
