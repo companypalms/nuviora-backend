@@ -153,6 +153,9 @@ class EditorQueueController extends Controller
         return response()->json([
             'period' => $period->toArray(),
             'leader' => $leader,
+            // .94: el juego (racha a tiempo, a la primera y ganadores del mes)
+            'game' => \App\Services\Meta\Queue\EditorGame::for(EditorWork::who($user), now(config('app.timezone'))->toDateString(),
+                (int) (new \App\Services\Meta\Decisions\DecisionSettings())->get()['corrections_days']),
             'metrics' => array_map(fn ($key, $m) => ['key' => $key, 'label' => $m['label'], 'format' => $m['format'], 'better' => $m['better'], 'help' => $m['help']],
                 array_keys($metrics), $metrics),
             'me' => $strip($computed['people'][$user->id] ?? null),

@@ -70,7 +70,7 @@ class MetaQueueController extends Controller
             ],
             'statuses' => QueueRules::STATUSES, 'kinds' => QueueRules::KINDS, 'formats' => QueueRules::FORMATS, 'styles' => QueueRules::STYLES,
             'last_run' => Setting::get(QueueProposer::LAST_RUN),
-            'editors' => EditorWork::editors(),
+            'editors' => EditorWork::editorsWithLoad(), // .94: con lo que tiene cada uno y el sugerido
             // Paso 6b: los tests de landing en curso (nunca cambiar creativo y landing a la vez)
             'landing_tests' => LandingTask::with('testLanding')->where('status', 'testing')->get()->map(fn (LandingTask $t) => [
                 'product_id' => $t->product_id, 'code' => $t->code(), 'landing' => $t->testLanding?->label(),
