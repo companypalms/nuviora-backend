@@ -57,9 +57,8 @@ final class DemandRules
             $live = $n['live'] ?? null;
             $why = match (true) {
                 $mode !== 'normal' => null,
-                in_array($key, self::AT_BE, true) => 'está en su límite o encima',
-                $key === 'hold_prune' && $offers === [] => 'subió de su costo objetivo',
-                $need > 0 && $offers === [] && $live !== null && $live < UrgentList::MIN_LIVE => $live === 0 ? 'no le queda ningún batch vivo' : 'le queda 1 solo batch vivo',
+                in_array($key, self::AT_BE, true) => self::reason($key, $live),
+                $offers === [] && ($key === 'hold_prune' || $need > 0 && $live !== null && $live < UrgentList::MIN_LIVE) => self::reason($key, $live),
                 default => null,
             };
             if ($why !== null) {
@@ -69,6 +68,17 @@ final class DemandRules
 
         return ['today' => $cities === [] ? 0 : 1, 'cities' => $cities, 'consumed' => array_values(array_unique($consumed)),
             'why' => $cities === [] ? null : self::why($cities)];
+    }
+
+    /** Por qué una ciudad necesita un batch, en palabras y sin montos (`.89`: también para lo que llega a la banca). */
+    public static function reason(string $key, ?int $live): ?string
+    {
+        return match (true) {
+            in_array($key, self::AT_BE, true) => 'está en su límite o encima',
+            $key === 'hold_prune' => 'subió de su costo objetivo',
+            $live !== null && $live < UrgentList::MIN_LIVE => $live === 0 ? 'no le queda ningún batch vivo' : 'le queda 1 solo batch vivo',
+            default => null,
+        };
     }
 
     /** "Carabobo y Caracas subieron de su costo objetivo; Aragua está en su límite o encima: hace falta un batch nuevo hoy…" */

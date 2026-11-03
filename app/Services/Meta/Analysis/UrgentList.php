@@ -4,6 +4,7 @@ namespace App\Services\Meta\Analysis;
 
 use App\Services\Meta\Decisions\Rules\AdRules;
 use App\Services\Meta\Decisions\Rules\CampaignRules;
+use App\Services\Meta\Queue\ForecastRules;
 
 /**
  * La lista de lo más urgente a lo menos urgente del análisis de la mañana (Etapa 5, paso 3a), en PHP puro. La arman las
@@ -27,14 +28,17 @@ use App\Services\Meta\Decisions\Rules\CampaignRules;
  * `.87` (dueño, 2026-11-03): una misión siempre se puede hacer hoy: si depende de algo que no llegó ("cuando llegue un
  * batch"), es un aviso y no cuenta para la racha. Una campaña prendida nunca con menos de 2 batches vivos, y lo que se
  * lanza sale de la banca de esa ciudad: también un batch que ya salió en otra ciudad (se duplica su ad set).
+ *
+ * `.89` (dueño, 2026-11-03): lo que llega a la banca durante el día y una ciudad necesita ya, se agrega como misión al
+ * análisis de hoy (`launchReady`); un encargo atrasado es una misión para presionar al editor líder (`late`).
  */
 final class UrgentList
 {
     /** Qué tan urgente es cada cosa (menos es más urgente). */
     public const SEVERITY = [
         'drop' => 1, 'pause_city' => 1, 'not_sold' => 1, 'stock_out' => 1, 'stop_creatives' => 1,
-        'decrease' => 2, 'intervene' => 2, 'last_test' => 2, 'tracking' => 2,
-        'hold_prune' => 3, 'few_batches' => 3,
+        'decrease' => 2, 'intervene' => 2, 'last_test' => 2, 'tracking' => 2, 'late_urgent' => 2,
+        'hold_prune' => 3, 'few_batches' => 3, 'late_batch' => 3, 'launch_ready' => 3,
         'scale' => 4,
         'alarm' => 5,
         'price' => 6,
@@ -44,6 +48,7 @@ final class UrgentList
     public const GROUP = [
         'drop' => 'frenar', 'pause_city' => 'frenar', 'not_sold' => 'frenar', 'stop_creatives' => 'frenar', 'decrease' => 'frenar',
         'intervene' => 'arreglar', 'last_test' => 'arreglar', 'tracking' => 'arreglar', 'hold_prune' => 'arreglar', 'few_batches' => 'arreglar',
+        'late_urgent' => 'arreglar', 'late_batch' => 'arreglar', 'launch_ready' => 'arreglar',
         'scale' => 'crecer',
         'stock_out' => 'aviso', 'alarm' => 'aviso', 'price' => 'aviso',
     ];
@@ -67,9 +72,10 @@ final class UrgentList
      * @param list<array> $facts AnalysisFacts::build
      * @return list<array{key: string, product_id: int, product: string, city: ?string, kind: string, label: string, text: string, tone: string, urgency: ?string, severity: int, group: string, title: string, why: ?string, detail: list<string>, money: ?array{cut: ?float, add: ?float}}>
      */
-    public static function build(array $facts): array
+    public static function build(array $facts, array $late = [], ?string $leader = null): array
     {
-        $items = [];
+        // .89: los encargos atrasados, para presionar al editor líder
+        $items = self::late($late, $leader);
         foreach ($facts as $p) {
             $base = ['product_id' => $p['product_id'], 'product' => $p['product'], 'urgency' => $p['urgency']['label'] ?? null,
                 '_level' => $p['urgency']['level'] ?? 9, '_risk' => (float) ($p['money_at_risk'] ?? 0)];
@@ -366,6 +372,63 @@ final class UrgentList
 
         return $live === null || $live >= self::MIN_LIVE ? null
             : self::alive((int) $live) . ' aquí (ad sets prendidos con algún anuncio prendido, sin contar lo que apagas hoy). Tu regla: nunca menos de ' . self::MIN_LIVE . '.';
+    }
+
+    /**
+     * `.89` (dueño: "si se le pidió al editor en líder pero está atrasado, debería decirme algo tipo, métele presión al
+     * editor en líder para que entregue este batch que se necesita con urgencia"): un encargo que pasó su fecha sin
+     * entregarse. Urgente si su producto necesita un batch hoy.
+     *
+     * @param list<array{id: int, product_id: int, product: string, code: string, due: string, days: int, editor: ?string, urgent: bool, cities: list<string>}> $late
+     */
+    public static function late(array $late, ?string $leader): array
+    {
+        $to = $leader ? "a {$leader}" : 'al editor líder';
+
+        return array_map(function ($b) use ($to) {
+            $short = self::short($b['product']);
+            $due = ForecastRules::days([$b['due']]);
+            $need = $b['urgent'] && $b['cities'] ? ' y ' . CreativeCalls::join($b['cities']) . (count($b['cities']) > 1 ? ' lo necesitan' : ' lo necesita')
+                . ' hoy para volver a bajar el costo por compra.' : '; es la reserva para seguir escalando.';
+
+            return ['key' => "late:{$b['id']}", 'product_id' => $b['product_id'], 'product' => $b['product'], 'urgency' => null,
+                '_level' => $b['urgent'] ? 0 : 9, '_risk' => 0.0, 'city' => null, 'kind' => $b['urgent'] ? 'late_urgent' : 'late_batch',
+                'label' => 'Atrasado', 'tone' => 'warning', 'text' => "{$b['code']} de {$short} era para {$due} y todavía no se entregó.",
+                'where' => "{$short} · {$b['code']}",
+                'title' => $b['urgent'] ? "Presiona al editor líder: {$b['code']} se necesita con urgencia" : "Pregúntale al editor líder por {$b['code']}: está atrasado",
+                'steps' => [
+                    "Escríbele {$to}: " . self::q($b['code']) . " de {$short} era para {$due}{$need}",
+                    $b['editor'] ? "Lo tiene {$b['editor']}." : 'Todavía no tiene editor: que lo asigne hoy.',
+                    'El sistema también se lo recordó en su campanita. Si mañana sigue sin entregarse, vuelve a salir aquí.',
+                ],
+                'why' => ($b['days'] === 1 ? '1 día' : "{$b['days']} días") . ' atrasado · ' . ($b['editor'] ? "lo tiene {$b['editor']}" : 'sin editor'),
+                'detail' => [], 'money' => null];
+        }, $late);
+    }
+
+    /**
+     * `.89` (dueño: "en el análisis de campaña del día me debe decir que debo lanzar"): un batch que llegó a la banca durante
+     * el día y que una o más ciudades necesitan ya. Se agrega al análisis de hoy (BankArrival), con su grupo y su urgencia.
+     *
+     * @param list<array{city: ?string, campaign: ?string, offer: array, why: ?string}> $cities
+     */
+    public static function launchReady(int $productId, string $product, string $code, array $cities, string $at): array
+    {
+        $short = self::short($product);
+        $names = CreativeCalls::join(array_values(array_filter(array_column($cities, 'city'))));
+        $steps = [];
+        foreach ($cities as $c) {
+            $steps[] = self::open($c['campaign'], $short, $c['city']);
+            array_push($steps, ...self::launchSteps([$c['offer']]));
+        }
+        $whys = array_values(array_filter(array_map(fn ($c) => $c['city'] && $c['why'] ? "{$c['city']} {$c['why']}" : null, $cities)));
+
+        return ['key' => "{$productId}:ready:{$code}", 'product_id' => $productId, 'product' => $product, 'urgency' => null,
+            'city' => count($cities) === 1 ? $cities[0]['city'] : null, 'kind' => 'launch_ready', 'label' => 'Lanzar', 'tone' => 'success',
+            'text' => "{$code} llegó a la banca a las {$at} (hora de Venezuela).", 'where' => $short . ($names !== '' ? " · {$names}" : ''),
+            'title' => "Lanza {$code}: ya llegó a la banca", 'steps' => $steps,
+            'why' => "Llegó a la banca a las {$at}" . ($whys ? ' · ' . implode('; ', $whys) : ''),
+            'detail' => [], 'money' => null, 'severity' => self::SEVERITY['launch_ready'], 'group' => self::GROUP['launch_ready']];
     }
 
     /** `.83`: el primer paso: abrir la campaña por su nombre exacto. */

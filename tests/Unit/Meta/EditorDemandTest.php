@@ -1,5 +1,6 @@
 <?php
 
+use App\Services\Meta\Analysis\UrgentList;
 use App\Services\Meta\Queue\DemandRules;
 use App\Services\Meta\Queue\ForecastRules;
 
@@ -99,5 +100,46 @@ describe('.88: ¿alcanza el equipo? (las próximas 2 semanas)', function () {
 
     it('los días en palabras', function () {
         expect(ForecastRules::days(['2026-11-05', '2026-11-06']))->toBe('el jueves 5 y el viernes 6');
+    });
+});
+
+describe('.89: el flujo sin botones', function () {
+    $late = fn (bool $urgent, ?string $editor = 'Ana Pérez', int $days = 1) => ['id' => 40, 'product_id' => 1, 'product' => 'FlexiStep® Tobillera',
+        'code' => 'B0108', 'due' => '2026-11-02', 'days' => $days, 'editor' => $editor, 'urgent' => $urgent, 'cities' => $urgent ? ['Valencia'] : []];
+
+    it('un encargo atrasado que se necesita hoy: presiona al editor líder, con qué decirle', function () use ($late) {
+        $i = UrgentList::build([], [$late(true)], 'Luis')[0];
+        expect($i['kind'])->toBe('late_urgent')->and($i['group'])->toBe('arreglar')
+            ->and($i['title'])->toBe('Presiona al editor líder: B0108 se necesita con urgencia')
+            ->and($i['where'])->toBe('FlexiStep · B0108')
+            ->and($i['steps'][0])->toBe('Escríbele a Luis: «B0108» de FlexiStep era para el lunes 2 y Valencia lo necesita hoy para volver a bajar el costo por compra.')
+            ->and($i['steps'][1])->toBe('Lo tiene Ana Pérez.')
+            ->and($i['why'])->toBe('1 día atrasado · lo tiene Ana Pérez')
+            ->and(UrgentList::tally([$i], [])['tasks'])->toBe(1);
+    });
+
+    it('si es la reserva, solo preguntarle; sin editor, que lo asigne hoy', function () use ($late) {
+        $i = UrgentList::build([], [$late(false, null, 3)], null)[0];
+        expect($i['kind'])->toBe('late_batch')
+            ->and($i['title'])->toBe('Pregúntale al editor líder por B0108: está atrasado')
+            ->and($i['steps'][0])->toBe('Escríbele al editor líder: «B0108» de FlexiStep era para el lunes 2; es la reserva para seguir escalando.')
+            ->and($i['steps'][1])->toBe('Todavía no tiene editor: que lo asigne hoy.')
+            ->and($i['why'])->toBe('3 días atrasado · sin editor');
+    });
+
+    it('lo que llega a la banca y una ciudad necesita: una misión para lanzarlo, con los pasos', function () {
+        $i = UrgentList::launchReady(1, 'Demo Sérum facial', 'B0108', [['city' => 'Valencia', 'campaign' => 'SERUM | VLC',
+            'offer' => ['code' => 'B0108', 'how' => 'bank'], 'why' => 'subió de su costo objetivo']], '15:20');
+        expect($i['title'])->toBe('Lanza B0108: ya llegó a la banca')->and($i['group'])->toBe('arreglar')
+            ->and($i['where'])->toBe('Demo Sérum facial · Valencia')
+            ->and($i['steps'])->toBe(['Abre la campaña «SERUM | VLC».', 'Lanza el batch «B0108» de la banca (sus videos están en Cola y banca).'])
+            ->and($i['why'])->toBe('Llegó a la banca a las 15:20 · Valencia subió de su costo objetivo');
+    });
+
+    it('por qué una ciudad necesita un batch, en palabras', function () {
+        expect(DemandRules::reason('intervene', 3))->toBe('está en su límite o encima')
+            ->and(DemandRules::reason('hold_prune', 3))->toBe('subió de su costo objetivo')
+            ->and(DemandRules::reason('scale', 1))->toBe('le queda 1 solo batch vivo')
+            ->and(DemandRules::reason('scale', 2))->toBeNull();
     });
 });

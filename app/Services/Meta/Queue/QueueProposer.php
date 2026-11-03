@@ -186,6 +186,30 @@ class QueueProposer
             ? ['batches' => (array) ($d['batches'] ?? []), 'unfilled' => array_values($d['unfilled'] ?? [])] : ['batches' => [], 'unfilled' => []];
     }
 
+    /** `.89`: ya hay un recálculo pendiente en este proceso (varias cuentas de Meta, uno solo). */
+    private static bool $pending = false;
+
+    /**
+     * `.89` (dueño, 2026-11-03: "no quiero tener que darle a un botón que diga proponer ahora… todo mantiene el flujo
+     * correcto sin necesidad de mi intervención"): cuando la revisión de Meta (cada 30 minutos) ve que se lanzó un batch de
+     * la banca, se recalcula lo que necesita cada producto al terminar, y el líder recibe el reemplazo en ese momento.
+     */
+    public static function later(): void
+    {
+        if (self::$pending) {
+            return;
+        }
+        self::$pending = true;
+        \Illuminate\Support\defer(function () {
+            self::$pending = false;
+            try {
+                (new self())->run();
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        });
+    }
+
     /** `.88`: el pronóstico de los editores; si falla, la pantalla se muestra igual. */
     public static function forecast(): ?array
     {

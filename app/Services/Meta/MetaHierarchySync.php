@@ -162,7 +162,10 @@ class MetaHierarchySync
         }
         // Paso 4a: los encargos de la cola que ya aparecen en Meta pasan a "En test" (un error aquí no frena la sincronización)
         try {
-            (new BatchTracker())->run(null, false);
+            // .89: si se lanzó un batch de la banca, al terminar se recalcula lo que necesita cada producto
+            if ((new BatchTracker())->run(null, false)['testing'] > 0) {
+                \App\Services\Meta\Queue\QueueProposer::later();
+            }
         } catch (\Throwable $e) {
             report($e);
         }

@@ -121,7 +121,7 @@ class EditorWork
     /** Revisar la entrega pendiente: aprobada pasa a la banca; devuelta, con un comentario, vuelve a producción. */
     public function review(CreativeBatch $batch, User $actor, bool $approve, ?string $comment): CreativeBatch
     {
-        return DB::transaction(function () use ($batch, $actor, $approve, $comment) {
+        $batch = DB::transaction(function () use ($batch, $actor, $approve, $comment) {
             $batch = CreativeBatch::lockForUpdate()->findOrFail($batch->id);
             $pending = $batch->deliveries()->where('review', 'pending')->first();
             $this->authorize('review', $actor, $batch, $pending?->editor_id);
@@ -135,6 +135,12 @@ class EditorWork
 
             return $batch;
         });
+        // .89: si una ciudad lo necesita ya, misión en el análisis de hoy y aviso al dueño
+        if ($approve) {
+            BankArrival::safely($batch);
+        }
+
+        return $batch;
     }
 
     /**

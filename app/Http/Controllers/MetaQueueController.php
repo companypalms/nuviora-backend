@@ -199,6 +199,10 @@ class MetaQueueController extends Controller
             'position' => in_array($data['status'], QueueRules::QUEUE, true) && !in_array($batch->status, QueueRules::QUEUE, true)
                 ? (int) CreativeBatch::whereIn('status', QueueRules::QUEUE)->max('position') + 1 : $batch->position,
         ])->save();
+        // .89: si lo pasaste a la banca y una ciudad lo necesita ya, misión en el análisis de hoy
+        if ($data['status'] === 'bank') {
+            \App\Services\Meta\Queue\BankArrival::safely($batch);
+        }
 
         return response()->json(['batch' => $this->presentOne($batch)]);
     }

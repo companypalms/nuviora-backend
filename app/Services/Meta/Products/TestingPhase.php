@@ -76,6 +76,10 @@ class TestingPhase
             return;
         }
         $p->forceFill(['phase' => $phase, 'phase_at' => now(), 'testing_round' => $phase === 'testing' ? $p->testing_round + 1 : $p->testing_round])->save();
+        // .89: los batches del testeo se piden solos, sin botón
+        if ($phase === 'testing') {
+            \App\Services\Meta\Queue\QueueProposer::later();
+        }
     }
 
     /** "Probar los siguientes": otra ronda con los ángulos de la ficha que no salieron en las anteriores. */
@@ -90,6 +94,7 @@ class TestingPhase
             throw ValidationException::withMessages(['round' => 'No quedan ángulos de la ficha sin probar: agrega ángulos nuevos a la ficha.']);
         }
         $p->forceFill(['phase' => 'testing', 'phase_at' => now(), 'testing_round' => $p->testing_round + 1])->save();
+        \App\Services\Meta\Queue\QueueProposer::later(); // .89: sus batches se piden solos
     }
 
     /**

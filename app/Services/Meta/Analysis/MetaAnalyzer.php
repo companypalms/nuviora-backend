@@ -41,7 +41,9 @@ class MetaAnalyzer
         // .56: lo que dicen los videos de los ganadores (transcritos en la .55)
         $facts = AnalysisFacts::withScripts($facts, \App\Services\Meta\Videos\Scripts::forCreatives(
             array_merge([], ...array_map(fn ($p) => array_column($p['creatives'], 'id'), $facts))));
-        $urgent = UrgentList::build($facts);
+        // .89: los encargos atrasados, para presionar al editor líder
+        $late = \App\Services\Meta\Queue\LateBatches::find($decisions, $date);
+        $urgent = UrgentList::build($facts, $late, \App\Services\Meta\Queue\LateBatches::leader());
         $input = AnalysisFacts::input($facts);
 
         $row = ['status' => 'ok', 'text' => null, 'model' => null, 'tokens_in' => null, 'tokens_out' => null, 'error' => null, 'warnings' => []];
@@ -75,17 +77,23 @@ class MetaAnalyzer
             ]);
         });
         if ($later) {
-            \Illuminate\Support\defer(fn () => $this->afterwards($analysis, $userId));
+            \Illuminate\Support\defer(fn () => $this->afterwards($analysis, $userId, $late));
         } else {
-            $this->afterwards($analysis, $userId);
+            $this->afterwards($analysis, $userId, $late);
         }
 
         return $analysis;
     }
 
     /** Lo que sigue al análisis guardado: los encargos, lo que va al editor líder y "Lo que sabemos". Si algo falla, el análisis queda igual. */
-    private function afterwards(MetaAnalysis $analysis, ?int $userId): void
+    private function afterwards(MetaAnalysis $analysis, ?int $userId, array $late = []): void
     {
+        // .89: el sistema también presiona: al editor líder, en su campanita, lo atrasado (una vez por día)
+        try {
+            \App\Services\Meta\Queue\LateBatches::remind($late, $analysis->date->toDateString());
+        } catch (\Throwable $e) {
+            report($e);
+        }
         // Paso 4b y .71: los encargos que faltan. .88: lo que necesita cada producto y para cuándo, directo al editor líder
         // (primero la iteración de lo que hay que iterar, después lo que redacta la IA), sin tope de editores
         try {
