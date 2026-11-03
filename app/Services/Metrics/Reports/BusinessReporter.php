@@ -19,7 +19,7 @@ use RuntimeException;
  * 2. La IA los explica (ReportWriter); si escribe un monto o un porcentaje que no está en los datos, queda un aviso
  *    (TextCheck). Sin IA, el texto lo arma una plantilla con los mismos números.
  * 3. Se guarda como una versión del período ("Volver a generar" crea otra).
- * Sale solo cada mañana (metrics:report, 07:15) en los días de las revisiones del calendario. Nada se manda a nadie.
+ * Sale solo cada día (metrics:report, 00:45 desde la `.85`) en los días de las revisiones del calendario. Nada se manda a nadie.
  */
 class BusinessReporter
 {

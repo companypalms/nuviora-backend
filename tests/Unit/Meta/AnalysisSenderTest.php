@@ -96,7 +96,7 @@ describe('La rutina en el calendario', function () {
             ->toBe('Lo urgente: 3 cosas. Creativos: 1 ESCALAR · 2 PARAR · 2 ITERAR. Al editor líder le llegaron 2 encargos (1 espera cupo para mañana).');
         expect(ReminderRules::routineText(['ready' => true, 'urgent' => 0, 'calls' => ['MANTENER' => 4], 'sent' => 0, 'waiting' => 0]))
             ->toBe('Nada urgente en tus campañas. Creativos: 4 MANTENER.');
-        expect(ReminderRules::routineText(['ready' => false, 'urgent' => 0, 'calls' => [], 'sent' => 0, 'waiting' => 0]))->toStartWith('El análisis de hoy sale a las 7:00');
+        expect(ReminderRules::routineText(['ready' => false, 'urgent' => 0, 'calls' => [], 'sent' => 0, 'waiting' => 0]))->toStartWith('El análisis de hoy sale a las 12:30 a. m.');
         $o = ReminderRules::occurrence('meta_analysis', '2026-11-02', '2026-11-02', ['meta_routine' => ['ready' => true, 'urgent' => 1, 'calls' => [], 'sent' => 1, 'waiting' => 0]]);
         expect($o['details'])->toBe('Lo urgente: 1 cosa. Al editor líder le llegó 1 encargo.');
     });

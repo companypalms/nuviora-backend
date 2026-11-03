@@ -60,7 +60,7 @@ class BusinessReportsController extends Controller
     {
         $data = $request->validate(['type' => ['required', Rule::in(BusinessReport::TYPES)]]);
         if (BusinessReporter::runsLeft() <= 0) {
-            return response()->json(['message' => 'Ya se volvió a generar ' . BusinessReporter::MAX_RUNS_PER_DAY . ' veces hoy. Mañana a las 7:15 salen los nuevos.'], 429);
+            return response()->json(['message' => 'Ya se volvió a generar ' . BusinessReporter::MAX_RUNS_PER_DAY . ' veces hoy. Los nuevos salen a las 12:45 a. m.'], 429);
         }
         $report = $reporter->run($data['type'], Auth::id());
         $report->forceFill(['viewed_at' => now(), 'viewed_by' => Auth::id()])->save();

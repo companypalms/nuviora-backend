@@ -6,7 +6,7 @@ use App\Services\Metrics\Reports\BusinessReporter;
 use Illuminate\Console\Command;
 
 /**
- * Los reportes del negocio (`.48b`): cada mañana a las 07:15, los que tocan según las revisiones del calendario (el diario
+ * Los reportes del negocio (`.48b`): cada día a las 00:45 (`.85`), los que tocan según las revisiones del calendario (el diario
  * de lunes a sábado, el semanal el día de la revisión semanal y el mensual el día 8). Con --type, solo ese tipo, aunque
  * no le toque hoy. No manda nada a nadie: quedan en Reportes del negocio.
  */

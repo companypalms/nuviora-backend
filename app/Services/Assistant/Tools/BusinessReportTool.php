@@ -26,7 +26,7 @@ class BusinessReportTool implements Tool
 
     public function description(): string
     {
-        return 'El reporte del negocio que ya está hecho: diario (los últimos 3 días, sale de lunes a sábado a las 7:15), semanal (la semana pasada de lunes a domingo, sale el jueves) o mensual (el mes pasado, sale el día 8). Trae el resumen, qué mirar primero, los números principales de ventas, dinero y pérdidas con su comparación, los productos que más dejaron y los que perdieron, el equipo, las metas, las alertas y si los números están comprobados. Úsala para "dame el reporte", "cómo fue la semana", "cómo va el negocio", "el reporte del mes". Para unas fechas que no son las de un reporte, usa ventas o dinero.';
+        return 'El reporte del negocio que ya está hecho: diario (los últimos 3 días, sale de lunes a sábado a las 12:45 a. m., hora de Venezuela), semanal (la semana pasada de lunes a domingo, sale el jueves) o mensual (el mes pasado, sale el día 8). Trae el resumen, qué mirar primero, los números principales de ventas, dinero y pérdidas con su comparación, los productos que más dejaron y los que perdieron, el equipo, las metas, las alertas y si los números están comprobados. Úsala para "dame el reporte", "cómo fue la semana", "cómo va el negocio", "el reporte del mes". Para unas fechas que no son las de un reporte, usa ventas o dinero.';
     }
 
     public function parameters(): array
@@ -55,7 +55,7 @@ class BusinessReportTool implements Tool
         $link = ['type' => 'link', 'label' => 'Abrir el reporte', 'to' => '/reportes-negocio?tipo=' . $type
             . ($r ? '&desde=' . $r->period_from->toDateString() . '&hasta=' . $r->period_to->toDateString() : '')];
         if (!$r) {
-            return new ToolResult(['problema' => "Todavía no hay reporte {$label}. Sale solo a las 7:15 en su día, o en Reportes del negocio con \"Volver a generar\"."], [$link]);
+            return new ToolResult(['problema' => "Todavía no hay reporte {$label}. Sale solo a las 12:45 a. m. en su día, o en Reportes del negocio con \"Volver a generar\"."], [$link]);
         }
 
         $f = $r->facts;

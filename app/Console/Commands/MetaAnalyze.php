@@ -6,7 +6,7 @@ use App\Services\Meta\Analysis\MetaAnalyzer;
 use Illuminate\Console\Command;
 
 /**
- * El análisis de campañas de cada mañana (Etapa 5, paso 3a): a las 07:00, después del CPA (06:30) y de los estados de los
+ * El análisis de campañas de cada día (Etapa 5, paso 3a): a las 00:30 (`.85`), después del CPA (00:15) y de los estados de los
  * creativos (06:45), con los 3 días cerrados. Lo ve el dueño en Meta Ads › Análisis del día. No cambia nada en Meta.
  */
 class MetaAnalyze extends Command

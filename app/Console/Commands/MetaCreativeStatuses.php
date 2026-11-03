@@ -8,8 +8,8 @@ use Illuminate\Console\Command;
 
 /**
  * Los estados automáticos de los creativos con las reglas del dueño (Etapa 5, paso 2a) y los encargos de la cola que ya
- * salieron en Meta o tienen veredicto (paso 4a): cada día a las 06:45, después del CPA de las 06:30 y antes del análisis
- * de las 07:00, solo con días cerrados. El que puso el dueño a mano no se toca.
+ * salieron en Meta o tienen veredicto (paso 4a): cada día a las 00:20 (`.85`), después del CPA de las 00:15 y antes del
+ * análisis de las 00:30, solo con días cerrados. El que puso el dueño a mano no se toca.
  */
 class MetaCreativeStatuses extends Command
 {

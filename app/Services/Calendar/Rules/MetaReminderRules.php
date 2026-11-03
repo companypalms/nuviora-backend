@@ -147,7 +147,7 @@ final class MetaReminderRules
     {
         $out['actions'] = [['label' => 'Ir a Cola y banca', 'link' => self::QUEUE_LINK]];
         if ($work === null) {
-            $out['details'] = 'Después de las 7:00 la IA propone los encargos del día: apruébalos o descártalos para que los editores tengan trabajo.';
+            $out['details'] = 'Después de las 12:30 a. m. la IA propone los encargos del día: apruébalos o descártalos para que los editores tengan trabajo.';
 
             return;
         }

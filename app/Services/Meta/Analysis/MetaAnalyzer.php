@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 /**
- * El análisis de campañas de cada mañana (Etapa 5, paso 3a): a las 07:00 (meta:analyze) o con "Volver a analizar".
+ * El análisis de campañas de cada día (Etapa 5, paso 3a): a las 00:30 (meta:analyze, `.85`) o con "Volver a analizar".
  * 1. Las reglas del dueño (Paso 2) dicen qué pasa con cada producto, ciudad y creativo.
  * 2. Con eso se arma la lista urgente (UrgentList: el orden y los montos son de las reglas).
  * 3. La IA explica y redacta (AnalysisWriter); si escribe un monto que no está en los datos, queda un aviso (MoneyCheck).
@@ -21,7 +21,7 @@ use RuntimeException;
  *
  * `.84` (2026-11-02): con "Volver a analizar" ($later), los pasos 5, 5b y "Lo que sabemos" se hacen después de responder,
  * para que la página no espere de más (en producción el servidor cortaba la espera y salía un error rojo, aunque el análisis
- * sí se guardaba). A las 7:00 se hace todo seguido.
+ * sí se guardaba). A las 00:30 se hace todo seguido.
  */
 class MetaAnalyzer
 {

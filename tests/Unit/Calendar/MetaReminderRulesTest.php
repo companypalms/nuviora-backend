@@ -134,7 +134,7 @@ describe('Los encargos por aprobar y la banca', function () use ($work, $occ) {
 
     it('otro día dice lo general (lo de ahora solo sirve para hoy)', function () use ($work) {
         $o = ReminderRules::occurrence('meta_queue', '2026-11-03', '2026-11-02', ['meta_work' => $work(['no_profile' => ['Solo Brillo']])]);
-        expect($o['details'])->toStartWith('Después de las 7:00 la IA propone')->and($o['lines'])->toBe([])->and($o['auto_done'])->toBeFalse();
+        expect($o['details'])->toStartWith('Después de las 12:30 a. m. la IA propone')->and($o['lines'])->toBe([])->and($o['auto_done'])->toBeFalse();
     });
 
     it('la banca: primero lo del testeo, después lo que más espera', function () use ($work, $occ) {

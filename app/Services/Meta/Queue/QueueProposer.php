@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 /**
- * Las propuestas de encargos de cada mañana (Etapa 5, paso 4b), con el análisis de las 07:00 o "Volver a analizar", o con
+ * Las propuestas de encargos de cada mañana (Etapa 5, paso 4b), con el análisis de las 00:30 o "Volver a analizar", o con
  * "Proponer ahora" en la cola:
  * 1. las propuestas de días anteriores que nadie aprobó se reemplazan (quedan descartadas, "reemplazada");
  * 2. las reglas deciden cuántos encargos, de qué productos y de qué tipo (ProposalRules), sin repetir lo ya propuesto hoy;

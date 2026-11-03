@@ -44,7 +44,7 @@ class MetaAnalysisController extends Controller
     public function run(MetaAnalyzer $analyzer)
     {
         if (MetaAnalyzer::runsLeft() <= 0) {
-            return response()->json(['message' => 'Ya se volvió a analizar ' . MetaAnalyzer::MAX_RUNS_PER_DAY . ' veces hoy. Mañana a las 7:00 sale el nuevo.'], 429);
+            return response()->json(['message' => 'Ya se volvió a analizar ' . MetaAnalyzer::MAX_RUNS_PER_DAY . ' veces hoy. El nuevo sale a las 12:30 a. m.'], 429);
         }
         // .84: responde apenas se guarda el análisis; los encargos y "Lo que sabemos" siguen después de responder
         $analysis = $analyzer->run(Auth::id(), later: true);
