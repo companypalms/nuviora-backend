@@ -53,9 +53,14 @@ class MetaQueueController extends Controller
         $batches = $open->merge($closed);
         $batches->load(self::WITH);
         $s = $settings->get();
+        $demand = QueueProposer::demandToday();
 
         return response()->json([
-            'batches' => self::presentAll($batches),
+            // .88: por qué hace falta cada uno (lo que ve el líder)
+            'batches' => array_map(fn ($b) => $b + ['need' => $demand['batches'][$b['id']] ?? null], self::presentAll($batches)),
+            'unfilled' => $demand['unfilled'],
+            'forecast' => QueueProposer::forecast(),
+            'today' => now(config('app.timezone'))->toDateString(),
             'products' => $this->products($decisions),
             'settings' => [
                 'batch_pieces' => (int) $s['batch_pieces'], 'due_days' => (int) $s['due_days'], 'bank_min' => (int) $s['bank_min'], 'bank_max' => (int) $s['bank_max'],

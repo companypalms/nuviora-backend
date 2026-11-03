@@ -73,6 +73,11 @@ class DecisionSettings
         'batches_per_editor' => [2, 0.5, 20],    // por editor por día…
         'corrections_pct' => [30, 0, 100],       // …más ≈30 % de correcciones
         'due_days' => [1, 0, 30],                // plazo de un encargo al aprobarlo
+        // .88: la reserva y los batches de inicio de un producto nuevo, para dentro de 2 días; el pronóstico de los editores
+        'reserve_due_days' => [2, 0, 30],
+        'new_products_month' => [4, 0, 60],      // productos nuevos al mes (dueño: "1 por semana")…
+        'start_batches' => [3, 0, 10],           // …con 3 batches de inicio cada uno
+        'batch_life_days' => [7, 1, 90],         // lo que dura un batch bueno, mientras no haya historia en Meta
         // Paso 6a — las landings: con menos no se opina
         'landing_min_clicks' => [100, 1, 100000],   // de la visita
         'landing_min_visits' => [300, 1, 1000000],  // de la compra

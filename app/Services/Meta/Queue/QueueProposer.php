@@ -5,8 +5,10 @@ namespace App\Services\Meta\Queue;
 use App\Models\AdAngle;
 use App\Models\CreativeBatch;
 use App\Models\CreativeBatchPiece;
+use App\Models\MetaAnalysis;
 use App\Models\ProductAdSetting;
 use App\Models\Setting;
+use App\Services\Meta\Analysis\AnalysisSender;
 use App\Services\Meta\Analysis\MetaAnalyzer;
 use App\Services\Meta\Decisions\DecisionSettings;
 use App\Services\Meta\Decisions\MetaDecisions;
@@ -25,11 +27,24 @@ use RuntimeException;
  *    `.65`: los productos en testeo piden sus batches del testeo (TestingPhase) y no los de las reglas de siempre;
  * 3. la IA los redacta (QueueWriter) y escribe el aprendizaje de los batches que ya se testearon;
  * 4. quedan en "Para aprobar": nada se manda a nadie ni se toca Meta.
+ *
+ * `.88` (dueño, 2026-11-03: "que al editor líder le aparezca todo lo que tengamos que hacer y el tiempo en que lo
+ * necesitamos… sin contar cuántos editores tenemos disponibles… en orden de lo más urgente a lo menos urgente"): cuántos
+ * y para cuándo lo dicen las fechas de cada producto (DemandPlanner: hoy y la reserva), sin tope de editores. Lo que ya
+ * viene en camino cuenta (se adelanta su fecha); lo que falta se pide, primero la iteración del análisis (AnalysisSender) y
+ * después lo que redacta la IA, y le llega directo al líder: aprobado, con su número y su fecha (el dueño lo ve en Cola y
+ * banca y puede descartarlo). El porqué de cada uno queda en DEMAND, en palabras y sin montos, para el líder.
  */
 class QueueProposer
 {
     /** Lo de la última vez (cuándo, cuántos, si redactó la IA), para la pantalla. */
     public const LAST_RUN = 'meta.queue.last_run';
+
+    /** `.88`: lo que necesita cada producto hoy: el porqué de cada encargo y lo que no se pudo pedir (para el líder). */
+    public const DEMAND = 'meta.queue.demand';
+
+    /** `.88`: el porqué de los batches de inicio de un producto nuevo. */
+    public const START = 'Producto nuevo: uno de sus batches de inicio, para probar sus ángulos.';
 
     /** Cuántos batches testeados sin aprendizaje se mandan por vez. */
     private const MAX_LEARNINGS = 10;
@@ -38,11 +53,12 @@ class QueueProposer
         private ?MetaDecisions $decisions = null,
         private ?QueueWriter $writer = null,
         private DecisionSettings $settings = new DecisionSettings(),
+        private ?AnalysisSender $sender = null,
     ) {
     }
 
-    /** @return array{at: string, created: int, replaced: int, learnings: int, status: string, model: ?string, error: ?string, missing_profile: list<string>} */
-    public function run(?int $userId = null): array
+    /** @return array{at: string, created: int, replaced: int, learnings: int, status: string, model: ?string, error: ?string, missing_profile: list<string>, sent: list<string>, unfilled: int} */
+    public function run(?int $userId = null, ?MetaAnalysis $analysis = null): array
     {
         $now = now(config('app.timezone'));
         $today = $now->toDateString();
@@ -52,10 +68,6 @@ class QueueProposer
             ->update(['status' => 'discarded', 'discard_reason' => 'Reemplazada por las propuestas del ' . $now->format('d/m') . '.', 'status_at' => now(), 'status_by' => null]);
 
         $decisions = ($this->decisions ?? app(MetaDecisions::class))->forProducts(MetaAnalyzer::products());
-        // Lo propuesto hoy y no aprobado ya cuenta para ese producto (lo aprobado ya está en la banca); todo lo de hoy, para la capacidad
-        $todayRows = CreativeBatch::where('source', 'rules')->where('proposed_on', $today)->get(['product_id', 'status']);
-        $already = $todayRows->whereIn('status', ['proposed', 'discarded'])->countBy('product_id')->all();
-        $capacity = max(0, (int) round($s['video_editors'] * $s['batches_per_editor'] / (1 + $s['corrections_pct'] / 100)) - $todayRows->count());
         $pieces = max(1, (int) $s['batch_pieces']);
         // .65: las rondas de testeo que ya tienen todos sus resultados se cierran (con un ganador, el producto pasa a iterar)
         TestingPhase::refresh();
@@ -77,7 +89,43 @@ class QueueProposer
         unset($d);
         // .65: el testeo, solo de los productos en modo normal (no en pausa, abandonados ni en liquidación)
         $stopped = ProductAdSetting::where('mode', '!=', 'normal')->pluck('product_id')->map(fn ($v) => (int) $v)->all();
-        $plan = ProposalRules::plan($normal, $already, $capacity, TestingPhase::candidates(array_values(array_diff(array_intersect($testingIds, $complete), $stopped)), $decisions));
+        // .88: lo que necesita cada producto y para cuándo; lo que ya viene en camino cuenta (se adelanta su fecha)
+        $demand = DemandPlanner::plan($decisions, $testingIds, $s, $today);
+        $reasons = [];
+        foreach ($demand as $dm) {
+            foreach ($dm['slots']['advance'] as $id => $date) {
+                CreativeBatch::whereKey($id)->update(['due_date' => $date]);
+            }
+            foreach ($dm['slots']['covered'] as $id => $date) {
+                $reasons[$id] = self::reason($dm, $date, $today);
+            }
+        }
+        $quotas = array_filter(array_map(fn ($dm) => $dm['slots']['new'], $demand));
+        // 1. La iteración del creativo más importante de cada producto (.71/.78), con las indicaciones del análisis de hoy
+        $analysis ??= MetaAnalysis::where('date', $today)->orderByDesc('version')->first();
+        $sent = $analysis && $quotas ? ($this->sender ?? new AnalysisSender($this->settings))->fill($analysis, $quotas) : ['sent' => [], 'used' => []];
+        $done = [];
+        foreach ($sent['used'] as $pid => $used) {
+            $quotas[$pid] = array_slice($quotas[$pid], count($used));
+            $done[$pid] = count($used);
+            foreach ($used as $id => $date) {
+                $reasons[$id] = self::reason($demand[$pid], $date, $today);
+            }
+        }
+        // 2. Lo demás lo piden las reglas y lo redacta la IA (.64: solo con la ficha completa); el testeo, para la fecha de la reserva
+        $later = $now->copy()->addDays((int) $s['reserve_due_days'])->toDateString();
+        $testing = array_map(fn ($items) => array_map(fn ($i) => $i + ['due' => $later], $items),
+            TestingPhase::candidates(array_values(array_diff(array_intersect($testingIds, $complete), $stopped)), $decisions));
+        $plan = ProposalRules::plan($normal, array_filter($quotas), $testing, $done);
+        // Lo que no se puede pedir: sin la ficha del producto o sin una ciudad donde probarlo (el líder lo ve igual)
+        $planned = array_count_values(array_column($plan, 'product_id'));
+        $unfilled = [];
+        foreach (array_filter($quotas) as $pid => $dates) {
+            foreach (array_slice($dates, (int) ($planned[$pid] ?? 0)) as $date) {
+                $unfilled[] = ['product_id' => (int) $pid, 'product' => $demand[$pid]['product'], 'due' => $date, 'why' => self::reason($demand[$pid], $date, $today),
+                    'blocked' => isset($normal[$pid]) ? 'No hay una ciudad activa con stock donde probarlo.' : 'Falta la ficha del producto: el dueño la completa para que la IA escriba el encargo.'];
+            }
+        }
         foreach ($plan as $i => &$p) {
             $p['key'] = 'E' . ($i + 1);
             $p['pieces'] = $pieces;
@@ -95,13 +143,18 @@ class QueueProposer
         ])->values()->all();
 
         $run = ['at' => now()->toIso8601String(), 'created' => 0, 'replaced' => $replaced, 'learnings' => 0, 'status' => 'nothing', 'model' => null, 'error' => null,
-            'missing_profile' => $missingProfile];
+            'missing_profile' => $missingProfile, 'sent' => $sent['sent'], 'unfilled' => count($unfilled)];
         if ($plan !== [] || $testedRows !== []) {
             [$text, $run] = $this->write($plan, $testedRows, $run);
-            DB::transaction(function () use ($plan, $text, $testedRows, $tested, $today, $userId, &$run) {
+            DB::transaction(function () use ($plan, $text, $testedRows, $tested, $today, $userId, $demand, &$reasons, &$run) {
                 $drafts = collect($text['encargos'] ?? [])->keyBy('clave');
+                $queue = new BatchQueue($this->settings);
                 foreach ($plan as $p) {
-                    $this->create($p, $drafts[$p['key']] ?? QueueWriter::example([$p], [])['encargos'][0], $today, $userId);
+                    // .88: directo al líder, aprobado y con su fecha
+                    $batch = $this->create($p, $drafts[$p['key']] ?? QueueWriter::example([$p], [])['encargos'][0], $today, $userId);
+                    $batch->forceFill(['due_date' => $p['due']])->save();
+                    $batch = $queue->approve($batch, null);
+                    $reasons[$batch->id] = isset($p['testing']) ? self::START : self::reason($demand[$p['product_id']], $p['due'], $today);
                     $run['created']++;
                 }
                 $keys = array_column($testedRows, 'key');
@@ -115,8 +168,40 @@ class QueueProposer
             });
         }
         Setting::set(self::LAST_RUN, $run);
+        Setting::set(self::DEMAND, ['date' => $today, 'at' => now()->toIso8601String(), 'batches' => (object) $reasons, 'unfilled' => $unfilled]);
 
         return $run;
+    }
+
+    /**
+     * `.88`: lo de hoy para la pantalla: el porqué de cada encargo (por su id) y lo que hace falta pero no se pudo pedir.
+     *
+     * @return array{batches: array<int|string, string>, unfilled: list<array>}
+     */
+    public static function demandToday(): array
+    {
+        $d = Setting::get(self::DEMAND);
+
+        return ($d['date'] ?? null) === now(config('app.timezone'))->toDateString()
+            ? ['batches' => (array) ($d['batches'] ?? []), 'unfilled' => array_values($d['unfilled'] ?? [])] : ['batches' => [], 'unfilled' => []];
+    }
+
+    /** `.88`: el pronóstico de los editores; si falla, la pantalla se muestra igual. */
+    public static function forecast(): ?array
+    {
+        try {
+            return (new EditorForecast())->get();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return null;
+        }
+    }
+
+    /** `.88`: por qué un encargo hace falta para esa fecha, en palabras y sin montos: lo de hoy o la reserva. */
+    private static function reason(array $dm, string $date, string $today): string
+    {
+        return $date <= $today && $dm['why'] ? $dm['why'] : DemandRules::RESERVE;
     }
 
     /** @return array{0: array, 1: array} el texto (de la IA o de la plantilla) y lo de esta vez */
@@ -142,7 +227,7 @@ class QueueProposer
         }
     }
 
-    private function create(array $p, array $t, string $today, ?int $userId): void
+    private function create(array $p, array $t, string $today, ?int $userId): CreativeBatch
     {
         $clean = fn ($v) => is_string($v) && trim($v) !== '' ? trim($v) : null;
         $angle = $p['angle_code'];
@@ -170,6 +255,8 @@ class QueueProposer
             // .81: cada pieza sabe qué prueba (el tipo del encargo); su hipótesis es la del encargo
             CreativeBatchPiece::create(['creative_batch_id' => $batch->id, 'position' => $i + 1, 'change' => $clean($texts[$i] ?? null), 'test' => $p['kind']]);
         }
+
+        return $batch;
     }
 
     /** Lo del producto para la IA: su ficha, sus avales reales, sus ángulos y los textos y el video de la referencia (.69: sin el precio). */

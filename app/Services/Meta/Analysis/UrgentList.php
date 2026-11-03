@@ -292,7 +292,7 @@ final class UrgentList
      * ciudad pide creativos (podar o intervenir), por lo menos 1. Nada en liquidación ni donde se pausa. Los análisis de
      * antes de la .87 no traen los vivos: solo el de la banca, como antes.
      */
-    private static function need(string $kind, ?array $n, string $mode): int
+    public static function need(string $kind, ?array $n, string $mode): int
     {
         if ($n === null || $mode === 'liquidation' || in_array($kind, self::NO_BATCHES, true)) {
             return 0;

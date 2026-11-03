@@ -6,6 +6,7 @@ use App\Models\CreativeBatch;
 use App\Services\Meta\Queue\EditorFacts;
 use App\Services\Meta\Queue\EditorRules;
 use App\Services\Meta\Queue\EditorWork;
+use App\Services\Meta\Queue\QueueProposer;
 use App\Services\Metrics\Period;
 use App\Services\Metrics\Readers\TeamReader;
 use App\Services\Metrics\Team\EditorKpis;
@@ -32,12 +33,18 @@ class EditorQueueController extends Controller
         $who = EditorWork::who($user);
         $leader = $who['role'] === EditorRules::LEADER;
         $batches = $this->visible($who)->with(EditorWork::WITH)->get();
+        // .88: por qué hace falta cada uno y para cuándo (en palabras, sin montos)
+        $demand = QueueProposer::demandToday();
 
         return response()->json([
             'me' => ['id' => $user->id, 'name' => trim($user->names . ' ' . ($user->surnames ?? '')), 'leader' => $leader],
-            'batches' => EditorWork::present($batches, $who),
+            'batches' => array_map(fn ($b) => $b + ['need' => $demand['batches'][$b['id']] ?? null], EditorWork::present($batches, $who)),
             'editors' => $leader ? EditorWork::editors() : [],
             'pending' => EditorRules::pending($who, EditorWork::states($batches)),
+            // .88: para el líder, lo que hace falta y no se pudo pedir, y si alcanza el equipo
+            'unfilled' => $leader ? $demand['unfilled'] : [],
+            'forecast' => $leader ? QueueProposer::forecast() : null,
+            'today' => now(config('app.timezone'))->toDateString(),
         ]);
     }
 

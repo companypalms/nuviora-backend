@@ -86,16 +86,10 @@ class MetaAnalyzer
     /** Lo que sigue al análisis guardado: los encargos, lo que va al editor líder y "Lo que sabemos". Si algo falla, el análisis queda igual. */
     private function afterwards(MetaAnalysis $analysis, ?int $userId): void
     {
-        // Paso 4b: los encargos que faltan quedan en la cola para aprobar
+        // Paso 4b y .71: los encargos que faltan. .88: lo que necesita cada producto y para cuándo, directo al editor líder
+        // (primero la iteración de lo que hay que iterar, después lo que redacta la IA), sin tope de editores
         try {
-            (new QueueProposer($this->decisions))->run($userId);
-        } catch (\Throwable $e) {
-            report($e);
-        }
-        // .71: lo que hay que iterar se le manda solo al editor líder (después de las propuestas: si la IA ya propuso una
-        // iteración de ese creativo, se aprueba esa)
-        try {
-            (new AnalysisSender())->run($analysis);
+            (new QueueProposer($this->decisions))->run($userId, $analysis);
         } catch (\Throwable $e) {
             report($e);
         }

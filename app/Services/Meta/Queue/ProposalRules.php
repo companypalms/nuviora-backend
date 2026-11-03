@@ -24,64 +24,44 @@ final class ProposalRules
     private const CROSS_ORDER = ['transversal' => 0, 'city_sensitive' => 1];
 
     /**
+     * `.88` (dueño, 2026-11-03: "que le aparezca todo lo que tengamos que hacer… sin contar cuántos editores tenemos"): un
+     * encargo por cada fecha que le falta a cada producto (DemandPlanner), sin tope de editores, del producto más urgente al
+     * menos. `.65`: el testeo va después de lo que pierde dinero (U1 y U2) y antes de lo demás.
+     *
      * @param array<int, array> $decisions MetaDecisions::compute
-     * @param array<int, int> $alreadyToday los encargos que las reglas ya propusieron hoy, por producto
-     * @param int $capacity cuántos encargos nuevos caben hoy
+     * @param array<int, list<string>> $quotas producto => las fechas (Y-m-d) de los encargos que le faltan
      * @param list<list<array>> $testing .65: los batches que faltan de los productos en testeo, por producto (ya armados)
+     * @param array<int, int> $done los que ya se pidieron hoy de ese producto (para variar el tipo: el primero, el segundo…)
      * @return list<array{product_id: int, product: string, kind: string, angle_code: ?string, reference_id: ?int, reference: ?string,
-     *     reference_type: ?string, city_id: ?int, city: ?string, format: string, iterate: ?string, urgency: ?int, reason: string}>
+     *     reference_type: ?string, city_id: ?int, city: ?string, format: string, iterate: ?string, urgency: ?int, reason: string, due: string}>
      */
-    public static function plan(array $decisions, array $alreadyToday, int $capacity, array $testing = []): array
+    public static function plan(array $decisions, array $quotas, array $testing = [], array $done = []): array
     {
-        if ($capacity <= 0) {
-            return [];
-        }
         $products = [];
         foreach ($decisions as $pid => $d) {
-            $plan = $d['plan'] ?? null;
-            $u = $plan['urgency'] ?? null;
-            if (!$u || $u['level'] >= 5 || ($d['product']['mode'] ?? 'normal') !== 'normal') {
-                continue;
-            }
-            [$min, $max] = self::range((string) $u['batches']);
-            $done = (int) ($alreadyToday[$pid] ?? 0);
+            $dates = array_values($quotas[$pid] ?? []);
             $city = self::city($d['campaigns'] ?? []);
-            if ($max - $done <= 0 || $city === null) {
+            if ($dates === [] || $city === null || ($d['product']['mode'] ?? 'normal') !== 'normal') {
                 continue;
             }
-            $products[] = ['pid' => (int) $pid, 'd' => $d, 'level' => (int) $u['level'], 'risk' => (float) ($plan['money_at_risk'] ?? 0),
-                'min' => max(0, $min - $done), 'max' => $max - $done, 'done' => $done, 'city' => $city, 'n' => 0];
+            $products[] = ['d' => $d, 'level' => (int) ($d['plan']['urgency']['level'] ?? 9), 'risk' => (float) ($d['plan']['money_at_risk'] ?? 0),
+                'dates' => $dates, 'done' => (int) ($done[$pid] ?? 0), 'city' => $city];
         }
         usort($products, fn ($a, $b) => [$a['level'], -$a['risk'], $a['d']['product']['name']] <=> [$b['level'], -$b['risk'], $b['d']['product']['name']]);
 
-        // Primero el mínimo de cada producto; después, si sobra, hasta el máximo. .65: el testeo va después del mínimo de lo
-        // que pierde dinero (U1 y U2) y antes del mínimo de lo demás
         $out = [];
-        $urgent = array_keys(array_filter($products, fn ($p) => $p['level'] <= 2));
-        $rest = array_keys(array_filter($products, fn ($p) => $p['level'] > 2));
-        self::fill($products, $urgent, 'min', $out, $capacity);
-        foreach ($testing as $items) {
-            foreach ($items as $item) {
-                if (count($out) < $capacity) {
-                    $out[] = $item;
-                }
+        $add = function (array $p) use (&$out) {
+            foreach ($p['dates'] as $n => $date) {
+                $out[] = self::one($p['d'], $p['done'] + $n, $p['city']) + ['due' => $date];
             }
+        };
+        array_map($add, array_filter($products, fn ($p) => $p['level'] <= 2));
+        foreach ($testing as $items) {
+            array_push($out, ...$items);
         }
-        self::fill($products, $rest, 'min', $out, $capacity);
-        self::fill($products, [...$urgent, ...$rest], 'max', $out, $capacity);
+        array_map($add, array_filter($products, fn ($p) => $p['level'] > 2));
 
         return $out;
-    }
-
-    /** Agrega encargos de esos productos hasta su mínimo (o su máximo) mientras haya capacidad. */
-    private static function fill(array &$products, array $keys, string $bound, array &$out, int $capacity): void
-    {
-        foreach ($keys as $k) {
-            while ($products[$k]['n'] < $products[$k][$bound] && count($out) < $capacity) {
-                $out[] = self::one($products[$k]['d'], $products[$k]['done'] + $products[$k]['n'], $products[$k]['city']);
-                $products[$k]['n']++;
-            }
-        }
     }
 
     /** "2–3" → [2, 3]; "1" → [1, 1]; "0–1" → [0, 1]. */

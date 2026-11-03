@@ -27,8 +27,9 @@ use Illuminate\Support\Facades\DB;
  *   empezaron a fallar y después los mediocres con algo que arreglar; a igual nivel, el que más gastó; los perdedores no
  *   se iteran). Un producto que ya tiene un encargo en camino o listo en la banca (la "banca por producto: desde", 1) no
  *   recibe otro: "que cada producto activo siempre tenga un batch en la banca listo para lanzar".
- * - Solo lo que cabe en el día según los editores (como la cola: editores × encargos por editor, menos las correcciones);
- *   lo que no cabe sale al día siguiente si sigue igual.
+ * - `.88` (dueño, 2026-11-03: "que al editor líder le aparezca todo lo que tengamos que hacer y el tiempo en que lo
+ *   necesitamos… sin contar cuántos editores tenemos"): ya no se corta por la capacidad de los editores. Cada producto
+ *   recibe lo que piden sus fechas (DemandPlanner) y la iteración va primero, con la fecha más cercana.
  * - Solo productos en modo normal (en pausa, abandonados o en liquidación no reciben creativos nuevos) y con trabajo (U5,
  *   "sin trabajo", por ejemplo sin stock, no).
  */
@@ -44,38 +45,40 @@ class AnalysisSender
     {
     }
 
-    /** @return array{sent: list<string>, already: int, waiting: int} */
-    public function run(MetaAnalysis $analysis): array
+    /**
+     * `.88`: a cada producto que necesita encargos, primero la iteración de su creativo más importante (.78), aprobada y con
+     * la fecha más cercana de las que le faltan. Lo demás lo piden las reglas (QueueProposer).
+     *
+     * @param array<int, list<string>> $quotas producto => las fechas de los encargos que le faltan (Y-m-d)
+     * @return array{sent: list<string>, used: array<int, array<int, string>>} used: producto => [id del encargo => fecha]
+     */
+    public function fill(MetaAnalysis $analysis, array $quotas): array
     {
         $today = now(config('app.timezone'))->toDateString();
-        $s = $this->settings->get();
-        $left = self::capacity($s) - CreativeBatch::whereNotNull('approved_at')->whereDate('approved_at', $today)->count();
-        $pieces = max(1, (int) $s['batch_pieces']);
-        $out = ['sent' => [], 'already' => 0, 'waiting' => 0];
-        foreach (self::turns($analysis->facts ?? [], $s) as $c) {
+        $pieces = max(1, (int) $this->settings->get()['batch_pieces']);
+        $out = ['sent' => [], 'used' => []];
+        foreach (self::picks($analysis->facts ?? []) as $c) {
+            $date = $quotas[$c['product_id']][0] ?? null;
             $id = (int) $c['creative']['id'];
-            if ($c['full']) {
-                $out['already']++;
+            // Sin fecha que cubrir, o ya hay una iteración de ese creativo en camino
+            if ($date === null || CreativeBatch::where('reference_creative_id', $id)->whereIn('status', ['approved', 'production', 'review'])->exists()) {
                 continue;
             }
-            if ($left <= 0) {
-                $out['waiting']++;
-                continue;
-            }
-            $batch = DB::transaction(function () use ($c, $id, $pieces, $today) {
+            $batch = DB::transaction(function () use ($c, $id, $pieces, $today, $date) {
                 $batch = CreativeBatch::where('reference_creative_id', $id)->where('status', 'proposed')->orderByDesc('id')->first()
                     ?? $this->create($c, $pieces, $today);
+                $batch->forceFill(['due_date' => $date])->save();
 
                 return $this->queue->approve($batch, null);
             });
             $out['sent'][] = (string) $batch->code();
-            $left--;
+            $out['used'][$c['product_id']][$batch->id] = $date;
         }
 
         return $out;
     }
 
-    /** Cuántos encargos por día pueden hacer los editores (como la cola de propuestas). */
+    /** Cuántos encargos por día pueden hacer los editores según tus ajustes (`.88`: solo para el pronóstico, sin historia). */
     public static function capacity(array $s): int
     {
         return max(0, (int) round($s['video_editors'] * $s['batches_per_editor'] / (1 + $s['corrections_pct'] / 100)));
