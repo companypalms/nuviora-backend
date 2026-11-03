@@ -27,6 +27,19 @@ class BankArrival
         if ($batch->status !== 'bank' || $batch->number === null) {
             return null;
         }
+        // Un batch del testeo no se lanza suelto: cuando están todos, "Lanza el testeo"
+        if ($batch->testing_round !== null) {
+            $t = TestingLaunch::ready([$pid])[0] ?? null;
+            if ($t === null) {
+                return null;
+            }
+            $item = UrgentList::testLaunch($t);
+            self::append($item, null);
+            self::tell('El testeo de ' . UrgentList::short($t['product']) . ' está listo (' . CreativeCalls::join(array_column($t['batches'], 'code'))
+                . '): lánzalo. Está en tu Análisis del día.');
+
+            return $item;
+        }
         $decisions = ($source ?? new MetaDecisions())->forProducts([$pid]);
         $d = $decisions[$pid] ?? null;
         if (!$d || ($d['product']['mode'] ?? 'normal') !== 'normal') {
@@ -51,22 +64,31 @@ class BankArrival
         if ($cities === []) {
             return null;
         }
-        $tz = config('app.timezone');
-        $item = UrgentList::launchReady($pid, (string) $d['product']['name'], $code, $cities, now($tz)->format('H:i'));
-        // En el análisis de hoy, si todavía no lo pide (a las 00:30 sale solo)
-        $analysis = MetaAnalysis::where('date', now($tz)->toDateString())->orderByDesc('version')->first();
+        $item = UrgentList::launchReady($pid, (string) $d['product']['name'], $code, $cities, now(config('app.timezone'))->format('H:i'));
+        self::append($item, $code);
+        $where = CreativeCalls::join(array_values(array_filter(array_column($cities, 'city'))));
+        self::tell("{$code} de " . UrgentList::short((string) $d['product']['name']) . ' ya llegó a la banca: lánzalo hoy'
+            . ($where !== '' ? " en {$where}" : '') . '. Está en tu Análisis del día.');
+
+        return $item;
+    }
+
+    /** En el análisis de hoy, si todavía no lo pide (a las 00:30 sale solo con lo que haya en la banca). */
+    private static function append(array $item, ?string $code): void
+    {
+        $analysis = MetaAnalysis::where('date', now(config('app.timezone'))->toDateString())->orderByDesc('version')->first();
         if ($analysis && !collect($analysis->urgent ?? [])->contains(fn ($u) => ($u['key'] ?? null) === $item['key']
-            || str_contains(implode(' ', $u['steps'] ?? []), '«' . $code . '»'))) {
+            || $code !== null && str_contains(implode(' ', $u['steps'] ?? []), '«' . $code . '»'))) {
             $analysis->forceFill(['urgent' => [...($analysis->urgent ?? []), $item]])->save();
         }
-        $where = CreativeCalls::join(array_values(array_filter(array_column($cities, 'city'))));
-        $message = "{$code} de " . UrgentList::short((string) $d['product']['name']) . ' ya llegó a la banca: lánzalo hoy'
-            . ($where !== '' ? " en {$where}" : '') . '. Está en tu Análisis del día.';
+    }
+
+    /** El aviso al dueño (y a Master) en la campanita. */
+    private static function tell(string $message): void
+    {
         foreach (User::whereNull('deactivated_at')->whereHas('role', fn ($q) => $q->whereIn('description', ['Admin', 'Master']))->get() as $u) {
             $u->notify(new MetaWorkNotification('meta_ready', $message, '/meta-ads/analisis'));
         }
-
-        return $item;
     }
 
     /** Lo mismo, sin que un error frene la aprobación. */

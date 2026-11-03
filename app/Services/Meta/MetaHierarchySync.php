@@ -160,6 +160,12 @@ class MetaHierarchySync
         } catch (\Throwable $e) {
             report($e);
         }
+        // .89: las campañas nuevas cuyo nombre dice claramente el producto y la ciudad se clasifican solas
+        try {
+            CampaignAutoClassifier::run($account->id);
+        } catch (\Throwable $e) {
+            report($e);
+        }
         // Paso 4a: los encargos de la cola que ya aparecen en Meta pasan a "En test" (un error aquí no frena la sincronización)
         try {
             // .89: si se lanzó un batch de la banca, al terminar se recalcula lo que necesita cada producto

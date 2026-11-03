@@ -42,8 +42,9 @@ class MetaAnalyzer
         $facts = AnalysisFacts::withScripts($facts, \App\Services\Meta\Videos\Scripts::forCreatives(
             array_merge([], ...array_map(fn ($p) => array_column($p['creatives'], 'id'), $facts))));
         // .89: los encargos atrasados, para presionar al editor líder
-        $late = \App\Services\Meta\Queue\LateBatches::find($decisions, $date);
-        $urgent = UrgentList::build($facts, $late, \App\Services\Meta\Queue\LateBatches::leader());
+        $late = \App\Services\Meta\Queue\LateBatches::find($decisions, $date, (int) (new \App\Services\Meta\Decisions\DecisionSettings())->get()['corrections_days']);
+        // .89: y los testeos listos para lanzar (todos sus batches en la banca)
+        $urgent = UrgentList::build($facts, $late, \App\Services\Meta\Queue\LateBatches::leader(), \App\Services\Meta\Queue\TestingLaunch::ready());
         $input = AnalysisFacts::input($facts);
 
         $row = ['status' => 'ok', 'text' => null, 'model' => null, 'tokens_in' => null, 'tokens_out' => null, 'error' => null, 'warnings' => []];

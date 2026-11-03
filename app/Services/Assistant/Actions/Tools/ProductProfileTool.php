@@ -12,6 +12,7 @@ use App\Services\Assistant\Lookup;
 use App\Services\Assistant\Tools\ToolProblem;
 use App\Services\Meta\Products\ProductProfileRules;
 use App\Services\Meta\Products\ProductProfiles;
+use App\Services\Meta\Products\ShopifyLink;
 use App\Services\Meta\Products\TestingPhase;
 use App\Services\Meta\Products\TestingRules;
 use Illuminate\Support\Facades\DB;
@@ -21,6 +22,10 @@ use Illuminate\Support\Facades\DB;
  * completo la ficha, y solo me dé la tarjeta para aprobar". Llena o cambia la ficha de un producto (lo mismo que guarda
  * Configuración › Meta Ads › Ficha del producto) con lo que el dueño le pasó: texto, PDF o fotos.
  * `.65`: también los ángulos de venta (del más fuerte al más débil) y la fase (En testeo / Iterar lo que funciona).
+ * `.89` (dueño, 2026-11-03): así entra un producto nuevo al sistema ("Producto nuevo: Termafit" + su estrategia + el link
+ * de Shopify): si no existe, se crea al confirmar, en testeo (sus batches le llegan solos al líder). Con el link, guarda su
+ * número de Shopify para que los pedidos se unan a él aunque el nombre no sea igual; si un pedido ya lo creó con ese
+ * número, se usa ese (nunca uno repetido).
  */
 class ProductProfileTool extends ChangeTool
 {
@@ -96,10 +101,12 @@ class ProductProfileTool extends ChangeTool
                         'additionalProperties' => false,
                     ],
                 ],
+                'producto_nuevo' => ['type' => 'boolean', 'description' => 'true si el dueño dice que es un producto nuevo que todavía no está en el sistema: se crea al confirmar, en testeo. Si ya existe con ese nombre, se usa ese.'],
+                'link_shopify' => $text('El link del producto en Shopify, si el dueño lo pasó (el del panel: admin.shopify.com/…/products/número, o el de la página en la tienda: …/products/nombre). Así los pedidos de ese producto se unen a él. null si no lo pasó.'),
                 'fase' => ['type' => 'string', 'enum' => ['testeo', 'iterar', 'sin_cambio'],
                     'description' => 'testeo = un producto nuevo que se va a testear (3 batches: 1 por cada uno de los 3 ángulos principales); iterar = ya se sabe qué funciona; sin_cambio = la deja como está.'],
             ],
-            'required' => ['producto', ...array_keys(self::ARGS), 'buyer_personas', 'quitar_buyer_personas', 'angulos', 'fase'],
+            'required' => ['producto', ...array_keys(self::ARGS), 'buyer_personas', 'quitar_buyer_personas', 'angulos', 'producto_nuevo', 'link_shopify', 'fase'],
             'additionalProperties' => false,
         ];
     }
@@ -111,14 +118,38 @@ class ProductProfileTool extends ChangeTool
 
     public function propose(array $args, ActionContext $context): Proposal
     {
-        $productId = $this->lookup->productId($args['producto'] ?? null) ?? throw new ToolProblem('Falta el producto: pregúntale al dueño de cuál es la ficha.');
-        $product = Product::find($productId, ['id', 'title', 'showable_name']);
+        // .89: el link de Shopify da el número del producto en la tienda; con él se encuentra el producto aunque el nombre cambie
+        $new = (bool) ($args['producto_nuevo'] ?? false);
+        $shopify = trim((string) ($args['link_shopify'] ?? '')) !== '' ? ShopifyLink::resolve($args['link_shopify']) : null;
+        if ($shopify && $shopify['problem']) {
+            throw new ToolProblem($shopify['problem']);
+        }
+        $productId = $shopify ? Product::where('product_id', $shopify['id'])->where('product_id', '>', 0)->orderBy('id')->value('id') : null;
+        if ($productId === null) {
+            try {
+                $productId = $this->lookup->productId($args['producto'] ?? null);
+            } catch (ToolProblem $e) {
+                if (!$new || !str_starts_with($e->getMessage(), 'No encontré')) {
+                    throw $e;
+                }
+            }
+        }
+        if ($productId === null) {
+            $name = trim((string) ($args['producto'] ?? ''));
+            if (!$new || $name === '') {
+                throw new ToolProblem('Falta el producto: pregúntale al dueño de cuál es la ficha.');
+            }
+
+            return self::proposal(0, $name, null, [], ['fase' => 'testeo'] + array_diff_key($args, ['fase' => 1]), [], 'iterate', [], ['create' => true, 'shopify' => $shopify]);
+        }
+        $product = Product::find($productId, ['id', 'title', 'showable_name', 'product_id']);
         $name = $product->showable_name ?: $product->title;
         $now = ProductProfiles::get($productId);
         $angles = array_map(fn ($a) => ProductProfileRules::normalizeAngle($a), TestingPhase::angles($productId));
 
         return self::proposal($productId, $name, $now['profile'], $now['personas'], $args, $angles,
-            (string) (ProductProfile::where('product_id', $productId)->value('phase') ?? 'iterate'), TestingPhase::testedAngles($productId));
+            (string) (ProductProfile::where('product_id', $productId)->value('phase') ?? 'iterate'), TestingPhase::testedAngles($productId),
+            ['create' => false, 'shopify' => $shopify && (int) $product->product_id !== $shopify['id'] ? $shopify : null]);
     }
 
     /**
@@ -128,8 +159,11 @@ class ProductProfileTool extends ChangeTool
      * @param list<string> $tested los ángulos que ya salieron en un testeo (una ronda nueva no los repite)
      */
     public static function proposal(int $productId, string $name, ?array $before, array $beforePersonas, array $args, array $beforeAngles = [],
-        string $beforePhase = 'iterate', array $tested = []): Proposal
+        string $beforePhase = 'iterate', array $tested = [], array $link = []): Proposal
     {
+        // .89: un producto nuevo (se crea al confirmar) y el enlace con Shopify
+        $create = (bool) ($link['create'] ?? false);
+        $shopify = $link['shopify'] ?? null;
         $changes = [];
         foreach (self::ARGS as $arg => $field) {
             $changes[$field] = $args[$arg] ?? null;
@@ -165,6 +199,13 @@ class ProductProfileTool extends ChangeTool
         $old = ProductProfileRules::normalize($before ?? []);
         $lines = [Proposal::line('Producto', $name)];
         $changed = [];
+        if ($create) {
+            $lines[] = Proposal::line('Producto nuevo', 'Se crea al confirmar y empieza su testeo: sus batches le llegan solos al editor líder.');
+        }
+        if ($shopify) {
+            $changed[] = 'el enlace con Shopify';
+            $lines[] = Proposal::line('Shopify', ($shopify['title'] ? '«' . $shopify['title'] . '» · ' : '') . "número {$shopify['id']}: sus pedidos se unen a este producto.");
+        }
         foreach (ProductProfileRules::FIELDS as $k => $label) {
             $differs = $m['profile'][$k] !== $old[$k];
             if ($differs) {
@@ -214,16 +255,24 @@ class ProductProfileTool extends ChangeTool
         if ($phase === 'testing' && $angles === []) {
             $warnings[] = 'En testeo, pero sin ángulos: el testeo no puede empezar hasta que la ficha tenga sus ángulos.';
         }
+        if ($create && !$shopify) {
+            $warnings[] = 'Todavía sin el link de Shopify: pásamelo cuando el producto esté en tu tienda (antes de lanzar el testeo), para que sus pedidos se unan a él.';
+        }
         $first = $before === null && $beforePersonas === [] && $beforeAngles === [];
         $what = array_merge($changed, $newPersonas ? [$newPersonas . ($newPersonas === 1 ? ' buyer persona nuevo' : ' buyer personas nuevos')] : [],
             $m['removed'] ? ['quitar ' . count($m['removed']) . ' buyer persona' . (count($m['removed']) === 1 ? '' : 's')] : []);
 
+        $title = $create ? "Crear {$name} y llenar su ficha" : ($first ? "Llenar la ficha de {$name}" : "Cambiar la ficha de {$name}");
+
         return new Proposal(
-            $first ? "Llenar la ficha de {$name}" : "Cambiar la ficha de {$name}",
-            ($first ? "Llenar la ficha de {$name}" : "Cambiar la ficha de {$name}: ") . ($first ? '' : self::join($what)),
+            $title,
+            $title . ($first || $create ? '' : ': ' . self::join($what)),
             Proposal::lines($lines),
             ['product_id' => $productId, 'profile' => $m['profile'], 'personas' => $m['personas'],
-                'angles' => $anglesChanged ? $angles : null, 'phase' => $phase !== $beforePhase ? $phase : null],
+                'angles' => $anglesChanged ? $angles : null, 'phase' => $phase !== $beforePhase ? $phase : null,
+                // .89: el producto que se crea y el número de Shopify que se guarda
+                'create' => $create ? ['name' => $name, 'title' => $shopify['title'] ?? $name, 'price' => $shopify['price'] ?? 0, 'shopify_id' => $shopify['id'] ?? 0] : null,
+                'shopify' => !$create && $shopify ? ['id' => $shopify['id']] : null],
             $warnings,
         );
     }
@@ -231,7 +280,18 @@ class ProductProfileTool extends ChangeTool
     public function execute(array $payload, ActionContext $context): Outcome
     {
         $pid = (int) $payload['product_id'];
-        DB::transaction(function () use ($payload, $pid, $context) {
+        $created = false;
+        DB::transaction(function () use ($payload, &$pid, &$created, $context) {
+            // .89: el producto nuevo (si un pedido ya lo creó con ese número de Shopify, se usa ese: nunca uno repetido)
+            if ($c = $payload['create'] ?? null) {
+                $existing = (int) $c['shopify_id'] > 0 ? Product::where('product_id', (int) $c['shopify_id'])->orderBy('id')->value('id') : null;
+                $pid = (int) ($existing ?? Product::create(['product_id' => (int) $c['shopify_id'], 'title' => $c['title'], 'name' => $c['name'],
+                    'showable_name' => $c['name'], 'price' => (float) $c['price']])->id);
+                $created = $existing === null;
+            }
+            if ($s = $payload['shopify'] ?? null) {
+                Product::whereKey($pid)->update(['product_id' => (int) $s['id']]);
+            }
             ProductProfiles::save($pid, $payload['profile'], $payload['personas'], $context->user->id, 'assistant');
             if (($payload['angles'] ?? null) !== null) {
                 TestingPhase::saveAngles($pid, $payload['angles'], $context->user->id);
@@ -244,8 +304,10 @@ class ProductProfileTool extends ChangeTool
         $missing = ProductProfileRules::missing($f['profile'], $f['personas']);
         $testing = ($payload['phase'] ?? null) === 'testing' && $missing === [];
 
-        return new Outcome('Ficha guardada.' . ($missing ? ' Todavía falta: ' . self::join(array_map('mb_strtolower', $missing)) . '.' : ' Está completa: la IA ya la usa en los encargos.')
-            . ($testing ? ' El testeo empieza: en la próxima propuesta de la mañana (o con "Proponer ahora" en Cola y banca) se piden sus batches.' : ''),
+        return new Outcome(($created ? 'Producto creado y ficha guardada.' : 'Ficha guardada.')
+            . ($missing ? ' Todavía falta: ' . self::join(array_map('mb_strtolower', $missing)) . '.' : ' Está completa: la IA ya la usa en los encargos.')
+            . ($testing ? ' El testeo empieza: sus batches le llegan ya al editor líder.' : '')
+            . (($payload['create'] ?? null) && (int) $payload['create']['shopify_id'] === 0 ? ' Cuando esté en tu tienda, pásame el link de Shopify.' : ''),
             ['label' => 'Ver la ficha', 'to' => '/admin/integraciones?seccion=meta&tab=profile&producto=' . $pid]);
     }
 

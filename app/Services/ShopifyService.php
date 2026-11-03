@@ -57,6 +57,20 @@ class ShopifyService
     }
 
     /**
+     * `.89`: un producto por su "handle" (lo que va después de /products/ en el link de la tienda).
+     */
+    public function getProductByHandle(string $handle): ?array
+    {
+        $url = "https://{$this->domain}/admin/api/{$this->version}/products.json";
+
+        $response = Http::withHeaders([
+            'X-Shopify-Access-Token' => $this->token,
+        ])->get($url, ['handle' => $handle, 'limit' => 1]);
+
+        return $response->successful() ? ($response->json()['products'][0] ?? null) : null;
+    }
+
+    /**
      * Obtiene la imagen principal de un producto/variante.
      */
     public function getProductImage($productId, $variantId = null): ?string

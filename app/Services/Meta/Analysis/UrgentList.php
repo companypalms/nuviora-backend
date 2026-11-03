@@ -39,7 +39,7 @@ final class UrgentList
         'drop' => 1, 'pause_city' => 1, 'not_sold' => 1, 'stock_out' => 1, 'stop_creatives' => 1,
         'decrease' => 2, 'intervene' => 2, 'last_test' => 2, 'tracking' => 2, 'late_urgent' => 2,
         'hold_prune' => 3, 'few_batches' => 3, 'late_batch' => 3, 'launch_ready' => 3,
-        'scale' => 4,
+        'scale' => 4, 'launch_test' => 4,
         'alarm' => 5,
         'price' => 6,
     ];
@@ -49,7 +49,7 @@ final class UrgentList
         'drop' => 'frenar', 'pause_city' => 'frenar', 'not_sold' => 'frenar', 'stop_creatives' => 'frenar', 'decrease' => 'frenar',
         'intervene' => 'arreglar', 'last_test' => 'arreglar', 'tracking' => 'arreglar', 'hold_prune' => 'arreglar', 'few_batches' => 'arreglar',
         'late_urgent' => 'arreglar', 'late_batch' => 'arreglar', 'launch_ready' => 'arreglar',
-        'scale' => 'crecer',
+        'scale' => 'crecer', 'launch_test' => 'crecer',
         'stock_out' => 'aviso', 'alarm' => 'aviso', 'price' => 'aviso',
     ];
 
@@ -72,7 +72,7 @@ final class UrgentList
      * @param list<array> $facts AnalysisFacts::build
      * @return list<array{key: string, product_id: int, product: string, city: ?string, kind: string, label: string, text: string, tone: string, urgency: ?string, severity: int, group: string, title: string, why: ?string, detail: list<string>, money: ?array{cut: ?float, add: ?float}}>
      */
-    public static function build(array $facts, array $late = [], ?string $leader = null): array
+    public static function build(array $facts, array $late = [], ?string $leader = null, array $tests = []): array
     {
         // .89: los encargos atrasados, para presionar al editor líder
         $items = self::late($late, $leader);
@@ -165,7 +165,48 @@ final class UrgentList
         usort($items, fn ($a, $b) => [$a['severity'], $a['_level'], -$a['_risk'], $a['product'], (string) $a['city']]
             <=> [$b['severity'], $b['_level'], -$b['_risk'], $b['product'], (string) $b['city']]);
 
-        return array_map(fn ($i) => array_diff_key($i, ['_level' => 1, '_risk' => 1]), $items);
+        // .89: los testeos listos para lanzar (TestingLaunch), al final: van en "Crecer"
+        return [...array_map(fn ($i) => array_diff_key($i, ['_level' => 1, '_risk' => 1]), $items), ...array_map(fn ($t) => self::testLaunch($t), $tests)];
+    }
+
+    /**
+     * `.89` (dueño, 2026-11-03: un producto nuevo, "3 juntos, en todas las ciudades"; uno que ya vende, "en todas sus
+     * campañas activas"; "siempre se testea sin ni siquiera pedir la mercancía"): el testeo listo para lanzar, cuando sus
+     * batches están todos en la banca. Antes, lo que falta para lanzarlo bien: el link de Shopify y su C.
+     *
+     * @param array $t TestingLaunch::ready
+     */
+    public static function testLaunch(array $t): array
+    {
+        $short = self::short($t['product']);
+        $n = count($t['batches']);
+        $codes = CreativeCalls::join(array_column($t['batches'], 'code'));
+        $upload = "sube los {$n} ad sets: " . CreativeCalls::join(array_map(fn ($b) => self::q((string) ($b['adset'] ?? $b['code'])), $t['batches']))
+            . ' (sus videos están en Cola y banca).';
+        if ($t['campaigns'] !== []) {
+            $title = "Lanza los ángulos nuevos de {$short}: {$codes}";
+            $why = "Ronda {$t['round']} del testeo: sus {$n} batches están listos en la banca";
+            $steps = ['En cada campaña de ' . $short . ' (' . CreativeCalls::join(array_map(fn ($c) => self::q($c['name']), $t['campaigns'])) . '), ' . $upload,
+                'No toques los anuncios que ya están: los batches del testeo van en sus propios ad sets.'];
+        } else {
+            $title = "Lanza el testeo de {$short}: {$codes}";
+            $why = "Producto nuevo: sus {$n} batches del testeo están listos en la banca";
+            $c = $t['target'] ?? null;
+            $steps = array_values(array_filter([
+                $t['linked'] ? null : "Antes: pásale a tu asistente el link de {$short} en Shopify (así sus pedidos se suman a {$short}).",
+                $c ? null : "Antes: pon el CPA de referencia de {$short} en Meta Ads › Productos y objetivos (sin él no se puede juzgar el testeo).",
+                'Crea una campaña CBO en ' . ($t['cities'] ? 'cada ciudad: ' . CreativeCalls::join($t['cities']) : 'cada ciudad donde vendes')
+                    . '. En el nombre pon «' . mb_strtoupper($short) . '» y la ciudad (así se clasifica sola).',
+                'En cada una, ' . $upload,
+                $c ? 'Presupuesto de arranque por campaña: entre ' . AdRules::money($c * $n * $t['min']) . ' y ' . AdRules::money($c * $n * $t['max'])
+                    . " por día (tu regla: C × {$n} batches × " . AdRules::num($t['min']) . ' a ' . AdRules::num($t['max']) . ').' : null,
+            ]));
+        }
+
+        return ['key' => "{$t['product_id']}:test:{$t['round']}", 'product_id' => $t['product_id'], 'product' => $t['product'], 'urgency' => null,
+            'city' => null, 'kind' => 'launch_test', 'label' => 'Testeo', 'tone' => 'success', 'text' => "{$why}.", 'where' => $short,
+            'title' => $title, 'steps' => $steps, 'why' => $why, 'detail' => [], 'money' => null,
+            'severity' => self::SEVERITY['launch_test'], 'group' => self::GROUP['launch_test']];
     }
 
     /**
@@ -388,20 +429,30 @@ final class UrgentList
         return array_map(function ($b) use ($to) {
             $short = self::short($b['product']);
             $due = ForecastRules::days([$b['due']]);
-            $need = $b['urgent'] && $b['cities'] ? ' y ' . CreativeCalls::join($b['cities']) . (count($b['cities']) > 1 ? ' lo necesitan' : ' lo necesita')
-                . ' hoy para volver a bajar el costo por compra.' : '; es la reserva para seguir escalando.';
+            // .89: el editor no entregó, o entregó y las correcciones del líder pasaron de la fecha "lista"
+            $fixing = ($b['stage'] ?? 'delivery') === 'corrections';
+            $what = $fixing ? 'ya se entregó, pero sus correcciones tenían que terminar ' . ForecastRules::days([$b['ready'] ?? $b['due']]) : "era para {$due}";
+            $need = match (true) {
+                $b['urgent'] && $b['cities'] !== [] => ' y ' . CreativeCalls::join($b['cities']) . (count($b['cities']) > 1 ? ' lo necesitan' : ' lo necesita')
+                    . ' hoy para volver a bajar el costo por compra.',
+                (bool) ($b['testing'] ?? false) => "; es del testeo de {$short}.",
+                default => '; es la reserva para seguir escalando.',
+            };
 
             return ['key' => "late:{$b['id']}", 'product_id' => $b['product_id'], 'product' => $b['product'], 'urgency' => null,
                 '_level' => $b['urgent'] ? 0 : 9, '_risk' => 0.0, 'city' => null, 'kind' => $b['urgent'] ? 'late_urgent' : 'late_batch',
-                'label' => 'Atrasado', 'tone' => 'warning', 'text' => "{$b['code']} de {$short} era para {$due} y todavía no se entregó.",
+                'label' => 'Atrasado', 'tone' => 'warning', 'text' => "{$b['code']} de {$short} {$what}.",
                 'where' => "{$short} · {$b['code']}",
                 'title' => $b['urgent'] ? "Presiona al editor líder: {$b['code']} se necesita con urgencia" : "Pregúntale al editor líder por {$b['code']}: está atrasado",
                 'steps' => [
-                    "Escríbele {$to}: " . self::q($b['code']) . " de {$short} era para {$due}{$need}",
-                    $b['editor'] ? "Lo tiene {$b['editor']}." : 'Todavía no tiene editor: que lo asigne hoy.',
+                    "Escríbele {$to}: " . self::q($b['code']) . " de {$short} {$what}{$need}",
+                    $fixing ? (($b['returned'] ?? false) ? 'Lo devolvió para corregir: que ' . ($b['editor'] ?? 'el editor') . ' entregue la corrección hoy.'
+                        : 'Que lo apruebe o lo devuelva hoy' . ($b['editor'] ? " (lo hizo {$b['editor']})." : '.'))
+                        : ($b['editor'] ? "Lo tiene {$b['editor']}." : 'Todavía no tiene editor: que lo asigne hoy.'),
                     'El sistema también se lo recordó en su campanita. Si mañana sigue sin entregarse, vuelve a salir aquí.',
                 ],
-                'why' => ($b['days'] === 1 ? '1 día' : "{$b['days']} días") . ' atrasado · ' . ($b['editor'] ? "lo tiene {$b['editor']}" : 'sin editor'),
+                'why' => ($b['days'] === 1 ? '1 día' : "{$b['days']} días") . ($fixing ? ' atrasado en correcciones · ' : ' atrasado · ')
+                    . ($b['editor'] ? ($fixing ? "lo hizo {$b['editor']}" : "lo tiene {$b['editor']}") : 'sin editor'),
                 'detail' => [], 'money' => null];
         }, $late);
     }

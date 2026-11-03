@@ -245,8 +245,8 @@ class ShopifyWebhookController extends Controller
             //    por su TÍTULO BASE, como siempre (para no dañar el inventario de Fran).
             $productTitle = trim($item['title']);
             $knownVariant = $variantTitle ? $variantCatalog->byShopifyId($shopifyVariantId) : null;
-            $existingProduct = $knownVariant?->product
-                ?? \App\Models\Product::whereRaw('LOWER(title) = ?', [strtolower($productTitle)])->first();
+            // .89: por su título y, si no coincide, por su número de Shopify (así no se crea uno repetido)
+            $existingProduct = $knownVariant?->product ?? \App\Models\Product::forShopifyLine($productTitle, $item['product_id']);
 
             // La talla de la nota es de toda la orden: solo se aplica si la orden tiene un solo producto o si
             // este ya maneja variantes (antes se le ponía a todos, y un producto sin tallas terminaba con una)

@@ -21,6 +21,17 @@ class Product extends Model
         });
     }
 
+    /**
+     * El producto de una línea de un pedido de Shopify: por su título, como siempre, y `.89`, si el título no coincide, por
+     * su número de Shopify (el que guarda el asistente con el link de la tienda, o uno al que le cambiaron el nombre en
+     * Shopify). Así un producto creado por el asistente recibe sus pedidos y no se crea uno repetido.
+     */
+    public static function forShopifyLine(string $title, $shopifyProductId): ?self
+    {
+        return self::whereRaw('LOWER(title) = ?', [strtolower(trim($title))])->first()
+            ?? ((int) $shopifyProductId > 0 ? self::where('product_id', (int) $shopifyProductId)->orderBy('id')->first() : null);
+    }
+
     public function orderProducts()
     {
         return $this->hasMany(OrderProduct::class);

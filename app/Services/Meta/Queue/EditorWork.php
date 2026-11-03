@@ -78,7 +78,7 @@ class EditorWork
      */
     public function deliver(CreativeBatch $batch, User $actor, array $data): CreativeBatchDelivery
     {
-        return DB::transaction(function () use ($batch, $actor, $data) {
+        $delivery = DB::transaction(function () use ($batch, $actor, $data) {
             $batch = CreativeBatch::lockForUpdate()->findOrFail($batch->id);
             $this->authorize('deliver', $actor, $batch);
             $pieces = $batch->pieces()->get();
@@ -111,11 +111,22 @@ class EditorWork
                 $p->forceFill(['link' => $rows[$i]['link'], 'hook' => $rows[$i]['hook']])->save();
             }
             $now = now();
-            $batch->forceFill(['status' => 'review', 'status_at' => $now, 'status_by' => $actor->id,
+            // .89 (dueño, 2026-11-03: "él mismo lo aprueba, pero debe quedar en el sistema que esos creativos los hizo él"):
+            // lo que entrega el editor líder pasa directo a la banca; la entrega queda a su nombre (sus números lo cuentan)
+            $own = self::who($actor)['role'] === EditorRules::LEADER;
+            if ($own) {
+                $delivery->forceFill(['review' => 'approved', 'reviewed_by' => $actor->id, 'reviewed_at' => $now])->save();
+            }
+            $batch->forceFill(['status' => $own ? 'bank' : 'review', 'status_at' => $now, 'status_by' => $actor->id,
                 'started_at' => $batch->started_at ?? $now, 'delivered_at' => $batch->delivered_at ?? $now])->save();
 
             return $delivery;
         });
+        if ($delivery->review === 'approved') {
+            BankArrival::safely($batch->fresh());
+        }
+
+        return $delivery;
     }
 
     /** Revisar la entrega pendiente: aprobada pasa a la banca; devuelta, con un comentario, vuelve a producción. */

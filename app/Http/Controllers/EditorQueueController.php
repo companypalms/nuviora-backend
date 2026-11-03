@@ -45,6 +45,8 @@ class EditorQueueController extends Controller
             'unfilled' => $leader ? $demand['unfilled'] : [],
             'forecast' => $leader ? QueueProposer::forecast() : null,
             'today' => now(config('app.timezone'))->toDateString(),
+            // .89: entrega + los días de correcciones = lista en la banca
+            'corrections_days' => (int) (new \App\Services\Meta\Decisions\DecisionSettings())->get()['corrections_days'],
         ]);
     }
 

@@ -1123,7 +1123,8 @@ class OrderController extends Controller
 
             // Buscar producto por nombre (case-insensitive)
             $productTitle = trim($item['title']);
-            $existingProduct = \App\Models\Product::whereRaw('LOWER(title) = ?', [strtolower($productTitle)])->first();
+            // .89: por su título y, si no coincide, por su número de Shopify (como en ShopifyWebhookController)
+            $existingProduct = \App\Models\Product::forShopifyLine($productTitle, $item['product_id']);
 
             if ($existingProduct) {
                 // Actualizar producto existente
