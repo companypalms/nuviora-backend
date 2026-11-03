@@ -56,7 +56,7 @@ describe('Las rutas', function () {
 
     it('las de los editores piden uno de los dos roles de editor', function () use ($routes) {
         $editor = $routes('api/editor/');
-        expect($editor)->toHaveCount(19); // con /editor/results del paso 5b; .90: subir y confirmar un archivo; .92: las 5 de la biblioteca de referencias; .95: las 5 de cargar batches ya hechos
+        expect($editor)->toHaveCount(21); // con /editor/results del paso 5b; .90: subir y confirmar un archivo; .92: las 5 de la biblioteca de referencias; .95: las 5 de cargar batches ya hechos; .96: las 2 de la ayuda
         foreach ($editor as $r) {
             expect($r->gatherMiddleware())->toContain('role:Editor líder,Editor de video')->toContain('limited.roles');
         }

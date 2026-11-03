@@ -78,6 +78,8 @@ return [
         'assistant_effort' => env('OPENAI_ASSISTANT_EFFORT', 'low'),
         // El micrófono del asistente: convierte la voz en texto
         'transcribe_model' => env('OPENAI_TRANSCRIBE_MODEL', 'gpt-transcribe'),
+        // .96: la ayuda "¿Dudas?" de los editores (preguntas cortas, sin herramientas: uno de los económicos)
+        'help_model' => env('OPENAI_HELP_MODEL', env('OPENAI_INSIGHTS_MODEL', 'gpt-6-luna')),
         // .55: los videos de los creativos ganadores (por defecto, el mismo de la voz)
         'video_transcribe_model' => env('OPENAI_VIDEO_TRANSCRIBE_MODEL', env('OPENAI_TRANSCRIBE_MODEL', 'gpt-transcribe')),
     ],
@@ -85,6 +87,11 @@ return [
     'assistant' => [
         'enabled' => env('ASSISTANT_ENABLED', true),
         'daily_limit' => (int) env('ASSISTANT_DAILY_LIMIT', 150),
+    ],
+    // .96: la ayuda "¿Dudas?" de los editores: se puede apagar sin publicar y tiene un tope de preguntas por persona al día
+    'editor_help' => [
+        'enabled' => env('EDITOR_HELP_ENABLED', true),
+        'daily_limit' => (int) env('EDITOR_HELP_DAILY_LIMIT', 20),
     ],
     'receipt_checks' => [
         'mode' => env('RECEIPT_CHECKS_MODE', 'off'),

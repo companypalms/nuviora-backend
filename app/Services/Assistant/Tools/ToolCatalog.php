@@ -50,6 +50,7 @@ class ToolCatalog
         MetaLandingsTool::class, // paso 6: las landings y sus encargos
         ProductProfileReadTool::class, // .64: la ficha de un producto
         ProductMemoryTool::class, // .66: lo que sabemos de un producto
+        EditorQuestionsTool::class, // .96: lo que los editores le preguntaron a su ayuda "¿Dudas?"
         // Paso 5: cambios, siempre con la tarjeta de Confirmar (Actions\ChangeTool)
         Change\CalendarNoteTool::class,
         Change\CalendarMarkTool::class,
