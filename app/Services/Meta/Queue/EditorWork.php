@@ -82,6 +82,11 @@ class EditorWork
     {
         $this->authorize('deliver', $actor, $batch);
         abort_unless((int) $piece->creative_batch_id === (int) $batch->id, 404, 'Esa pieza no es de este encargo: vuelve a abrirlo.');
+        // .91: sin botón "Empezar" (regla 11: lo que el sistema puede saber solo, no lleva botón): el primer archivo lo empieza
+        if ($batch->status === 'approved') {
+            $now = now();
+            $batch->forceFill(['status' => 'production', 'started_at' => $batch->started_at ?? $now, 'status_at' => $now, 'status_by' => $actor->id])->save();
+        }
         $names = QueueRules::metaNames($batch->number, $batch->angle_code, [$piece->number]);
 
         return app(Uploads::class)->start([

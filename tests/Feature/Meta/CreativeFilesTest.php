@@ -213,6 +213,13 @@ describe('Las entregas con archivo', function () {
             ->and($fields['deliveries'][0]['pieces'][0]['file']['url'])->toContain('/api/files/local/' . $a->id);
     });
 
+    it('.91: el primer archivo empieza el encargo solo (sin el botón "Empezar")', function () {
+        DB::table('creative_batches')->update(['status' => 'approved', 'started_at' => null]);
+        ($this->upload)(21);
+
+        expect(CreativeBatch::find(1))->status->toBe('production')->and(CreativeBatch::find(1)->started_at)->not->toBeNull();
+    });
+
     it('en una corrección, la pieza que no se volvió a subir sigue con su archivo', function () {
         $a = ($this->upload)(21);
         $b = ($this->upload)(22);
