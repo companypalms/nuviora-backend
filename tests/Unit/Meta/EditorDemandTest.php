@@ -158,6 +158,8 @@ describe('.99: qué hay que hacer en cada encargo', function () {
             ->and(BatchTask::of($b(['kind' => 'new_angle', 'angle_code' => 'DOL', 'angle_name' => 'Dolor de espalda']))['title'])->toBe('3 piezas nuevas de un ángulo nuevo: DOL · Dolor de espalda')
             ->and(BatchTask::of($b(['kind' => 'new_angle', 'angle_code' => 'POSP', 'testing' => true]))['title'])->toBe('3 piezas para probar el ángulo POSP')
             ->and(BatchTask::of($b(['kind' => 'top_funnel', 'angle_code' => 'POSP']))['title'])->toBe('3 piezas nuevas para gente que todavía no conoce el problema (ángulo POSP)')
+            // una iteración pedida a mano sin decir de qué creativo
+            ->and(BatchTask::of($b(['kind' => 'iteration', 'angle_code' => 'FASP']))['title'])->toBe('3 iteraciones del ángulo FASP')
             // un batch ya hecho que se cargó: nada que hacer
             ->and(BatchTask::of($b(['imported' => true])))->toBeNull();
     });

@@ -44,6 +44,9 @@ final class BatchTask
                 : ['title' => "{$new} de un ángulo nuevo" . ($angle ? ": {$angle}" : ''), 'detail' => 'Un ángulo que todavía no probamos en este producto.'],
             'top_funnel' => ['title' => "{$new} para gente que todavía no conoce el problema" . ($angle ? " (ángulo {$angle})" : ''),
                 'detail' => 'Arriba del embudo: primero el problema y después el producto.'],
+            // una iteración que se pidió a mano, sin decir de qué creativo
+            'iteration' => ['title' => ($n === 1 ? '1 iteración' : "{$n} iteraciones") . ($angle ? " del ángulo {$angle}" : ''),
+                'detail' => 'Variaciones de un creativo que ya funciona: de cuál partir y qué cambiar, en «Ver todo el encargo».'],
             default => ['title' => $angle ? "{$new} del ángulo {$angle}" : "{$new} (concepto nuevo)",
                 'detail' => match (true) {
                     $testing => 'Producto en testeo: otro concepto u otro formato para probar este ángulo, distinto del otro batch.',
