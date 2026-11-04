@@ -9,8 +9,8 @@
 - El líder también hace todo lo que hace un editor de video (Mis encargos, Entregar, Referencias, Mis resultados).
 
 ## El menú del líder
-- Pantallas: "Encargos del equipo" (su pantalla principal, al entrar cae ahí), "Mis encargos", "Referencias" y
-  "Mis resultados".
+- Pantallas: "Encargos del equipo" (su pantalla principal, al entrar cae ahí), "Banca", "Mis encargos", "Referencias"
+  y "Mis resultados".
 - El número de encargos del menú suma lo que tiene por hacer, por asignar y por revisar.
 - La campanita le avisa una vez por día lo urgente que está atrasado (por ejemplo "Urgente: B0108 era para el lunes y se
   necesita hoy").
@@ -20,6 +20,11 @@
   cuántos están atrasados.
 - Debajo, su juego: racha al día, el equipo a tiempo este mes y los ganadores del equipo.
 - "Lo de ahora": lo más urgente, con sus pasos y un solo botón. Primero siempre revisar, después asignar.
+- Cada encargo dice qué hay que hacer, en una frase. Por ejemplo: "Asigna B0101: 3 iteraciones del hook de C0146" (solo
+  cambia el hook), "3 iteraciones de formato de C0146" (el mismo mensaje en otros formatos, por ejemplo UGC y
+  testimonio), "3 iteraciones de C0146" con el detalle debajo ("1 de hook y 2 de formato"), "3 piezas nuevas del ángulo
+  ABCD" (un concepto nuevo de ese ángulo) o "3 piezas nuevas de un ángulo nuevo: ABCD". Debajo dice "Por qué hace
+  falta".
 - "Por revisar": todas las entregas que esperan. Tocar una abre la ventana de revisar.
 - "¿Alcanza el equipo?": dice si el equipo llega a tiempo con lo que hace falta. Si dice que falta gente, hay que
   avisarle al dueño.
@@ -27,7 +32,11 @@
 - "Sin asignar": encargos sin editor, el más urgente arriba, con "Asignar editor".
 - "En curso": lo que están haciendo; en rojo, lo atrasado. "Ver el encargo" muestra todo lo que se pidió. "Cambiar
   editor" lo pasa a otro.
-- "En banca": lo aprobado, listo para que el dueño lo lance. Al final está "Cargar un batch ya hecho".
+- Abajo, una línea: "En banca: N batches listos para lanzar" y "Ver la banca y cargar batches" (lleva a la pantalla
+  "Banca").
+- "En espera": si el dueño pausó un producto (por ejemplo, porque se quedó sin stock), sale una línea que dice qué
+  encargos de ese producto quedaron en espera. No salen en ninguna lista (ni sin asignar, ni en curso, ni por revisar, ni
+  en "Mis encargos" de nadie) y no cuentan como atrasados. Vuelven solos, con fecha nueva, cuando el dueño lo reactive.
 - Si no hay nada: "Todo en orden: nada por revisar ni asignar".
 
 ## Revisar una entrega
@@ -48,8 +57,22 @@
 - Al terminar, el sistema ofrece revisar la siguiente. Si no queda nada: "Equipo al día".
 - En el celular, la ventana ocupa toda la pantalla y cada video tiene "Agrandar".
 
+## "Banca": lo que está listo para lanzar
+- En el menú, "Banca". Arriba: "Cargar un batch ya hecho".
+- El marcador: cuántos batches hay en la banca, cuántos están en Meta y cuántos productos activos no tienen nada en la
+  banca ("Sin banca").
+- "Por producto": cada producto en una línea, con cuántos tiene en la banca, en camino (asignados, haciéndose o por
+  revisar) y en Meta. "Sin nada en la banca" = hace falta. Los productos que el dueño paró van al final ("En pausa: el
+  dueño lo paró") con lo que quedó en espera. Toca un producto para ver solo los suyos; "Ver todos los productos" vuelve.
+- "En banca": los batches listos para lanzar. "Ver el batch" muestra todo el encargo y lo que se entregó.
+- "En Meta ahora": los que ya se lanzaron.
+- "Ver los probados y descartados de los últimos 14 días": lo que ya terminó.
+- Mientras un producto tiene un batch esperando en la banca, el sistema no pide otro de ese producto hasta que se lance.
+  Por eso conviene cargar los batches ya hechos: así no se piden encargos de más.
+
 ## Asignar un encargo
-1. Toca "Asignar" (o "Asignar editor").
+1. Toca "Asignar" (o "Asignar editor"). Arriba de la ventana dice qué hay que hacer (por ejemplo "3 iteraciones de
+   C0146" y "1 de hook y 2 de formato").
 2. Ves a cada editor con lo que tiene (por ejemplo "2 encargos, 1 atrasado"). "Sugerido" es el más libre: menos
    encargos y menos atrasados.
 3. Elige quién lo hace. Puedes elegirte a ti.
@@ -62,7 +85,7 @@ Para los batches que ya estaban hechos en carpetas de Drive y nunca se lanzaron.
 computadora.
 1. En Google Drive, clic derecho sobre la carpeta del batch → "Descargar". Baja un .zip.
 2. En la computadora, clic derecho sobre el .zip → "Extraer todo" → "Extraer". Queda una carpeta con los videos.
-3. En Nuviora: "Encargos del equipo" → "En banca" → "Cargar un batch ya hecho".
+3. En Nuviora: en el menú, "Banca" → "Cargar un batch ya hecho".
 4. Elige el producto.
 5. Elige el ángulo de la ficha del producto. Si no te acuerdas, deja "No sé".
 6. Toca la zona punteada y elige todos los videos de la carpeta a la vez (o arrástralos). Cada video es un creativo, en
@@ -109,5 +132,9 @@ computadora.
 - ¿Por qué no aparece "Revisar" en algo que entregué yo? Porque lo tuyo no necesita revisión: va directo a la banca.
 - Un editor entregó algo que no es lo que se pidió: "Cambiar algo" → "No es lo que se pidió" y una nota corta.
 - El sistema pide un encargo que no tiene sentido: avísale al dueño; él lo puede descartar.
+- ¿Dónde está la banca? En el menú, "Banca". Ahí se cargan los batches ya hechos.
+- Desaparecieron los encargos de un producto: el dueño lo pausó (por ejemplo, sin stock). Mira la línea "En espera" en
+  "Encargos del equipo". Vuelven solos cuando él lo reactive.
+- ¿Tengo un tope de preguntas en "¿Dudas?"? No: el líder puede preguntar todo lo que necesite.
 - ¿Por qué mi racha al día está en 0? Una entrega esperó tu revisión más de 1 día. Vuelve a subir desde el día siguiente.
 - ¿Quieres saber por qué el sistema pide algo o cómo lo calcula? Eso pregúntaselo al dueño.

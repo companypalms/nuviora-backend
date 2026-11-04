@@ -17,6 +17,10 @@
 - Arriba está tu marcador: por entregar, atrasados y tu racha a tiempo.
 - Debajo, tu mes: cuántos te aprobaron a la primera y tus ganadores.
 - Después, el encargo de ahora con sus pasos y un solo botón, "Entregar".
+- El título dice qué hay que hacer, en una frase. Por ejemplo: "Haz y entrega B0100: 3 iteraciones del hook de C0146"
+  (solo cambia el hook: el resto del video igual), "3 iteraciones de formato de C0146" (el mismo mensaje en otros
+  formatos, por ejemplo UGC y testimonio), "3 iteraciones de C0146" con el detalle debajo ("1 de hook y 2 de formato") o
+  "3 piezas nuevas del ángulo ABCD" (un concepto nuevo de ese ángulo). Lo mismo dice cada encargo de "Lo que sigue".
 - Orden: primero lo que te devolvieron, después lo atrasado, después por fecha.
 - Si te lo devolvieron, arriba ves lo que pidió quien revisó, con el código de cada pieza.
 - Si al asignarte eligieron una referencia sugerida, la ves en el encargo con su video ("Parte de esta referencia").
@@ -112,3 +116,5 @@
 - ¿Por qué mi racha está en 0? Porque algo se entregó tarde. Vuelve a subir desde el día siguiente.
 - ¿Me equivoqué de archivo y ya entregué? Avísale al editor líder.
 - ¿No entiendo lo que me pidieron? Mira "Ver todo el encargo"; si sigue sin estar claro, pregúntale al editor líder.
+- ¿Desapareció un encargo que tenía? Si el dueño pausó ese producto (por ejemplo, sin stock), sus encargos salen de tu
+  lista y no cuentan como atrasados. Vuelven solos, con fecha nueva, cuando lo reactive.
