@@ -20,6 +20,8 @@
 - Orden: primero lo que te devolvieron, después lo atrasado, después por fecha.
 - Si te lo devolvieron, arriba ves lo que pidió quien revisó, con el código de cada pieza.
 - Si al asignarte eligieron una referencia sugerida, la ves en el encargo con su video ("Parte de esta referencia").
+- Si el encargo es la iteración (variación) de un ganador, "Ver todo el encargo" lo dice: "Iteración (variación) de este
+  ganador", con su nombre y su video (si se hizo en el sistema).
 - "Ver todo el encargo" muestra lo que se pide en cada pieza y la ficha del producto: qué es, para qué sirve, cómo
   funciona, las fotos, los buyer personas y los ángulos.
 - Más abajo: "Lo que sigue", lo que está "Esperando revisión" y los terminados (se pueden ocultar).
@@ -29,7 +31,8 @@
 ## Entregar
 1. En el encargo, toca "Entregar" (o "Entregar de nuevo" si te lo devolvieron).
 2. En cada pieza, toca la zona del archivo y elige el video. Se nombra solo, como su anuncio (por ejemplo "C0153 ABCD").
-3. Elige "¿De dónde salió?" (obligatorio): una referencia de la biblioteca, "Idea propia" o "Iteración de…".
+3. Elige "¿De dónde salió?" (obligatorio): una referencia de la biblioteca o "Idea propia". Si el encargo es la
+   iteración (variación) de un ganador, no eliges nada: ya dice "Iteración (variación) de C0146 ABCD" y no se cambia.
 4. Si la referencia no está, toca "¿No está en la biblioteca? Súbela".
 5. Antes de entregar puedes tocar "Comparar con REF…" para ver tu pieza al lado de la referencia.
 6. Escribe el hook de cada pieza: lo primero que se dice o se lee.

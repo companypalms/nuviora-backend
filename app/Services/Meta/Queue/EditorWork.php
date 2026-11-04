@@ -198,7 +198,8 @@ class EditorWork
      * Entregar: el archivo (`.90`, con el almacén encendido; si no, un enlace de Drive) y su hook por cada pieza, y la
      * ficha (concepto y ángulo). Pasa a "En revisión" como la versión siguiente (V01, V02…). En una corrección, la pieza
      * que no se volvió a subir sigue con su archivo. `.92`: cada pieza dice de dónde salió (una referencia de la biblioteca,
-     * idea propia o, en una iteración, el ganador); si no lo dice, sigue con lo de su entrega anterior.
+     * idea propia o, en una iteración, el ganador); si no lo dice, sigue con lo de su entrega anterior. `.98`: en el encargo de
+     * iterar un ganador, todas sus piezas quedan como "iteración" de ese ganador, sin importar lo que mande la pantalla.
      *
      * @param array{concept: string, angle: string, notes?: ?string, pieces: list<array{id: int, link?: ?string, file_id?: ?int, hook: ?string, source?: ?string, reference_id?: ?int}>} $data
      */
@@ -214,7 +215,9 @@ class EditorWork
             $fileOf = fn (CreativeBatchPiece $p) => (int) ($given->get($p->id)['file_id'] ?? 0) ?: (int) $p->file_id;
             $ready = $files ? StoredFile::whereIn('id', $pieces->map($fileOf)->filter()->values())->where('kind', 'piece')->where('status', 'ready')->get()->keyBy('id') : collect();
             // .92: de dónde salió cada pieza (lo nuevo, o lo de su entrega anterior)
-            $sourceOf = fn (CreativeBatchPiece $p) => ($given->get($p->id)['source'] ?? null) ?: $p->source;
+            // .98 (dueño: "que el sistema lo haga automáticamente"): en el encargo de iterar un ganador, cada pieza sale de ese
+            // ganador; queda fija, no la elige el editor
+            $sourceOf = fn (CreativeBatchPiece $p) => $batch->reference_creative_id ? 'iteration' : (($given->get($p->id)['source'] ?? null) ?: $p->source);
             $refOf = fn (CreativeBatchPiece $p) => $sourceOf($p) === 'reference' ? ((int) ($given->get($p->id)['reference_id'] ?? 0) ?: (int) $p->source_reference_id) : null;
             $refs = \App\Models\CreativeReference::whereIn('id', $pieces->map($refOf)->filter()->values())->get()->keyBy('id');
             $errors = [];

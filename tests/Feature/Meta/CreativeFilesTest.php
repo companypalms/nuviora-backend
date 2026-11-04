@@ -462,6 +462,20 @@ describe('Las entregas con archivo', function () {
             ->toThrow(ValidationException::class, 'este encargo no es la iteración de un ganador');
     });
 
+    it('.98: en el encargo de iterar un ganador, cada pieza queda sola como iteración (no la elige el editor)', function () {
+        DB::table('creative_batches')->where('id', 1)->update(['kind' => 'iteration', 'reference_creative_id' => 7]);
+        $ref = CreativeReference::create(['number' => 1, 'link' => 'https://x.com/a', 'link_key' => 'k', 'type' => 'ugc', 'why' => 'w']);
+        $a = ($this->upload)(21);
+        $b = ($this->upload)(22);
+
+        (new EditorWork())->deliver(CreativeBatch::find(1), User::find(10), ['concept' => 'C', 'angle' => 'A', 'pieces' => [
+            ['id' => 21, 'file_id' => $a->id, 'hook' => 'h', 'source' => 'reference', 'reference_id' => $ref->id],
+            ['id' => 22, 'file_id' => $b->id, 'hook' => 'h']]]);
+
+        expect(CreativeBatchPiece::find(21))->source->toBe('iteration')->source_reference_id->toBeNull()
+            ->and(CreativeBatchPiece::find(22))->source->toBe('iteration');
+    });
+
     it('.93: al revisar una iteración, el video del ganador (C0457 es la pieza 457) o, si es viejo, su miniatura y sus textos sin precios', function () {
         Schema::create('meta_creatives', fn ($t) => [$t->id(), $t->string('label')->nullable(), $t->string('creative_code')->nullable(), $t->timestamps()]);
         Schema::create('meta_ads', function ($t) {
