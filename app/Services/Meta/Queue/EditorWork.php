@@ -167,7 +167,9 @@ class EditorWork
             foreach ($all as $p) {
                 $f = $files[$given[$p->id]['file_id']];
                 $p->forceFill(['file_id' => $f->id, 'hook' => trim((string) ($given[$p->id]['hook'] ?? '')) ?: null,
-                    'format' => str_starts_with((string) $f->mime, 'image/') ? 'image' : 'video'])->save();
+                    'format' => str_starts_with((string) $f->mime, 'image/') ? 'image' : 'video',
+                    // .99: variaciones de un creativo: cada pieza salió de la iteración de ese creativo
+                    'source' => $batch->reference_creative_id ? 'iteration' : $p->source])->save();
             }
             $batch->forceFill(['status' => 'bank', 'status_at' => now(), 'status_by' => $actor->id])->save();
 

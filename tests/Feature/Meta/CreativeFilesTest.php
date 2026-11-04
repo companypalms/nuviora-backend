@@ -175,6 +175,8 @@ describe('Las entregas con archivo', function () {
             $t->string('result')->nullable();
             $t->timestamp('result_at')->nullable();
             $t->string('hook')->nullable();
+            $t->string('test')->nullable(); // .99: qué prueba (las variaciones de un creativo cargadas)
+            $t->string('style')->nullable();
             $t->timestamps();
         });
         // .92: la biblioteca muestra el nombre del ángulo (TestingPhase::anglesMany)
@@ -666,6 +668,44 @@ describe('Las entregas con archivo', function () {
 
         $back = $tool->propose(['producto' => 'Termafit', 'estado' => 'activo', 'motivo' => null], new ActionContext(User::find(1), null, [], CarbonImmutable::now()));
         expect($back->title)->toBe('Reactivar Termafit')->and(array_column($back->lines, 'value', 'label')['Qué pasa'])->toContain('Vuelven a las listas');
+    });
+
+    it('.99: un batch ya hecho que son variaciones de un creativo que estuvo en Meta queda como su iteración', function () {
+        Schema::create('meta_adsets', fn ($t) => [$t->id(), $t->string('batch_code')->nullable()]);
+        Schema::create('meta_ads', fn ($t) => [$t->id(), $t->string('creative_code')->nullable()]);
+        Schema::create('meta_creatives', fn ($t) => [$t->id(), $t->unsignedBigInteger('product_id')->nullable(), $t->string('tracking_id')->nullable(),
+            $t->string('label')->nullable(), $t->string('creative_code')->nullable(), $t->string('angle_code')->nullable(), $t->timestamps()]);
+        DB::table('roles')->insert(['id' => 3, 'description' => 'Editor líder']);
+        DB::table('users')->insert(['id' => 12, 'names' => 'Líder', 'role_id' => 3]);
+        DB::table('products')->insert(['id' => 6, 'title' => 'FlexiStep']);
+        DB::table('ad_angles')->insert(['product_id' => 5, 'code' => 'POSP', 'name' => 'Posparto', 'position' => 1]);
+        DB::table('meta_creatives')->insert([['id' => 30, 'product_id' => 5, 'tracking_id' => '5:CRE002', 'label' => 'CRE002-TERMA-POSP-BATCH001', 'angle_code' => 'POSP'],
+            ['id' => 31, 'product_id' => 6, 'tracking_id' => '6:CRE001', 'label' => 'CRE001-FLEX', 'angle_code' => null]]);
+        $queue = app(BatchQueue::class);
+        $base = ['product_id' => 5, 'angle_code' => null, 'editor_id' => 12, 'concept' => null, 'pieces' => 2];
+
+        // el creativo tiene que ser de ese producto, y hay que decir qué cambia
+        expect(fn () => $queue->import($base + ['iterates_id' => 31, 'changes' => 'hook'], 12))->toThrow(ValidationException::class, 'no es de este producto')
+            ->and(fn () => $queue->import($base + ['iterates_id' => 30, 'changes' => null], 12))->toThrow(ValidationException::class, 'qué cambia');
+
+        $batch = $queue->import($base + ['iterates_id' => 30, 'changes' => 'hook'], 12);
+        // sin ángulo elegido toma el del creativo (está en la ficha)
+        expect($batch)->kind->toBe('iteration')->reference_creative_id->toBe(30)->angle_code->toBe('POSP')
+            ->and($batch->pieces->pluck('test')->all())->toBe(['winner_hook', 'winner_hook'])
+            ->and(EditorWork::task($batch->load('reference'), 'Posparto'))
+            ->toBe(['title' => '2 iteraciones del hook de CRE002-TERMA-POSP-BATCH001', 'detail' => 'Solo cambia el hook (los primeros 3 segundos): el resto del video queda igual.']);
+
+        // al terminar de subir, cada pieza salió de la iteración de ese creativo
+        $files = $batch->pieces->map(function (CreativeBatchPiece $piece) use ($batch) {
+            $start = (new EditorWork())->uploadImport($batch, $piece, User::find(12), 'v.mp4', 'video/mp4', 5);
+            $this->call('PUT', $start['upload']['url'], [], [], [], ['CONTENT_TYPE' => 'video/mp4'], 'video')->assertNoContent();
+
+            return app(Uploads::class)->confirm(StoredFile::find($start['file']['id']), User::find(12));
+        });
+        $done = (new EditorWork())->finishImport($batch, User::find(12), $batch->pieces->values()->map(fn ($p, $i) => ['id' => $p->id, 'file_id' => $files[$i]->id])->all());
+        expect($done->status)->toBe('bank')->and(DB::table('creative_batch_pieces')->where('creative_batch_id', $batch->id)->pluck('source')->unique()->all())->toBe(['iteration'])
+            // uno normal sigue igual
+            ->and($queue->import($base, 12))->kind->toBe('new_concept')->reference_creative_id->toBeNull();
     });
 
     it('.95: solo el líder carga; una carga a medias se descarta', function () {

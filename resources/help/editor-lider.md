@@ -87,13 +87,21 @@ computadora.
 2. En la computadora, clic derecho sobre el .zip → "Extraer todo" → "Extraer". Queda una carpeta con los videos.
 3. En Nuviora: en el menú, "Banca" → "Cargar un batch ya hecho".
 4. Elige el producto.
-5. Elige el ángulo de la ficha del producto. Si no te acuerdas, deja "No sé".
-6. Toca la zona punteada y elige todos los videos de la carpeta a la vez (o arrástralos). Cada video es un creativo, en
+5. "¿Son variaciones de un creativo que ya estuvo en Meta?": si el batch son variaciones de otro creativo (por ejemplo
+   "3 variantes del creativo 2 del batch 1"), toca "Sí, de un creativo", busca el creativo original por su nombre en
+   Meta y elige qué cambia: "El hook", "El formato" o "Varias cosas". Si no, deja "No". Si el original nunca estuvo en
+   Meta, deja "No" y anótalo en "¿De qué trata?".
+6. Elige el ángulo de la ficha del producto (si elegiste un creativo, ya viene el suyo). Si no te acuerdas, deja "No sé".
+7. Toca la zona punteada y elige todos los videos de la carpeta a la vez (o arrástralos). Cada video es un creativo, en
    el orden de sus nombres. Quita con la papelera el que no sea de ese batch. El hook es opcional.
-7. Elige quién lo hizo (ya dice tú) y, si quieres, de qué trata.
-8. Toca "Cargar a la banca" y no cierres la ventana mientras sube ("Subiendo 2 de 3").
-9. Al terminar dice "B0120 está en la banca", con sus creativos y su nombre en Meta. "Cargar otro batch" para la
-   siguiente carpeta, o "Listo".
+8. Elige quién lo hizo (ya dice tú) y, si quieres, de qué trata.
+9. Toca "Cargar a la banca" y no cierres la ventana mientras sube ("Subiendo 2 de 3").
+10. Al terminar dice "B0120 está en la banca", con sus creativos y su nombre en Meta. "Cargar otro batch" para la
+    siguiente carpeta, o "Listo".
+- No hace falta ponerle nombre a nada: el sistema le da su número al batch (B0120) y a cada video (C0153), y los nombra
+  como se van a llamar en Meta. Tu forma vieja de nombrarlos ("batch 1, creativo 2") ya no hace falta.
+- Si son variaciones de un creativo, en la banca dice "3 iteraciones del hook de [ese creativo]" y, cuando se lancen, el
+  sistema aprende que eran variaciones de ese creativo.
 - No hace falta acordarse de la hipótesis: entra como "Cargado: de antes del sistema".
 - Solo los que nunca se lanzaron.
 - No cuenta para tu racha ni para "a tiempo". Si gana cuando se lance, cuenta para quien lo hizo.

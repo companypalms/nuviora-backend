@@ -27,8 +27,14 @@ class EditorImportController extends Controller
     {
         $this->leader($request);
 
-        return response()->json(['products' => ReferenceLibrary::productOptions(), 'editors' => EditorWork::editors(), 'me' => $request->user()->id,
-            'uploads' => FileStore::on()]);
+        $products = ReferenceLibrary::productOptions();
+
+        return response()->json(['products' => $products, 'editors' => EditorWork::editors(), 'me' => $request->user()->id,
+            'uploads' => FileStore::on(),
+            // .99: los creativos de cada producto que ya estuvieron en Meta (por su nombre allí), para cargar variaciones de uno
+            'creatives' => \App\Models\MetaCreative::whereIn('product_id', array_column($products, 'id') ?: [0])->orderByDesc('id')
+                ->get(['id', 'product_id', 'label', 'tracking_id', 'angle_code'])
+                ->map(fn ($c) => ['id' => $c->id, 'product_id' => (int) $c->product_id, 'name' => $c->displayName(), 'angle_code' => $c->angle_code])->values()->all()]);
     }
 
     /** Empezar la carga: el batch con sus números y una pieza por video. */
@@ -44,6 +50,9 @@ class EditorImportController extends Controller
             'editor_id' => 'required|integer',
             'concept' => 'nullable|string|max:120',
             'pieces' => 'required|integer|min:1|max:10',
+            // .99: si son variaciones de un creativo que ya estuvo en Meta, cuál y qué cambia
+            'iterates_id' => 'nullable|integer',
+            'changes' => 'nullable|string|max:10',
         ], ['pieces.max' => 'Un batch lleva hasta 10 videos.', 'pieces.min' => 'Sube al menos un video.']);
         $angle = $data['angle_code'] !== null && $data['angle_code'] !== '' ? strtoupper($data['angle_code']) : null;
         if ($angle !== null && !AdAngle::where('product_id', $data['product_id'])->where('code', $angle)->whereNull('alias_of')->exists()) {
@@ -53,7 +62,8 @@ class EditorImportController extends Controller
             throw ValidationException::withMessages(['editor_id' => 'Elige un editor activo.']);
         }
         $batch = $queue->import(['product_id' => (int) $data['product_id'], 'angle_code' => $angle, 'editor_id' => (int) $data['editor_id'],
-            'concept' => trim((string) ($data['concept'] ?? '')) ?: null, 'pieces' => (int) $data['pieces']], $request->user()->id);
+            'concept' => trim((string) ($data['concept'] ?? '')) ?: null, 'pieces' => (int) $data['pieces'],
+            'iterates_id' => isset($data['iterates_id']) ? (int) $data['iterates_id'] : null, 'changes' => $data['changes'] ?? null], $request->user()->id);
 
         return response()->json(['batch' => $this->summary($batch)], 201);
     }

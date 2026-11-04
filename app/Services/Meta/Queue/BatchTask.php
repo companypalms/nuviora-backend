@@ -23,11 +23,12 @@ final class BatchTask
     /**
      * @param array{kind: ?string, angle_code: ?string, angle_name: ?string, iterates: ?string, imported?: bool, testing?: bool,
      *     pieces: list<array{test: ?string, style: ?string, format: ?string}>} $b iterates: el creativo que se itera (C0146 POSP)
-     * @return array{title: string, detail: ?string}|null null: un batch ya hecho que se cargó (no hay nada que hacer)
+     * @return array{title: string, detail: ?string}|null null: un batch ya hecho que se cargó (no hay nada que hacer), salvo
+     *     que sean variaciones de un creativo (`.99`: "3 iteraciones del hook de …")
      */
     public static function of(array $b): ?array
     {
-        if ($b['imported'] ?? false) {
+        if (($b['imported'] ?? false) && !($b['iterates'] ?? null)) {
             return null;
         }
         $n = max(1, count($b['pieces'] ?? []));
@@ -73,15 +74,16 @@ final class BatchTask
             };
         }
         $title = ($n === 1 ? '1 iteración' : "{$n} iteraciones");
-        // "UGC e imagen" (antes de i, "e")
-        $list = preg_replace('/ y (?=[iIíÍ])/u', ' e ', TestingRules::join(array_values(array_unique($formats))));
+        // "UGC e imagen" (antes de i, "e"); sin decir cuál, "otro formato"
+        $named = array_values(array_unique(array_filter($formats)));
+        $list = $named === [] ? 'otro formato' : preg_replace('/ y (?=[iIíÍ])/u', ' e ', TestingRules::join($named));
 
         return match (true) {
             $hooks === $n => ['title' => "{$title} del hook de {$of}", 'detail' => 'Solo cambia el hook (los primeros 3 segundos): el resto del video queda igual.'],
-            count($formats) === $n => ['title' => "{$title} de formato de {$of}", 'detail' => "El mismo mensaje, en {$list}."],
+            count($formats) === $n => ['title' => "{$title} de formato de {$of}", 'detail' => "El mismo mensaje en {$list}."],
             count($fixes) === 1 && array_sum($fixes) === $n => ['title' => "{$title} de {$of}: " . self::FIXES[array_key_first($fixes)],
                 'detail' => 'Lo demás del video se queda igual.'],
-            $other === $n => ['title' => "{$title} de {$of}", 'detail' => 'Variaciones del mismo creativo: mira qué cambiar en «Lo que hay que mejorar».'],
+            $other === $n => ['title' => "{$title} de {$of}", 'detail' => 'Variaciones del mismo creativo (qué cambia, en «Ver todo el encargo»).'],
             default => ['title' => "{$title} de {$of}", 'detail' => ucfirst(TestingRules::join(array_filter([
                 $hooks ? "{$hooks} de hook (hook nuevo, el resto igual)" : null,
                 $formats ? count($formats) . " de formato ({$list})" : null,
@@ -91,14 +93,11 @@ final class BatchTask
         };
     }
 
-    /** "UGC", "testimonio", "imagen"; sin estilo, por su formato ("video" o "imagen"). */
-    private static function formatName(array $p): string
+    /** "UGC", "testimonio", "imagen"; null si no dice cuál (un batch ya hecho, o la imagen ganadora que pasa a video). */
+    private static function formatName(array $p): ?string
     {
         $label = PieceRules::formatLabel($p['style'] ?? null);
-        if ($label === null) {
-            return ($p['format'] ?? null) === 'image' ? 'imagen' : 'video';
-        }
 
-        return $label === 'UGC' ? $label : mb_strtolower($label);
+        return $label === null ? null : ($label === 'UGC' ? $label : mb_strtolower($label));
     }
 }

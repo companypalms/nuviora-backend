@@ -169,12 +169,16 @@ describe('.99: qué hay que hacer en cada encargo', function () {
         expect($it($pieces(['test' => 'winner_hook'], ['test' => 'hook'], ['test' => 'fatigue'])))
             ->toBe(['title' => '3 iteraciones del hook de C0146 POSP', 'detail' => 'Solo cambia el hook (los primeros 3 segundos): el resto del video queda igual.'])
             ->and($it($pieces(['test' => 'format', 'style' => 'ugc'], ['test' => 'format', 'style' => 'testimonio'])))
-            ->toBe(['title' => '2 iteraciones de formato de C0146 POSP', 'detail' => 'El mismo mensaje, en UGC y testimonio.'])
+            ->toBe(['title' => '2 iteraciones de formato de C0146 POSP', 'detail' => 'El mismo mensaje en UGC y testimonio.'])
             ->and($it($pieces(['test' => 'winner_hook'], ['test' => 'format', 'style' => 'ugc'], ['test' => 'format', 'style' => 'imagen', 'format' => 'image'])))
             ->toBe(['title' => '3 iteraciones de C0146 POSP', 'detail' => '1 de hook (hook nuevo, el resto igual) y 2 de formato (UGC e imagen).'])
             ->and($it($pieces(['test' => 'middle'], ['test' => 'middle']))['title'])->toBe('2 iteraciones de C0146 POSP: arreglar el medio del video')
             // la imagen ganadora que pasa a video
-            ->and($it($pieces(['test' => 'format', 'format' => 'video']))['title'])->toBe('1 iteración de formato de C0146 POSP');
+            ->and($it($pieces(['test' => 'format', 'format' => 'video']))['title'])->toBe('1 iteración de formato de C0146 POSP')
+            // .99: un batch ya hecho que son variaciones de un creativo dice qué es (sin estilo: "otro formato")
+            ->and(BatchTask::of($b(['kind' => 'iteration', 'iterates' => 'CRE002-FLEX-BATCH001', 'imported' => true,
+                'pieces' => $pieces(['test' => 'format'], ['test' => 'format'])])))
+            ->toBe(['title' => '2 iteraciones de formato de CRE002-FLEX-BATCH001', 'detail' => 'El mismo mensaje en otro formato.']);
     });
 
     it('el texto del encargo empieza por lo que hay que hacer', function () {
