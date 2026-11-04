@@ -29,7 +29,7 @@ describe('Lo que sabe la IA de cada rol', function () {
     it('al editor de video no le llega nada del rol del líder', function () {
         $editor = mb_strtolower(EditorHelp::instructions('editor'));
         foreach (['hipótesis', 'encargos del equipo', '"asignar', 'asignar editor', 'sugerido', 'cargar un batch', 'las que más ganan', 'racha al día', '¿alcanza el equipo?',
-            'lo que necesitamos', 'por revisar', 'quitar', 'ranking', 'el equipo'] as $word) {
+            'lo que necesitamos', 'por revisar', '"quitar"', 'ranking', 'el equipo'] as $word) { // .97: "quitar" un archivo de la carga sí es suyo; el botón "Quitar" una referencia, no
             expect($editor)->not->toContain($word);
         }
     });

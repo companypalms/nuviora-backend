@@ -189,12 +189,13 @@ describe('Las entregas con archivo', function () {
         Schema::create('creative_references', function ($t) {
             $t->id();
             $t->unsignedInteger('number')->unique();
-            $t->string('link', 1000);
-            $t->string('link_key', 64);
-            $t->string('type');
-            $t->string('why', 500);
+            $t->string('link', 1000)->nullable();
+            $t->string('link_key', 64)->nullable();
+            $t->string('type')->nullable();
+            $t->string('why', 500)->nullable();
             $t->unsignedBigInteger('product_id')->nullable();
             $t->string('angle_code')->nullable();
+            $t->string('angle_other', 160)->nullable();
             $t->unsignedBigInteger('file_id')->nullable();
             $t->unsignedBigInteger('uploaded_by')->nullable();
             $t->timestamp('archived_at')->nullable();
@@ -334,11 +335,92 @@ describe('Las entregas con archivo', function () {
         app(Uploads::class)->confirm(StoredFile::find($start['file']['id']), User::find(10));
         $data = ['file_id' => $start['file']['id'], 'link' => 'https://www.facebook.com/ads/library/?id=777', 'type' => 'testimonial',
             'why' => 'El hook de la balanza engancha en 2 segundos', 'product_id' => 5, 'angle_code' => 'posp'];
+        DB::table('ad_angles')->insert(['product_id' => 5, 'code' => 'POSP', 'name' => 'Posparto', 'position' => 1]);
         $ref = app(ReferenceLibrary::class)->create($data, User::find(10));
+        $again = app(Uploads::class)->start(['kind' => 'reference', 'name' => 'ref2.mp4'], 'video/mp4', 9, User::find(10));
+        $this->call('PUT', $again['upload']['url'], [], [], [], ['CONTENT_TYPE' => 'video/mp4'], 'referenci')->assertNoContent();
+        $second = app(Uploads::class)->confirm(StoredFile::find($again['file']['id']), User::find(10))->id;
 
         expect($ref->code())->toBe('REF0001')->and($ref->angle_code)->toBe('POSP')->and(StoredFile::find($start['file']['id'])->name)->toBe('REF0001.mp4')
-            ->and(fn () => app(ReferenceLibrary::class)->create(['link' => 'https://facebook.com/ads/library?id=777'] + $data, User::find(10)))
+            // .97: otro archivo con el mismo link (el mismo archivo ya avisa que es REF0001)
+            ->and(fn () => app(ReferenceLibrary::class)->create(['link' => 'https://facebook.com/ads/library?id=777', 'file_id' => $second] + $data, User::find(10)))
             ->toThrow(ValidationException::class, 'Esa referencia ya está en la biblioteca: REF0001.');
+    });
+
+    /** .97: un archivo de referencia ya subido y confirmado (video o imagen). */
+    $refFile = function (string $name, string $mime, int $userId = 10): StoredFile {
+        $start = app(Uploads::class)->start(['kind' => 'reference', 'name' => $name], $mime, 9, User::find($userId));
+        test()->call('PUT', $start['upload']['url'], [], [], [], ['CONTENT_TYPE' => $mime], 'contenido')->assertNoContent();
+
+        return app(Uploads::class)->confirm(StoredFile::find($start['file']['id']), User::find($userId));
+    };
+    /** Los errores de una ValidationException, por casilla. */
+    $errorsOf = function (callable $fn): array {
+        try {
+            $fn();
+        } catch (ValidationException $e) {
+            return array_map(fn ($m) => $m[0], $e->errors());
+        }
+
+        return [];
+    };
+
+    it('.97: el producto y el ángulo son obligatorios; el ángulo es de la ficha o «Otro ángulo» con su frase', function () use ($refFile, $errorsOf) {
+        DB::table('ad_angles')->insert(['product_id' => 5, 'code' => 'POSP', 'name' => 'Posparto', 'position' => 1]);
+        $base = ['link' => 'https://www.tiktok.com/@marca/video/1', 'type' => 'ugc', 'why' => 'El ritmo'];
+        $lib = app(ReferenceLibrary::class);
+
+        $none = $errorsOf(fn () => $lib->create($base + ['file_id' => $refFile('a.mp4', 'video/mp4')->id], User::find(10)));
+        $noAngle = $errorsOf(fn () => $lib->create($base + ['file_id' => $refFile('b.mp4', 'video/mp4')->id, 'product_id' => 5], User::find(10)));
+        $foreign = $errorsOf(fn () => $lib->create($base + ['file_id' => $refFile('c.mp4', 'video/mp4')->id, 'product_id' => 5, 'angle_code' => 'GYMF'], User::find(10)));
+        $otherEmpty = $errorsOf(fn () => $lib->create($base + ['file_id' => $refFile('d.mp4', 'video/mp4')->id, 'product_id' => 5, 'angle_code' => 'other'], User::find(10)));
+        expect($none['product_id'])->toBe('Elige el producto.')
+            ->and($noAngle['angle_code'])->toContain('Elige el ángulo')
+            ->and($foreign['angle_code'])->toContain('no es de este producto')
+            ->and($otherEmpty['angle_other'])->toContain('cuál es el otro ángulo');
+
+        $ref = $lib->create($base + ['file_id' => $refFile('e.png', 'image/png')->id, 'product_id' => 5, 'angle_code' => 'other',
+            'angle_other' => 'Dolor de espalda en la oficina'], User::find(10));
+        $shown = ReferenceLibrary::present(collect([$ref->fresh(['file', 'product', 'uploader'])]), ['id' => 10, 'role' => 'Editor de video'])[0];
+        expect($ref->angle_code)->toBeNull()->and($ref->angle_other)->toBe('Dolor de espalda en la oficina')
+            ->and($shown)->toMatchArray(['format' => 'image', 'angle_other' => 'Dolor de espalda en la oficina', 'type_label' => 'UGC'])
+            ->and($shown['file']['name'])->toBe('REF0001.png');
+    });
+
+    it('.97: subir varias: el producto y el ángulo una vez, el link opcional; quedan REF seguidas con su nombre', function () use ($refFile, $errorsOf) {
+        DB::table('ad_angles')->insert(['product_id' => 5, 'code' => 'POSP', 'name' => 'Posparto', 'position' => 1]);
+        CreativeReference::create(['number' => 11, 'link' => 'https://x.com/viejo', 'link_key' => ReferenceLibrary::linkKey('https://x.com/viejo'), 'type' => 'ugc', 'why' => 'w']);
+        $common = ['product_id' => 5, 'angle_code' => 'POSP'];
+        $lib = app(ReferenceLibrary::class);
+        [$a, $b, $c] = [$refFile('1.mp4', 'video/mp4'), $refFile('2.mp4', 'video/mp4'), $refFile('3.jpg', 'image/jpeg')];
+
+        // un link que ya está y uno repetido en la misma carga: error en su fila y no se guarda ninguna
+        $errors = $errorsOf(fn () => $lib->createMany($common, [['file_id' => $a->id, 'link' => 'https://x.com/nuevo'],
+            ['file_id' => $b->id, 'link' => 'https://www.x.com/nuevo/'], ['file_id' => $c->id, 'link' => 'https://x.com/viejo']], User::find(10)));
+        expect($errors)->toBe(['items.1.link' => 'Ese link está repetido en esta carga.', 'items.2.link' => 'Ya está en la biblioteca: REF0011.'])
+            ->and(CreativeReference::count())->toBe(1);
+
+        // un archivo de otra persona tampoco
+        $other = $refFile('4.mp4', 'video/mp4', 11);
+        expect($errorsOf(fn () => $lib->createMany($common, [['file_id' => $other->id]], User::find(10))))->toHaveKey('items.0.file');
+
+        $refs = $lib->createMany($common + ['type' => 'demo'], [['file_id' => $a->id, 'link' => 'https://x.com/nuevo'], ['file_id' => $b->id], ['file_id' => $c->id, 'link' => '']], User::find(10));
+        expect(array_map(fn ($r) => $r->code(), $refs))->toBe(['REF0012', 'REF0013', 'REF0014'])
+            ->and($refs[1]->link)->toBeNull()->and($refs[1]->why)->toBeNull()->and($refs[1]->type)->toBe('demo')->and($refs[2]->angle_code)->toBe('POSP')
+            ->and(StoredFile::find($c->id)->name)->toBe('REF0014.jpg')
+            // el mismo archivo no entra dos veces (por ejemplo, si se reintenta)
+            ->and($errorsOf(fn () => $lib->createMany($common, [['file_id' => $a->id]], User::find(10)))['items.0.file'])->toBe('Ese archivo ya está en la biblioteca: REF0012.');
+
+        // el filtro de formato
+        $who = ['id' => 10, 'role' => 'Editor de video'];
+        expect(array_column(ReferenceLibrary::list($who, null, null, 'image'), 'code'))->toBe(['REF0014'])
+            ->and(array_column(ReferenceLibrary::list($who, null, null, 'video'), 'code'))->toBe(['REF0013', 'REF0012']);
+    });
+
+    it('.97: subir varias, hasta 20', function () use ($errorsOf) {
+        $items = array_map(fn ($i) => ['file_id' => $i], range(1, 21));
+        expect($errorsOf(fn () => app(ReferenceLibrary::class)->createMany(['product_id' => 5, 'angle_code' => 'other', 'angle_other' => 'x'], $items, User::find(10)))['items'])
+            ->toBe('Puedes subir hasta 20 referencias a la vez.');
     });
 
     it('.92: cada pieza dice de dónde salió; sin decirlo no se entrega; la referencia cuenta sus usos y sus resultados', function () {

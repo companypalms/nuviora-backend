@@ -54,11 +54,27 @@
 - Atrasado = pasó la fecha de entrega o la de correcciones. Sale en rojo.
 
 ## Referencias
-- Es la biblioteca de videos que ya funcionan (de otros anunciantes, de Meta, TikTok, Instagram…). Casi todos los
-  creativos salen de una referencia.
-- "Subir una referencia": el video, el link de donde salió, el tipo de video, por qué la eligieron y para qué producto
-  (o para cualquier producto). Queda con su número, por ejemplo "REF0001".
-- Filtros por producto y por tipo de video.
+- Es la biblioteca de anuncios que ya funcionan (de otros anunciantes, de Meta, TikTok, Instagram…): videos e
+  imágenes. Casi todos los creativos salen de una referencia.
+- "Subir una referencia", en 5 pasos:
+  1. El producto y su ángulo. El ángulo es obligatorio: toca uno de los de la ficha o "Otro ángulo" si no va con
+     ninguno, y escribe en pocas palabras cuál es.
+  2. El video o la imagen.
+  3. El link de donde salió.
+  4. El tipo (UGC, Testimonio, Demostración, Antes y después, Animado u Otro).
+  5. Por qué la elegiste.
+- Queda con su número, por ejemplo "REF0001". El archivo se nombra solo.
+- "Subir varias": para subir muchas del mismo producto y ángulo de una vez.
+  1. Elige el producto y el ángulo (o "Otro ángulo" y cuál es).
+  2. Suelta o elige todos los videos e imágenes a la vez (hasta 20). Cada uno es una referencia; se puede quitar con la
+     papelera.
+  3. Cada uno puede llevar su link de donde salió (opcional).
+  4. Si quieres, elige el tipo y escribe por qué las elegiste: vale para todas.
+  5. Toca "Subir N referencias". Al terminar dice, por ejemplo, "REF0012 a REF0019".
+- Si un link ya estaba en la biblioteca, esa fila lo dice ("Ya está en la biblioteca: REF0004"): cambia el link o quita
+  ese archivo y toca el botón otra vez.
+- Si se corta el internet, toca "Reintentar": sube solo lo que faltaba.
+- Filtros por producto, por tipo y por formato (videos o imágenes).
 - Cada referencia dice cuántas veces se usó ("Usada en N creativos"). "Ver dónde se usó" muestra los creativos que
   salieron de ella.
 - Las referencias no llevan nombre en Meta.

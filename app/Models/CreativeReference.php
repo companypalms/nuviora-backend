@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Model;
  */
 class CreativeReference extends Model
 {
-    protected $fillable = ['number', 'link', 'link_key', 'type', 'why', 'product_id', 'angle_code', 'file_id', 'uploaded_by', 'archived_at', 'archived_by'];
+    protected $fillable = ['number', 'link', 'link_key', 'type', 'why', 'product_id', 'angle_code', 'angle_other', 'file_id', 'uploaded_by', 'archived_at', 'archived_by'];
 
     protected $casts = ['archived_at' => 'datetime', 'number' => 'integer'];
 

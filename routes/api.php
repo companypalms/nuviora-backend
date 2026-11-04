@@ -704,6 +704,7 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::get('/references', [\App\Http\Controllers\CreativeReferenceController::class, 'index']);
         Route::post('/references/upload', [\App\Http\Controllers\CreativeReferenceController::class, 'upload'])->middleware('throttle:30,1');
         Route::post('/references', [\App\Http\Controllers\CreativeReferenceController::class, 'store'])->middleware('throttle:30,1');
+        Route::post('/references/bulk', [\App\Http\Controllers\CreativeReferenceController::class, 'bulk'])->middleware('throttle:30,1'); // .97: subir varias
         Route::get('/references/{reference}/uses', [\App\Http\Controllers\CreativeReferenceController::class, 'uses'])->whereNumber('reference');
         Route::delete('/references/{reference}', [\App\Http\Controllers\CreativeReferenceController::class, 'archive'])->whereNumber('reference');
         Route::put('/queue/{batch}/editor', [\App\Http\Controllers\EditorQueueController::class, 'assign'])->whereNumber('batch');
