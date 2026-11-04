@@ -66,7 +66,8 @@ class DecisionSettings
         'price_step' => [2, 0.1, 100],           // probar bajar el precio de a $2
         'stock_warn_days' => [3, 1, 90],         // .79: avisar "poco stock" con menos de 3 días de ventas (el stock ya no frena la subida)
         // Paso 4 — la cola de producción y la banca (el manual: 1–2 batches aprobados sin testear por producto)
-        'bank_min' => [1, 0, 10],
+        // .100: un batch a la vez por producto: la reserva es 1 (o 0: solo cuando una ciudad lo necesita)
+        'bank_min' => [1, 0, 1],
         'bank_max' => [2, 0, 10],
         'batch_pieces' => [3, 1, 10],            // piezas (anuncios) por batch
         'video_editors' => [2, 0, 50],

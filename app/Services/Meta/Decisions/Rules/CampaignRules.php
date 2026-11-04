@@ -42,7 +42,8 @@ class CampaignRules
 
     /** Las acciones de una campaña activa que llevan el aviso de stock. */
     private const WITH_STOCK_ALERT = ['scale', 'hold', 'hold_prune', 'intervene', 'decrease', 'wait'];
-    public const BATCHES = [1 => '2–3', 2 => '1–2', 3 => '1', 4 => '0–1', 5 => '0'];
+    // .100 (dueño, 2026-11-04: "lanzamos un batch a la vez"): un producto que ya vende pide 1 batch a la vez (antes U1 2–3 y U2 1–2)
+    public const BATCHES = [1 => '1', 2 => '1', 3 => '1', 4 => '0–1', 5 => '0'];
 
     public function __construct(private array $s)
     {

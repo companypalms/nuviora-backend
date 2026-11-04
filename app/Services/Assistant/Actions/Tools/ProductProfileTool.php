@@ -161,7 +161,8 @@ class ProductProfileTool extends ChangeTool
 
         return self::proposal($productId, $name, $now['profile'], $now['personas'], $args, $angles,
             (string) (ProductProfile::where('product_id', $productId)->value('phase') ?? 'iterate'), TestingPhase::testedAngles($productId),
-            ['create' => false, 'shopify' => $shopify && (int) $product->product_id !== $shopify['id'] ? $shopify : null], $files);
+            ['create' => false, 'shopify' => $shopify && (int) $product->product_id !== $shopify['id'] ? $shopify : null,
+                'campaigns' => TestingPhase::liveCampaigns($productId)], $files);
     }
 
     /**
@@ -337,6 +338,10 @@ class ProductProfileTool extends ChangeTool
         }
         if ($phase === 'testing' && $angles === []) {
             $warnings[] = 'En testeo, pero sin ángulos: el testeo no puede empezar hasta que la ficha tenga sus ángulos.';
+        }
+        // .100: un producto que ya vende normalmente no va en testeo
+        if ($phase === 'testing' && $phase !== $beforePhase && ($w = TestingRules::sellingWarning($name, (int) ($link['campaigns'] ?? 0)))) {
+            $warnings[] = $w;
         }
         if ($create && !$shopify) {
             $warnings[] = 'Todavía sin el link de Shopify: pásamelo cuando el producto esté en tu tienda (antes de lanzar el testeo), para que sus pedidos se unan a él.';

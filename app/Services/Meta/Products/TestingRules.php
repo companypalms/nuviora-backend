@@ -131,6 +131,17 @@ final class TestingRules
         };
     }
 
+    /**
+     * `.100` (dueño, 2026-11-04: "el FlexiStep no es un producto nuevo, entonces ¿por qué está mandando a hacer varios batch
+     * al mismo tiempo?"): el aviso antes de poner en testeo un producto que ya vende. No lo bloquea (puede ser para probar
+     * ángulos nuevos).
+     */
+    public static function sellingWarning(string $name, int $campaigns): ?string
+    {
+        return $campaigns > 0 ? "{$name} ya tiene " . ($campaigns === 1 ? '1 campaña activa' : "{$campaigns} campañas activas")
+            . ' en Meta: el testeo pide hasta 3 batches juntos (los que ya están en la banca cuentan). Si solo hacen falta creativos nuevos, déjalo en «Iterar lo que funciona».' : null;
+    }
+
     /** "GINE, ABDO y FAJA". */
     public static function join(array $parts): string
     {

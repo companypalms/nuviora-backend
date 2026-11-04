@@ -16,6 +16,12 @@ use App\Services\Meta\Analysis\UrgentList;
  * - la reserva: 1 batch listo por producto ("banca por producto: desde"), para dentro de 2 días;
  * - lo que ya viene en camino cuenta: no se pide otro, se adelanta su fecha.
  * El líder lee el porqué en palabras, sin montos (el editor no ve precios ni plata).
+ *
+ * `.100` (dueño, 2026-11-04: "nosotros lanzamos un batch a la vez… lanzamos un batch, esperamos resultados, vemos si
+ * podemos escalar con ese batch o hace falta meter otro batch"; eligió "solo 1"): un producto que ya vende tiene **un solo
+ * batch pedido a la vez** (haciéndose o en la banca). Cuando ese se lanza, se pide el siguiente. Para hoy solo si una
+ * ciudad lo necesita y no tiene nada que lanzar; si tiene algo (de la banca o de otra ciudad), se lanza eso y lo que se
+ * pide es el siguiente, con la fecha de la reserva. Los 2 batches vivos por ciudad siguen (lo eligió el dueño).
  */
 final class DemandRules
 {
@@ -55,10 +61,10 @@ final class DemandRules
                 }
             }
             $live = $n['live'] ?? null;
+            // .100: con algo que lanzar (de la banca o de otra ciudad), hoy se lanza eso: no hace falta un batch nuevo para hoy
             $why = match (true) {
-                $mode !== 'normal' => null,
-                in_array($key, self::AT_BE, true) => self::reason($key, $live),
-                $offers === [] && ($key === 'hold_prune' || $need > 0 && $live !== null && $live < UrgentList::MIN_LIVE) => self::reason($key, $live),
+                $mode !== 'normal' || $offers !== [] => null,
+                in_array($key, self::AT_BE, true) || $key === 'hold_prune' || $need > 0 && $live !== null && $live < UrgentList::MIN_LIVE => self::reason($key, $live),
                 default => null,
             };
             if ($why !== null) {
@@ -100,9 +106,10 @@ final class DemandRules
     }
 
     /**
-     * Las fechas que hacen falta (hoy y la reserva) y quién las cubre: primero lo que ya está listo en la banca (menos lo
-     * que se lanza hoy), después lo que viene en camino, por su fecha (si ahora hace falta antes, se adelanta), y lo que
-     * falta, encargos nuevos. Lo que el dueño descartó hoy cuenta como cubierto (no se vuelve a pedir el mismo día).
+     * `.100`: el único batch que hace falta y quién lo cubre. Su fecha: hoy si una ciudad lo necesita hoy; si no, la de la
+     * reserva (si la reserva está en 0, nada). Lo cubre lo listo en la banca (menos lo que se lanza hoy), o lo que viene en
+     * camino (si ahora hace falta antes, se adelanta su fecha); si no hay nada, un encargo nuevo. Lo que el dueño descartó
+     * hoy cuenta como cubierto (no se vuelve a pedir el mismo día).
      *
      * @param list<array{id: int, status: string, due_date: ?string, code: ?string}> $open
      * @param list<string> $consumed los B#### de la banca que las misiones lanzan hoy
@@ -110,31 +117,27 @@ final class DemandRules
      */
     public static function slots(int $today, int $reserve, array $open, array $consumed, string $date, int $reserveDays): array
     {
-        $later = date('Y-m-d', strtotime("{$date} +{$reserveDays} days"));
-        $dates = [...array_fill(0, max(0, $today), $date), ...array_fill(0, max(0, $reserve), $later)];
+        $out = ['advance' => [], 'covered' => [], 'new' => []];
+        $want = match (true) {
+            $today > 0 => $date,
+            $reserve > 0 => date('Y-m-d', strtotime("{$date} +{$reserveDays} days")),
+            default => null,
+        };
+        if ($want === null) {
+            return $out;
+        }
         $ready = array_values(array_filter($open, fn ($b) => $b['status'] === 'bank' && !in_array((string) $b['code'], $consumed, true)));
         $coming = array_values(array_filter($open, fn ($b) => in_array($b['status'], ['approved', 'production', 'review', 'discarded'], true)));
         usort($coming, fn ($a, $b) => [$a['due_date'] ?? '9', $a['id']] <=> [$b['due_date'] ?? '9', $b['id']]);
-        $out = ['advance' => [], 'covered' => [], 'new' => []];
-        // .99 (dueño, 2026-11-04: "cuando el editor suba los batch que ya tenemos en banca antes del sistema, el sistema los
-        // debe tomar en cuenta para no pedir batch de ese producto por el momento hasta que ese se lance"): con un batch
-        // esperando en la banca (que hoy no se lanza), no se pide nada nuevo de ese producto
-        $waiting = $ready !== [];
-        foreach ($dates as $d) {
-            if ($b = array_shift($ready)) {
-                $out['covered'][$b['id']] = $d;
-                continue;
+        if ($b = $ready[0] ?? null) {
+            $out['covered'][$b['id']] = $want;
+        } elseif ($b = $coming[0] ?? null) {
+            $out['covered'][$b['id']] = $want;
+            if ($b['status'] !== 'discarded' && ($b['due_date'] === null || $b['due_date'] > $want)) {
+                $out['advance'][$b['id']] = $want;
             }
-            if ($b = array_shift($coming)) {
-                $out['covered'][$b['id']] = $d;
-                if ($b['status'] !== 'discarded' && ($b['due_date'] === null || $b['due_date'] > $d)) {
-                    $out['advance'][$b['id']] = $d;
-                }
-                continue;
-            }
-            if (!$waiting) {
-                $out['new'][] = $d;
-            }
+        } else {
+            $out['new'][] = $want;
         }
 
         return $out;

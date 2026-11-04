@@ -158,7 +158,8 @@ describe('Presupuesto, urgencia y trabajo siguiente', function () {
             ->and(campana()->urgency(['mode' => 'paused', 'cities' => ['intervene']])['level'])->toBe(5)
             ->and($u(['cities' => ['hold'], 'stock_all_out' => true])['level'])->toBe(5);
         expect(campana()->urgency(['mode' => 'liquidation', 'healthy' => 0, 'cities' => ['hold_prune']])['batches'])->toBe('0')
-            ->and($u(['cities' => ['intervene']])['batches'])->toBe('2–3');
+            // .100: un batch a la vez, también en U1
+            ->and($u(['cities' => ['intervene']])['batches'])->toBe('1');
     });
 
     it('.79: un producto sin C ni BE no es urgente ni pide batches (Termafit, nuevo, salía "U1 · sin ganadores sanos")', function () {

@@ -129,6 +129,7 @@ class MetaProductProfileController extends Controller
     {
         $f = ProductProfiles::get($productId);
         $row = ProductProfile::with('updater:id,names')->where('product_id', $productId)->first();
+        $product = Product::find($productId, ['id', 'title', 'showable_name']);
 
         return [
             'profile' => $f['profile'] ?? array_fill_keys(array_keys(ProductProfileRules::FIELDS), null),
@@ -142,6 +143,8 @@ class MetaProductProfileController extends Controller
                 TestingPhase::angles($productId)),
             'testing' => TestingPhase::summary($productId),
             'tested_angles' => TestingPhase::testedAngles($productId),
+            // .100: si ya vende, la pantalla avisa antes de ponerlo en testeo
+            'selling_warning' => TestingRules::sellingWarning((string) ($product?->showable_name ?: $product?->title), TestingPhase::liveCampaigns($productId)),
             // .90: las fotos (las ven los editores) y el documento de estrategia (solo el dueño), en el almacén
             'files' => self::files($productId),
         ];

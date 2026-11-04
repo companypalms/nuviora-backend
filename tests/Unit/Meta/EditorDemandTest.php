@@ -26,11 +26,11 @@ describe('.88: qué necesita cada producto para hoy', function () {
     $bank = fn (string $code) => ['code' => $code, 'how' => 'bank'];
     $copy = fn (string $code) => ['code' => $code, 'how' => 'copy', 'adset' => "{$code} FAS", 'campaign' => 'FLEXISTEP | ARAGUA', 'city' => 'Aragua', 'verdict' => 'Prometedor'];
 
-    it('un batch nuevo para hoy (uno solo para todas las ciudades) si alguna sube de C sin banca, está en el BE o se queda con 1 vivo', function () use ($bank, $copy) {
+    it('un batch nuevo para hoy (uno solo para todas las ciudades) si alguna sube de C, está en el BE o se queda con 1 vivo, sin nada que lanzar', function () use ($bank, $copy) {
         $t = DemandRules::today(productoDemanda([
             ciudadDemanda('Carabobo', 'hold_prune', 3, []),
             ciudadDemanda('Caracas', 'hold_prune', 3, []),
-            ciudadDemanda('Aragua', 'intervene', 2, [$copy('B0102')]),
+            ciudadDemanda('Aragua', 'intervene', 2, []),
             ciudadDemanda('Lara', 'scale', 1, []),
         ]));
 
@@ -39,6 +39,15 @@ describe('.88: qué necesita cada producto para hoy', function () {
                 'Aragua' => 'está en su límite o encima', 'Lara' => 'le queda 1 solo batch vivo'])
             ->and($t['why'])->toBe('Carabobo y Caracas subieron de su costo objetivo; Aragua está en su límite o encima; a Lara le queda 1 solo batch vivo: '
                 . 'hace falta un batch nuevo hoy para volver a bajar el costo por compra y seguir escalando.');
+    });
+
+    it('.100: en el BE pero con algo que lanzar (de la banca o de otra ciudad): se lanza eso y no se pide otro para hoy', function () use ($bank, $copy) {
+        $t = DemandRules::today(productoDemanda([
+            ciudadDemanda('Aragua', 'intervene', 2, [$copy('B0102')]),
+            ciudadDemanda('Carabobo', 'intervene', 1, [$bank('B0103')]),
+        ]));
+
+        expect($t['today'])->toBe(0)->and($t['why'])->toBeNull()->and($t['consumed'])->toBe(['B0103']);
     });
 
     it('si su banca tiene algo, se lanza eso (y ya no queda de reserva); sin nada que pedir, nada para hoy', function () use ($bank) {
@@ -58,24 +67,30 @@ describe('.88: qué necesita cada producto para hoy', function () {
     });
 });
 
-describe('.88: para cuándo y quién lo cubre', function () {
-    it('sin nada pedido: uno para hoy y la reserva para dentro de 2 días', function () {
-        expect(DemandRules::slots(1, 1, [], [], '2026-11-03', 2))->toBe(['advance' => [], 'covered' => [], 'new' => ['2026-11-03', '2026-11-05']]);
+describe('.100: un batch a la vez (para cuándo y quién lo cubre)', function () {
+    it('sin nada pedido: uno solo, para hoy si una ciudad lo necesita hoy; si no, para la reserva (dentro de 2 días)', function () {
+        expect(DemandRules::slots(1, 1, [], [], '2026-11-03', 2))->toBe(['advance' => [], 'covered' => [], 'new' => ['2026-11-03']])
+            ->and(DemandRules::slots(0, 1, [], [], '2026-11-03', 2))->toBe(['advance' => [], 'covered' => [], 'new' => ['2026-11-05']])
+            // la reserva en 0: solo cuando una ciudad lo necesita
+            ->and(DemandRules::slots(0, 0, [], [], '2026-11-03', 2))->toBe(['advance' => [], 'covered' => [], 'new' => []]);
     });
 
-    it('lo que viene en camino cuenta y se adelanta su fecha; lo de la banca que se lanza hoy ya no es reserva', function () {
+    it('lo que viene en camino cuenta y se adelanta su fecha; lo de la banca que se lanza hoy ya no cuenta', function () {
         $open = [
             ['id' => 10, 'status' => 'bank', 'due_date' => null, 'code' => 'B0103'],
             ['id' => 11, 'status' => 'production', 'due_date' => '2026-11-06', 'code' => 'B0110'],
         ];
         expect(DemandRules::slots(1, 1, $open, ['B0103'], '2026-11-03', 2))
-            ->toBe(['advance' => [11 => '2026-11-03'], 'covered' => [11 => '2026-11-03'], 'new' => ['2026-11-05']]);
+            ->toBe(['advance' => [11 => '2026-11-03'], 'covered' => [11 => '2026-11-03'], 'new' => []]);
     });
 
-    it('lo listo en la banca cubre lo primero que hace falta; lo que el dueño descartó hoy no se vuelve a pedir', function () {
-        $open = [['id' => 10, 'status' => 'bank', 'due_date' => null, 'code' => 'B0103'], ['id' => 12, 'status' => 'discarded', 'due_date' => '2026-11-03', 'code' => 'B0111']];
-        expect(DemandRules::slots(1, 1, $open, [], '2026-11-03', 2))
-            ->toBe(['advance' => [], 'covered' => [10 => '2026-11-03', 12 => '2026-11-05'], 'new' => []]);
+    it('con uno listo en la banca o haciéndose no se pide otro; lo que el dueño descartó hoy no se vuelve a pedir', function () {
+        $bank = ['id' => 10, 'status' => 'bank', 'due_date' => null, 'code' => 'B0103'];
+        $made = ['id' => 11, 'status' => 'production', 'due_date' => '2026-11-04', 'code' => 'B0110'];
+        $gone = ['id' => 12, 'status' => 'discarded', 'due_date' => '2026-11-03', 'code' => 'B0111'];
+        expect(DemandRules::slots(1, 1, [$bank, $made], [], '2026-11-03', 2))->toBe(['advance' => [], 'covered' => [10 => '2026-11-03'], 'new' => []])
+            ->and(DemandRules::slots(0, 1, [$made], [], '2026-11-03', 2))->toBe(['advance' => [], 'covered' => [11 => '2026-11-05'], 'new' => []])
+            ->and(DemandRules::slots(1, 1, [$gone], [], '2026-11-03', 2))->toBe(['advance' => [], 'covered' => [12 => '2026-11-03'], 'new' => []]);
     });
 });
 
@@ -193,8 +208,8 @@ describe('.99: la banca frena los pedidos', function () {
     it('con un batch esperando en la banca (que hoy no se lanza) no se pide nada nuevo de ese producto', function () {
         $open = [['id' => 10, 'status' => 'bank', 'due_date' => null, 'code' => 'B0103']];
         expect(DemandRules::slots(1, 1, $open, [], '2026-11-03', 2))->toBe(['advance' => [], 'covered' => [10 => '2026-11-03'], 'new' => []])
-            // si hoy se lanza, se pide el siguiente
-            ->and(DemandRules::slots(1, 1, $open, ['B0103'], '2026-11-03', 2)['new'])->toBe(['2026-11-03', '2026-11-05']);
+            // .100: cuando se lanza, se pide el siguiente (uno solo, para la reserva)
+            ->and(DemandRules::slots(0, 1, $open, ['B0103'], '2026-11-03', 2)['new'])->toBe(['2026-11-05']);
     });
 
     it('la banca del líder, por producto: primero los activos con menos en la banca; los parados, al final y con lo suyo en espera', function () {

@@ -39,7 +39,7 @@ class DemandPlanner
             $rows = ($open[$pid] ?? collect())->map(fn (CreativeBatch $b) => ['id' => (int) $b->id, 'status' => $b->status,
                 'due_date' => $b->due_date?->toDateString(), 'code' => $b->code()])->values()->all();
             $out[$pid] = $t + ['product' => (string) ($decisions[$pid]['product']['name'] ?? $pid),
-                'slots' => DemandRules::slots($t['today'], max(0, (int) $s['bank_min']), $rows, $t['consumed'], $today, (int) $s['reserve_due_days'])];
+                'slots' => DemandRules::slots($t['today'], min(1, max(0, (int) $s['bank_min'])), $rows, $t['consumed'], $today, (int) $s['reserve_due_days'])];
         }
 
         return $out;

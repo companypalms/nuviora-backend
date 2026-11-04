@@ -116,7 +116,8 @@ class TestingPhase
         $slots = TestingRules::slots($available);
         $batches = CreativeBatch::where('product_id', $productId)->where('testing_round', $round)->where('status', '!=', 'discarded')->orderBy('id')
             ->get(['id', 'number', 'angle_code', 'status', 'result', 'concept', 'style']);
-        $rows = $batches->map(fn ($b) => ['id' => $b->id, 'angle' => (string) $b->angle_code, 'status' => $b->status, 'code' => $b->code(),
+        // .100: uno sin ángulo (un batch ya hecho que entró al testeo) se identifica por su código
+        $rows = $batches->map(fn ($b) => ['id' => $b->id, 'angle' => (string) ($b->angle_code ?: ($b->code() ?? "B{$b->id}")), 'status' => $b->status, 'code' => $b->code(),
             'verdicts' => $b->result['verdicts'] ?? [], 'concept' => trim(($b->concept ?? '') . ($b->style ? ' (estilo: ' . mb_strtolower(\App\Services\Meta\Queue\QueueRules::STYLES[$b->style] ?? $b->style) . ')' : '')) ?: null])->all();
         $pool = $rows;
         $out = [];
@@ -129,11 +130,59 @@ class TestingPhase
             $out[] = ['angle' => $angle, 'name' => $ordered[$angle]['name'] ?? null, 'persona' => $ordered[$angle]['persona'] ?? null,
                 'batch_id' => $b['id'] ?? null, 'code' => $b['code'] ?? null, 'concept' => $b['concept'] ?? null, 'label' => TestingRules::slotLabel($b)];
         }
+        // .100: un batch ya hecho que entró al testeo con otro ángulo (o sin ángulo) ocupa el último lugar libre: se prueba
+        // ese en vez del ángulo más débil
+        for ($k = count($out) - 1; $k >= 0 && $pool !== []; $k--) {
+            if ($out[$k]['batch_id'] === null) {
+                $b = array_shift($pool);
+                $out[$k] = ['angle' => $b['angle'], 'name' => $ordered[$b['angle']]['name'] ?? null, 'persona' => $ordered[$b['angle']]['persona'] ?? null,
+                    'batch_id' => $b['id'], 'code' => $b['code'], 'concept' => $b['concept'], 'label' => TestingRules::slotLabel($b)];
+            }
+        }
+        $slots = array_column($out, 'angle');
         $closed = collect($p->testing_results ?? [])->firstWhere('round', $round);
         $usedNow = array_values(array_unique(array_merge($slots, array_column($rows, 'angle'))));
 
         return ['phase' => $phase, 'round' => $round, 'slots' => $out, 'outcome' => TestingRules::outcome($slots, $rows), 'closed' => $closed,
             'next' => array_values(array_diff($available, $usedNow)), 'no_angles' => $ordered === []];
+    }
+
+    /**
+     * `.100` (dueño, 2026-11-04: el testeo, "3 juntos, contando la banca"): los batches de ese producto que ya están en la
+     * banca o haciéndose (fuera de un testeo) entran a la ronda y ocupan su lugar, así no se piden de más: primero el de su
+     * ángulo; en el primer testeo, uno de otro ángulo (o sin ángulo) ocupa el último lugar libre (en una ronda de ángulos
+     * nuevos, no: esa ronda es para probar esos). Uno de un ángulo que ya tiene sus lugares, no.
+     *
+     * @return int cuántos entraron
+     */
+    public static function adopt(int $productId): int
+    {
+        $st = self::round($productId);
+        $free = array_column(array_filter($st['slots'], fn ($x) => $x['batch_id'] === null), 'angle');
+        if ($st['phase'] !== 'testing' || $st['closed'] !== null || $free === []) {
+            return 0;
+        }
+        $all = array_column($st['slots'], 'angle');
+        $open = CreativeBatch::where('product_id', $productId)->whereNull('testing_round')->whereIn('status', ['approved', 'production', 'review', 'bank'])
+            ->orderByRaw("status = 'bank' desc")->orderBy('id')->get(['id', 'angle_code']);
+        $take = [];
+        foreach ($open as $b) {
+            if (($i = array_search($b->angle_code, $free, true)) !== false) {
+                $take[] = $b->id;
+                unset($free[$i]);
+            }
+        }
+        foreach ($st['round'] === 1 ? $open : [] as $b) {
+            if ($free !== [] && !in_array($b->id, $take, true) && !in_array($b->angle_code, $all, true)) {
+                $take[] = $b->id;
+                array_pop($free);
+            }
+        }
+        if ($take !== []) {
+            CreativeBatch::whereKey($take)->update(['testing_round' => $st['round']]);
+        }
+
+        return count($take);
     }
 
     /**
@@ -176,6 +225,7 @@ class TestingPhase
         $out = [];
         foreach ($profiles as $p) {
             $pid = (int) $p->product_id;
+            self::adopt($pid); // .100: lo que ya está en la banca cuenta
             $st = self::round($pid);
             if ($st['outcome'] !== null || $st['closed'] !== null) {
                 continue;
@@ -265,6 +315,12 @@ class TestingPhase
         }
 
         return $base + ['level' => 'success', 'text' => "Testeo terminado: {$result($last)}. Ahora se itera lo que ganó y no se piden más encargos de lo que perdió."];
+    }
+
+    /** `.100`: las campañas activas del producto en Meta (para el aviso de TestingRules::sellingWarning). */
+    public static function liveCampaigns(int $productId): int
+    {
+        return DB::table('meta_campaigns')->where('product_id', $productId)->where('effective_status', 'ACTIVE')->whereNull('missing_since')->count();
     }
 
     /** Los ángulos que ya salieron en algún testeo (una ronda nueva no los repite). @return list<string> */
