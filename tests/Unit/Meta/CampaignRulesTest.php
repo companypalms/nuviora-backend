@@ -68,6 +68,7 @@ describe('Escalar', function () {
         'ya subió' => [['increased_24h' => true], 'últimas 24 horas'],
         'creativos de hoy' => [['new_ads_today' => true], 'creativos nuevos'],
         'liquidación' => [['mode' => 'liquidation'], 'liquidación'],
+        '.101: pedidos esperando stock' => [['stock_waiting' => 55], 'hay 55 pedidos esperando stock en esta ciudad: no se sube hasta que llegue'],
     ]);
 });
 

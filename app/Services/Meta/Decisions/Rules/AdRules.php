@@ -66,6 +66,12 @@ class AdRules
                 $this->offProposal($unit));
         }
         if ($purchases >= 2 && $be !== null && $cpa >= $be) {
+            // .101: con pocas compras, apenas encima del BE no alcanza: puede ser mala suerte (o un BE con pocos datos)
+            if ($times >= $this->s['evaluation_cap_cpa'] && !$this->clearlyAbove($cpa, $be, $purchases)) {
+                return $this->verdict('evaluation', $data, 'En evaluación: CPA ' . self::num(round(($cpa / $be - 1) * 100)) . ' % encima del break-even con '
+                    . self::num($purchases) . ' compras. Con menos de ' . self::num($this->s['loser_be_margin_purchases']) . ' compras se apaga solo si pasa el '
+                    . self::num($this->s['loser_be_margin_pct']) . ' %.', 'Mantener; se vuelve a mirar cada día.');
+            }
             if ($times >= $this->s['evaluation_cap_cpa']) {
                 return $this->verdict('loser', $data, 'Perdedor: llegó a ' . self::num($times) . '×C con el CPA en el break-even o encima.', $this->offProposal($unit));
             }
@@ -390,7 +396,7 @@ class AdRules
      * `.86` (dueño, 2026-11-03: CRE003-FLEX-FAS-BATCH003 en Carabobo era "Intermedio" por toda su vida, pero llevaba días
      * sin vender): un creativo intermedio o en evaluación que en los últimos 3 días cerrados gastó 2×C o más en una ciudad
      * sin compras, o con el CPA en el break-even o encima, es perdedor ahí aunque su vida completa esté bien. Los ganadores
-     * siguen con su regla (si se caen, "ganador que falla"). PHP puro.
+     * siguen con su regla (si se caen, "ganador que falla"). `.101`: "encima" con el margen (clearlyAbove). PHP puro.
      *
      * @param array|null $recent los totales de los 3 días en esa ciudad (spend, purchases)
      * @param array $state el veredicto de toda su vida en esa ciudad
@@ -402,7 +408,7 @@ class AdRules
         }
         $spend = (float) ($recent['spend'] ?? 0);
         $purchases = (float) ($recent['purchases'] ?? 0);
-        $losing = $purchases == 0 || ($be !== null && $spend / $purchases >= $be);
+        $losing = $purchases == 0 || ($be !== null && $this->clearlyAbove($spend / $purchases, $be, $purchases));
         if ($spend < $c * $this->s['loser_spend_cpa'] || !$losing) {
             return null;
         }
@@ -410,8 +416,18 @@ class AdRules
             . ' · C ' . self::money($c) . ($be !== null ? ' · BE ' . self::money($be) : '');
 
         return $this->verdict('loser', $data, 'Perdedor en los últimos 3 días: gastó ' . self::num($spend / $c) . '×C '
-            . ($purchases == 0 ? 'sin compras' : 'con el CPA en el break-even o encima') . ' (en toda su vida: ' . mb_strtolower($state['label']) . ').',
+            . ($purchases == 0 ? 'sin compras' : 'con el CPA ' . self::num(round(($spend / $purchases / $be - 1) * 100)) . ' % encima del break-even')
+            . ' (en toda su vida: ' . mb_strtolower($state['label']) . ').',
             $this->offProposal('creativo'));
+    }
+
+    /**
+     * `.101` (dueño, 2026-11-04: el CRE002 de Termafit se apagó en Aragua con el CPA 9 % encima del BE y 10 compras): un CPA
+     * en el BE o encima pierde de verdad si pasa el margen (20 %) o si ya tiene compras de sobra (20) para no ser suerte.
+     */
+    private function clearlyAbove(float $cpa, float $be, float $purchases): bool
+    {
+        return $cpa >= $be * (1 + $this->s['loser_be_margin_pct'] / 100) || $purchases >= $this->s['loser_be_margin_purchases'];
     }
 
     private function spendText(float $spend, float $purchases, ?float $c): string

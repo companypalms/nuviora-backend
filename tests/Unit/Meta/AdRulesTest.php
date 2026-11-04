@@ -43,8 +43,10 @@ describe('Estado de un anuncio o batch (C = 4, BE = 5,70)', function () {
         '5 compras con CPA debajo de C' => [15, 5, 'proven'],
         'CPA entre C y BE' => [10, 2, 'intermediate'],
         '2 compras en el BE, antes de 3×C' => [11.6, 2, 'evaluation'],
-        '2 compras en el BE al llegar a 3×C' => [12, 2, 'loser'],
-        'más de 3 compras encima del BE' => [24, 4, 'loser'],
+        '.101: 2 compras apenas encima del BE (5 %) al llegar a 3×C' => [12, 2, 'evaluation'],
+        '2 compras 20 % encima del BE al llegar a 3×C' => [14, 2, 'loser'],
+        'más de 3 compras 20 % encima del BE' => [28, 4, 'loser'],
+        '.101: 20 compras apenas encima del BE (sin margen)' => [120, 20, 'loser'],
     ]);
 
     it('sin CPA objetivo no hay veredicto', function () {
@@ -66,7 +68,7 @@ describe('Estado de un anuncio o batch (C = 4, BE = 5,70)', function () {
 describe('Ganador que empezó a fallar', function () {
     it('tuvo historia buena si fue PROVEN o tuvo una semana ganadora', function () {
         $r = reglas();
-        $loser = $r->state(40, 6, 4.0, 5.70);
+        $loser = $r->state(42, 6, 4.0, 5.70);
         expect($loser['key'])->toBe('loser');
         $semana = ['2026-10-01' => ['spend' => 6, 'purchases' => 2], '2026-10-03' => ['spend' => 6, 'purchases' => 2],
             '2026-10-06' => ['spend' => 4, 'purchases' => 1], '2026-10-20' => ['spend' => 24, 'purchases' => 1]];
@@ -96,9 +98,12 @@ describe('.86: el que se cae en los últimos 3 días (C = 4, BE = 5,70)', functi
             ->and($v['proposal'])->toBe('Apagarlo en esta ciudad.');
     });
 
-    it('con compras, solo si el CPA de los 3 días está en el BE o encima', function () use ($intermedio) {
-        expect(reglas()->recentLoser(['spend' => 12.0, 'purchases' => 2], $intermedio, 4.0, 5.7)['key'])->toBe('loser')   // CPA 6 ≥ 5,70
-            ->and(reglas()->recentLoser(['spend' => 10.0, 'purchases' => 2], $intermedio, 4.0, 5.7))->toBeNull();          // CPA 5: todavía gana
+    it('con compras, solo si el CPA de los 3 días pasa el BE con el margen (.101)', function () use ($intermedio) {
+        $v = reglas()->recentLoser(['spend' => 14.0, 'purchases' => 2], $intermedio, 4.0, 5.7);                       // CPA 7: 23 % encima
+        expect($v['key'])->toBe('loser')
+            ->and($v['reading'])->toBe('Perdedor en los últimos 3 días: gastó 3,5×C con el CPA 23 % encima del break-even (en toda su vida: intermedio).')
+            ->and(reglas()->recentLoser(['spend' => 12.0, 'purchases' => 2], $intermedio, 4.0, 5.7))->toBeNull()          // CPA 6: 5 % encima
+            ->and(reglas()->recentLoser(['spend' => 10.0, 'purchases' => 2], $intermedio, 4.0, 5.7))->toBeNull();         // CPA 5: todavía gana
     });
 
     it('no se apaga antes de 2×C, ni un ganador (tiene su regla), ni sin C', function () use ($intermedio) {
@@ -108,6 +113,29 @@ describe('.86: el que se cae en los últimos 3 días (C = 4, BE = 5,70)', functi
             ->and(reglas()->recentLoser(['spend' => 20.0, 'purchases' => 0], $intermedio, null, null))->toBeNull()
             ->and(reglas()->recentLoser(null, $intermedio, 4.0, 5.7))->toBeNull()
             ->and(reglas()->recentLoser(['spend' => 9.0, 'purchases' => 0], ['key' => 'evaluation', 'label' => 'En evaluación'], 4.0, 5.7)['key'])->toBe('loser');
+    });
+});
+
+describe('.101: margen antes de apagar por el BE (dueño, 2026-11-04)', function () {
+    it('el CRE002 de Termafit en Aragua (CPA $4,78, 10 compras, BE $4,39) sigue en evaluación', function () {
+        $v = reglas()->state(47.80, 10, 2.91, 4.39, 'creativo');
+        expect($v['key'])->toBe('evaluation')
+            ->and($v['reading'])->toBe('En evaluación: CPA 9 % encima del break-even con 10 compras. Con menos de 20 compras se apaga solo si pasa el 20 %.')
+            ->and($v['proposal'])->toBe('Mantener; se vuelve a mirar cada día.');
+    });
+
+    it('con el CPA 20 % encima, o con 20 compras, es perdedor', function () {
+        expect(reglas()->state(53.0, 10, 2.91, 4.39, 'creativo')['key'])->toBe('loser')    // CPA 5,30: 21 % encima
+            ->and(reglas()->state(95.6, 20, 2.91, 4.39, 'creativo')['key'])->toBe('loser');  // CPA 4,78 con 20 compras
+    });
+
+    it('el margen se cambia en Reglas (0 = como antes)', function () {
+        expect(reglas(['loser_be_margin_pct' => 0])->state(47.80, 10, 2.91, 4.39)['key'])->toBe('loser')
+            ->and(reglas(['loser_be_margin_purchases' => 10])->state(47.80, 10, 2.91, 4.39)['key'])->toBe('loser');
+    });
+
+    it('con 0 o 1 compra no hay margen: sigue siendo perdedor a 2×C', function () {
+        expect(reglas()->state(8.5, 1, 4.0, 5.70)['key'])->toBe('loser');
     });
 });
 

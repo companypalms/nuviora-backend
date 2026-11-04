@@ -363,6 +363,8 @@ class MetaAdsReport
      * sigue mostrando como referencia.
      * `.79` (dueño, 2026-11-02): un producto nuevo, mientras el sistema no tiene sus 30 compras de Meta maduras, usa la
      * referencia del dueño: la de Productos y objetivos o, si no la puso, la del nombre de la campaña (source "name").
+     * `.101`: lo que cuenta son sus pedidos terminados (Termafit tenía 35 compras, pero 17 pedidos terminados); un cálculo
+     * de antes de la `.101` no los guardó y sigue con las compras.
      * @return array{target_cpa: ?float, break_even_cpa: ?float, source: string, financial: ?array}
      */
     private function effectiveTarget(array $manual, ?int $productId, ?int $cityId = null): array
@@ -381,7 +383,7 @@ class MetaAdsReport
         }
         $v = collect($versions)->first(fn ($v) => $v->target !== null);
         $product = $productId !== null ? ($this->financialCpa["{$productId}|"] ?? null) : null;
-        $young = $product === null || (float) $product->purchases < \App\Services\Finance\FinancialCpa::cityMinPurchases();
+        $young = $product === null || (float) ($product->detail['closed'] ?? $product->purchases) < \App\Services\Finance\FinancialCpa::minClosedOrders();
         if ($productId !== null && ($young || !$v)) {
             if ($manual['target_cpa'] !== null) {
                 return ['target_cpa' => $manual['target_cpa'], 'break_even_cpa' => $manual['break_even_cpa'], 'source' => 'manual', 'financial' => null];

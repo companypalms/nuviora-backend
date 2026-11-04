@@ -421,6 +421,16 @@ class MetaDecisions
                     $alarms[] = 'Sin stock en ' . ($c['city'] ?? 'una ciudad') . ' de: ' . implode(', ', $city['sizes_out']) . '.';
                 }
             }
+            // .101 (dueño, 2026-11-04: 55 pedidos de Termafit esperando stock en Distrito Capital y la campaña gastando): los
+            // pedidos que esperan stock, con lo gastado desde el más viejo; y no se sube el presupuesto ahí hasta que llegue
+            $waiting = $city['waiting'] ?? null;
+            $stockWaiting = 0;
+            if ($waiting && $waiting['orders'] >= $s['stock_waiting_min']) {
+                $stockWaiting = $waiting['orders'];
+                $spent = array_sum(array_column(array_filter($h['daily'], fn ($d) => $d >= $waiting['since'], ARRAY_FILTER_USE_KEY), 'spend'));
+                $alarms[] = "{$waiting['orders']} pedidos esperando stock en " . ($c['city'] ?? 'una ciudad') . ' desde el ' . date('d/m', strtotime($waiting['since']))
+                    . ': la campaña gastó ' . AdRules::money($spent) . ' desde entonces. Manda stock; mientras tanto no se sube el presupuesto ahí.';
+            }
             $prune = [];
             foreach ($f['ads'] as $adId => $ad) {
                 if ($ad['campaign_meta_id'] === $id && $ad['active'] && ($out['ads'][$adId]['key'] ?? null) === 'loser') {
@@ -438,7 +448,7 @@ class MetaDecisions
             $action = $cr->action([
                 'c' => $c['target'], 'be' => $c['break_even'], 'mode' => $mode, 'budget' => $budget,
                 'spend3' => $w3['totals']['spend'] ?? 0, 'purchases3' => $w3['totals']['purchases'] ?? 0, 'cpa7' => $cpa7, 'freq3' => $w3['metrics']['frequency'] ?? null,
-                'stock_alert' => $stockAlert, 'c_source' => $c['target_source'] ?? null,
+                'stock_alert' => $stockAlert, 'stock_waiting' => $stockWaiting, 'c_source' => $c['target_source'] ?? null,
                 'increased_24h' => collect($h['budget_events'])->contains(fn ($e) => $e['to'] > $e['from'] && strtotime($e['at']) >= strtotime('-24 hours')),
                 'budget_changed_today' => collect($h['budget_events'])->contains(fn ($e) => $e['date'] === $today),
                 'new_ads_today' => in_array($today, $h['new_ads'], true),

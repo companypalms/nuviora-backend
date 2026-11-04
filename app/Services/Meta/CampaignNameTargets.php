@@ -7,8 +7,8 @@ use Illuminate\Support\Facades\DB;
 /**
  * `.79` (dueño, 2026-11-02): "en la campaña yo siempre pongo el CPA referencial": el CPA objetivo y el break-even que el
  * dueño escribe en el nombre de sus campañas ("… | CPA $4| BE $5.6| …", "CPA OBJ $4 | BE $5.5", "CPA 3.7 | BE 7.8").
- * Solo valen como referencia de un producto nuevo, hasta que el sistema tenga sus compras de Meta maduras
- * (MetaAdsReport::effectiveTarget); después manda el número del sistema.
+ * Solo valen como referencia de un producto nuevo, hasta que el sistema tenga sus pedidos terminados (`.101`; antes,
+ * compras de Meta maduras; MetaAdsReport::effectiveTarget); después manda el número del sistema.
  */
 final class CampaignNameTargets
 {

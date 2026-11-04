@@ -2,6 +2,8 @@
 
 namespace App\Services\Meta\Decisions\Readers;
 
+use App\Constants\OrderStatus;
+use App\Models\Status;
 use App\Services\Finance\FinancialCpa;
 use App\Services\Inventory\CityStock;
 use App\Services\Meta\Queue\QueueRules;
@@ -18,6 +20,9 @@ use Illuminate\Support\Facades\DB;
  */
 class OpsFacts
 {
+    /** `.101`: los pedidos que esperan stock se cuentan desde hace 14 días (los de hace meses ya no se van a entregar). */
+    public const WAITING_DAYS = 14;
+
     public function __construct(private CityStock $stock = new CityStock())
     {
     }
@@ -131,6 +136,12 @@ class OpsFacts
             ->groupBy('product_id', 'city_id')->selectRaw('product_id, city_id, COUNT(*) n, SUM(units_main) units')->get()
             ->mapWithKeys(fn ($r) => ["{$r->product_id}|{$r->city_id}" => ['orders' => (int) $r->n, 'units' => (float) $r->units]]);
         $warehouses = $this->stock->warehousesByCity();
+        // .101: los pedidos que esperan stock ("Sin Stock") de los últimos 14 días, por producto y ciudad, y desde cuándo
+        $waiting = DB::table('order_financials')->where('kind', 'normal')->whereIn('product_id', $productIds)
+            ->where('status_id', (int) Status::where('description', OrderStatus::SIN_STOCK)->value('id'))
+            ->where('created_date', '>=', now($tz)->subDays(self::WAITING_DAYS - 1)->toDateString())
+            ->groupBy('product_id', 'city_id')->selectRaw('product_id, city_id, COUNT(*) n, MIN(created_date) since')->get()
+            ->mapWithKeys(fn ($r) => ["{$r->product_id}|{$r->city_id}" => ['orders' => (int) $r->n, 'since' => substr((string) $r->since, 0, 10)]]);
 
         foreach ($productIds as $pid) {
             $cities = [];
@@ -145,6 +156,7 @@ class OpsFacts
                     'units_per_day' => round($perDay, 2),
                     'days_of_stock' => $perDay > 0 ? round(($row['total'] ?? 0) / $perDay, 1) : null,
                     'sizes_out' => array_values(array_map(fn ($v) => $v['title'], array_filter($row['variants'] ?? [], fn ($v) => $v['available'] <= 0))),
+                    'waiting' => $waiting["{$pid}|{$cid}"] ?? null,
                     'version' => $versions["{$pid}|{$cid}"] ?? null,
                 ];
             }

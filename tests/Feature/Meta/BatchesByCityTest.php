@@ -55,10 +55,10 @@ function flexiMeta(): array
     return $f;
 }
 
-function decisionesFlexi(): array
+function decisionesFlexi(?array $meta = null, array $carabobo = [], array $daily = []): array
 {
     $facts = Mockery::mock(AdFacts::class);
-    $facts->allows('load')->andReturn([5 => flexiMeta()]);
+    $facts->allows('load')->andReturn([5 => $meta ?? flexiMeta()]);
     $facts->allows('dailyHistory')->andReturn([]);
     $settings = Mockery::mock(DecisionSettings::class);
     $settings->allows('get')->andReturn(DecisionSettings::defaults());
@@ -66,8 +66,8 @@ function decisionesFlexi(): array
     $city = ['available' => true, 'stock' => 100, 'units_per_day' => 5.0, 'days_of_stock' => 20.0, 'sizes_out' => [], 'version' => null];
     $ops = Mockery::mock(OpsFacts::class);
     $ops->allows('campaigns')->andReturn(['history_since' => null, 'today' => now()->toDateString(), 'yesterday' => now()->subDay()->toDateString(),
-        'campaigns' => [ARAGUA => $empty, CARABOBO => $empty]]);
-    $ops->allows('products')->andReturn([5 => ['price' => 30.0, 'price_change' => null, 'cities' => [3 => $city, 7 => $city], 'version' => null,
+        'campaigns' => [ARAGUA => $empty, CARABOBO => ['daily' => $daily] + $empty]]);
+    $ops->allows('products')->andReturn([5 => ['price' => 30.0, 'price_change' => null, 'cities' => [3 => $city, 7 => $carabobo + $city], 'version' => null,
         'bank' => ['codes' => ['B0103'], 'ready' => ['B0103'], 'launched' => ['B0102']]]]);
 
     return (new MetaDecisions($facts, $settings, $ops))->compute([5])[5];
@@ -153,5 +153,33 @@ describe('.87: Cola y banca dice dónde salió y para qué ciudades sigue en ban
         $b = (new CreativeBatch())->forceFill(['id' => 40, 'product_id' => 5, 'number' => 102, 'status' => 'tested']);
 
         expect(BatchCities::of(collect([$b])))->toBe([40 => ['launched' => ['Aragua'], 'bank_for' => []]]);
+    });
+});
+
+describe('.101: pedidos esperando stock (dueño, 2026-11-04)', function () {
+    // Carabobo va para subir: 12 compras en 3 días con CPA $2,50 (C $5,36)
+    $meta = function (): array {
+        $f = flexiMeta();
+        $f['campaigns'][CARABOBO]['windows'] = ventanaMeta(30, 12);
+
+        return $f;
+    };
+    $daily = ['2026-10-28' => ['spend' => 20.0, 'purchases' => 3], '2026-10-29' => ['spend' => 29.49, 'purchases' => 8], '2026-10-30' => ['spend' => 25.68, 'purchases' => 2]];
+
+    it('sin pedidos esperando, sube', function () use ($meta, $daily) {
+        expect(decisionesFlexi($meta(), [], $daily)['campaigns'][CARABOBO]['action']['key'])->toBe('scale');
+    });
+
+    it('con 55 esperando desde el 29/10: aviso con lo gastado desde entonces, y no sube', function () use ($meta, $daily) {
+        $d = decisionesFlexi($meta(), ['waiting' => ['orders' => 55, 'since' => '2026-10-29']], $daily);
+        expect($d['campaigns'][CARABOBO]['action']['key'])->toBe('hold')
+            ->and($d['campaigns'][CARABOBO]['action']['reading'])->toBe('Va bien, pero hay 55 pedidos esperando stock en esta ciudad: no se sube hasta que llegue.')
+            ->and($d['plan']['alarms'])->toContain('55 pedidos esperando stock en Carabobo desde el 29/10: la campaña gastó $55,17 desde entonces. Manda stock; mientras tanto no se sube el presupuesto ahí.');
+    });
+
+    it('con menos de 5 esperando, nada (puede ser un pedido que espera unas horas)', function () use ($meta, $daily) {
+        $d = decisionesFlexi($meta(), ['waiting' => ['orders' => 4, 'since' => '2026-10-29']], $daily);
+        expect($d['campaigns'][CARABOBO]['action']['key'])->toBe('scale')
+            ->and(implode(' ', $d['plan']['alarms']))->not->toContain('esperando stock');
     });
 });

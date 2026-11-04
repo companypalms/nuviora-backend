@@ -20,6 +20,9 @@ class DecisionSettings
         'no_data_cpa' => [1.0, 0.1, 10],        // gasto < 1×C = sin datos
         'loser_spend_cpa' => [2.0, 0.5, 20],    // gasto ≥ 2×C con 0 o 1 compra = perdedor
         'evaluation_cap_cpa' => [3.0, 1, 30],   // con 2+ compras y CPA ≥ BE: en evaluación hasta 3×C
+        // .101 (dueño, 2026-11-04): con menos de 20 compras, perdedor por el BE solo con el CPA 20 % o más encima
+        'loser_be_margin_pct' => [20, 0, 100],
+        'loser_be_margin_purchases' => [20, 2, 1000],
         'promising_purchases' => [3, 1, 100],   // 3+ compras con CPA ≤ C = prometedor
         'proven_purchases' => [5, 1, 100],      // 5+ compras con CPA ≤ C = PROVEN
         // Embudo y saturación (frecuencia de los 3 días cerrados)
@@ -65,6 +68,8 @@ class DecisionSettings
         'mins_review_pct' => [50, 0, 100],       // hasta 50 % revisar; más, no
         'price_step' => [2, 0.1, 100],           // probar bajar el precio de a $2
         'stock_warn_days' => [3, 1, 90],         // .79: avisar "poco stock" con menos de 3 días de ventas (el stock ya no frena la subida)
+        // .101: con 5+ pedidos esperando stock (de los últimos 14 días) en una ciudad: aviso con lo gastado y no se sube ahí
+        'stock_waiting_min' => [5, 1, 1000],
         // Paso 4 — la cola de producción y la banca (el manual: 1–2 batches aprobados sin testear por producto)
         // .100: un batch a la vez por producto: la reserva es 1 (o 0: solo cuando una ciudad lo necesita)
         'bank_min' => [1, 0, 1],

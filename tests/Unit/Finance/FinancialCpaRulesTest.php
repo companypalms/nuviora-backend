@@ -64,7 +64,9 @@ describe('El objetivo y el break-even', function () {
 });
 
 describe('Qué cohorte vale', function () {
-    $e = fn (float $purchases, ?float $target, ?float $be = null) => ['purchases' => $purchases, 'target' => $target, 'break_even' => $be ?? $target];
+    // .101: la muestra son los pedidos terminados; aquí, uno por compra salvo que se diga otra cosa
+    $e = fn (float $purchases, ?float $target, ?float $be = null, ?int $closed = null) => ['purchases' => $purchases, 'target' => $target,
+        'break_even' => $be ?? $target, 'closed' => $closed ?? (int) $purchases];
 
     it('con muestra en 7 días, la más prudente de las dos', function () use ($e) {
         expect(FinancialCpa::pick($e(40, 5.33, 7.92), $e(160, 6.10, 8.80), 30))->toBe('short');  // la semana empeoró: se nota ya
@@ -99,6 +101,13 @@ describe('Qué cohorte vale', function () {
 
     it('con muestra en 7 días la ciudad usa la suya aunque sea más generosa que el producto (Caracas)', function () use ($e) {
         expect(FinancialCpa::pick($e(70, 5.97, 9.01), $e(110, 7.50, 11.00), 30, $e(149, 4.66, 7.31)))->toBe('short');
+    });
+
+    it('.101: cuentan los pedidos terminados, no las compras de Meta (Termafit: 35 compras, 17 terminados)', function () use ($e) {
+        // Con 35 compras pero 17 pedidos terminados no hay muestra: queda la que tenga datos (y Meta Ads usa la referencia)
+        expect(FinancialCpa::pick($e(35, 4.13, 6.23, 17), $e(35, 4.13, 6.23, 17), 30))->toBe('long')
+            ->and(FinancialCpa::pick($e(35, 4.13, 6.23, 17), $e(60, 5.00, 7.00, 45), 30))->toBe('long')
+            ->and(FinancialCpa::pick($e(35, 4.13, 6.23, 30), null, 30))->toBe('short');
     });
 });
 

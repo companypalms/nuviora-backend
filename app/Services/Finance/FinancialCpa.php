@@ -2,8 +2,10 @@
 
 namespace App\Services\Finance;
 
+use App\Constants\OrderStatus;
 use App\Models\ProductFinancialSetting;
 use App\Models\Setting;
+use App\Models\Status;
 use App\Models\TargetCpaVersion;
 use App\Services\Meta\MetaAdsData;
 use Carbon\CarbonInterface;
@@ -15,8 +17,8 @@ use Illuminate\Support\Facades\DB;
  * optimista, con los gastos fijos adentro, y que avise rápido cuando se pierde".
  * - Cohortes maduras (§60): las órdenes CREADAS entre hoy − (lag + ventana) y hoy − (lag + 1). Se calculan dos, la corta
  *   (7 días) y la larga (28), y se queda la más prudente: la de CPA objetivo más bajo. Si la última semana empeoró se nota
- *   enseguida; si mejoró, no se confía hasta que se sostenga. Con menos de N compras de Meta en 7 días vale la de 28; una
- *   ciudad que tampoco llega usa el número de su producto.
+ *   enseguida; si mejoró, no se confía hasta que se sostenga. Con menos de N pedidos terminados en 7 días vale la de 28;
+ *   una ciudad que tampoco llega usa el número de su producto.
  * - Dueño, 2026-11-02 (Aragua salía "va bien" con un BE de $26 en Comprimax): los pedidos de antes del primer día con datos
  *   de Meta de ese producto en esa ciudad no cuentan (venían de campañas que el sistema no tiene, y 3 semanas de pedidos
  *   sin compras de Meta hacían que cada compra pareciera traer 4 pedidos); y una ciudad que usa la de 28 días por tener
@@ -32,6 +34,11 @@ use Illuminate\Support\Facades\DB;
  * Se calcula cada día a las 06:30 o a mano; cada cálculo es una versión nueva (§73). No toca Meta (§71).
  * - Regla del dueño (2026-10-31): un producto que nunca tuvo una compra registrada no tiene costo (PurchaseCost), así que no
  *   se calcula su objetivo ni su break-even: queda "falta el costo" (detail.no_cost) hasta que se registre una compra.
+ * - `.101` (dueño, 2026-11-04: Termafit salió con BE $4,39 por 11 pedidos sin stock en Distrito Capital y solo 2 días de
+ *   pedidos): los pedidos que hoy están en "Sin Stock" no cuentan, ni la parte de las compras de Meta (y del gasto) que les
+ *   toca en su ciudad, porque no son culpa de la publicidad. Y un número propio pide N pedidos TERMINADOS (entregados o
+ *   cancelados), no N compras de Meta. Medido en producción: los que terminan después del día 5 son casi todos
+ *   cancelaciones, así que los abiertos siguen contando como no entregados.
  */
 class FinancialCpa
 {
@@ -62,7 +69,8 @@ class FinancialCpa
         return max(0.0, (float) Setting::get(self::SETTING_FIXED_MIN, 10));
     }
 
-    public static function cityMinPurchases(): int
+    /** `.101`: los pedidos terminados que hacen falta para confiar en un número propio (el ajuste conserva su nombre viejo). */
+    public static function minClosedOrders(): int
     {
         return max(0, (int) Setting::get(self::SETTING_CITY_MIN_PURCHASES, 30));
     }
@@ -96,7 +104,7 @@ class FinancialCpa
         $margins = ProductFinancialSetting::forProducts($productIds);
         $purchases = PurchaseCost::for($productIds);
         $fixed = $this->fixedShare($today);
-        $min = self::cityMinPurchases();
+        $min = self::minClosedOrders();
 
         $versions = DB::table('target_cpa_versions')->groupBy('product_id', 'city_id')
             ->selectRaw('product_id, city_id, MAX(version) v')->get()->mapWithKeys(fn ($r) => ["{$r->product_id}|{$r->city_id}" => (int) $r->v]);
@@ -135,7 +143,7 @@ class FinancialCpa
             }
             $summary = fn (?array $e, string $w, ?array $cell) => $e === null ? null : $windows[$w] + [
                 'purchases' => $e['purchases'], 'effectiveness' => $e['effectiveness'], 'meta_cpa' => $e['meta_cpa'],
-                'target' => $e['target'], 'break_even' => $e['break_even'],
+                'target' => $e['target'], 'break_even' => $e['break_even'], 'closed' => $e['closed'], 'sin_stock' => $e['sin_stock'],
                 'missing_trips' => (int) ($cell['missing_trips'] ?? 0), 'shipping_filled' => round((float) ($cell['shipping_filled'] ?? 0), 2),
             ];
 
@@ -167,6 +175,9 @@ class FinancialCpa
                     'chosen' => $choice,
                     'basis' => $choice === 'product' ? 'product' : 'own',
                     'city_min_purchases' => $min,
+                    // .101: los pedidos terminados (para confiar en el número) y los que no cuentan por estar sin stock
+                    'closed' => $econ['closed'],
+                    'sin_stock' => $econ['sin_stock'],
                     'meta_from' => $cityId !== null ? ($starts[$key] ?? null) : null,
                     'short' => $summary($s, 'short', $short[$key] ?? null),
                     'long' => $summary($l, 'long', $long[$key] ?? null),
@@ -220,7 +231,7 @@ class FinancialCpa
     /**
      * El objetivo y el break-even de una cohorte (PHP puro).
      *
-     * @param array $c created, delivered, revenue, variable, other_variable, cogs, purchases, spend
+     * @param array $c created, delivered, closed, sin_stock, revenue, variable, other_variable, cogs, purchases, spend
      * @param array{type: string, pct: float} $margin la utilidad del producto: % de lo vendido (sales) o del costo (cost)
      */
     public static function economics(array $c, float $fixedPct, array $margin): array
@@ -236,6 +247,8 @@ class FinancialCpa
         return [
             'orders_created' => (int) $c['created'],
             'orders_delivered' => (int) $c['delivered'],
+            'closed' => (int) ($c['closed'] ?? 0),
+            'sin_stock' => (int) ($c['sin_stock'] ?? 0),
             'effectiveness' => $c['created'] > 0 ? round($c['delivered'] / $c['created'] * 100, 2) : null,
             'revenue' => $R,
             'variable_costs' => $V,
@@ -252,13 +265,14 @@ class FinancialCpa
 
     /**
      * Qué cohorte vale (PHP puro): con muestra en 7 días, la más prudente de las dos (objetivo más bajo); si no, la de 28
-     * con muestra; si tampoco, el producto (solo para una ciudad); si no hay nada mejor, la que tenga datos.
+     * con muestra; si tampoco, el producto (solo para una ciudad); si no hay nada mejor, la que tenga datos. `.101`: la
+     * muestra son los pedidos terminados ($minClosed), no las compras de Meta.
      *
      * @return string short, long o product
      */
-    public static function pick(?array $short, ?array $long, int $minPurchases, ?array $product = null): string
+    public static function pick(?array $short, ?array $long, int $minClosed, ?array $product = null): string
     {
-        $enough = fn (?array $e) => $e !== null && $e['purchases'] > 0 && $e['purchases'] >= $minPurchases;
+        $enough = fn (?array $e) => $e !== null && $e['purchases'] > 0 && $e['closed'] >= $minClosed;
         if ($enough($short)) {
             if ($long === null || $long['target'] === null) {
                 return 'short';
@@ -267,7 +281,7 @@ class FinancialCpa
             return [(float) $long['target'], (float) $long['break_even']] < [(float) $short['target'], (float) $short['break_even']] ? 'long' : 'short';
         }
         if ($enough($long)) {
-            // Una ciudad con pocas compras nunca más generosa que su producto (2026-11-02)
+            // Una ciudad con pocos pedidos nunca más generosa que su producto (2026-11-02)
             $prudent = $product !== null && $product['target'] !== null && $long['target'] !== null
                 && [(float) $product['target'], (float) $product['break_even']] < [(float) $long['target'], (float) $long['break_even']];
 
@@ -345,20 +359,24 @@ class FinancialCpa
         $cells = [];
         $cell = function (int $product, int $city) use (&$cells): string {
             $key = "{$product}|{$city}";
-            $cells[$key] ??= ['product_id' => $product, 'city_id' => $city, 'created' => 0, 'delivered' => 0, 'revenue' => 0.0, 'variable' => 0.0,
-                'cogs' => 0.0, 'other_variable' => 0.0, 'purchases' => 0.0, 'spend' => 0.0, 'missing_trips' => 0, 'shipping_filled' => 0.0];
+            $cells[$key] ??= ['product_id' => $product, 'city_id' => $city, 'created' => 0, 'delivered' => 0, 'closed' => 0, 'sin_stock' => 0,
+                'revenue' => 0.0, 'variable' => 0.0, 'cogs' => 0.0, 'other_variable' => 0.0, 'purchases' => 0.0, 'spend' => 0.0, 'missing_trips' => 0,
+                'shipping_filled' => 0.0];
 
             return $key;
         };
+        // .101: los pedidos que hoy están en "Sin Stock" van aparte (stuck): no cuentan, y abajo se descuenta su parte de Meta
+        $sinStock = (int) Status::where('description', OrderStatus::SIN_STOCK)->value('id');
         $rows = DB::table('order_financials')->whereBetween('created_date', [$from->toDateString(), $to->toDateString()])
-            ->whereNotNull('product_id')->whereNotNull('city_id')->groupBy('product_id', 'city_id', 'created_date')
-            ->selectRaw("product_id, city_id, created_date,
+            ->whereNotNull('product_id')->whereNotNull('city_id')->groupBy('product_id', 'city_id', 'created_date', 'stuck')
+            ->selectRaw("product_id, city_id, created_date, COALESCE(status_id = ?, 0) AS stuck,
                 SUM(kind = 'normal') AS created, SUM(kind = 'normal' AND outcome = 'delivered') AS delivered,
+                SUM(kind = 'normal' AND outcome IN ('delivered', 'not_delivered')) AS closed,
                 SUM(revenue_main + revenue_upsell - revenue_refunded) AS revenue,
                 SUM(cogs_main + cogs_upsell) AS cogs,
                 SUM(cogs_main + cogs_upsell + logistics_cost + delivery_cost + commission_deliverer + commission_seller + commission_upsell
                     + commission_leader + commission_other) AS variable,
-                SUM(delivery_missing_trips) AS missing_trips")
+                SUM(delivery_missing_trips) AS missing_trips", [$sinStock])
             ->get();
         foreach ($rows as $r) {
             $start = $starts["{$r->product_id}|{$r->city_id}"] ?? null;
@@ -366,7 +384,11 @@ class FinancialCpa
                 continue;
             }
             $k = $cell((int) $r->product_id, (int) $r->city_id);
-            foreach (['created', 'delivered', 'revenue', 'cogs', 'variable', 'missing_trips'] as $f) {
+            if ((int) $r->stuck === 1) {
+                $cells[$k]['sin_stock'] += (int) $r->created;
+                continue;
+            }
+            foreach (['created', 'delivered', 'closed', 'revenue', 'cogs', 'variable', 'missing_trips'] as $f) {
                 $cells[$k][$f] += (float) $r->{$f};
             }
             // Una carrera sin costo no es gratis: lo que cuesta en promedio una carrera en esa ciudad
@@ -379,6 +401,16 @@ class FinancialCpa
             $cells[$k]['purchases'] += (float) ($s['purchases'] ?? 0);
             $cells[$k]['spend'] += (float) $s['spend'];
         }
+        // .101: Meta no dice qué compra es qué pedido: a los sin stock les toca su parte de las compras (y del gasto) de su
+        // ciudad, en proporción a los pedidos
+        foreach ($cells as &$c) {
+            $all = $c['created'] + $c['sin_stock'];
+            if ($c['sin_stock'] > 0 && $all > 0) {
+                $c['purchases'] *= $c['created'] / $all;
+                $c['spend'] *= $c['created'] / $all;
+            }
+        }
+        unset($c);
         foreach ($this->expenses->forRange($from, $to)['items'] as $i) {
             if ($i['product_id'] && $i['city_id']) {
                 $cells[$cell($i['product_id'], $i['city_id'])]['other_variable'] += $i['amount_usd'];

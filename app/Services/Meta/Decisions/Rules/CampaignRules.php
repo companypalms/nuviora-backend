@@ -7,7 +7,8 @@ namespace App\Services\Meta\Decisions\Rules;
  * trabajo siguiente (Etapa 5, paso 2b). PHP puro, con las reglas que decidió el dueño el 2026-10-30:
  * - escalar con CPA 3D ≤ C, 10+ compras en 3D, 7D coherente y sin saturar; como mucho un aumento por día. `.79`
  *   (2026-11-02): cuánto, según qué tan debajo de C está el CPA de 3 días (+10 %, +15 % o +20 %), nunca más del 20 %; el
- *   stock ya no frena la subida ni pide pausar: queda como aviso ("al día siguiente ya tenemos stock");
+ *   stock ya no frena la subida ni pide pausar: queda como aviso ("al día siguiente ya tenemos stock"). `.101`
+ *   (2026-11-04, 55 pedidos de Termafit esperando stock 6 días): con pedidos esperando stock en la ciudad no se sube ahí;
  * - entre C y BE: mantener, podar y meter creativos;
  * - en el BE o encima: intervenir (podar y lanzar); 2 días cerrados después, −20 %; 5 días, pausar la ciudad; después el
  *   último test (1,5×C por día, 3 días) y, si falla, recomendar dejar el producto;
@@ -57,7 +58,8 @@ class CampaignRules
      *                  closed_since_intervention, decreased_since_intervention, history_since, last_test (null o
      *                  ['days' => n, 'cpa' => x]), prune (nombres de anuncios perdedores), new_batches, bank_ready (los B####
      *                  en banca, listos para lanzar), c_source (manual o name si la C es una referencia), stock_alert (el
-     *                  aviso de stock de la ciudad, sin frenar nada)
+     *                  aviso de stock de la ciudad, sin frenar nada), stock_waiting (`.101`: los pedidos esperando stock, si
+     *                  pasan el mínimo: no se sube)
      * @return array{key: string, label: string, tone: string, data: string, reading: string, proposal: ?string, from: ?float, to: ?float}
      */
     public function action(array $in): array
@@ -160,6 +162,7 @@ class CampaignRules
         // Debajo de C: ¿se puede escalar?
         $block = match (true) {
             $mode === 'liquidation' => 'En liquidación: no se escala.',
+            ($in['stock_waiting'] ?? 0) > 0 => 'Va bien, pero hay ' . (int) $in['stock_waiting'] . ' pedidos esperando stock en esta ciudad: no se sube hasta que llegue.',
             $purchases < $this->s['scale_min_purchases'] => 'Va bien, pero con poco volumen: ' . AdRules::num($purchases) . ' compras en 3 días (hacen falta ' . (int) $this->s['scale_min_purchases'] . ').',
             $be && ($in['cpa7'] ?? null) !== null && $in['cpa7'] > $be => 'Los 7 días no acompañan (CPA 7D ' . AdRules::money($in['cpa7']) . ', encima del BE).',
             ($in['freq3'] ?? null) !== null && $in['freq3'] >= $this->s['saturation_from'] => 'Va bien, pero la campaña está saturada (frecuencia ' . AdRules::num($in['freq3']) . '): primero creativos de arriba del embudo.',

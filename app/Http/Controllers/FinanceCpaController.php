@@ -52,7 +52,7 @@ class FinanceCpaController extends Controller
             'window' => ['from' => $from->toDateString(), 'to' => $to->toDateString(), 'long_from' => $longFrom->toDateString(),
                 'days' => FinancialCpa::shortDays(), 'long_days' => FinancialCpa::longDays()],
             'fixed' => $cpa->fixedShare(),
-            'city_min_purchases' => FinancialCpa::cityMinPurchases(),
+            'city_min_purchases' => FinancialCpa::minClosedOrders(),
             'last_computed_at' => $latest->max(fn ($v) => $v->computed_at)?->format('Y-m-d H:i'),
             'rows' => $latest->sortBy(fn ($v) => [$v->product_id, $v->city_id === null ? 0 : 1, $cities[$v->city_id] ?? ''])->values()
                 ->map(fn (TargetCpaVersion $v) => $v->toPayload() + [
@@ -89,7 +89,7 @@ class FinanceCpaController extends Controller
             'analysis_window_days' => (int) Setting::get(FinancialCpa::SETTING_WINDOW, 7),
             'analysis_long_window_days' => FinancialCpa::longDays(),
             'fixed_cost_min_pct' => FinancialCpa::minFixedPct(),
-            'cpa_city_min_purchases' => FinancialCpa::cityMinPurchases(),
+            'cpa_city_min_purchases' => FinancialCpa::minClosedOrders(),
             'commissions' => CommissionService::amounts(),
             // §15: la regla de desgaste de los viajes de traslado
             'vehicle_wear' => TransferTrips::wearRule(),
@@ -173,7 +173,7 @@ class FinanceCpaController extends Controller
             'analysis_window_days' => (int) Setting::get(FinancialCpa::SETTING_WINDOW, 7),
             'analysis_long_window_days' => FinancialCpa::longDays(),
             'fixed_cost_min_pct' => FinancialCpa::minFixedPct(),
-            'cpa_city_min_purchases' => FinancialCpa::cityMinPurchases(),
+            'cpa_city_min_purchases' => FinancialCpa::minClosedOrders(),
         ] + array_map(fn ($v) => round((float) $v, 2), CommissionService::amounts())
             + ['vehicle_wear' => TransferTrips::wearLabel(TransferTrips::wearRule()['mode'], TransferTrips::wearRule()['value'])];
     }

@@ -20,11 +20,17 @@ beforeEach(function () {
         $t->date('created_date');
         $t->string('kind')->default('normal');
         $t->string('outcome')->nullable();
+        $t->unsignedBigInteger('status_id')->nullable();
         foreach (['revenue_main', 'revenue_upsell', 'revenue_refunded', 'cogs_main', 'cogs_upsell', 'logistics_cost', 'delivery_cost',
             'commission_deliverer', 'commission_seller', 'commission_upsell', 'commission_leader', 'commission_other'] as $c) {
             $t->decimal($c, 12, 2)->default(0);
         }
         $t->unsignedInteger('delivery_missing_trips')->default(0);
+    });
+    Schema::create('statuses', function ($t) {
+        $t->id();
+        $t->string('description');
+        $t->timestamps();
     });
     Schema::create('meta_campaigns', function ($t) {
         $t->id();

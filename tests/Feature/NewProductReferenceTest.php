@@ -67,6 +67,18 @@ it('con menos de 30 compras de Meta maduras, sigue con la referencia (un día de
     expect((new MetaAdsReport([], 'last_3d'))->targetFor(7, 3))->toMatchArray(['target_cpa' => 4.0, 'source' => 'name']);
 });
 
+it('.101: cuentan los pedidos terminados, no las compras (Termafit el 4/11: 35 compras, 17 terminados)', function () {
+    versiones(['7|' => ['purchases' => 35, 'target' => 4.13, 'break_even' => 6.23, 'detail' => ['no_cost' => false, 'closed' => 17]]]);
+    expect((new MetaAdsReport([], 'last_3d'))->targetFor(7, 3))->toMatchArray(['target_cpa' => 4.0, 'break_even_cpa' => 5.6, 'source' => 'name']);
+    versiones(['7|' => ['purchases' => 35, 'target' => 4.13, 'break_even' => 6.23, 'detail' => ['no_cost' => false, 'closed' => 34]]]);
+    expect((new MetaAdsReport([], 'last_3d'))->targetFor(7, 3))->toMatchArray(['target_cpa' => 4.13, 'break_even_cpa' => 6.23, 'source' => 'financial']);
+});
+
+it('.101: un cálculo de antes (sin pedidos terminados guardados) sigue con las compras', function () {
+    versiones(['7|' => ['purchases' => 35, 'target' => 2.91, 'break_even' => 4.39]]);
+    expect((new MetaAdsReport([], 'last_3d'))->targetFor(7, 3))->toMatchArray(['target_cpa' => 2.91, 'source' => 'financial']);
+});
+
 it('la de Productos y objetivos manda sobre la del nombre', function () {
     versiones([]);
     DB::table('product_ad_targets')->insert(['product_id' => 7, 'target_cpa' => 4.5, 'break_even_cpa' => 6.0, 'valid_from' => '2026-10-29']);

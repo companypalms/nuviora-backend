@@ -56,6 +56,15 @@ describe('La lista urgente', function () {
         expect(array_column($list, 'kind'))->toBe(['stock_out', 'not_sold', 'alarm'])
             ->and(UrgentList::build($facts)[1]['key'])->toBe($list[1]['key']);
     });
+
+    it('.101: los pedidos esperando stock son un aviso de arriba, con lo gastado en el porqué (Termafit, 4/11)', function () {
+        $t = '55 pedidos esperando stock en Distrito Capital desde el 29/10: la campaña gastó $178,46 desde entonces. Manda stock; mientras tanto no se sube el presupuesto ahí.';
+        $w = UrgentList::build([producto(1177, 'Termafit', 4, 0, [], [$t])])[0];
+        expect($w['kind'])->toBe('stock_waiting')->and($w['group'])->toBe('aviso')->and($w['severity'])->toBe(1)->and($w['tone'])->toBe('error')
+            ->and($w['title'])->toBe('55 pedidos esperando stock en Distrito Capital desde el 29/10')
+            ->and($w['why'])->toBe('la campaña gastó $178,46 desde entonces. Manda stock; mientras tanto no se sube el presupuesto ahí.')
+            ->and($w['detail'])->toBe([$t]);
+    });
 });
 
 // .82: cada punto, una cosa que hacer en Ads Manager, con su frase, su porqué y su grupo

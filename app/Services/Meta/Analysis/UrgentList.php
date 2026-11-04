@@ -36,7 +36,7 @@ final class UrgentList
 {
     /** Qué tan urgente es cada cosa (menos es más urgente). */
     public const SEVERITY = [
-        'drop' => 1, 'pause_city' => 1, 'not_sold' => 1, 'stock_out' => 1, 'stop_creatives' => 1,
+        'drop' => 1, 'pause_city' => 1, 'not_sold' => 1, 'stock_out' => 1, 'stock_waiting' => 1, 'stop_creatives' => 1,
         'decrease' => 2, 'intervene' => 2, 'last_test' => 2, 'tracking' => 2, 'late_urgent' => 2,
         'hold_prune' => 3, 'few_batches' => 3, 'late_batch' => 3, 'launch_ready' => 3,
         'scale' => 4, 'launch_test' => 4,
@@ -50,7 +50,7 @@ final class UrgentList
         'intervene' => 'arreglar', 'last_test' => 'arreglar', 'tracking' => 'arreglar', 'hold_prune' => 'arreglar', 'few_batches' => 'arreglar',
         'late_urgent' => 'arreglar', 'late_batch' => 'arreglar', 'launch_ready' => 'arreglar',
         'scale' => 'crecer', 'launch_test' => 'crecer',
-        'stock_out' => 'aviso', 'alarm' => 'aviso', 'price' => 'aviso', 'names' => 'aviso',
+        'stock_out' => 'aviso', 'stock_waiting' => 'aviso', 'alarm' => 'aviso', 'price' => 'aviso', 'names' => 'aviso',
     ];
 
     /** Cuántos nombres de creativos caben en la línea del porqué. */
@@ -141,13 +141,20 @@ final class UrgentList
                 }
             }
             foreach ($p['alarms'] as $t) {
-                $kind = str_starts_with($t, 'Tracking') ? 'tracking' : (str_contains($t, 'sigue activa') ? 'stock_out' : 'alarm');
+                $kind = match (true) {
+                    str_starts_with($t, 'Tracking') => 'tracking',
+                    str_contains($t, 'sigue activa') => 'stock_out',
+                    str_contains($t, 'esperando stock') => 'stock_waiting',
+                    default => 'alarm',
+                };
+                // .101: "55 pedidos esperando stock en Distrito Capital" de título; lo gastado y qué hacer, en el porqué
+                $waiting = $kind === 'stock_waiting' ? explode(': ', $t, 2) : null;
                 $items[] = $base + ['key' => "{$p['product_id']}:alarm:" . substr(md5($t), 0, 10), 'city' => null, 'kind' => $kind,
                     'label' => $kind === 'tracking' ? 'Tracking' : 'Stock', 'text' => $t, 'tone' => $kind === 'alarm' ? 'warning' : 'error',
-                    'where' => $short, 'title' => $kind === 'tracking' ? 'Revisa el píxel' : $t,
+                    'where' => $short, 'title' => match ($kind) { 'tracking' => 'Revisa el píxel', 'stock_waiting' => $waiting[0], default => $t },
                     'steps' => $kind === 'tracking' ? ['Abre el Administrador de eventos de Meta.', 'Revisa que el píxel y la API de conversiones estén recibiendo las compras.'] : [],
-                    'why' => $kind === 'tracking' ? self::firstSentence(preg_replace('/^Tracking:\s*/u', '', $t)) : null,
-                    'detail' => $kind === 'tracking' ? [$t] : []];
+                    'why' => match ($kind) { 'tracking' => self::firstSentence(preg_replace('/^Tracking:\s*/u', '', $t)), 'stock_waiting' => $waiting[1] ?? null, default => null },
+                    'detail' => in_array($kind, ['tracking', 'stock_waiting'], true) ? [$t] : []];
             }
             if ($p['price_watch']) {
                 $items[] = $base + ['key' => "{$p['product_id']}:price_watch", 'city' => null, 'kind' => 'price', 'label' => 'Precio',
