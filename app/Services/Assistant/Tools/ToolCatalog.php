@@ -72,6 +72,8 @@ class ToolCatalog
         Change\ProductProfileTool::class,
         // .66: anotar algo en lo que sabemos de un producto
         Change\ProductNoteTool::class,
+        // .99: pausar, poner en liquidación, abandonar o reactivar un producto
+        Change\ProductModeTool::class,
     ];
 
     /** @var array<string, Tool>|null */

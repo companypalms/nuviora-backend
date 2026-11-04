@@ -153,6 +153,10 @@ final class QueueRules
     {
         $lines = ['ENCARGO ' . ($b['code'] ?? '(sin aprobar)') . " · {$b['product']}"];
         $kind = self::KINDS[$b['kind']] ?? $b['kind'];
+        // .99: qué hay que hacer, en una frase
+        if (!empty($b['task']['title'])) {
+            $lines[] = 'Qué hay que hacer: ' . $b['task']['title'] . (!empty($b['task']['detail']) ? ". {$b['task']['detail']}" : '');
+        }
         $lines[] = "Tipo: {$kind}" . ($b['reference'] ? " (referencia: {$b['reference']})" : '');
         if ($b['angle_code']) {
             $lines[] = "Ángulo: {$b['angle_code']}" . ($b['angle_name'] ? " ({$b['angle_name']})" : '');

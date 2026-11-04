@@ -116,6 +116,10 @@ final class DemandRules
         $coming = array_values(array_filter($open, fn ($b) => in_array($b['status'], ['approved', 'production', 'review', 'discarded'], true)));
         usort($coming, fn ($a, $b) => [$a['due_date'] ?? '9', $a['id']] <=> [$b['due_date'] ?? '9', $b['id']]);
         $out = ['advance' => [], 'covered' => [], 'new' => []];
+        // .99 (dueño, 2026-11-04: "cuando el editor suba los batch que ya tenemos en banca antes del sistema, el sistema los
+        // debe tomar en cuenta para no pedir batch de ese producto por el momento hasta que ese se lance"): con un batch
+        // esperando en la banca (que hoy no se lanza), no se pide nada nuevo de ese producto
+        $waiting = $ready !== [];
         foreach ($dates as $d) {
             if ($b = array_shift($ready)) {
                 $out['covered'][$b['id']] = $d;
@@ -128,7 +132,9 @@ final class DemandRules
                 }
                 continue;
             }
-            $out['new'][] = $d;
+            if (!$waiting) {
+                $out['new'][] = $d;
+            }
         }
 
         return $out;

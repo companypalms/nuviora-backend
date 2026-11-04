@@ -190,6 +190,17 @@ class ExampleModel implements AssistantModel
             default => $now->toDateString(),
         };
 
+        // .99: "Pausa el Comprimax, no hay stock", "Pon el Comprimax en liquidación", "Reactiva el Comprimax" (con "el" o "la":
+        // "reactiva a Lara" es reactivar a una persona)
+        if (preg_match('/^\s*(pausa|reactiva|activa|abandona)\s+(?:el\s+producto\s+|el\s+|la\s+)(.+?)(?:\s*[,.;:]\s*(.+?))?\s*$/isu', $message, $m)) {
+            $mode = ['pausa' => 'pausado', 'reactiva' => 'activo', 'activa' => 'activo', 'abandona' => 'abandonado'][mb_strtolower($m[1])];
+
+            return ['name' => 'proponer_estado_producto', 'arguments' => ['producto' => trim($m[2]), 'estado' => $mode] + (!empty($m[3]) ? ['motivo' => trim($m[3])] : [])];
+        }
+        if (preg_match('/^\s*pon(?:er)?\s+(?:el\s+producto\s+|el\s+|la\s+)?(.+?)\s+en\s+(pausa|liquidaci[oó]n)(?:\s*[,.;:]\s*(.+?))?\s*$/isu', $message, $m)) {
+            return ['name' => 'proponer_estado_producto', 'arguments' => ['producto' => trim($m[1]), 'estado' => str_starts_with(mb_strtolower($m[2]), 'pausa') ? 'pausado' : 'liquidacion']
+                + (!empty($m[3]) ? ['motivo' => trim($m[3])] : [])];
+        }
         // .66: "Anota en lo que sabemos de Comprimax que con modelo masculino no funciona"
         if (preg_match('/^\s*anota(?:me)?\s+en\s+lo\s+que\s+sabemos\s+de\s+(.+?)\s*(?:que|:)\s*(.+)$/isu', $message, $m)) {
             $kind = preg_match('/\bno\s+(funciona|sirve|vende)/iu', $m[2]) ? 'no_funciona' : (preg_match('/\b(funciona|vende|sirve)/iu', $m[2]) ? 'funciona' : 'idea');

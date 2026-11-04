@@ -23,6 +23,9 @@ final class ProposalRules
 
     private const CROSS_ORDER = ['transversal' => 0, 'city_sensitive' => 1];
 
+    /** `.99`: qué prueba cada pieza de una iteración, según lo que hay que cambiar del video del ganador (PieceRules::TESTS). */
+    private const PIECE_TEST = ['hook' => 'winner_hook', 'after_hook' => 'after_hook', 'middle' => 'middle', 'close' => 'close', 'click' => 'click', 'format' => 'format'];
+
     /**
      * `.88` (dueño, 2026-11-03: "que le aparezca todo lo que tengamos que hacer… sin contar cuántos editores tenemos"): un
      * encargo por cada fecha que le falta a cada producto (DemandPlanner), sin tope de editores, del producto más urgente al
@@ -96,27 +99,33 @@ final class ProposalRules
         $pa = ($d['profile_angles'] ?? []) + ['order' => [], 'lost' => [], 'used' => []];
         $mainAngle = $failedAngle !== null && in_array($failedAngle, $pa['lost'], true)
             ? (array_values(array_diff($pa['order'], $pa['lost']))[0] ?? null) : $failedAngle;
+        // .99 (dueño: "tengo que desarrollar tres piezas del ángulo nervio vago"): un concepto nuevo siempre dice de qué
+        // ángulo; si no se sabe el principal, el primero de la ficha que no perdió
+        $conceptAngle = $mainAngle ?? (array_values(array_diff($pa['order'], $pa['lost']))[0] ?? null);
         $tried = array_merge($pa['used'], array_filter(array_column($d['creatives'] ?? [], 'angle_code')));
         $fresh = $kind === 'new_angle' ? (array_values(array_diff($pa['order'], $pa['lost'], $tried))[0] ?? null) : null;
         $ref = match ($kind) {
             'iteration' => $winner ? ['id' => $winner['id'], 'label' => $winner['label'], 'type' => $winner['type'] ?? null, 'angle' => $winner['angle'] ?? null] : null,
             'new_angle' => null,
-            default => self::reference($d['creatives'] ?? [], $mainAngle),
+            default => self::reference($d['creatives'] ?? [], $conceptAngle),
         };
         $iterate = match ($kind) {
             'iteration' => ($ref['type'] ?? null) === 'image' ? 'el formato: la imagen ganadora pasa a video' : ($winner['iterate'] ?? 'el hook (los primeros segundos)'),
             'top_funnel' => 'creativos de arriba del embudo: para gente que todavía no conoce el problema ni el producto',
             'new_angle' => 'un ángulo nuevo' . ($fresh ? " de tu ficha que todavía no se probó ({$fresh})" : '') . ': '
                 . ($failedAngle ? "{$failedAngle} ya falló en " . (int) ($work['failed_batches_in_angle'] ?? 0) . ' batches' : 'sin un ángulo que funcione'),
-            default => 'un concepto nuevo' . ($mainAngle ? " dentro de {$mainAngle}" : ''),
+            default => 'un concepto nuevo' . ($conceptAngle ? " dentro de {$conceptAngle}" : ''),
         };
         $u = $d['plan']['urgency'];
 
         return [
             'product_id' => (int) $d['product']['id'], 'product' => $d['product']['name'], 'kind' => $kind,
-            'angle_code' => $kind === 'new_angle' ? $fresh : ($kind === 'iteration' ? ($ref['angle'] ?? $mainAngle) : $mainAngle),
+            'angle_code' => $kind === 'new_angle' ? $fresh : ($kind === 'iteration' ? ($ref['angle'] ?? $mainAngle) : $conceptAngle),
             'reference_id' => $ref['id'] ?? null, 'reference' => $ref['label'] ?? null, 'reference_type' => $ref['type'] ?? null,
             'city_id' => $city['city_id'], 'city' => $city['city'], 'format' => 'video', 'iterate' => $iterate, 'urgency' => (int) $u['level'],
+            // .99: qué prueba cada pieza (una iteración: el hook, un tramo o el formato; lo demás, el tipo del encargo)
+            'piece_test' => $kind !== 'iteration' ? $kind
+                : (($ref['type'] ?? null) === 'image' ? 'format' : (self::PIECE_TEST[$winner['iterate_key'] ?? 'hook'] ?? 'iteration')),
             'reason' => $u['label'] . ($u['reasons'] ? ': ' . implode('; ', $u['reasons']) : '') . '.',
         ];
     }

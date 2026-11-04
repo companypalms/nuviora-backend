@@ -4,6 +4,7 @@ namespace App\Services\Meta\Queue;
 
 use App\Models\CreativeBatch;
 use App\Models\CreativeBatchDelivery;
+use App\Services\Meta\Products\ProductModes;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -108,8 +109,9 @@ class EditorGame
         $since = date('Y-m-d', strtotime("{$today} -" . self::STREAK_DAYS . ' days'));
         $leader = $who['role'] === EditorRules::LEADER;
 
-        $mine = CreativeBatch::where('editor_id', $who['id'])->whereNotNull('due_date')->where('due_date', '>=', $since)
-            ->whereNotIn('status', ['proposed', 'discarded'])->get(['id', 'due_date', 'delivered_at']);
+        // .99: lo que está en espera (su producto está parado) no corta la racha
+        $mine = ProductModes::withoutHeld(CreativeBatch::where('editor_id', $who['id'])->whereNotNull('due_date')->where('due_date', '>=', $since)
+            ->whereNotIn('status', ['proposed', 'discarded']))->get(['id', 'due_date', 'delivered_at']);
         $me = [
             'streak' => self::streak(self::onTimeDays(self::dueRows($mine), $today), $today),
             'first' => self::firstTime([$who['id']], $monthStart),

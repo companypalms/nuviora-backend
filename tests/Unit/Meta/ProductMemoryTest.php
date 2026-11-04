@@ -116,6 +116,17 @@ describe('El asistente', function () {
         expect(fn () => ProductNoteTool::proposal(5, 'Comprimax', ['tipo' => 'idea', 'texto' => ' ']))->toThrow(ToolProblem::class);
     });
 
+    it('.99: en el modo ejemplo: pausar, poner en liquidación o reactivar un producto (y "reactiva a Lara" sigue siendo una persona)', function () {
+        $now = CarbonImmutable::parse('2026-11-04 10:00');
+        expect(ExampleModel::change('Pausa el Comprimax, no hay stock', $now))
+            ->toBe(['name' => 'proponer_estado_producto', 'arguments' => ['producto' => 'Comprimax', 'estado' => 'pausado', 'motivo' => 'no hay stock']])
+            ->and(ExampleModel::change('Pon el Comprimax en liquidación', $now))
+            ->toBe(['name' => 'proponer_estado_producto', 'arguments' => ['producto' => 'Comprimax', 'estado' => 'liquidacion']])
+            ->and(ExampleModel::change('Reactiva el Comprimax', $now))
+            ->toBe(['name' => 'proponer_estado_producto', 'arguments' => ['producto' => 'Comprimax', 'estado' => 'activo']])
+            ->and(ExampleModel::change('Reactiva a Lara', $now)['name'])->toBe('proponer_reactivar_usuario');
+    });
+
     it('en el modo ejemplo: "¿qué sabemos de X?" y "anota en lo que sabemos de X que …"', function () {
         expect(ExampleModel::understand('¿Qué sabemos de Comprimax?'))->toBe(['name' => 'lo_que_sabemos', 'arguments' => ['producto' => 'Comprimax']]);
         expect(ExampleModel::change('Anota en lo que sabemos de Comprimax que con modelo masculino no funciona', CarbonImmutable::parse('2026-11-01 10:00')))

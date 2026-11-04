@@ -7,6 +7,7 @@ use App\Models\Setting;
 use App\Services\Meta\Analysis\MetaAnalyzer;
 use App\Services\Meta\Analysis\UrgentList;
 use App\Services\Meta\Decisions\DecisionSettings;
+use App\Services\Meta\Products\ProductModes;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
@@ -37,7 +38,8 @@ class EditorForecast
         $in = fn (string $date) => min(ForecastRules::DAYS - 1, max(0, (int) round((strtotime($date) - strtotime($today)) / 86400)));
         // Lo ya pedido y sin entregar, por su fecha (lo atrasado, hoy). Lo que está en revisión ya se entregó
         $due = [];
-        foreach (CreativeBatch::whereIn('status', ['approved', 'production'])->get(['due_date']) as $b) {
+        // .99: sin lo que está en espera (su producto está en pausa, en liquidación o abandonado)
+        foreach (ProductModes::withoutHeld(CreativeBatch::whereIn('status', ['approved', 'production']))->get(['due_date']) as $b) {
             $d = $b->due_date ? $in($b->due_date->toDateString()) : 0;
             $due[$d] = ($due[$d] ?? 0) + 1;
         }

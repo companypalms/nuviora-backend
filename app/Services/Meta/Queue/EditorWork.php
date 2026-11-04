@@ -11,6 +11,7 @@ use App\Models\StoredFile;
 use App\Models\User;
 use App\Services\Files\FileStore;
 use App\Services\Files\Uploads;
+use App\Services\Meta\Products\ProductModes;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -53,7 +54,8 @@ class EditorWork
     public static function editorsWithLoad(): array
     {
         $today = now(config('app.timezone'))->toDateString();
-        $open = CreativeBatch::whereIn('status', ['approved', 'production', 'review'])->whereNotNull('editor_id')
+        // .99: lo de un producto en pausa, en liquidación o abandonado está en espera: no es carga de nadie
+        $open = ProductModes::withoutHeld(CreativeBatch::whereIn('status', ['approved', 'production', 'review'])->whereNotNull('editor_id'))
             ->get(['editor_id', 'status', 'due_date', 'delivered_at'])->groupBy('editor_id');
         $editors = array_map(fn ($e) => $e + [
             'open' => count($open[$e['id']] ?? []),
@@ -357,12 +359,23 @@ class EditorWork
                 'iteration_of' => $b->reference_creative_id ? ($b->reference?->label ?? 'el ganador') : null,
                 // .95: un batch ya hecho que cargó el líder (de antes del sistema, sin hipótesis)
                 'imported' => $b->source === 'imported',
+                // .99: qué hay que hacer, en una frase ("3 iteraciones del hook de C0146", "3 piezas nuevas del ángulo POSP")
+                'task' => self::task($b, $angles["{$b->product_id}:{$b->angle_code}"] ?? null),
                 'meta_names' => QueueRules::metaNames($b->number, $b->angle_code, $b->pieces->pluck('number')->all()),
                 'uploads' => $uploads, // .90: se entrega subiendo el archivo (no con Drive)
             ] + self::fields($b, $who);
 
             return $out + ['brief' => QueueRules::brief($out)];
         })->values()->all();
+    }
+
+    /** `.99`: qué hay que hacer en el encargo (BatchTask), con lo que ya trae. */
+    public static function task(CreativeBatch $b, ?string $angleName): ?array
+    {
+        return BatchTask::of(['kind' => $b->kind, 'angle_code' => $b->angle_code, 'angle_name' => $angleName,
+            'iterates' => $b->reference_creative_id ? ($b->reference?->label ?? 'el ganador') : null,
+            'imported' => $b->source === 'imported', 'testing' => $b->testing_round !== null,
+            'pieces' => $b->pieces->map(fn (CreativeBatchPiece $p) => ['test' => $p->test, 'style' => $p->style, 'format' => $p->format])->all()]);
     }
 
     /**

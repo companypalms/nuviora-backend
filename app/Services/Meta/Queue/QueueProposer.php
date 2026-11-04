@@ -277,7 +277,8 @@ class QueueProposer
         $texts = array_values(array_slice((array) ($t['ideas'] ?? []), 0, $p['pieces']));
         for ($i = 0; $i < $p['pieces']; $i++) {
             // .81: cada pieza sabe qué prueba (el tipo del encargo); su hipótesis es la del encargo
-            CreativeBatchPiece::create(['creative_batch_id' => $batch->id, 'position' => $i + 1, 'change' => $clean($texts[$i] ?? null), 'test' => $p['kind']]);
+            // .99: en una iteración, lo que prueba (el hook, un tramo o el formato), para que el encargo lo diga
+            CreativeBatchPiece::create(['creative_batch_id' => $batch->id, 'position' => $i + 1, 'change' => $clean($texts[$i] ?? null), 'test' => $p['piece_test'] ?? $p['kind']]);
         }
 
         return $batch;

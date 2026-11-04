@@ -493,6 +493,7 @@ class MetaDecisions
             }
             if ($key === 'proven' && $p7 >= $s['proven_purchases'] && (!$winner || $p7 > $winner['p7'])) {
                 $winner = ['id' => $cid, 'label' => $cr2['label'], 'p7' => $p7, 'iterate' => self::ITERATE[$cr2['video']['iterate'] ?? ''] ?? null,
+                    'iterate_key' => $cr2['video']['iterate'] ?? null, // .99: qué prueba cada pieza de su iteración
                     'angle' => $cr2['angle_code'], 'type' => $cr2['type']];
             }
         }

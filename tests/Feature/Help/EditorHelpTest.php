@@ -148,6 +148,19 @@ describe('Preguntar', function () {
             ->and($help->left(User::find(11)))->toBe(2); // el tope es de cada uno
     });
 
+    it('.99: el líder no tiene tope de preguntas; el editor de video sí', function () {
+        config(['services.editor_help.daily_limit' => 1]);
+        Http::fake(['api.openai.com/*' => ($this->ok)()]);
+        $help = new EditorHelp();
+        foreach (['uno', 'dos', 'tres'] as $q) {
+            expect($help->ask(User::find(7), $q)->status)->toBe('done');
+        }
+        $help->ask(User::find(10), 'uno');
+        expect($help->dailyLimit(User::find(7)))->toBeNull()->and($help->left(User::find(7)))->toBeNull()
+            ->and($help->left(User::find(10)))->toBe(0)
+            ->and(fn () => $help->ask(User::find(10), 'dos'))->toThrow(HttpException::class, 'Ya usaste tus 1 preguntas de hoy');
+    });
+
     it('apagada o sin llave en el servidor: no pregunta', function () {
         Http::fake();
         config(['services.editor_help.enabled' => false]);

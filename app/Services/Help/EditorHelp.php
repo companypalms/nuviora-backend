@@ -59,8 +59,17 @@ class EditorHelp
         return app()->environment('local') ? 'example' : 'unavailable';
     }
 
-    public function dailyLimit(): int
+    /**
+     * El tope de preguntas al día. `.99` (dueño, 2026-11-04: "quiero quitarle el límite de preguntas a su chat de dudas, el
+     * del editor líder solamente"): el líder no tiene tope (null); el editor de video, el de siempre. El freno por minuto
+     * de la ruta sigue para los dos.
+     */
+    public function dailyLimit(?User $user = null): ?int
     {
+        if ($user !== null && self::book($user) === 'lider') {
+            return null;
+        }
+
         return max(1, (int) config('services.editor_help.daily_limit', 20));
     }
 
@@ -70,9 +79,12 @@ class EditorHelp
         return HelpQuestion::where('user_id', $user->id)->where('status', HelpQuestion::DONE)->where('created_at', '>=', today())->count();
     }
 
-    public function left(User $user): int
+    /** Cuántas le quedan hoy (null: sin tope). */
+    public function left(User $user): ?int
     {
-        return max(0, $this->dailyLimit() - $this->usedToday($user));
+        $limit = $this->dailyLimit($user);
+
+        return $limit === null ? null : max(0, $limit - $this->usedToday($user));
     }
 
     /** La conversación de hoy (mañana empieza limpia). */
@@ -91,8 +103,8 @@ class EditorHelp
         abort_if($book === null, 403, 'La ayuda «¿Dudas?» es solo para los editores.');
         $mode = $this->mode();
         abort_unless(in_array($mode, ['openai', 'example'], true), 503, 'La ayuda no está disponible ahora.');
-        $limit = $this->dailyLimit();
-        abort_if($this->usedToday($user) >= $limit, 429, "Ya usaste tus {$limit} preguntas de hoy. Mañana tienes {$limit} más.");
+        $limit = $this->dailyLimit($user);
+        abort_if($limit !== null && $this->usedToday($user) >= $limit, 429, "Ya usaste tus {$limit} preguntas de hoy. Mañana tienes {$limit} más.");
 
         $question = trim(mb_substr($question, 0, self::MAX_QUESTION));
         $history = $this->today($user)->where('status', HelpQuestion::DONE)->take(-self::HISTORY);

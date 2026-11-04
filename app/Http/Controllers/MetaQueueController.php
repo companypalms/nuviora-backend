@@ -12,6 +12,7 @@ use App\Models\Setting;
 use App\Services\Meta\AngleStats;
 use App\Services\Meta\Decisions\DecisionSettings;
 use App\Services\Meta\Decisions\MetaDecisions;
+use App\Services\Meta\Products\ProductModes;
 use App\Services\Meta\Queue\BatchQueue;
 use App\Services\Meta\Queue\BatchTracker;
 use App\Services\Meta\Queue\EditorWork;
@@ -299,11 +300,15 @@ class MetaQueueController extends Controller
             $plans = [];
         }
         $bank = CreativeBatch::whereIn('status', QueueRules::BANK)->get(['product_id', 'status'])->groupBy('product_id');
+        $modes = \App\Models\ProductAdSetting::pluck('mode', 'product_id');
 
-        return array_map(function ($p) use ($plans, $bank) {
+        return array_map(function ($p) use ($plans, $bank, $modes) {
             $u = $plans[$p['id']]['plan']['urgency'] ?? null;
+            $mode = (string) ($modes[$p['id']] ?? 'normal');
 
             return $p + [
+                // .99: en pausa, en liquidación o abandonado (sus encargos sin terminar quedan en espera)
+                'mode' => $mode, 'mode_label' => ProductModes::LABELS[$mode] ?? $mode,
                 'bank' => ($bank[$p['id']] ?? collect())->count(),
                 'ready' => ($bank[$p['id']] ?? collect())->where('status', 'bank')->count(),
                 'urgency' => $u ? ['level' => $u['level'], 'label' => $u['label'], 'to_order' => $u['batches'], 'needed' => $u['needed'] ?? $u['batches']] : null,
@@ -336,7 +341,9 @@ class MetaQueueController extends Controller
         // .90: el archivo de cada pieza, para verlo ahí mismo
         $pieceFiles = \App\Models\StoredFile::payloads($batches->flatMap(fn (CreativeBatch $b) => $b->pieces->pluck('file_id'))->all());
 
-        return EditorWork::sorted($batches)->map(function (CreativeBatch $b) use ($angles, $angleAbout, $who, $profiles, $cities, $pieceFiles) {
+        $stopped = ProductModes::stoppedIds();
+
+        return EditorWork::sorted($batches)->map(function (CreativeBatch $b) use ($angles, $angleAbout, $who, $profiles, $cities, $pieceFiles, $stopped) {
                 // .81: qué prueba cada pieza, su hipótesis, por qué ese formato y, al terminar el test, si ganó
                 $pieces = $b->pieces->map(fn (CreativeBatchPiece $p) => ['id' => $p->id, 'code' => $p->code(), 'change' => $p->change, 'format' => $p->format,
                     'link' => $p->link, 'file' => $pieceFiles[$p->file_id] ?? null, 'hook' => $p->hook,
@@ -348,6 +355,9 @@ class MetaQueueController extends Controller
                     'status' => $b->status, 'status_label' => QueueRules::STATUSES[$b->status] ?? $b->status, 'status_at' => $b->status_at?->toIso8601String(),
                     'status_by' => $b->statusUser?->names, 'position' => $b->position, 'source' => $b->source,
                     'kind' => $b->kind, 'angle_code' => $b->angle_code, 'angle_name' => $angles["{$b->product_id}:{$b->angle_code}"] ?? null,
+                    // .99: qué hay que hacer, en una frase, y si está en espera (su producto está en pausa, en liquidación o abandonado)
+                    'task' => EditorWork::task($b, $angles["{$b->product_id}:{$b->angle_code}"] ?? null),
+                    'on_hold' => in_array((int) $b->product_id, $stopped, true) && in_array($b->status, ProductModes::HOLD, true),
                     'angle_about' => $angleAbout["{$b->product_id}:{$b->angle_code}"] ?? null,
                     'concept' => $b->concept, 'hypothesis' => $b->hypothesis, 'goal' => $b->goal, 'test_idea' => $b->test_idea, 'improve' => $b->improve, 'audience' => $b->audience,
                     'persona_id' => $b->persona_id, 'testing_round' => $b->testing_round,

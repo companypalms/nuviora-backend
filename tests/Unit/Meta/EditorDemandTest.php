@@ -1,8 +1,11 @@
 <?php
 
 use App\Services\Meta\Analysis\UrgentList;
+use App\Services\Meta\Products\ProductModes;
+use App\Services\Meta\Queue\BatchTask;
 use App\Services\Meta\Queue\DemandRules;
 use App\Services\Meta\Queue\ForecastRules;
+use App\Services\Meta\Queue\QueueRules;
 
 // .88 (dueño, 2026-11-03): al editor líder le aparece todo lo que hay que hacer, para cuándo, sin tope de editores, y si
 // alcanza el equipo (un flotante o un editor fijo).
@@ -141,5 +144,58 @@ describe('.89: el flujo sin botones', function () {
             ->and(DemandRules::reason('hold_prune', 3))->toBe('subió de su costo objetivo')
             ->and(DemandRules::reason('scale', 1))->toBe('le queda 1 solo batch vivo')
             ->and(DemandRules::reason('scale', 2))->toBeNull();
+    });
+});
+
+describe('.99: qué hay que hacer en cada encargo', function () {
+    $b = fn (array $over) => $over + ['kind' => 'new_concept', 'angle_code' => null, 'angle_name' => null, 'iterates' => null, 'imported' => false, 'testing' => false,
+        'pieces' => [['test' => 'new_concept', 'style' => null, 'format' => null], ['test' => 'new_concept', 'style' => null, 'format' => null], ['test' => 'new_concept', 'style' => null, 'format' => null]]];
+    $pieces = fn (array ...$p) => array_map(fn ($x) => $x + ['style' => null, 'format' => null], $p);
+
+    it('piezas nuevas de un ángulo, de un ángulo nuevo o de arriba del embudo', function () use ($b) {
+        expect(BatchTask::of($b(['angle_code' => 'NV', 'angle_name' => 'Nervio vago']))['title'])->toBe('3 piezas nuevas del ángulo NV · Nervio vago')
+            ->and(BatchTask::of($b([]))['title'])->toBe('3 piezas nuevas (concepto nuevo)')
+            ->and(BatchTask::of($b(['kind' => 'new_angle', 'angle_code' => 'DOL', 'angle_name' => 'Dolor de espalda']))['title'])->toBe('3 piezas nuevas de un ángulo nuevo: DOL · Dolor de espalda')
+            ->and(BatchTask::of($b(['kind' => 'new_angle', 'angle_code' => 'POSP', 'testing' => true]))['title'])->toBe('3 piezas para probar el ángulo POSP')
+            ->and(BatchTask::of($b(['kind' => 'top_funnel', 'angle_code' => 'POSP']))['title'])->toBe('3 piezas nuevas para gente que todavía no conoce el problema (ángulo POSP)')
+            // un batch ya hecho que se cargó: nada que hacer
+            ->and(BatchTask::of($b(['imported' => true])))->toBeNull();
+    });
+
+    it('las iteraciones dicen de qué creativo y qué se cambia: el hook, el formato o un tramo', function () use ($b, $pieces) {
+        $it = fn (array $p) => BatchTask::of($b(['kind' => 'iteration', 'iterates' => 'C0146 POSP', 'pieces' => $p]));
+        expect($it($pieces(['test' => 'winner_hook'], ['test' => 'hook'], ['test' => 'fatigue'])))
+            ->toBe(['title' => '3 iteraciones del hook de C0146 POSP', 'detail' => 'Solo cambia el hook (los primeros 3 segundos): el resto del video queda igual.'])
+            ->and($it($pieces(['test' => 'format', 'style' => 'ugc'], ['test' => 'format', 'style' => 'testimonio'])))
+            ->toBe(['title' => '2 iteraciones de formato de C0146 POSP', 'detail' => 'El mismo mensaje, en UGC y testimonio.'])
+            ->and($it($pieces(['test' => 'winner_hook'], ['test' => 'format', 'style' => 'ugc'], ['test' => 'format', 'style' => 'imagen', 'format' => 'image'])))
+            ->toBe(['title' => '3 iteraciones de C0146 POSP', 'detail' => '1 de hook (hook nuevo, el resto igual) y 2 de formato (UGC e imagen).'])
+            ->and($it($pieces(['test' => 'middle'], ['test' => 'middle']))['title'])->toBe('2 iteraciones de C0146 POSP: arreglar el medio del video')
+            // la imagen ganadora que pasa a video
+            ->and($it($pieces(['test' => 'format', 'format' => 'video']))['title'])->toBe('1 iteración de formato de C0146 POSP');
+    });
+
+    it('el texto del encargo empieza por lo que hay que hacer', function () {
+        $brief = QueueRules::brief(['code' => 'B0101', 'product' => 'FlexiStep', 'kind' => 'iteration', 'reference' => 'C0146', 'angle_code' => null, 'angle_name' => null,
+            'format' => 'video', 'style' => null, 'pieces' => [], 'deliverables' => null, 'due_date' => null, 'editor' => null,
+            'task' => ['title' => '3 iteraciones del hook de C0146', 'detail' => 'Solo cambia el hook.']]);
+        expect($brief)->toContain("ENCARGO B0101 · FlexiStep\nQué hay que hacer: 3 iteraciones del hook de C0146. Solo cambia el hook.\nTipo: Iteración");
+    });
+});
+
+describe('.99: la banca frena los pedidos', function () {
+    it('con un batch esperando en la banca (que hoy no se lanza) no se pide nada nuevo de ese producto', function () {
+        $open = [['id' => 10, 'status' => 'bank', 'due_date' => null, 'code' => 'B0103']];
+        expect(DemandRules::slots(1, 1, $open, [], '2026-11-03', 2))->toBe(['advance' => [], 'covered' => [10 => '2026-11-03'], 'new' => []])
+            // si hoy se lanza, se pide el siguiente
+            ->and(DemandRules::slots(1, 1, $open, ['B0103'], '2026-11-03', 2)['new'])->toBe(['2026-11-03', '2026-11-05']);
+    });
+
+    it('la banca del líder, por producto: primero los activos con menos en la banca; los parados, al final y con lo suyo en espera', function () {
+        $rows = ProductModes::bankRows([5 => 'Comprimax', 6 => 'FlexiStep', 7 => 'Termafit'],
+            [5 => ['bank' => 1, 'production' => 1], 6 => ['bank' => 2, 'approved' => 1, 'testing' => 1]], [5 => 'paused']);
+        expect(array_column($rows, 'name'))->toBe(['Termafit', 'FlexiStep', 'Comprimax'])
+            ->and($rows[1])->toMatchArray(['bank' => 2, 'coming' => 1, 'meta' => 1, 'held' => 0, 'stopped' => false, 'mode_label' => 'Activo'])
+            ->and($rows[2])->toMatchArray(['bank' => 1, 'coming' => 0, 'held' => 1, 'stopped' => true, 'mode_label' => 'En pausa']);
     });
 });

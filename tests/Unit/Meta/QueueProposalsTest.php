@@ -71,6 +71,24 @@ describe('Qué tipo de encargo', function () {
         expect($p)->toMatchArray(['kind' => 'iteration', 'reference_id' => 7, 'reference' => 'C004 GINE', 'angle_code' => 'GINE', 'iterate' => 'el hook (los primeros segundos)']);
     });
 
+    it('.99: cada pieza de una iteración dice qué prueba (el hook, un tramo o el formato)', function () {
+        $winner = ['id' => 7, 'label' => 'C004 GINE', 'iterate' => 'el medio del video', 'iterate_key' => 'middle', 'angle' => 'GINE', 'type' => 'video'];
+        $plan = fn (array $w) => ProposalRules::plan([1 => productoCola(1, 'X', 3, '1', ['plan' => ['work' => ['winner' => $w]]])], [1 => ['2026-11-03']])[0];
+        expect($plan($winner)['piece_test'])->toBe('middle')
+            ->and($plan(['iterate_key' => null] + $winner)['piece_test'])->toBe('winner_hook')
+            ->and($plan(['type' => 'image'] + $winner)['piece_test'])->toBe('format')
+            ->and($plan(['iterate_key' => 'landing'] + $winner)['piece_test'])->toBe('iteration');
+    });
+
+    it('.99: un concepto nuevo siempre dice su ángulo: si no se sabe el principal, el primero de la ficha que no perdió', function () {
+        $d = productoCola(1, 'X', 2, '1', ['plan' => ['work' => ['main_angle' => null]]]);
+        $d['plan']['work']['main_angle'] = null;
+        $d['profile_angles'] = ['order' => ['POSP', 'NV'], 'lost' => ['POSP'], 'used' => []];
+        $p = ProposalRules::plan([1 => $d], [1 => ['2026-11-03']])[0];
+        expect($p)->toMatchArray(['kind' => 'new_concept', 'angle_code' => 'NV', 'piece_test' => 'new_concept'])
+            ->and($p['iterate'])->toBe('un concepto nuevo dentro de NV');
+    });
+
     it('una imagen ganadora pasa a video', function () {
         $winner = ['id' => 7, 'label' => 'C009 IMG', 'iterate' => null, 'angle' => 'FASP', 'type' => 'image'];
         $p = ProposalRules::plan([1 => productoCola(1, 'X', 3, '1', ['plan' => ['work' => ['winner' => $winner]]])], [1 => ['2026-11-03']])[0];

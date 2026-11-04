@@ -9,6 +9,7 @@ use App\Services\Meta\AngleProposer;
 use App\Services\Meta\AngleStats;
 use App\Services\Meta\MetaCreativeLinker;
 use App\Services\Meta\MetaVisibility;
+use App\Services\Meta\Products\ProductModes;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -95,18 +96,26 @@ class MetaAnglesController extends Controller
         return response()->json($result + ['angles' => AngleStats::forProduct((int) $data['product_id'])], $result['status'] === 'error' ? 502 : 200);
     }
 
-    /** El modo de cada producto con campañas de Meta (o con modo puesto). */
+    /**
+     * El modo de cada producto con campañas de Meta (o con modo puesto). `.99`: con su nombre en palabras (Activo, En pausa,
+     * Liquidación, Abandonado), qué significa cada uno y los encargos que son tarea de alguien (los que quedan en espera
+     * al pararlo o vuelven al reactivarlo), para "Pausar o activar productos".
+     */
     public function modes()
     {
         $settings = ProductAdSetting::with('updater:id,names')->get()->keyBy('product_id');
+        $products = AngleStats::products();
+        $tasks = ProductModes::tasksMany(array_column($products, 'id'));
 
         return response()->json([
             'modes' => ProductAdSetting::MODES,
-            'products' => collect(AngleStats::products())->map(function ($p) use ($settings) {
+            'labels' => ProductModes::LABELS,
+            'help' => ProductModes::HELP,
+            'products' => collect($products)->map(function ($p) use ($settings, $tasks) {
                 $s = $settings->get($p['id']); // sin fila, el producto está en modo normal
 
                 return $p + ['mode' => $s->mode ?? 'normal', 'note' => $s?->note, 'proof' => $s?->proof, 'updated_by' => $s?->updater?->names,
-                    'updated_at' => $s?->updated_at?->toIso8601String()];
+                    'updated_at' => $s?->updated_at?->toIso8601String(), 'tasks' => $tasks[$p['id']] ?? []];
             })->values(),
         ]);
     }
@@ -118,8 +127,11 @@ class MetaAnglesController extends Controller
             'note' => 'nullable|string|max:255',
             'proof' => 'sometimes|nullable|string|max:2000', // paso 4b: los avales y pruebas reales, que la IA usa tal cual
         ]);
-        ProductAdSetting::updateOrCreate(['product_id' => $product->id], $data + ['updated_by' => Auth::id()]);
+        // .99: parado (en pausa, en liquidación o abandonado), sus encargos sin terminar quedan en espera; reactivado, vuelven
+        $r = ProductModes::set($product->id, $data['mode'], (int) Auth::id(), array_diff_key($data, ['mode' => true]));
+        $name = $product->showable_name ?: $product->title;
 
-        return response()->json(['status' => true]);
+        return response()->json(['status' => true, 'mode' => $r['to'],
+            'message' => "{$name}: " . (ProductModes::LABELS[$r['to']] ?? $r['to']) . '. ' . ProductModes::effect($r['from'], $r['to'], $r['tasks'])]);
     }
 }

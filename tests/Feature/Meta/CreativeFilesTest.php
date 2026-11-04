@@ -8,16 +8,20 @@ use App\Models\StoredFile;
 use App\Models\User;
 use App\Notifications\MetaWorkNotification;
 use App\Services\Assistant\Actions\ActionContext;
+use App\Services\Assistant\Actions\Tools\ProductModeTool;
 use App\Services\Assistant\Actions\Tools\ProductProfileTool;
+use App\Services\Assistant\Tools\ToolProblem;
 use App\Services\Files\FileStore;
 use App\Services\Files\R2Store;
 use App\Services\Files\SigV4;
 use App\Services\Files\StoredFileRules;
 use App\Services\Files\Uploads;
+use App\Services\Meta\Products\ProductModes;
 use App\Services\Meta\Products\ProductProfileRules;
 use App\Services\Meta\Queue\BatchQueue;
 use App\Services\Meta\Queue\EditorGame;
 use App\Services\Meta\Queue\EditorWork;
+use App\Services\Meta\Queue\LateBatches;
 use App\Services\Meta\Queue\QueueRules;
 use App\Services\Meta\Queue\ReferenceLibrary;
 use Carbon\CarbonImmutable;
@@ -230,6 +234,16 @@ describe('Las entregas con archivo', function () {
             $t->unsignedBigInteger('creative_batch_piece_id')->nullable();
             $t->unsignedSmallInteger('version')->nullable();
             $t->unsignedBigInteger('uploaded_by')->nullable();
+            $t->timestamps();
+        });
+        // .99: el estado del producto (en pausa, en liquidación o abandonado deja sus encargos en espera)
+        Schema::create('product_ad_settings', function ($t) {
+            $t->id();
+            $t->unsignedBigInteger('product_id')->unique();
+            $t->string('mode')->default('normal');
+            $t->string('note')->nullable();
+            $t->text('proof')->nullable();
+            $t->unsignedBigInteger('updated_by')->nullable();
             $t->timestamps();
         });
         DB::table('roles')->insert([['id' => 1, 'description' => 'Editor de video'], ['id' => 2, 'description' => 'Admin']]);
@@ -595,6 +609,63 @@ describe('Las entregas con archivo', function () {
             ->and($done->pieces[1]->hook)->toBeNull()
             // sin plazo ni revisión: no cuenta para la racha ni "a la primera"
             ->and(EditorGame::for(['id' => 12, 'role' => 'Editor líder'], now()->toDateString(), 1)['me'])->toMatchArray(['streak' => 0, 'first' => ['ok' => 0, 'total' => 0]]);
+    });
+
+    it('.99: un producto en pausa: sus encargos sin terminar salen de todas las listas y vuelven solos al reactivarlo', function () {
+        $this->travelTo('2026-11-04 12:00:00');
+        Schema::create('settings', fn ($t) => [$t->id(), $t->string('key')->unique(), $t->text('value')->nullable(), $t->timestamps()]);
+        DB::table('products')->insert(['id' => 6, 'title' => 'FlexiStep']);
+        // Termafit (5): B0110 lo tiene Lara (del beforeEach), B0111 sin asignar y atrasado, B0112 en la banca; FlexiStep (6): B0113 de Lara, atrasado
+        DB::table('creative_batches')->where('id', 1)->update(['due_date' => '2026-11-03']);
+        DB::table('creative_batches')->insert([
+            ['id' => 2, 'product_id' => 5, 'number' => 111, 'status' => 'approved', 'editor_id' => null, 'due_date' => '2026-11-02'],
+            ['id' => 3, 'product_id' => 5, 'number' => 112, 'status' => 'bank', 'editor_id' => 10, 'due_date' => null],
+            ['id' => 4, 'product_id' => 6, 'number' => 113, 'status' => 'production', 'editor_id' => 10, 'due_date' => '2026-11-03'],
+        ]);
+        $ids = fn () => ProductModes::withoutHeld(CreativeBatch::query())->orderBy('id')->pluck('id')->all();
+        $late = fn () => array_column(LateBatches::find([], '2026-11-04'), 'code');
+        expect($ids())->toBe([1, 2, 3, 4])->and($late())->toBe(['B0111', 'B0110', 'B0113']);
+
+        $r = ProductModes::set(5, 'paused', 1, ['note' => 'Sin stock del proveedor']);
+        expect($r)->toMatchArray(['from' => 'normal', 'to' => 'paused', 'returned' => 0])
+            ->and(ProductModes::effect($r['from'], $r['to'], $r['tasks']))
+            ->toBe('Deja de pedir encargos para este producto. Quedan en espera (salen de las listas de los editores): B0110 (lo tiene Lara) y B0111 (sin asignar).')
+            // ni en las listas, ni en la carga de Lara, ni atrasados; lo de la banca se queda
+            ->and($ids())->toBe([3, 4])
+            ->and(collect(EditorWork::editorsWithLoad())->firstWhere('id', 10))->toMatchArray(['open' => 1, 'late' => 1])
+            ->and($late())->toBe(['B0113'])
+            ->and(DB::table('product_ad_settings')->where('product_id', 5)->first())->mode->toBe('paused')->note->toBe('Sin stock del proveedor');
+
+        // reactivado: vuelven con la fecha de la reserva (hoy + 2 días); la nota queda como estaba
+        $r = ProductModes::set(5, 'normal', 1);
+        expect($r['returned'])->toBe(2)
+            ->and($ids())->toBe([1, 2, 3, 4])
+            ->and(CreativeBatch::find(1)->due_date->toDateString())->toBe('2026-11-06')
+            ->and(CreativeBatch::find(2)->due_date->toDateString())->toBe('2026-11-06')
+            ->and($late())->toBe(['B0113'])
+            ->and(DB::table('product_ad_settings')->where('product_id', 5)->value('note'))->toBe('Sin stock del proveedor');
+
+        // en liquidación también queda en espera
+        ProductModes::set(5, 'liquidation', 1);
+        expect($ids())->toBe([3, 4]);
+    });
+
+    it('.99: el asistente pausa y reactiva un producto con su tarjeta', function () {
+        Schema::create('settings', fn ($t) => [$t->id(), $t->string('key')->unique(), $t->text('value')->nullable(), $t->timestamps()]);
+        $tool = app(ProductModeTool::class);
+        $p = $tool->propose(['producto' => 'Termafit', 'estado' => 'pausado', 'motivo' => 'sin stock del proveedor'], new ActionContext(User::find(1), null, [], CarbonImmutable::now()));
+        expect($p->title)->toBe('Pausar Termafit')
+            ->and(array_column($p->lines, 'value', 'label'))->toMatchArray(['Producto' => 'Termafit', 'Ahora' => 'Activo', 'Motivo' => 'sin stock del proveedor'])
+            ->and(array_column($p->lines, 'value', 'label')['Qué pasa'])->toContain('B0110 (lo tiene Lara)')
+            ->and($p->payload)->toBe(['product_id' => 5, 'mode' => 'paused', 'note' => 'sin stock del proveedor']);
+
+        $out = $tool->execute($p->payload, new ActionContext(User::find(1), null, [], CarbonImmutable::now()));
+        expect($out->text)->toStartWith('En pausa. Deja de pedir encargos')->and(ProductModes::modeOf(5))->toBe('paused')
+            ->and(fn () => $tool->propose(['producto' => 'Termafit', 'estado' => 'pausado', 'motivo' => null], new ActionContext(User::find(1), null, [], CarbonImmutable::now())))
+            ->toThrow(ToolProblem::class, 'ya está así');
+
+        $back = $tool->propose(['producto' => 'Termafit', 'estado' => 'activo', 'motivo' => null], new ActionContext(User::find(1), null, [], CarbonImmutable::now()));
+        expect($back->title)->toBe('Reactivar Termafit')->and(array_column($back->lines, 'value', 'label')['Qué pasa'])->toContain('Vuelven a las listas');
     });
 
     it('.95: solo el líder carga; una carga a medias se descarta', function () {

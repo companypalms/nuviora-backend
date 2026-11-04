@@ -11,6 +11,7 @@ use App\Models\ProductProfile;
 use App\Models\User;
 use App\Services\Meta\Analysis\MetaAnalyzer;
 use App\Services\Meta\Landings\LandingTaskRules;
+use App\Services\Meta\Products\ProductModes;
 use App\Services\Meta\Products\ProductProfiles;
 use App\Services\Meta\Products\TestingPhase;
 use App\Services\Meta\Queue\EditorRules;
@@ -157,7 +158,9 @@ class MetaReminderFacts
     private function openBatches(array $names): array
     {
         return CreativeBatch::with(['editor:id,names,surnames', 'deliveries:id,creative_batch_id,version,editor_id,review,reviewed_at,created_at', 'deliveries.editor:id,names,surnames'])
-            ->whereIn('status', ['approved', 'production', 'review'])->whereNotNull('number')->orderBy('number')->get()
+            ->whereIn('status', ['approved', 'production', 'review'])->whereNotNull('number')
+            // .99: sin lo que está en espera (su producto está en pausa, en liquidación o abandonado)
+            ->tap(fn ($q) => ProductModes::withoutHeld($q))->orderBy('number')->get()
             ->map(fn (CreativeBatch $b) => $this->open((string) $b->code(), $names[$b->product_id] ?? null, false, $b, $b->deliveries))
             ->values()->all();
     }

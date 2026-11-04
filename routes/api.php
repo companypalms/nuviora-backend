@@ -716,6 +716,8 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
             ->whereNumber(['batch', 'piece'])->middleware('throttle:60,1');
         Route::post('/imports/{batch}/finish', [\App\Http\Controllers\EditorImportController::class, 'finish'])->whereNumber('batch');
         Route::delete('/imports/{batch}', [\App\Http\Controllers\EditorImportController::class, 'cancel'])->whereNumber('batch');
+        // .99: la banca del líder (en su menú)
+        Route::get('/bank', [\App\Http\Controllers\EditorQueueController::class, 'bank']);
         // .96: la ayuda "¿Dudas?" (la IA solo sabe el libro de ayuda de su rol)
         Route::get('/help', [\App\Http\Controllers\EditorHelpController::class, 'index']);
         Route::post('/help', [\App\Http\Controllers\EditorHelpController::class, 'store'])->middleware('throttle:10,1');

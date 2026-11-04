@@ -22,7 +22,7 @@ class EditorHelpController extends Controller
             'book' => EditorHelp::book($user),
             'messages' => $help->messages($user),
             'left' => $help->left($user),
-            'limit' => $help->dailyLimit(),
+            'limit' => $help->dailyLimit($user), // .99: null para el líder (sin tope)
         ]);
     }
 

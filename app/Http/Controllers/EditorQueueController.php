@@ -7,6 +7,7 @@ use App\Models\CreativeBatchPiece;
 use App\Models\StoredFile;
 use App\Services\Files\FileStore;
 use App\Services\Files\Uploads;
+use App\Services\Meta\Products\ProductModes;
 use App\Services\Meta\Queue\EditorFacts;
 use App\Services\Meta\Queue\EditorRules;
 use App\Services\Meta\Queue\EditorWork;
@@ -39,6 +40,8 @@ class EditorQueueController extends Controller
         $batches = $this->visible($who)->with(EditorWork::WITH)->get();
         // .88: por qué hace falta cada uno y para cuándo (en palabras, sin montos)
         $demand = QueueProposer::demandToday();
+        // .99: lo de un producto en pausa, en liquidación o abandonado no hace falta (y lo suyo está en espera)
+        $stopped = ProductModes::stoppedIds();
 
         return response()->json([
             'me' => ['id' => $user->id, 'name' => trim($user->names . ' ' . ($user->surnames ?? '')), 'leader' => $leader],
@@ -47,7 +50,9 @@ class EditorQueueController extends Controller
             'editors' => $leader ? EditorWork::editorsWithLoad() : [],
             'pending' => EditorRules::pending($who, EditorWork::states($batches)),
             // .88: para el líder, lo que hace falta y no se pudo pedir, y si alcanza el equipo
-            'unfilled' => $leader ? $demand['unfilled'] : [],
+            'unfilled' => $leader ? array_values(array_filter($demand['unfilled'], fn ($u) => !in_array((int) $u['product_id'], $stopped, true))) : [],
+            // .99: para el líder, los encargos en espera porque su producto está parado (para que sepa dónde están)
+            'on_hold' => $leader ? self::onHold($stopped) : [],
             'forecast' => $leader ? QueueProposer::forecast() : null,
             'today' => now(config('app.timezone'))->toDateString(),
             // .89: entrega + los días de correcciones = lista en la banca
@@ -171,9 +176,59 @@ class EditorQueueController extends Controller
     }
 
     /** Lo que ve: el editor, lo suyo; el líder, todo lo aprobado. Lo terminado, solo lo reciente. */
+    /**
+     * `.99` (dueño: "lo de la banca de creativos, queremos que a él le aparezca en el menú del lado izquierdo… subir los
+     * batch que ya tenemos listos y ver lo que está en banca, lo que no está en banca"): la banca, para el líder. Por
+     * producto, cuántos hay en la banca, en camino, en Meta y en espera; los de la banca y los que están en Meta; y los
+     * probados o descartados de los últimos días. Sin dinero ni resultados.
+     */
+    public function bank(Request $request)
+    {
+        $who = EditorWork::who($request->user());
+        abort_unless($who['role'] === EditorRules::LEADER, 403, 'La banca la ve el editor líder.');
+        $batches = CreativeBatch::whereNotNull('number')->where(fn ($q) => $q->whereIn('status', ['bank', 'testing'])
+            ->orWhere(fn ($q) => $q->whereIn('status', ['tested', 'discarded'])->where('status_at', '>=', now()->subDays(self::RECENT_DAYS))))
+            // un batch ya hecho mientras se suben sus videos todavía no está en la banca
+            ->where(fn ($q) => $q->whereNull('source')->orWhere('source', '!=', 'imported')->orWhere('status', '!=', 'production'))
+            ->with(EditorWork::WITH)->get();
+        $counts = [];
+        foreach (CreativeBatch::whereNotNull('number')->whereIn('status', [...ProductModes::HOLD, 'bank', 'testing'])
+            ->selectRaw('product_id, status, COUNT(*) as n')->groupBy('product_id', 'status')->get() as $c) {
+            $counts[(int) $c->product_id][$c->status] = (int) $c->n;
+        }
+        // los productos con campañas activas (aunque no tengan nada) y los que tienen algo en la banca, en camino o en Meta
+        $products = collect(\App\Services\Meta\AngleStats::products())->keyBy('id');
+        $ids = $products->filter(fn ($p) => $p['active_campaigns'] > 0)->keys()->merge(array_keys($counts))->map(fn ($v) => (int) $v)->unique();
+        $names = $products->map(fn ($p) => $p['name'])->all() + \App\Models\Product::whereIn('id', $ids->diff($products->keys())->all() ?: [0])
+            ->get(['id', 'title', 'showable_name'])->mapWithKeys(fn ($p) => [$p->id => $p->showable_name ?: $p->title])->all();
+
+        return response()->json([
+            'products' => ProductModes::bankRows(array_intersect_key($names, array_flip($ids->all())), $counts,
+                \App\Models\ProductAdSetting::pluck('mode', 'product_id')->all()),
+            'batches' => EditorWork::present($batches, $who),
+            'today' => now(config('app.timezone'))->toDateString(),
+            'recent_days' => self::RECENT_DAYS,
+        ]);
+    }
+
+    /** `.99`: los encargos en espera por producto parado: "Comprimax (En pausa): B0100". */
+    private static function onHold(array $stopped): array
+    {
+        $tasks = ProductModes::tasksMany($stopped);
+        if ($tasks === []) {
+            return [];
+        }
+        $names = \App\Models\Product::whereIn('id', array_keys($tasks))->get(['id', 'title', 'showable_name'])->mapWithKeys(fn ($p) => [$p->id => $p->showable_name ?: $p->title]);
+        $modes = \App\Models\ProductAdSetting::whereIn('product_id', array_keys($tasks))->pluck('mode', 'product_id');
+
+        return collect($tasks)->map(fn ($list, $pid) => ['product_id' => (int) $pid, 'product' => $names[$pid] ?? null,
+            'mode_label' => ProductModes::LABELS[$modes[$pid] ?? 'paused'] ?? '', 'codes' => array_values(array_filter(array_column($list, 'code')))])->values()->all();
+    }
+
     private function visible(array $who)
     {
-        return CreativeBatch::query()
+        // .99: sin lo que está en espera (su producto está en pausa, en liquidación o abandonado)
+        return ProductModes::withoutHeld(CreativeBatch::query())
             ->where('status', '!=', 'proposed')
             // .95: un batch ya hecho mientras se suben sus videos no es un encargo de nadie
             ->where(fn ($q) => $q->whereNull('source')->orWhere('source', '!=', 'imported')->orWhere('status', '!=', 'production'))

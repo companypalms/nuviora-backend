@@ -54,7 +54,8 @@ class LandingProposer
 
         $todayCount = LandingTask::where('source', 'rules')->where('proposed_on', $today)->count();
         $proposedToday = LandingTask::where('source', 'rules')->where('proposed_on', $today)->pluck('landing_id')->filter()->all();
-        $skipModes = ProductAdSetting::whereIn('mode', ['paused', 'abandoned'])->pluck('product_id')->all();
+        // .99: tampoco en liquidación (un producto parado no recibe trabajo nuevo)
+        $skipModes = ProductAdSetting::whereIn('mode', ['paused', 'abandoned', 'liquidation'])->pluck('product_id')->all();
         $report = $this->report ?? new LandingReport($this->settings);
 
         $candidates = [];

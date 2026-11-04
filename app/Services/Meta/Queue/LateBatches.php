@@ -7,6 +7,7 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Notifications\MetaWorkNotification;
 use App\Services\Meta\Analysis\UrgentList;
+use App\Services\Meta\Products\ProductModes;
 
 /**
  * `.89` (dueño, 2026-11-03: "de alguna manera debería saber si se le pidió al editor en líder pero está atrasado, debería
@@ -30,7 +31,8 @@ class LateBatches
     public static function find(array $decisions, string $today, int $correctionDays = 1): array
     {
         $out = [];
-        $rows = CreativeBatch::with(['product:id,title,showable_name', 'editor:id,names,surnames'])->whereIn('status', ['approved', 'production', 'review'])
+        // .99: lo que está en espera (su producto está parado) no está atrasado
+        $rows = ProductModes::withoutHeld(CreativeBatch::with(['product:id,title,showable_name', 'editor:id,names,surnames'])->whereIn('status', ['approved', 'production', 'review']))
             ->whereNotNull('number')->whereNotNull('due_date')->where('due_date', '<', $today)->orderBy('due_date')->orderBy('id')->get();
         foreach ($rows as $b) {
             $due = $b->due_date->toDateString();
