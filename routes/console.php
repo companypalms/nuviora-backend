@@ -35,6 +35,8 @@ try {
     // Logística propia (Fran, 21/10): sin operador y órdenes que esperan ventana. Una pasada por minuto hasta que el
     // proceso de supervisor (logistics:tick --loop) corra las rondas de 90 s (paso S4 del plan)
     Schedule::command('logistics:tick')->everyMinute()->withoutOverlapping();
+    // .106 (dueño, 2026-11-05): el PDF del producto al cliente 10 min después de Entregado, con la ventana de 24 h abierta
+    Schedule::command('whatsapp:delivery-pdfs')->everyMinute()->withoutOverlapping(10)->runInBackground();
     // Conciliación de pagos digitales: cada mañana, la del día anterior (documento de Fran del 2026-10-06, §12)
     Schedule::command('reconciliation:prepare')->dailyAt('06:00');
     // Meta Ads, solo lectura (documento de Fran del 2026-10-08, Módulo 2): cada 30 minutos (§7), y los días recientes

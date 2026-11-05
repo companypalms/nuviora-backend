@@ -294,8 +294,9 @@ class WhatsAppService
 
     /**
      * Send a media message (image, video, audio) using a media ID.
+     * $filename (solo documentos, `.106`): el nombre con que el cliente ve el archivo; sin él, WhatsApp pone uno genérico.
      */
-    public function sendMedia($to, $mediaId, $type, $caption = null)
+    public function sendMedia($to, $mediaId, $type, $caption = null, $filename = null)
     {
         $cleanTo = $this->cleanNumber($to);
         $url = "{$this->baseUrl}/{$this->phoneNumberId}/messages";
@@ -312,6 +313,9 @@ class WhatsAppService
 
         if ($caption && in_array($type, ['image', 'video', 'document'])) {
             $data[$type]['caption'] = $caption;
+        }
+        if ($filename && $type === 'document') {
+            $data[$type]['filename'] = $filename;
         }
 
         try {

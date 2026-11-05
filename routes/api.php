@@ -232,6 +232,11 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
     Route::put('products/{id}', [ProductController::class, 'update'])->middleware('role:Admin,Gerente,Master');
     Route::post('products/{id}/gallery', [ProductController::class, 'uploadImage'])->middleware('role:Admin,Gerente,Master');
     Route::delete('products/{id}/gallery/{imageId}', [ProductController::class, 'deleteImage'])->middleware('role:Admin,Gerente,Master');
+    // .106: el PDF que recibe el cliente al entregarle el producto (dueño, 2026-11-05)
+    Route::get('products/{id}/delivery-pdf', [\App\Http\Controllers\ProductDeliveryPdfController::class, 'show'])->middleware('role:Admin,Master');
+    Route::post('products/{id}/delivery-pdf', [\App\Http\Controllers\ProductDeliveryPdfController::class, 'store'])->middleware('role:Admin,Master');
+    Route::put('products/{id}/delivery-pdf', [\App\Http\Controllers\ProductDeliveryPdfController::class, 'update'])->middleware('role:Admin,Master');
+    Route::delete('products/{id}/delivery-pdf', [\App\Http\Controllers\ProductDeliveryPdfController::class, 'destroy'])->middleware('role:Admin,Master');
 
     /**---------------------
      * CURRENCY

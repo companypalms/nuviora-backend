@@ -98,6 +98,7 @@ class Product extends Model
 
     protected $casts = [
         'available_sizes' => 'array',
+        'delivery_pdf_since' => 'datetime', // .106: el PDF al entregar (ProductDeliveryPdfController)
     ];
 
     protected $appends = ['stock', 'stock_available'];
