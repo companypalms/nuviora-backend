@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\CreativeBatch;
+use App\Models\CreativeBatchPiece;
 use App\Models\MetaAnalysis;
+use App\Models\StoredFile;
 use App\Services\Meta\Analysis\AnalysisSender;
 use App\Services\Meta\Analysis\DayStreak;
 use App\Services\Meta\Analysis\MetaAnalyzer;
@@ -17,6 +19,7 @@ use Illuminate\Validation\Rule;
  * - Ver el análisis de un día (el último, si no se elige): al abrirlo, la tarea del calendario de ese día se tilda sola.
  * - "Volver a analizar": otra versión del día, como mucho 10 por día.
  * - Marcar un punto de la lista como hecho, o "no estoy de acuerdo" con una nota.
+ * - `.102`: los videos de los batches que lanza una misión, para bajarlos ahí mismo.
  */
 class MetaAnalysisController extends Controller
 {
@@ -39,6 +42,27 @@ class MetaAnalysisController extends Controller
             'runs_left' => MetaAnalyzer::runsLeft(),
             'queue_pending' => CreativeBatch::where('status', 'proposed')->count(), // paso 4b
         ]);
+    }
+
+    /**
+     * `.102` (dueño, 2026-11-04: "cuando me diga para lanzar un batch, me debería dejar descargar los creativos desde esa
+     * misma ventana"): los videos de unos batches (B0115…), con su nombre de Meta y los enlaces para verlos y bajarlos. Se
+     * piden al abrir la misión: los enlaces vencen a las 6 horas y el análisis se hizo a las 00:30.
+     */
+    public function videos(Request $request)
+    {
+        $data = $request->validate(['codes' => 'required|array|min:1|max:10', 'codes.*' => ['required', 'string', 'regex:/^B\d{4,}$/']]);
+        $numbers = array_values(array_unique(array_map(fn ($c) => (int) substr($c, 1), $data['codes'])));
+        $batches = CreativeBatch::with('pieces')->whereIn('number', $numbers)->get()->keyBy('number');
+        $files = StoredFile::payloads($batches->flatMap(fn (CreativeBatch $b) => $b->pieces->pluck('file_id'))->all());
+
+        return response()->json(['batches' => collect($numbers)->map(fn ($n) => $batches[$n] ?? null)->filter()->map(fn (CreativeBatch $b) => [
+            'code' => $b->code(), 'adset' => QueueRules::metaNames($b->number, $b->angle_code, [])['adset'],
+            'status' => $b->status, 'status_label' => QueueRules::STATUSES[$b->status] ?? $b->status,
+            // El nombre de cada anuncio en Meta ("C0145 VAGO"); el archivo listo, o el video de Drive de los de antes
+            'pieces' => $b->pieces->map(fn (CreativeBatchPiece $p) => ['name' => $p->code() !== null ? trim($p->code() . ' ' . $b->angle_code) : null,
+                'file' => $files[$p->file_id] ?? null, 'link' => $p->link])->values()->all(),
+        ])->values()->all()]);
     }
 
     public function run(MetaAnalyzer $analyzer)

@@ -129,7 +129,7 @@ final class UrgentList
                 $items[] = $base + ['key' => "{$p['product_id']}:{$c['campaign_meta_id']}:{$kind}", 'city' => $c['city'], 'kind' => $kind,
                     'label' => $a['label'], 'text' => trim($a['reading'] . ' ' . ($a['proposal'] ?? '')), 'tone' => $a['tone'],
                     'where' => $short . ($c['city'] ? " · {$c['city']}" : ''), 'title' => $wait ? self::waiting($kind, $n) : $mission['title'],
-                    'steps' => $wait ? [] : $mission['steps'],
+                    'steps' => $wait ? [] : $mission['steps'], 'batches' => $wait ? [] : $mission['batches'],
                     'why' => self::why($kind, $a, $n),
                     'detail' => array_values(array_filter([...self::numbers($n), $a['reading'], $a['proposal'], ...$c['notes'], ...$c['budget_notes'],
                         count($prune) > self::NAMES_IN_STEP ? 'Todos los anuncios a apagar: ' . CreativeCalls::join($prune) . '.' : null, self::liveLine($n)])),
@@ -215,7 +215,7 @@ final class UrgentList
         $codes = CreativeCalls::join(array_column($t['batches'], 'code'));
         // .89: con los nombres exactos de cada ad set y sus anuncios
         $upload = "crea los {$n} ad sets: " . implode('; ', array_map(fn ($b) => self::adsetWithAds((string) ($b['adset'] ?? $b['code']), $b['ads'] ?? []), $t['batches']))
-            . ' (sus videos están en Cola y banca).';
+            . ' (sus videos, aquí abajo).';
         if ($t['campaigns'] !== []) {
             $title = "Lanza los ángulos nuevos de {$short}: {$codes}";
             $why = "Ronda {$t['round']} del testeo: sus {$n} batches están listos en la banca";
@@ -240,8 +240,8 @@ final class UrgentList
 
         return ['key' => "{$t['product_id']}:test:{$t['round']}", 'product_id' => $t['product_id'], 'product' => $t['product'], 'urgency' => null,
             'city' => null, 'kind' => 'launch_test', 'label' => 'Testeo', 'tone' => 'success', 'text' => "{$why}.", 'where' => $short,
-            'title' => $title, 'steps' => $steps, 'why' => $why, 'detail' => [], 'money' => null,
-            'severity' => self::SEVERITY['launch_test'], 'group' => self::GROUP['launch_test']];
+            'title' => $title, 'steps' => $steps, 'batches' => array_values(array_map('strval', array_column($t['batches'], 'code'))), 'why' => $why,
+            'detail' => [], 'money' => null, 'severity' => self::SEVERITY['launch_test'], 'group' => self::GROUP['launch_test']];
     }
 
     /**
@@ -318,7 +318,7 @@ final class UrgentList
      * `.83`: qué hacer en una frase corta que empieza con el verbo (sin el producto ni la ciudad: van en `where`) y cómo, en
      * pasos de Ads Manager con los nombres exactos.
      *
-     * @return array{title: string, steps: list<string>}
+     * @return array{title: string, steps: list<string>, batches: list<string>}
      */
     private static function mission(string $kind, array $a, ?array $n, ?string $campaign, ?string $city, string $short, bool $stopHere, string $mode, array $launch = []): array
     {
@@ -365,7 +365,10 @@ final class UrgentList
             default => [(string) $a['label'], array_values(array_filter([$open, $a['proposal'] ?? null]))],
         };
 
-        return ['title' => $title, 'steps' => array_values(array_filter($steps, fn ($s) => $s !== ''))];
+        // .102: los de la banca que lanza (podar e intervenir; en liquidación no entran creativos)
+        $batches = in_array($kind, self::FEEDS, true) && $mode !== 'liquidation' ? self::bankCodes($launch) : [];
+
+        return ['title' => $title, 'steps' => array_values(array_filter($steps, fn ($s) => $s !== '')), 'batches' => $batches];
     }
 
     /**
@@ -401,9 +404,21 @@ final class UrgentList
             ($o['how'] ?? 'bank') === 'copy' => 'Duplica el ad set ' . self::q((string) $o['adset']) . ' de '
                 . (($o['campaign'] ?? null) ? 'la campaña ' . self::q($o['campaign']) : ($o['city'] ?? 'la otra ciudad'))
                 . ' en esta campaña, con el mismo nombre (sin « - Copia»)' . (($o['city'] ?? null) && ($o['verdict'] ?? null) ? " (en {$o['city']}: " . mb_strtolower($o['verdict']) . ')' : '') . '.',
-            !empty($o['adset']) => 'Crea el ad set ' . self::adsetWithAds($o['adset'], $o['ads'] ?? []) . ' (sus videos están en Cola y banca).',
-            default => 'Lanza el batch ' . self::q((string) $o['code']) . ' de la banca (sus videos están en Cola y banca).',
+            !empty($o['adset']) => 'Crea el ad set ' . self::adsetWithAds($o['adset'], $o['ads'] ?? []) . ' (sus videos, aquí abajo).',
+            default => 'Lanza el batch ' . self::q((string) $o['code']) . ' de la banca (sus videos, aquí abajo).',
         }, $launch);
+    }
+
+    /**
+     * `.102` (dueño, 2026-11-04: "cuando me diga para lanzar un batch, me debería dejar descargar los creativos desde esa
+     * misma ventana"): los batches de la banca que lanza una misión, para bajar sus videos ahí mismo. Duplicar el ad set
+     * de otra ciudad no se baja: ya está en Meta.
+     *
+     * @return list<string>
+     */
+    private static function bankCodes(array $launch): array
+    {
+        return array_values(array_unique(array_map(fn ($o) => (string) $o['code'], array_filter($launch, fn ($o) => ($o['how'] ?? 'bank') !== 'copy'))));
     }
 
     /** `.89`: "«B0110 POSP» con los anuncios «C0457 POSP», «C0458 POSP» y «C0459 POSP»". */
@@ -430,6 +445,7 @@ final class UrgentList
                 default => "Lanza {$go}",
             },
             'steps' => $launch ? [self::open($c['campaign'] ?? null, $short, $c['city']), ...self::launchSteps($launch)] : [],
+            'batches' => self::bankCodes($launch),
             'why' => $live === 0 ? 'No queda ningún batch vivo: la campaña no tiene anuncios que mostrar'
                 : "Solo queda 1 batch vivo: {$budget} cae todo en él; con 2, Meta reparte",
             'detail' => array_values(array_filter([self::liveLine($n), $launch === [] ? 'Cuando haya un batch en la banca, te sale como misión.' : null])),
@@ -522,7 +538,7 @@ final class UrgentList
         return ['key' => "{$productId}:ready:{$code}", 'product_id' => $productId, 'product' => $product, 'urgency' => null,
             'city' => count($cities) === 1 ? $cities[0]['city'] : null, 'kind' => 'launch_ready', 'label' => 'Lanzar', 'tone' => 'success',
             'text' => "{$code} llegó a la banca a las {$at} (hora de Venezuela).", 'where' => $short . ($names !== '' ? " · {$names}" : ''),
-            'title' => "Lanza {$code}: ya llegó a la banca", 'steps' => $steps,
+            'title' => "Lanza {$code}: ya llegó a la banca", 'steps' => $steps, 'batches' => self::bankCodes(array_column($cities, 'offer')),
             'why' => "Llegó a la banca a las {$at}" . ($whys ? ' · ' . implode('; ', $whys) : ''),
             'detail' => [], 'money' => null, 'severity' => self::SEVERITY['launch_ready'], 'group' => self::GROUP['launch_ready']];
     }

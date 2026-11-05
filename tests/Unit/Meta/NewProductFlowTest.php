@@ -28,7 +28,7 @@ describe('.89: la regla de nombres', function () {
         $p = ['product_id' => 1, 'product' => 'Demo Sérum', 'mode' => 'normal', 'urgency' => ['level' => 2, 'label' => 'U2'], 'money_at_risk' => 0,
             'alarms' => [], 'price_watch' => null, 'cities' => [$poda]];
         expect(UrgentList::build([$p])[0]['steps'][1])
-            ->toBe('Crea el ad set «B0108 MANCH» con los anuncios «C0124 MANCH», «C0125 MANCH» y «C0126 MANCH» (sus videos están en Cola y banca).');
+            ->toBe('Crea el ad set «B0108 MANCH» con los anuncios «C0124 MANCH», «C0125 MANCH» y «C0126 MANCH» (sus videos, aquí abajo).');
     });
 });
 
@@ -102,9 +102,10 @@ describe('.89: lanzar el testeo y los atrasados en correcciones', function () {
             ->and($i['steps'])->toBe([
                 'Crea una campaña CBO en cada ciudad, con estos nombres: «TERMAFIT | MCAY | CBO | 03/11/2026», «TERMAFIT | CBOBO | CBO | 03/11/2026» y «TERMAFIT | CCS | CBO | 03/11/2026».',
                 'En cada una, crea los 3 ad sets: «B0110 POSP» con los anuncios «C0457 POSP» y «C0458 POSP»; «B0111 POSP» con el anuncio «C0459 POSP»; '
-                    . '«B0112 GYM» con el anuncio «C0460 GYM» (sus videos están en Cola y banca).',
+                    . '«B0112 GYM» con el anuncio «C0460 GYM» (sus videos, aquí abajo).',
                 'Presupuesto de arranque por campaña: entre $30,00 y $36,00 por día (tu regla: C × 3 batches × 2,5 a 3).',
-            ]);
+            ])
+            ->and($i['batches'])->toBe(['B0110', 'B0111', 'B0112']); // .102: los videos de los 3, en la misión
     });
 
     it('sin el link de Shopify ni su C, primero eso', function () use ($test) {

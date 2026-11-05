@@ -150,8 +150,9 @@ describe('.89: el flujo sin botones', function () {
             'offer' => ['code' => 'B0108', 'how' => 'bank'], 'why' => 'subió de su costo objetivo']], '15:20');
         expect($i['title'])->toBe('Lanza B0108: ya llegó a la banca')->and($i['group'])->toBe('arreglar')
             ->and($i['where'])->toBe('Demo Sérum facial · Valencia')
-            ->and($i['steps'])->toBe(['Abre la campaña «SERUM | VLC».', 'Lanza el batch «B0108» de la banca (sus videos están en Cola y banca).'])
-            ->and($i['why'])->toBe('Llegó a la banca a las 15:20 · Valencia subió de su costo objetivo');
+            ->and($i['steps'])->toBe(['Abre la campaña «SERUM | VLC».', 'Lanza el batch «B0108» de la banca (sus videos, aquí abajo).'])
+            ->and($i['why'])->toBe('Llegó a la banca a las 15:20 · Valencia subió de su costo objetivo')
+            ->and($i['batches'])->toBe(['B0108']); // .102: sus videos se bajan en la misión
     });
 
     it('por qué una ciudad necesita un batch, en palabras', function () {

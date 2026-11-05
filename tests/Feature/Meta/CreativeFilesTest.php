@@ -282,6 +282,28 @@ describe('Las entregas con archivo', function () {
             ->and($fields['deliveries'][0]['pieces'][0]['file']['url'])->toContain('/api/files/local/' . $a->id);
     });
 
+    it('.102: los videos de un batch para la misión de lanzar: su nombre de Meta, ver y bajar; los de Drive, con su enlace', function () {
+        $a = ($this->upload)(21);
+        DB::table('creative_batch_pieces')->where('id', 21)->update(['file_id' => $a->id]);
+        DB::table('creative_batch_pieces')->where('id', 22)->update(['link' => 'https://drive.google.com/x']);
+        DB::table('creative_batches')->update(['status' => 'bank']);
+        $videos = fn (array $codes) => (new \App\Http\Controllers\MetaAnalysisController())->videos(\Illuminate\Http\Request::create('/', 'GET', ['codes' => $codes]))->getData(true);
+
+        $r = $videos(['B0110', 'B0999']);
+        expect($r['batches'])->toHaveCount(1)
+            ->and($r['batches'][0])->toMatchArray(['code' => 'B0110', 'adset' => 'B0110 POSP', 'status' => 'bank', 'status_label' => QueueRules::STATUSES['bank']])
+            ->and($r['batches'][0]['pieces'][0]['name'])->toBe('C0457 POSP')
+            ->and($r['batches'][0]['pieces'][0]['file']['name'])->toBe('C0457 POSP.mp4')
+            ->and($r['batches'][0]['pieces'][0]['file']['download_url'])->toContain('/api/files/local/' . $a->id)->toContain('download=1')
+            ->and($r['batches'][0]['pieces'][1])->toMatchArray(['name' => 'C0458 POSP', 'file' => null, 'link' => 'https://drive.google.com/x'])
+            // lo que no es un código de batch no pasa
+            ->and(fn () => $videos(['DROP TABLE']))->toThrow(ValidationException::class)
+            ->and(fn () => $videos([]))->toThrow(ValidationException::class);
+        // solo el dueño
+        $route = collect(Route::getRoutes()->getRoutes())->first(fn ($r) => $r->uri() === 'api/meta/analysis/videos');
+        expect($route->gatherMiddleware())->toContain('role:Admin');
+    });
+
     it('.91: el primer archivo empieza el encargo solo (sin el botón "Empezar")', function () {
         DB::table('creative_batches')->update(['status' => 'approved', 'started_at' => null]);
         ($this->upload)(21);

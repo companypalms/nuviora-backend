@@ -104,7 +104,7 @@ describe('.82: tu día en Meta Ads', function () {
             ->and($by['intervene']['detail'][0])->toBe('En 3 días: gastaste $72,00 y Meta vio 7 compras = $10,29 por compra.')
             ->and($by['intervene']['detail'][1])->toBe('Tu objetivo (C) aquí es $5,39 y tu límite para no perder (BE) es $7,22.')
             ->and($by['hold_prune']['title'])->toBe('Apaga 1 anuncio caro y lanza B0104')
-            ->and($by['hold_prune']['steps'])->toBe(['Abre la campaña de FlexiStep en Carabobo.', 'Apaga «AD 3».', 'Lanza el batch «B0104» de la banca (sus videos están en Cola y banca).'])
+            ->and($by['hold_prune']['steps'])->toBe(['Abre la campaña de FlexiStep en Carabobo.', 'Apaga «AD 3».', 'Lanza el batch «B0104» de la banca (sus videos, aquí abajo).'])
             ->and($by['hold_prune']['why'])->toBe('$7,35 por compra: entre tu objetivo ($5,39) y tu límite ($7,22)')
             ->and($by['alarm']['group'])->toBe('aviso')
             ->and($by['alarm']['title'])->toBe('Poco stock en Caracas: quedan 3 unidades.')
@@ -238,9 +238,11 @@ describe('.87: los batches por ciudad', function () {
             ->and($uno['steps'])->toBe(['Abre la campaña «FLEXISTEP | CBOBO».',
                 'Duplica el ad set «B0102 FASP» de la campaña «FLEXISTEP | Aragua» en esta campaña, con el mismo nombre (sin « - Copia») (en Aragua: prometedor).'])
             ->and($dos['title'])->toBe('Lanza B0102 y B0103')
-            ->and($dos['steps'][2])->toBe('Lanza el batch «B0103» de la banca (sus videos están en Cola y banca).')
+            ->and($dos['steps'][2])->toBe('Lanza el batch «B0103» de la banca (sus videos, aquí abajo).')
             ->and($dos['detail'])->toContain('No queda ningún batch vivo aquí (ad sets prendidos con algún anuncio prendido, sin contar lo que apagas hoy). Tu regla: nunca menos de 2.')
-            ->and(collect([$uno, $dos])->pluck('kind')->unique()->all())->toBe(['hold_prune']);
+            ->and(collect([$uno, $dos])->pluck('kind')->unique()->all())->toBe(['hold_prune'])
+            // .102: los videos que se bajan en la misión: solo los de la banca (el que se duplica ya está en Meta)
+            ->and($uno['batches'])->toBe([])->and($dos['batches'])->toBe(['B0103']);
     });
 
     it('una ciudad que sube o se mantiene con menos de 2 batches vivos: misión de lanzar lo que falta, o un aviso', function () {
@@ -259,10 +261,11 @@ describe('.87: los batches por ciudad', function () {
         expect($few->keys()->sort()->values()->all())->toBe(['Aragua', 'Caracas'])
             ->and($few['Aragua']['title'])->toBe('Lanza 1 batch más: B0103')
             ->and($few['Aragua']['group'])->toBe('arreglar')
-            ->and($few['Aragua']['steps'])->toBe(['Abre la campaña «FLEXISTEP | ARAGUA».', 'Lanza el batch «B0103» de la banca (sus videos están en Cola y banca).'])
+            ->and($few['Aragua']['steps'])->toBe(['Abre la campaña «FLEXISTEP | ARAGUA».', 'Lanza el batch «B0103» de la banca (sus videos, aquí abajo).'])
             ->and($few['Aragua']['why'])->toBe('Solo queda 1 batch vivo: $25,00 por día cae todo en él; con 2, Meta reparte')
             ->and($few['Caracas']['title'])->toBe('Solo queda 1 batch vivo y no hay más en la banca')
             ->and($few['Caracas']['group'])->toBe('aviso')
+            ->and($few['Aragua']['batches'])->toBe(['B0103'])->and($few['Caracas']['batches'])->toBe([])
             // subir sigue siendo su propia misión
             ->and(collect($list)->where('kind', 'scale')->count())->toBe(1)
             ->and(UrgentList::tally($list, [])['tasks'])->toBe(3); // subir, lanzar en Aragua y pausar Lara
