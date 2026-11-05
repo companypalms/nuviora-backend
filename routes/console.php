@@ -79,8 +79,12 @@ try {
     // .48b: los reportes del negocio del asistente (los días de las revisiones del calendario), con el CPA y Meta al día.
     // .85: a las 00:45, después del análisis
     Schedule::command('metrics:report')->dailyAt('00:45')->withoutOverlapping(30);
-    // .55: los videos de los creativos ganadores (con sus estados de las 00:20 al día), hasta 40 por día
-    Schedule::command('meta:transcribe')->dailyAt('07:30')->withoutOverlapping(60);
+    // .55: los videos de los creativos ganadores (con sus estados de las 00:20 al día), hasta 40 por día.
+    // .105 (dueño, 2026-11-05: "apágala también por el momento"): apagada mientras Meta no dé permiso para bajar los
+    // videos (#10 en los 158). Para encenderla otra vez: VideoTranscriber::SCHEDULED = true.
+    if (\App\Services\Meta\Videos\VideoTranscriber::SCHEDULED) {
+        Schedule::command('meta:transcribe')->dailyAt('07:30')->withoutOverlapping(60);
+    }
     // Reportes (entrega 4): los automáticos (diario D-3, semanal, mensual, §53 a §55) se generan solos cuando les toca;
     // cada noche, después de recalcular las órdenes, los recientes sacan versión nueva si cambiaron sus cifras (§20, §21)
     // `.48c` (decisión del dueño, 2026-10-31): apagados. Los reemplazan los reportes del negocio del asistente

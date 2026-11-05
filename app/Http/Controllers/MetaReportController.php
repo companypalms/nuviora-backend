@@ -99,6 +99,7 @@ class MetaReportController extends Controller
         $transcripts = [
             'has_video' => $videoIds->isNotEmpty(),
             'transcribes' => in_array($creative->status, \App\Services\Meta\Videos\VideoTranscriber::WINNERS, true),
+            'paused' => !\App\Services\Meta\Videos\VideoTranscriber::SCHEDULED, // .105
             'items' => \App\Models\MetaVideoTranscript::whereIn('video_id', $videoIds)->orderByDesc('transcribed_at')->get()
                 ->map(fn ($t) => ['video_id' => $t->video_id, 'status' => $t->status, 'status_label' => \App\Models\MetaVideoTranscript::LABELS[$t->status] ?? $t->status,
                     'hook' => $t->hook, 'text' => $t->text, 'error' => $t->status === 'done' ? null : $t->error,

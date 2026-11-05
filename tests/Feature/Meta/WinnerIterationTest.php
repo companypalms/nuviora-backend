@@ -194,3 +194,10 @@ describe('El ganador de antes del sistema', function () {
         expect(array_keys(Artisan::all()))->not->toContain('meta:winner-videos');
     });
 });
+
+describe('La transcripción de los videos', function () {
+    // .105 (dueño, 2026-11-05: "apágala también por el momento"): Meta responde #10 a todos los videos
+    it('la vuelta de las 07:30 está apagada; lo demás del programador sigue', function () {
+        $this->artisan('schedule:list')->expectsOutputToContain('meta:sync')->doesntExpectOutputToContain('meta:transcribe')->assertSuccessful();
+    });
+});

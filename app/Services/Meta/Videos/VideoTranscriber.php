@@ -23,6 +23,13 @@ class VideoTranscriber
 {
     public const WINNERS = ['winner', 'fatigued'];
 
+    /**
+     * `.105` (dueño, 2026-11-05: "apágala también por el momento. luego vemos cómo solucionar ese problema"): la vuelta de
+     * las 07:30 está apagada. Meta responde "(#10) Application does not have permission for this action" a todos los
+     * videos. `php artisan meta:transcribe` sigue sirviendo a mano (y --report para ver cómo va).
+     */
+    public const SCHEDULED = false;
+
     public const DAILY_LIMIT = 40;
 
     public const URL = 'https://api.openai.com/v1/audio/transcriptions';
