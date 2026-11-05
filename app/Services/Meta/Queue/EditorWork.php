@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Services\Files\FileStore;
 use App\Services\Files\Uploads;
 use App\Services\Meta\Products\ProductModes;
+use App\Services\Meta\Videos\WinnerVideos;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -27,7 +28,7 @@ class EditorWork
     public const REVIEWS = ['pending' => 'Por revisar', 'approved' => 'Aprobada', 'returned' => 'Devuelta'];
 
     /** Lo que se carga para mostrar un encargo. */
-    public const WITH = ['pieces', 'product:id,title,showable_name', 'persona', 'reference:id,label', 'learningCity:id,name', 'editor:id,names,surnames',
+    public const WITH = ['pieces', 'product:id,title,showable_name', 'persona', 'reference:id,label,tracking_id,creative_code', 'learningCity:id,name', 'editor:id,names,surnames',
         'deliveries.editor:id,names,surnames', 'deliveries.reviewer:id,names,surnames'];
 
     /** @return array{id: int, role: ?string} */
@@ -346,7 +347,7 @@ class EditorWork
                 // .93: de qué trata el ángulo, para tenerlo a la vista al revisar
                 'angle_about' => $clean(collect($allAngles[$b->product_id] ?? [])->firstWhere('code', $b->angle_code)['hypothesis'] ?? null),
             ] + self::hypothesisFor($who, $b->hypothesis) + self::product($b, $profiles, $allAngles, $photos) + [
-                'reference' => $b->reference?->label, 'reference_thumbnail' => $refs[$b->reference_creative_id]['thumbnail'] ?? null,
+                'reference' => self::referenceName($b->reference), 'reference_thumbnail' => $refs[$b->reference_creative_id]['thumbnail'] ?? null,
                 'reference_texts' => QueueRules::withoutPricesIn($refs[$b->reference_creative_id]['texts'] ?? []),
                 'reference_script' => QueueRules::withoutPricesIn($scripts[$b->reference_creative_id] ?? null),
                 'format' => $b->format, 'style' => $b->style, 'style_label' => $b->style ? (QueueRules::STYLES[$b->style] ?? $b->style) : null,
@@ -358,7 +359,7 @@ class EditorWork
                     // .92: de dónde salió (para partir de lo mismo en una corrección)
                     'source' => $p->source, 'reference_id' => $p->source_reference_id])->values()->all(),
                 // .92: si es la iteración de un ganador, "Iteración de …" ya viene elegida en cada pieza
-                'iteration_of' => $b->reference_creative_id ? ($b->reference?->label ?? 'el ganador') : null,
+                'iteration_of' => $b->reference_creative_id ? (self::referenceName($b->reference) ?? 'el ganador') : null,
                 // .95: un batch ya hecho que cargó el líder (de antes del sistema, sin hipótesis)
                 'imported' => $b->source === 'imported',
                 // .99: qué hay que hacer, en una frase ("3 iteraciones del hook de C0146", "3 piezas nuevas del ángulo POSP")
@@ -371,11 +372,25 @@ class EditorWork
         })->values()->all();
     }
 
+    /**
+     * `.103`: cómo se llama el creativo de un encargo: su nombre en Meta y, si no lo tiene (un creativo viejo que se quedó
+     * sin anuncios), su código.
+     */
+    public static function referenceName(?MetaCreative $c): ?string
+    {
+        if ($c === null) {
+            return null;
+        }
+        $code = str_contains((string) $c->tracking_id, ':') ? substr((string) $c->tracking_id, strpos((string) $c->tracking_id, ':') + 1) : $c->tracking_id;
+
+        return ($c->label ?: $code ?: $c->creative_code) ?: null;
+    }
+
     /** `.99`: qué hay que hacer en el encargo (BatchTask), con lo que ya trae. */
     public static function task(CreativeBatch $b, ?string $angleName): ?array
     {
         return BatchTask::of(['kind' => $b->kind, 'angle_code' => $b->angle_code, 'angle_name' => $angleName,
-            'iterates' => $b->reference_creative_id ? ($b->reference?->label ?? 'el ganador') : null,
+            'iterates' => $b->reference_creative_id ? (self::referenceName($b->reference) ?? 'el ganador') : null,
             'imported' => $b->source === 'imported', 'testing' => $b->testing_round !== null,
             'pieces' => $b->pieces->map(fn (CreativeBatchPiece $p) => ['test' => $p->test, 'style' => $p->style, 'format' => $p->format])->all()]);
     }
@@ -462,26 +477,30 @@ class EditorWork
     /**
      * `.93`: el ganador del que sale una iteración, para ponerlo al lado de lo entregado: su video si está en el sistema
      * (el creativo C0457 es la pieza 457), y si no, su miniatura, sus textos y lo que dice su video. Solo mientras el
-     * encargo se hace o se revisa (después no hace falta y no se gasta en buscarlo).
+     * encargo se hace o se revisa (después no hace falta y no se gasta en buscarlo). `.103`: el video de los ganadores de
+     * antes del sistema, bajado de Meta y guardado (WinnerVideos); mientras llega, video_note dice por qué no está.
      *
-     * @return array{code: ?string, file: ?array, thumbnail: ?string, texts: list<string>, script: ?array}|null
+     * @return array{code: ?string, file: ?array, video_note: ?string, thumbnail: ?string, texts: list<string>, script: ?array}|null
      */
     public static function iteration(CreativeBatch $b): ?array
     {
         if (!$b->reference_creative_id || !in_array($b->status, ['approved', 'production', 'review'], true)) {
             return null;
         }
-        $creative = MetaCreative::find($b->reference_creative_id, ['id', 'label', 'creative_code']);
+        $creative = MetaCreative::find($b->reference_creative_id, ['id', 'label', 'creative_code', 'tracking_id']);
         if (!$creative) {
             return null;
         }
-        $fileId = preg_match('/^C(\d+)$/i', (string) $creative->creative_code, $m) ? CreativeBatchPiece::where('number', (int) $m[1])->value('file_id') : null;
+        $fileId = WinnerVideos::pieceFileId($creative->creative_code);
+        $winner = $fileId ? ['file' => null, 'note' => null] : WinnerVideos::of($creative->id);
         $ref = self::references([$creative->id])[$creative->id] ?? [];
         $script = \App\Services\Meta\Videos\Scripts::forCreatives([$creative->id])[$creative->id] ?? null;
 
         return [
-            'code' => $creative->creative_code ?: $creative->label,
-            'file' => $fileId ? (StoredFile::payloads([$fileId])[$fileId] ?? null) : null,
+            // .103: C0457 si es del sistema; si no, el nombre del anuncio (el código solo, "CRE002", no dice cuál es)
+            'code' => preg_match('/^C\d+$/i', (string) $creative->creative_code) ? $creative->creative_code : self::referenceName($creative),
+            'file' => $fileId ? (StoredFile::payloads([$fileId])[$fileId] ?? null) : $winner['file'],
+            'video_note' => $winner['note'],
             'thumbnail' => $ref['thumbnail'] ?? null,
             'texts' => QueueRules::withoutPricesIn($ref['texts'] ?? []),
             'script' => QueueRules::withoutPricesIn($script),

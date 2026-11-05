@@ -74,23 +74,30 @@ final class BatchTask
             };
         }
         $title = ($n === 1 ? '1 iteración' : "{$n} iteraciones");
+        $de = self::de($of);
         // "UGC e imagen" (antes de i, "e"); sin decir cuál, "otro formato"
         $named = array_values(array_unique(array_filter($formats)));
         $list = $named === [] ? 'otro formato' : preg_replace('/ y (?=[iIíÍ])/u', ' e ', TestingRules::join($named));
 
         return match (true) {
-            $hooks === $n => ['title' => "{$title} del hook de {$of}", 'detail' => 'Solo cambia el hook (los primeros 3 segundos): el resto del video queda igual.'],
-            count($formats) === $n => ['title' => "{$title} de formato de {$of}", 'detail' => "El mismo mensaje en {$list}."],
-            count($fixes) === 1 && array_sum($fixes) === $n => ['title' => "{$title} de {$of}: " . self::FIXES[array_key_first($fixes)],
+            $hooks === $n => ['title' => "{$title} del hook {$de}", 'detail' => 'Solo cambia el hook (los primeros 3 segundos): el resto del video queda igual.'],
+            count($formats) === $n => ['title' => "{$title} de formato {$de}", 'detail' => "El mismo mensaje en {$list}."],
+            count($fixes) === 1 && array_sum($fixes) === $n => ['title' => "{$title} {$de}: " . self::FIXES[array_key_first($fixes)],
                 'detail' => 'Lo demás del video se queda igual.'],
-            $other === $n => ['title' => "{$title} de {$of}", 'detail' => 'Variaciones del mismo creativo (qué cambia, en «Ver todo el encargo»).'],
-            default => ['title' => "{$title} de {$of}", 'detail' => ucfirst(TestingRules::join(array_filter([
+            $other === $n => ['title' => "{$title} {$de}", 'detail' => 'Variaciones del mismo creativo (qué cambia, en «Ver todo el encargo»).'],
+            default => ['title' => "{$title} {$de}", 'detail' => ucfirst(TestingRules::join(array_filter([
                 $hooks ? "{$hooks} de hook (hook nuevo, el resto igual)" : null,
                 $formats ? count($formats) . " de formato ({$list})" : null,
                 ...array_map(fn ($k, $c) => "{$c} para " . self::FIXES[$k], array_keys($fixes), $fixes),
                 $other ? ($other === 1 ? '1 variación libre' : "{$other} variaciones libres") : null,
             ]))) . '.'],
         };
+    }
+
+    /** `.103`: "de C0146", y "del ganador" (no "de el ganador") cuando no se sabe su nombre. */
+    private static function de(string $of): string
+    {
+        return str_starts_with($of, 'el ') ? 'del ' . substr($of, 3) : "de {$of}";
     }
 
     /** "UGC", "testimonio", "imagen"; null si no dice cuál (un batch ya hecho, o la imagen ganadora que pasa a video). */

@@ -142,8 +142,8 @@ class VideoTranscriber
         return $row;
     }
 
-    /** El enlace temporal del video, de la conexión de su cuenta publicitaria. */
-    private function source(string $videoId, ?int $accountId): ?string
+    /** El enlace temporal del video, de la conexión de su cuenta publicitaria (`.103`: también para guardar el de un ganador). */
+    public function source(string $videoId, ?int $accountId): ?string
     {
         $account = $accountId ? MetaAdAccount::with('connection')->find($accountId) : null;
         if (!$account?->connection) {

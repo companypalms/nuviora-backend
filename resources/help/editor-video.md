@@ -25,7 +25,10 @@
 - Si te lo devolvieron, arriba ves lo que pidió quien revisó, con el código de cada pieza.
 - Si al asignarte eligieron una referencia sugerida, la ves en el encargo con su video ("Parte de esta referencia").
 - Si el encargo es la iteración (variación) de un ganador, "Ver todo el encargo" lo dice: "Iteración (variación) de este
-  ganador", con su nombre y su video (si se hizo en el sistema).
+  ganador", con su nombre (el de su anuncio en Meta, por ejemplo "CRE002-FLEX-FAS-BATCH005") y su video, que puedes ver
+  ahí mismo o bajar con "bajar". Si el ganador es de antes del sistema, el video se trae solo de Meta: si dice "se está
+  trayendo de Meta", aparece en unos minutos; si dice que Meta no dejó bajarlo, guíate por su miniatura y lo que dice, o
+  pídele el video al líder. Ese video es el anuncio tal cual: puede mostrar el precio.
 - "Ver todo el encargo" muestra lo que se pide en cada pieza y la ficha del producto: qué es, para qué sirve, cómo
   funciona, las fotos, los buyer personas y los ángulos.
 - Más abajo: "Lo que sigue", lo que está "Esperando revisión" y los terminados (se pueden ocultar).

@@ -81,6 +81,8 @@ try {
     Schedule::command('metrics:report')->dailyAt('00:45')->withoutOverlapping(30);
     // .55: los videos de los creativos ganadores (con sus estados de las 00:20 al día), hasta 40 por día
     Schedule::command('meta:transcribe')->dailyAt('07:30')->withoutOverlapping(60);
+    // .103: el video del ganador de cada encargo de iterar, guardado en el almacén para verlo y bajarlo en el encargo
+    Schedule::command('meta:winner-videos')->everyTenMinutes()->withoutOverlapping(30)->runInBackground();
     // Reportes (entrega 4): los automáticos (diario D-3, semanal, mensual, §53 a §55) se generan solos cuando les toca;
     // cada noche, después de recalcular las órdenes, los recientes sacan versión nueva si cambiaron sus cifras (§20, §21)
     // `.48c` (decisión del dueño, 2026-10-31): apagados. Los reemplazan los reportes del negocio del asistente

@@ -27,7 +27,8 @@ class RelinkMetaCreatives extends Command
             $stats = $linker->run();
             $this->line(($dry ? 'PRUEBA (no se guarda nada). ' : '') . "Anuncios cambiados: {$stats['ads']} | ad sets cambiados: {$stats['adsets']}"
                 . " | anuncios con creativo: {$stats['linked']} | creativos nuevos: {$stats['creatives_new']}"
-                . " | ángulos nuevos: {$stats['angles_new']} (alias: {$stats['aliases_new']})");
+                . " | ángulos nuevos: {$stats['angles_new']} (alias: {$stats['aliases_new']})"
+                . " | encargos que siguieron a su creativo: {$stats['references_moved']}");
             $mixed = DB::table('meta_ads as a')->join('meta_campaigns as c', 'c.meta_id', '=', 'a.campaign_meta_id')
                 ->whereNotNull('a.meta_creative_ref_id')->whereNotNull('c.product_id')
                 ->groupBy('a.meta_creative_ref_id')->havingRaw('COUNT(DISTINCT c.product_id) > 1')->select('a.meta_creative_ref_id')->get()->count();

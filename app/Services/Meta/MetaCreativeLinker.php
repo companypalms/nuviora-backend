@@ -3,6 +3,7 @@
 namespace App\Services\Meta;
 
 use App\Models\AdAngle;
+use App\Models\CreativeBatch;
 use App\Models\MetaAd;
 use App\Models\MetaAdset;
 use App\Models\MetaCreative;
@@ -21,16 +22,17 @@ use Illuminate\Support\Facades\DB;
  *   empieza igual (FAS en un ad set FASP), el más corto es lo mismo que el más largo, pero solo si el corto es nuevo: si
  *   el dueño ya lo separó o lo confirmó, no se toca.
  * - Los creativos que se quedan sin anuncios no se borran: dejan de verse.
+ * - `.103`: los encargos de iterar un creativo pasan con sus anuncios al creativo nuevo (followReferences).
  */
 class MetaCreativeLinker
 {
     /**
      * @param array{account?: int, campaign?: string, product?: int} $scope sin nada, todo
-     * @return array{adsets: int, ads: int, linked: int, creatives_new: int, angles_new: int, aliases_new: int}
+     * @return array{adsets: int, ads: int, linked: int, creatives_new: int, angles_new: int, aliases_new: int, references_moved: int}
      */
     public function run(array $scope = []): array
     {
-        $stats = ['adsets' => 0, 'ads' => 0, 'linked' => 0, 'creatives_new' => 0, 'angles_new' => 0, 'aliases_new' => 0];
+        $stats = ['adsets' => 0, 'ads' => 0, 'linked' => 0, 'creatives_new' => 0, 'angles_new' => 0, 'aliases_new' => 0, 'references_moved' => 0];
         $campaignQuery = DB::table('meta_campaigns')
             ->when($scope['account'] ?? null, fn ($q, $v) => $q->where('meta_ad_account_id', $v))
             ->when($scope['campaign'] ?? null, fn ($q, $v) => $q->where('meta_id', $v))
@@ -111,6 +113,7 @@ class MetaCreativeLinker
         // 3. Cada anuncio con su creativo
         $creativeIds = MetaCreative::pluck('id', 'tracking_id')->all();
         $touched = [];
+        $moved = [];
         foreach ($ads as $ad) {
             $p = $productOf[$ad->campaign_meta_id] ?? null;
             $parts = $adParts[$ad->id];
@@ -138,6 +141,9 @@ class MetaCreativeLinker
             }
             if ($ad->meta_creative_ref_id !== null && $ad->meta_creative_ref_id !== $creativeId) {
                 $touched[$ad->meta_creative_ref_id] = true; // el creativo que deja: se recalcula su tipo y su nombre
+                if ($creativeId !== null) {
+                    $moved[$ad->meta_creative_ref_id][$creativeId] = true; // .103: a dónde se fue
+                }
             }
             $ad->meta_creative_ref_id = $creativeId;
             if ($ad->isDirty()) {
@@ -150,7 +156,57 @@ class MetaCreativeLinker
         // 4. Lo que se muestra de cada creativo, con todos sus anuncios (de cualquier cuenta)
         $this->refreshCreatives(array_keys($touched));
 
+        // 5. .103: los encargos siguen a su creativo
+        $stats['references_moved'] = $this->followReferences($moved);
+
         return $stats;
+    }
+
+    /**
+     * `.103` (el editor, 2026-11-05: "de este no sé qué creativo es el ganador y no sale el video como tal"): cuando los
+     * anuncios de un creativo pasan a otro (cambió cómo se leen los nombres, o el Admin corrigió un código), los encargos
+     * que lo iteran pasan con ellos, si todos se fueron al mismo. Los que ya apuntaban a un creativo vacío (de antes de
+     * esta regla) buscan el que tiene sus anuncios: el de su producto con anuncios que se llaman como el código viejo. Si
+     * hay más de uno, no se adivina: el dueño lo elige en Cola y banca › Editar.
+     *
+     * @param array<int, array<int, true>> $moved creativo viejo => los creativos a los que se fueron sus anuncios
+     */
+    private function followReferences(array $moved): int
+    {
+        $n = 0;
+        foreach ($moved as $old => $to) {
+            if (count($to) === 1 && !MetaAd::where('meta_creative_ref_id', $old)->exists()) {
+                $n += CreativeBatch::where('reference_creative_id', $old)->update(['reference_creative_id' => array_key_first($to)]);
+            }
+        }
+        $empty = DB::table('creative_batches as b')->join('meta_creatives as c', 'c.id', '=', 'b.reference_creative_id')
+            ->whereNotExists(fn ($q) => $q->from('meta_ads as a')->whereColumn('a.meta_creative_ref_id', 'c.id'))
+            ->distinct()->get(['b.product_id', 'c.id', 'c.tracking_id']);
+        foreach ($empty as $e) {
+            $to = self::successor((int) $e->product_id, (string) $e->tracking_id, (int) $e->id);
+            if ($to !== null) {
+                $n += CreativeBatch::where('reference_creative_id', $e->id)->where('product_id', $e->product_id)->update(['reference_creative_id' => $to]);
+            }
+        }
+
+        return $n;
+    }
+
+    /** `.103`: el creativo que se quedó con los anuncios de uno vacío; null si no hay o si hay más de uno. */
+    private static function successor(int $productId, string $trackingId, int $old): ?int
+    {
+        $code = CreativeTrackingId::label(str_contains($trackingId, ':') ? substr($trackingId, strpos($trackingId, ':') + 1) : $trackingId);
+        if ($code === '') {
+            return null;
+        }
+        // el mismo nombre, sin contar espacios ni mayúsculas ("CRE005-FEX-FASP-REF005")
+        $key = fn (string $name) => mb_strtoupper((string) preg_replace('/\s+/u', '', CreativeTrackingId::label($name)));
+        $ids = DB::table('meta_ads as a')->join('meta_campaigns as m', 'm.meta_id', '=', 'a.campaign_meta_id')
+            ->where('m.product_id', $productId)->whereNotNull('a.meta_creative_ref_id')->where('a.meta_creative_ref_id', '<>', $old)
+            ->where('a.name', 'like', '%' . addcslashes($code, '%_\\') . '%')->get(['a.name', 'a.meta_creative_ref_id'])
+            ->filter(fn ($a) => $key((string) $a->name) === $key($code))->pluck('meta_creative_ref_id')->map(fn ($id) => (int) $id)->unique();
+
+        return $ids->count() === 1 ? $ids->first() : null;
     }
 
     /** La identidad de un creativo: el producto de la campaña (0 si falta clasificarla) y el código. */

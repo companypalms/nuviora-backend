@@ -14,7 +14,8 @@ use Illuminate\Support\Str;
  */
 final class StoredFileRules
 {
-    public const KINDS = ['piece' => 'Pieza', 'photo' => 'Foto del producto', 'strategy' => 'Documento de estrategia', 'reference' => 'Referencia'];
+    public const KINDS = ['piece' => 'Pieza', 'photo' => 'Foto del producto', 'strategy' => 'Documento de estrategia', 'reference' => 'Referencia',
+        'winner' => 'Video de un ganador']; // .103
 
     public const VIDEOS = ['video/mp4' => 'mp4', 'video/quicktime' => 'mov', 'video/webm' => 'webm'];
 
@@ -30,7 +31,7 @@ final class StoredFileRules
     public const DOCUMENT_MAX = 50 * 1024 * 1024;
 
     /** Lo que acepta cada clase de archivo. */
-    private const ACCEPTS = ['piece' => ['video', 'image'], 'photo' => ['image'], 'strategy' => ['document'], 'reference' => ['video', 'image']];
+    private const ACCEPTS = ['piece' => ['video', 'image'], 'photo' => ['image'], 'strategy' => ['document'], 'reference' => ['video', 'image'], 'winner' => ['video']];
 
     /** video, image, document u other. */
     public static function type(string $mime): string

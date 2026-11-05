@@ -362,7 +362,7 @@ class MetaQueueController extends Controller
                     'concept' => $b->concept, 'hypothesis' => $b->hypothesis, 'goal' => $b->goal, 'test_idea' => $b->test_idea, 'improve' => $b->improve, 'audience' => $b->audience,
                     'persona_id' => $b->persona_id, 'testing_round' => $b->testing_round,
                 ] + EditorWork::product($b, $profiles) + [
-                    'reference_id' => $b->reference_creative_id, 'reference' => $b->reference?->label,
+                    'reference_id' => $b->reference_creative_id, 'reference' => EditorWork::referenceName($b->reference), // .103
                     'city_id' => $b->learning_city_id, 'city' => $b->learningCity?->name, 'format' => $b->format, 'style' => $b->style, 'keep' => $b->keep, 'offer' => $b->offer,
                     'deliverables' => $b->deliverables, 'urgency' => $b->urgency, 'due_date' => $b->due_date?->toDateString(),
                     'approved_at' => $b->approved_at?->toIso8601String(), 'approved_by' => $b->approver?->names,
