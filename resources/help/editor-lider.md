@@ -25,9 +25,9 @@
   testimonio), "3 iteraciones de C0146" con el detalle debajo ("1 de hook y 2 de formato"), "3 piezas nuevas del ángulo
   ABCD" (un concepto nuevo de ese ángulo) o "3 piezas nuevas de un ángulo nuevo: ABCD". Debajo dice "Por qué hace
   falta".
-- Si es la iteración de un ganador, "Ver todo el encargo" dice cuál (el nombre de su anuncio en Meta) y trae su video
-  para ver y bajar. Si el ganador es de antes del sistema, el video se trae solo de Meta en unos minutos; si Meta no
-  deja bajarlo, lo dice ahí y se vuelve a intentar solo. Ese video es el anuncio tal cual: puede mostrar el precio.
+- Si es la iteración de un ganador, "Ver todo el encargo" dice cuál (el nombre de su anuncio en Meta). Si se hizo en el
+  sistema, trae su video para ver y bajar. Si es de antes del sistema, dice su nombre completo y su ángulo para buscarlo
+  en el Drive antiguo.
 - "Por revisar": todas las entregas que esperan. Tocar una abre la ventana de revisar.
 - "¿Alcanza el equipo?": dice si el equipo llega a tiempo con lo que hace falta. Si dice que falta gente, hay que
   avisarle al dueño.

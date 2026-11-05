@@ -6,8 +6,7 @@ use App\Models\StoredFile;
 use App\Services\Meta\MetaCreativeLinker;
 use App\Services\Meta\Queue\BatchTask;
 use App\Services\Meta\Queue\EditorWork;
-use App\Services\Meta\Videos\VideoTranscriber;
-use App\Services\Meta\Videos\WinnerVideos;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
@@ -62,7 +61,7 @@ beforeEach(function () {
     Schema::create('ad_angles', fn ($t) => [$t->id(), $t->unsignedBigInteger('product_id'), $t->string('code'), $t->string('name')->nullable(),
         $t->unsignedBigInteger('alias_of')->nullable(), $t->timestamps()]);
     Schema::create('creative_batches', fn ($t) => [$t->id(), $t->unsignedBigInteger('product_id'), $t->unsignedInteger('number')->nullable(),
-        $t->string('status'), $t->unsignedBigInteger('reference_creative_id')->nullable(), $t->timestamps()]);
+        $t->string('status'), $t->string('angle_code')->nullable(), $t->unsignedBigInteger('reference_creative_id')->nullable(), $t->timestamps()]);
     Schema::create('creative_batch_pieces', fn ($t) => [$t->id(), $t->unsignedBigInteger('creative_batch_id'), $t->unsignedInteger('number')->nullable(),
         $t->unsignedBigInteger('file_id')->nullable(), $t->timestamps()]);
     Schema::create('meta_video_transcripts', fn ($t) => [$t->id(), $t->string('video_id'), $t->string('status'), $t->string('hook')->nullable(),
@@ -158,60 +157,40 @@ describe('Lo que dice el encargo', function () {
     });
 });
 
-describe('El video del ganador en el encargo', function () {
+describe('El ganador de antes del sistema', function () {
+    // .104 (dueño, 2026-11-05: "con el nombre del anuncio y el ángulo es suficiente… lo busque en nuestro drive antiguo"):
+    // Meta no deja bajar los videos (#10), así que no se le pide nada: el encargo dice dónde buscarlo
     beforeEach(function () {
         config(['files.driver' => 'local']);
         Storage::fake('local');
         DB::table('meta_creatives')->insert(['id' => 642, 'tracking_id' => '5:CRE002-FAS-B005', 'product_id' => 5, 'label' => 'CRE002-FLEX-FAS-BATCH005',
-            'creative_code' => 'CRE002', 'status' => 'winner']);
+            'creative_code' => 'CRE002', 'angle_code' => 'FASP', 'status' => 'winner']);
         ($this->ad)('a1', 'CRE002-FLEX-FAS-BATCH005', 642, '1203');
         DB::table('creative_batches')->insert(['id' => 1, 'product_id' => 5, 'number' => 101, 'status' => 'approved', 'reference_creative_id' => 642]);
-        $this->meta = fn (?string $source) => $this->mock(VideoTranscriber::class, fn ($m) => $m->shouldReceive('source')->andReturn($source));
     });
 
-    it('se baja de Meta una vez, queda con el nombre del ganador y el editor lo ve y lo baja en el encargo', function () {
-        expect(EditorWork::iteration(CreativeBatch::find(1)))->toMatchArray(['code' => 'CRE002-FLEX-FAS-BATCH005', 'file' => null,
-            'video_note' => 'El video del ganador se está trayendo de Meta: aparece aquí en unos minutos.']);
-        ($this->meta)('https://video.test/1203.mp4');
-        Http::fake(['video.test/*' => Http::response('VIDEO-DEL-GANADOR', 200)]);
+    it('dice su nombre completo y su ángulo para buscarlo en el Drive antiguo, sin llamar a Meta', function () {
+        Http::fake();
 
-        $r = app(WinnerVideos::class)->run();
-
-        $file = StoredFile::where('kind', 'winner')->sole();
-        $it = EditorWork::iteration(CreativeBatch::find(1));
-        expect($r)->toMatchArray(['saved' => 1, 'failed' => 0, 'pending' => 1])
-            ->and($file->only(['path', 'name', 'status', 'product_id']))->toBe(['path' => 'ganadores/v1203.mp4', 'name' => 'Ganador CRE002-FLEX-FAS-BATCH005.mp4',
-                'status' => 'ready', 'product_id' => 5])
-            ->and(Storage::disk('local')->get('files/ganadores/v1203.mp4'))->toBe('VIDEO-DEL-GANADOR')
-            ->and($it['file'])->toMatchArray(['name' => 'Ganador CRE002-FLEX-FAS-BATCH005.mp4', 'type' => 'video'])
-            ->and($it['file']['download_url'])->not->toBeNull()
-            ->and($it['video_note'])->toBeNull()
-            // otro encargo del mismo ganador ya lo tiene: no se baja otra vez
-            ->and(app(WinnerVideos::class)->pending())->toBe([]);
+        expect(EditorWork::iteration(CreativeBatch::find(1)))->toMatchArray(['code' => 'CRE002-FLEX-FAS-BATCH005', 'angle' => 'FASP', 'file' => null,
+            'video_note' => 'Su video no está en el sistema: búscalo en el Drive antiguo como «CRE002-FLEX-FAS-BATCH005» (ángulo FASP).']);
+        Http::assertNothingSent();
     });
 
-    it('si Meta no lo da, el encargo lo dice y se vuelve a probar en 6 horas', function () {
-        ($this->meta)(null);
+    it('sin ángulo propio usa el del encargo; el ganador hecho en el sistema (C0457) trae su video y no dice nada', function () {
+        DB::table('meta_creatives')->where('id', 642)->update(['angle_code' => null]);
+        DB::table('creative_batches')->where('id', 1)->update(['angle_code' => 'FAS']);
+        expect(EditorWork::iteration(CreativeBatch::find(1))['video_note'])->toEndWith('(ángulo FAS).');
 
-        $r = app(WinnerVideos::class)->run();
-
-        expect($r)->toMatchArray(['saved' => 0, 'failed' => 1])
-            ->and(EditorWork::iteration(CreativeBatch::find(1))['video_note'])->toStartWith('Meta no dejó bajar el video de este ganador')
-            ->and(app(WinnerVideos::class)->pending())->toBe([]);
-        $this->travel(7)->hours();
-        expect(app(WinnerVideos::class)->pending())->toHaveCount(1);
-    });
-
-    it('solo de los encargos que se hacen; no los de la banca, ni el ganador que ya es una pieza del sistema, ni sin almacén', function () {
-        DB::table('creative_batches')->where('id', 1)->update(['status' => 'bank']);
-        expect(app(WinnerVideos::class)->pending())->toBe([]);
-
-        DB::table('creative_batches')->where('id', 1)->update(['status' => 'production']);
+        $file = StoredFile::create(['driver' => 'local', 'path' => 'creativos/p5/B0100/C0457.mp4', 'name' => 'C0457 FASP.mp4', 'mime' => 'video/mp4',
+            'size' => 10, 'status' => 'ready', 'kind' => 'piece']);
+        DB::table('creative_batch_pieces')->insert(['creative_batch_id' => 9, 'number' => 457, 'file_id' => $file->id]);
         DB::table('meta_creatives')->where('id', 642)->update(['creative_code' => 'C0457']);
-        DB::table('creative_batch_pieces')->insert(['creative_batch_id' => 9, 'number' => 457, 'file_id' => 77]);
-        expect(app(WinnerVideos::class)->pending())->toBe([]);
+        $it = EditorWork::iteration(CreativeBatch::find(1));
+        expect($it['code'])->toBe('C0457')->and($it['file'])->toMatchArray(['name' => 'C0457 FASP.mp4', 'type' => 'video'])->and($it['video_note'])->toBeNull();
+    });
 
-        config(['files.driver' => 'off']);
-        expect(app(WinnerVideos::class)->run()['skipped'])->toContain('almacén está apagado');
+    it('ya no existe la tarea que bajaba los videos de Meta', function () {
+        expect(array_keys(Artisan::all()))->not->toContain('meta:winner-videos');
     });
 });

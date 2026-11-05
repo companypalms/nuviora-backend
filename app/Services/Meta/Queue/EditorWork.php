@@ -12,7 +12,6 @@ use App\Models\User;
 use App\Services\Files\FileStore;
 use App\Services\Files\Uploads;
 use App\Services\Meta\Products\ProductModes;
-use App\Services\Meta\Videos\WinnerVideos;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -477,30 +476,35 @@ class EditorWork
     /**
      * `.93`: el ganador del que sale una iteración, para ponerlo al lado de lo entregado: su video si está en el sistema
      * (el creativo C0457 es la pieza 457), y si no, su miniatura, sus textos y lo que dice su video. Solo mientras el
-     * encargo se hace o se revisa (después no hace falta y no se gasta en buscarlo). `.103`: el video de los ganadores de
-     * antes del sistema, bajado de Meta y guardado (WinnerVideos); mientras llega, video_note dice por qué no está.
+     * encargo se hace o se revisa (después no hace falta y no se gasta en buscarlo). `.104` (dueño, 2026-11-05: "con el
+     * nombre del anuncio y el ángulo es suficiente… lo busque en nuestro drive antiguo"): si su video no está en el
+     * sistema, video_note dice su nombre completo y su ángulo para buscarlo ahí. Nada se pide a Meta.
      *
-     * @return array{code: ?string, file: ?array, video_note: ?string, thumbnail: ?string, texts: list<string>, script: ?array}|null
+     * @return array{code: ?string, angle: ?string, file: ?array, video_note: ?string, thumbnail: ?string, texts: list<string>, script: ?array}|null
      */
     public static function iteration(CreativeBatch $b): ?array
     {
         if (!$b->reference_creative_id || !in_array($b->status, ['approved', 'production', 'review'], true)) {
             return null;
         }
-        $creative = MetaCreative::find($b->reference_creative_id, ['id', 'label', 'creative_code', 'tracking_id']);
+        $creative = MetaCreative::find($b->reference_creative_id, ['id', 'label', 'creative_code', 'tracking_id', 'angle_code']);
         if (!$creative) {
             return null;
         }
-        $fileId = WinnerVideos::pieceFileId($creative->creative_code);
-        $winner = $fileId ? ['file' => null, 'note' => null] : WinnerVideos::of($creative->id);
+        $fileId = preg_match('/^C(\d+)$/i', (string) $creative->creative_code, $m) ? CreativeBatchPiece::where('number', (int) $m[1])->value('file_id') : null;
+        $file = $fileId ? (StoredFile::payloads([$fileId])[$fileId] ?? null) : null;
+        $name = self::referenceName($creative);
+        $angle = $creative->angle_code ?: $b->angle_code;
         $ref = self::references([$creative->id])[$creative->id] ?? [];
         $script = \App\Services\Meta\Videos\Scripts::forCreatives([$creative->id])[$creative->id] ?? null;
 
         return [
             // .103: C0457 si es del sistema; si no, el nombre del anuncio (el código solo, "CRE002", no dice cuál es)
-            'code' => preg_match('/^C\d+$/i', (string) $creative->creative_code) ? $creative->creative_code : self::referenceName($creative),
-            'file' => $fileId ? (StoredFile::payloads([$fileId])[$fileId] ?? null) : $winner['file'],
-            'video_note' => $winner['note'],
+            'code' => preg_match('/^C\d+$/i', (string) $creative->creative_code) ? $creative->creative_code : $name,
+            'angle' => $angle,
+            'file' => $file,
+            'video_note' => $file ? null : 'Su video no está en el sistema: búscalo en el Drive antiguo como «' . ($name ?? 'el ganador') . '»'
+                . ($angle ? " (ángulo {$angle})" : '') . '.',
             'thumbnail' => $ref['thumbnail'] ?? null,
             'texts' => QueueRules::withoutPricesIn($ref['texts'] ?? []),
             'script' => QueueRules::withoutPricesIn($script),
