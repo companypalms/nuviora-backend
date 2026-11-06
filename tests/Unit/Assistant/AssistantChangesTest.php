@@ -51,7 +51,9 @@ describe('El modo ejemplo propone cambios con frases simples', function () use (
     it('calendario: anotar y tildar', function () use ($jueves) {
         $c = ExampleModel::change('Anótame pagar el alquiler mañana', $jueves());
         expect($c['name'])->toBe('proponer_nota_calendario');
-        expect($c['arguments'])->toMatchArray(['titulo' => 'Pagar el alquiler', 'fecha' => '2026-10-30', 'tipo' => 'pago', 'repetir' => 'no']);
+        expect($c['arguments'])->toMatchArray(['titulo' => 'Pagar el alquiler', 'fecha' => '2026-10-30', 'tipo' => 'pago', 'repetir' => 'no', 'prioridad' => null, 'minutos' => null]);
+        // .107: "urgente" la anota en alta
+        expect(ExampleModel::change('Anótame llamar al banco urgente', $jueves())['arguments'])->toMatchArray(['prioridad' => 'alta']);
         expect(ExampleModel::change('Marca como hecho revisar la tasa', $jueves())['arguments'])->toMatchArray(['texto' => 'revisar la tasa', 'fecha' => '2026-10-29', 'estado' => 'hecho']);
     });
 

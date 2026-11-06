@@ -4,6 +4,7 @@ namespace App\Services\Assistant\Tools;
 
 use App\Services\Assistant\Present;
 use App\Services\Calendar\Calendar;
+use App\Services\Calendar\Rules\DayPlan;
 use App\Services\Calendar\Rules\Schedule;
 use Carbon\CarbonImmutable;
 
@@ -53,10 +54,14 @@ class CalendarTool implements Tool
         $link = [['type' => 'link', 'label' => 'Abrir el calendario', 'to' => '/calendario']];
         if (($args['cuando'] ?? 'hoy') !== 'fechas') {
             $d = $this->calendar->today($now);
+            $first = $d['plan'][0]['items'][0] ?? null;
+            $firstItem = $first ? collect(array_merge($d['overdue'], $d['items']))->first(fn ($i) => $i['item_key'] === $first['item_key'] && $i['due_date'] === $first['due_date']) : null;
 
             return new ToolResult([
                 'hoy' => $d['label'],
-                'resumen' => $d['text'],
+                'resumen' => $d['text'] . (($d['minutes_left'] ?? 0) > 0 ? ' Tiempo de trabajo que falta: ' . DayPlan::minutesLabel((int) $d['minutes_left']) . '.' : ''),
+                // .107: lo primero según el orden de "Tu día" (urgente → alta → normal → baja, la más corta primero)
+                'lo_primero' => $firstItem ? $firstItem['title'] . ' — ' . $first['reason'] : null,
                 'lo_de_hoy' => array_map([self::class, 'item'], $d['items']),
                 'atrasado' => array_map([self::class, 'item'], $d['overdue']),
             ], $link);
@@ -87,7 +92,9 @@ class CalendarTool implements Tool
     {
         $text = ($i['source'] ?? null) === 'system' ? $i['text'] : Present::mask((string) $i['text']);
 
-        return $text . ' [' . (self::STATUS[$i['status']] ?? $i['status']) . " · clave {$i['item_key']} · {$i['due_date']}]";
+        $plan = isset($i['priority']) ? ' · prioridad ' . $i['priority'] . ' · ' . DayPlan::minutesLabel((int) $i['minutes']) : '';
+
+        return $text . ' [' . (self::STATUS[$i['status']] ?? $i['status']) . $plan . " · clave {$i['item_key']} · {$i['due_date']}]";
     }
 
     private static function date(?string $value): CarbonImmutable

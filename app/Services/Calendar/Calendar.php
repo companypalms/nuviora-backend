@@ -2,11 +2,13 @@
 
 namespace App\Services\Calendar;
 
+use App\Models\CalendarItemPlan;
 use App\Models\CalendarMark;
 use App\Models\CalendarNote;
 use App\Models\RecurringExpense;
 use App\Models\User;
 use App\Services\Calendar\Readers\ReminderFacts;
+use App\Services\Calendar\Rules\DayPlan;
 use App\Services\Calendar\Rules\ExpenseRules;
 use App\Services\Calendar\Rules\NoteRules;
 use App\Services\Finance\OtherPayments;
@@ -31,6 +33,7 @@ use Illuminate\Validation\ValidationException;
  *              mark "done" o pay = el gasto recurrente que se paga), lines (el detalle: cada vendedora o agencia y su monto)
  *   status     pending | done | dismissed | overdue (atrasada)
  *   auto       si se tilda sola; mark: quién la marcó (source "auto": se tildó sola), cuándo y con qué nota
+ *   priority   alta | normal | baja; minutes cuánto toma; rank el lugar que le puso el dueño arrastrando (.107, DayPlan)
  * Las de todos los días que pasaron sin hacerse no se muestran: no se acumulan.
  */
 class Calendar
@@ -64,6 +67,11 @@ class Calendar
         foreach ($this->withStatus($this->occurrences($from, $to, $now), $today) as $item) {
             $days[$item['date']][] = $item;
         }
+        // .107: cada día en el orden en que se hace (lo atrasado sale en el de hoy, con today())
+        $plans = [];
+        foreach ($days as $date => $items) {
+            $plans[$date] = DayPlan::order(self::pendingOf($items), [], $date === $today ? $now->format('H:i') : null);
+        }
 
         return [
             'from' => $from->toDateString(),
@@ -71,6 +79,7 @@ class Calendar
             'today' => $today,
             'started_on' => $this->settings->startedOn($now),
             'days' => $days,
+            'plans' => $plans,
         ];
     }
 
@@ -105,7 +114,8 @@ class Calendar
         $today = $now->startOfDay();
         $items = $this->withStatus($this->occurrences($today, $today, $now), $today->toDateString());
         $overdue = $this->overdue($now);
-        $pending = count(array_filter($items, fn ($i) => $i['status'] === 'pending'));
+        $open = self::pendingOf($items);
+        $pending = count($open);
         $done = count(array_filter($items, fn ($i) => $i['status'] === 'done'));
 
         return [
@@ -115,6 +125,9 @@ class Calendar
             'overdue' => $overdue,
             'counts' => ['pending' => $pending, 'overdue' => count($overdue), 'done' => $done],
             'text' => self::summary($pending, count($overdue)),
+            // .107 "Tu día": en qué orden se hace (por etapas) y cuántos minutos de trabajo faltan
+            'plan' => DayPlan::order($open, $overdue, $now->format('H:i')),
+            'minutes_left' => array_sum(array_column($open, 'minutes')) + array_sum(array_column($overdue, 'minutes')),
         ];
     }
 
@@ -137,9 +150,11 @@ class Calendar
     public function settings(): array
     {
         $rules = $this->settings->rules();
+        $plans = $this->plans(array_merge(array_map(fn ($k) => "rule:{$k}", array_keys(ReminderRules::RULES)), [DayPlan::ALL_EXPENSES]));
+        $plan = fn (string $itemKey) => array_intersect_key(DayPlan::resolve($itemKey, $plans[$itemKey] ?? null), ['priority' => 0, 'minutes' => 0]);
 
         return [
-            'rules' => array_map(fn (string $key) => [
+            'rules' => array_map(fn (string $key) => $plan("rule:{$key}") + [
                 'key' => $key,
                 'title' => ReminderRules::RULES[$key]['title'],
                 'help' => ReminderRules::RULES[$key]['help'],
@@ -150,7 +165,82 @@ class Calendar
                 'weekday' => $rules[$key]['weekday'] ?? null,
             ], array_keys(ReminderRules::RULES)),
             'weekdays' => array_slice(Schedule::WEEKDAYS, 0, 6, true),
+            // .107: los minutos y la prioridad de los gastos fijos que no tienen los suyos
+            'expenses' => $plan(DayPlan::ALL_EXPENSES),
         ];
+    }
+
+    /**
+     * .107: guarda la prioridad o los minutos de una o varias cosas, para todos los días ("Alta · 5 min" en Tu día, o la
+     * ventana de los recordatorios fijos). Cambiar la prioridad la pone al final de su nuevo grupo (sin lugar propio).
+     *
+     * @param list<array{item_key: string, priority?: ?string, minutes?: ?int}> $items
+     */
+    public function savePlan(array $items, User $by): void
+    {
+        $problems = [];
+        foreach (array_values($items) as $i => $row) {
+            if (!$this->knownKey((string) ($row['item_key'] ?? ''))) {
+                $problems["items.{$i}.item_key"] = 'Eso ya no está en el calendario. Actualiza la página.';
+            }
+            $problems += DayPlan::problems($row['priority'] ?? null, $row['minutes'] ?? null, "items.{$i}.");
+        }
+        if ($problems) {
+            throw ValidationException::withMessages($problems);
+        }
+        $saved = $this->plans(array_column($items, 'item_key'));
+        $all = $this->plans([DayPlan::ALL_EXPENSES])[DayPlan::ALL_EXPENSES] ?? null;
+        foreach ($items as $row) {
+            $key = $row['item_key'];
+            $current = DayPlan::resolve($key, $saved[$key] ?? null, $key === DayPlan::ALL_EXPENSES ? null : $all);
+            $priority = $row['priority'] ?? $current['priority'];
+            $minutes = (int) ($row['minutes'] ?? $current['minutes']);
+            CalendarItemPlan::updateOrCreate(['item_key' => $key], [
+                'priority' => $priority,
+                'minutes' => $minutes,
+                'rank' => $priority === $current['priority'] ? $current['rank'] : null,
+                'updated_by' => $by->id,
+            ]);
+            if ($key === DayPlan::ALL_EXPENSES) {
+                $all = ['priority' => $priority, 'minutes' => $minutes];
+            }
+        }
+        self::forgetToday();
+    }
+
+    /**
+     * .107: el orden que puso el dueño arrastrando, para todos los días. $itemKeys es el grupo de esa prioridad entero, de
+     * arriba hacia abajo; la que llegó de otro grupo toma esta prioridad.
+     */
+    public function reorder(string $priority, array $itemKeys, User $by): void
+    {
+        $problems = DayPlan::problems($priority, null);
+        foreach (array_values($itemKeys) as $i => $key) {
+            if (!is_string($key) || $key === DayPlan::ALL_EXPENSES || !$this->knownKey($key)) {
+                $problems["item_keys.{$i}"] = 'Eso ya no está en el calendario. Actualiza la página.';
+            }
+        }
+        if ($problems) {
+            throw ValidationException::withMessages($problems);
+        }
+        $saved = $this->plans($itemKeys);
+        $all = $this->plans([DayPlan::ALL_EXPENSES])[DayPlan::ALL_EXPENSES] ?? null;
+        foreach (array_values(array_unique($itemKeys)) as $i => $key) {
+            CalendarItemPlan::updateOrCreate(['item_key' => $key], [
+                'priority' => $priority,
+                'minutes' => DayPlan::resolve($key, $saved[$key] ?? null, $all)['minutes'],
+                'rank' => $i + 1,
+                'updated_by' => $by->id,
+            ]);
+        }
+        self::forgetToday();
+    }
+
+    /** .107 "Volver al orden automático": se olvida el orden arrastrado (las prioridades y los minutos quedan). */
+    public function resetOrder(): void
+    {
+        CalendarItemPlan::whereNotNull('rank')->update(['rank' => null]);
+        self::forgetToday();
     }
 
     public function saveSettings(array $rules, User $by, CarbonImmutable $now): array
@@ -185,7 +275,9 @@ class Calendar
     public function createNote(array $input, User $by, string $source = 'owner'): CalendarNote
     {
         $fields = $this->checked($input);
+        $plan = $this->checkedPlan($input);
         $note = CalendarNote::create($fields + ['source' => $source, 'created_by' => $by->id, 'updated_by' => $by->id]);
+        CalendarItemPlan::updateOrCreate(['item_key' => $note->itemKey()], $plan + DayPlan::NOTE_DEFAULT + ['updated_by' => $by->id]);
         self::forgetToday();
 
         return $note;
@@ -193,7 +285,12 @@ class Calendar
 
     public function updateNote(CalendarNote $note, array $input, User $by): CalendarNote
     {
-        $note->update($this->checked($input) + ['updated_by' => $by->id]);
+        $fields = $this->checked($input);
+        $plan = $this->checkedPlan($input);
+        $note->update($fields + ['updated_by' => $by->id]);
+        if ($plan !== []) {
+            $this->savePlan([['item_key' => $note->itemKey()] + $plan], $by);
+        }
         self::forgetToday();
 
         return $note;
@@ -232,6 +329,69 @@ class Calendar
         }
 
         return $fields;
+    }
+
+    /** .107: la prioridad y los minutos que llegaron con una nota (solo los que vinieron), revisados. */
+    private function checkedPlan(array $input): array
+    {
+        $plan = array_filter([
+            'priority' => $input['priority'] ?? null,
+            'minutes' => ($input['minutes'] ?? '') !== '' ? $input['minutes'] : null,
+        ], fn ($v) => $v !== null);
+        if ($problems = DayPlan::problems($plan['priority'] ?? null, $plan['minutes'] ?? null)) {
+            throw ValidationException::withMessages($problems);
+        }
+        if (isset($plan['minutes'])) {
+            $plan['minutes'] = (int) $plan['minutes'];
+        }
+
+        return $plan;
+    }
+
+    /** .107: si esa cosa existe en el calendario (sin importar el día), para guardarle su prioridad y sus minutos. */
+    private function knownKey(string $itemKey): bool
+    {
+        if ($itemKey === DayPlan::ALL_EXPENSES) {
+            return true;
+        }
+        if (preg_match('/^note:(\d+)$/', $itemKey, $m)) {
+            return CalendarNote::active()->whereKey((int) $m[1])->exists();
+        }
+        if (preg_match('/^rule:(\w+)$/', $itemKey, $m)) {
+            return isset(ReminderRules::RULES[$m[1]]);
+        }
+        if (preg_match('/^expense:(\d+)$/', $itemKey, $m)) {
+            return RecurringExpense::whereKey((int) $m[1])->exists();
+        }
+
+        return false;
+    }
+
+    /** @return array<string, array{priority: string, minutes: int, rank: ?int}> lo que guardó el dueño, por cosa */
+    private function plans(array $itemKeys): array
+    {
+        if ($itemKeys === []) {
+            return [];
+        }
+
+        return CalendarItemPlan::whereIn('item_key', array_values(array_unique($itemKeys)))->get(['item_key', 'priority', 'minutes', 'rank'])
+            ->mapWithKeys(fn (CalendarItemPlan $p) => [$p->item_key => ['priority' => $p->priority, 'minutes' => $p->minutes, 'rank' => $p->rank]])
+            ->all();
+    }
+
+    /** .107: a cada cosa, su prioridad, sus minutos y su lugar (lo del dueño, o lo de siempre). */
+    private function withPlan(array $items): array
+    {
+        $plans = $this->plans(array_merge(array_column($items, 'item_key'), [DayPlan::ALL_EXPENSES]));
+        $all = $plans[DayPlan::ALL_EXPENSES] ?? null;
+
+        return array_map(fn (array $item) => $item + DayPlan::resolve($item['item_key'], $plans[$item['item_key']] ?? null, $all), $items);
+    }
+
+    /** Lo que queda por hacer de una lista (pendiente), en su orden. */
+    private static function pendingOf(array $items): array
+    {
+        return array_values(array_filter($items, fn ($i) => $i['status'] === 'pending'));
     }
 
     /** Si esa cosa existe y le toca ese día. */
@@ -444,6 +604,7 @@ class Calendar
         if ($items === []) {
             return [];
         }
+        $items = $this->withPlan($items);
         $marks = CalendarMark::with('marker:id,names,surnames')
             ->whereIn('item_key', array_unique(array_column($items, 'item_key')))
             ->whereIn('occurs_on', array_unique(array_column($items, 'due_date')))

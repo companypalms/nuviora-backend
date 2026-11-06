@@ -97,6 +97,33 @@ class CalendarController extends Controller
         return response()->json(['message' => $data['status'] === 'done' ? 'Listo, marcado como hecho.' : 'Descartado.']);
     }
 
+    /** .107: la prioridad o los minutos de una o varias cosas, para todos los días ("items": [{item_key, priority?, minutes?}]). */
+    public function savePlan(Request $request, Calendar $calendar): JsonResponse
+    {
+        $request->validate(['items' => 'required|array|min:1|max:60', 'items.*.item_key' => 'required|string|max:60']);
+        $items = array_map(fn ($row) => array_intersect_key((array) $row, array_flip(['item_key', 'priority', 'minutes'])), array_values($request->input('items')));
+        $calendar->savePlan($items, $request->user());
+
+        return response()->json(['message' => 'Guardado para todos los días.']);
+    }
+
+    /** .107: el orden que puso arrastrando: la prioridad del grupo y sus cosas de arriba hacia abajo. */
+    public function reorder(Request $request, Calendar $calendar): JsonResponse
+    {
+        $data = $request->validate(['priority' => 'required|string', 'item_keys' => 'required|array|min:1|max:100', 'item_keys.*' => 'required|string|max:60']);
+        $calendar->reorder($data['priority'], $data['item_keys'], $request->user());
+
+        return response()->json(['message' => 'Orden guardado para todos los días.']);
+    }
+
+    /** .107: "Volver al orden automático". */
+    public function resetOrder(Calendar $calendar): JsonResponse
+    {
+        $calendar->resetOrder();
+
+        return response()->json(['message' => 'Volvió el orden automático.']);
+    }
+
     /** "Deshacer": vuelve a quedar pendiente. */
     public function unmark(Request $request, Calendar $calendar): JsonResponse
     {

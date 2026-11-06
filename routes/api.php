@@ -797,6 +797,10 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::post('/notes/{note}/archive', [\App\Http\Controllers\CalendarController::class, 'archiveNote']);
         Route::post('/marks', [\App\Http\Controllers\CalendarController::class, 'mark']);
         Route::delete('/marks', [\App\Http\Controllers\CalendarController::class, 'unmark']);
+        // .107 "Tu día": la prioridad, los minutos y el orden arrastrado de cada cosa (para todos los días)
+        Route::put('/item-plan', [\App\Http\Controllers\CalendarController::class, 'savePlan']);
+        Route::put('/order', [\App\Http\Controllers\CalendarController::class, 'reorder']);
+        Route::delete('/order', [\App\Http\Controllers\CalendarController::class, 'resetOrder']);
     });
 
     // El asistente del dueño (Etapa 4): su chat. Solo el Admin. Preguntar y limpiar tienen un límite por minuto; la

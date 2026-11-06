@@ -279,7 +279,8 @@ class ExampleModel implements AssistantModel
         }
         if (preg_match('/^(?:anota(?:me)?|recuerdame)\s+(?:en el calendario\s+)?(.+?)(?:\s+(?:pasado manana|manana|hoy))?$/u', $t, $m) && !str_contains($t, 'gasto')) {
             return ['name' => 'proponer_nota_calendario', 'arguments' => ['titulo' => ucfirst($m[1]), 'fecha' => $date, 'hora' => null,
-                'tipo' => str_contains($t, 'pagar') ? 'pago' : 'tarea', 'repetir' => 'no', 'hasta' => null, 'detalles' => null]];
+                'tipo' => str_contains($t, 'pagar') ? 'pago' : 'tarea', 'repetir' => 'no', 'hasta' => null, 'detalles' => null,
+                'prioridad' => str_contains($t, 'urgente') ? 'alta' : null, 'minutos' => null]];
         }
 
         return null;

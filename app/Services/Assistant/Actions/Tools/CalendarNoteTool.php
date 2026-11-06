@@ -8,6 +8,7 @@ use App\Services\Assistant\Actions\Outcome;
 use App\Services\Assistant\Actions\Proposal;
 use App\Services\Assistant\Tools\ToolProblem;
 use App\Services\Calendar\Calendar;
+use App\Services\Calendar\Rules\DayPlan;
 use App\Services\Calendar\Rules\NoteRules;
 use App\Services\Calendar\Rules\Schedule;
 
@@ -42,8 +43,11 @@ class CalendarNoteTool extends ChangeTool
                 'repetir' => ['type' => 'string', 'enum' => array_keys(self::REPEATS), 'description' => 'no, semanal, mensual o quincenal (el 15 y el último de cada mes).'],
                 'hasta' => ['type' => ['string', 'null'], 'description' => 'AAAA-MM-DD: hasta cuándo se repite, o null (sin fin).'],
                 'detalles' => ['type' => ['string', 'null'], 'description' => 'Lo demás que haya que saber, o null.'],
+                // .107 "Tu día": el orden del día va por prioridad y la más corta primero
+                'prioridad' => ['type' => ['string', 'null'], 'enum' => ['alta', 'normal', 'baja', null], 'description' => 'alta si el dueño dice que es urgente o importante, baja si puede esperar; null = normal.'],
+                'minutos' => ['type' => ['integer', 'null'], 'description' => 'Cuánto le toma, si lo dice ("30 min"), de 1 a 240; null = 15.'],
             ],
-            'required' => ['titulo', 'fecha', 'hora', 'tipo', 'repetir', 'hasta', 'detalles'],
+            'required' => ['titulo', 'fecha', 'hora', 'tipo', 'repetir', 'hasta', 'detalles', 'prioridad', 'minutos'],
             'additionalProperties' => false,
         ];
     }
@@ -64,7 +68,8 @@ class CalendarNoteTool extends ChangeTool
             'repeat' => self::REPEATS[$args['repetir'] ?? 'no'] ?? 'none',
             'repeat_until' => $args['hasta'] ?? null,
         ]);
-        if ($problems = NoteRules::problems($note)) {
+        $plan = ['priority' => ($args['prioridad'] ?? null) ?: DayPlan::NOTE_DEFAULT['priority'], 'minutes' => ($args['minutos'] ?? null) ?: DayPlan::NOTE_DEFAULT['minutes']];
+        if ($problems = NoteRules::problems($note) + DayPlan::problems($plan['priority'], $plan['minutes'])) {
             throw new ToolProblem(implode(' ', $problems));
         }
         $warnings = [];
@@ -81,8 +86,9 @@ class CalendarNoteTool extends ChangeTool
                 Proposal::line('Cuándo', Schedule::dayName($note['date']) . ($note['time'] ? " a las {$note['time']}" : '')),
                 Proposal::line('Se repite', $note['repeat'] === 'none' ? null : Schedule::REPEATS[$note['repeat']] . ($note['repeat_until'] ? ', hasta el ' . Schedule::dayName($note['repeat_until']) : '')),
                 Proposal::line('Detalles', $note['details']),
+                Proposal::line('Prioridad', DayPlan::PRIORITIES[$plan['priority']] . ' · ' . DayPlan::minutesLabel((int) $plan['minutes'])),
             ]),
-            $note,
+            $note + $plan,
             $warnings,
         );
     }
