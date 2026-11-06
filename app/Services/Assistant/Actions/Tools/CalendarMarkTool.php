@@ -15,6 +15,8 @@ use Carbon\CarbonImmutable;
 /**
  * Tildar (hecho) o descartar algo del calendario (Calendar::mark). Se elige por su clave (la trae la herramienta
  * "calendario") o por el texto, en la fecha que le toca.
+ * .109 (dueño, 2026-11-06: "arregla lo del asistente con los domingos"): lo que cae domingo se muestra el sábado (un pago)
+ * o el lunes (una tarea); se encuentra por el día que le tocaba o por el que se muestra, y se marca en el que le tocaba.
  */
 class CalendarMarkTool extends ChangeTool
 {
@@ -43,7 +45,7 @@ class CalendarMarkTool extends ChangeTool
             'properties' => [
                 'clave' => ['type' => ['string', 'null'], 'description' => 'La clave que trae la herramienta calendario ("rule:rate", "note:12", "expense:5"), o null.'],
                 'texto' => ['type' => ['string', 'null'], 'description' => 'Si no hay clave: unas palabras de lo que hay que marcar ("tasa", "pagar a las vendedoras").'],
-                'fecha' => ['type' => 'string', 'description' => 'AAAA-MM-DD: el día que le tocaba (para lo atrasado, el día original).'],
+                'fecha' => ['type' => 'string', 'description' => 'AAAA-MM-DD: el día que le tocaba (para lo atrasado, el día original). Si se corrió por un domingo, sirve también el día en que se muestra.'],
                 'estado' => ['type' => 'string', 'enum' => array_keys(self::STATUS), 'description' => 'hecho o descartado.'],
                 'nota' => ['type' => ['string', 'null'], 'description' => 'Un comentario corto, o null.'],
             ],
@@ -63,8 +65,7 @@ class CalendarMarkTool extends ChangeTool
         if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
             throw new ToolProblem('La fecha tiene que ser AAAA-MM-DD.');
         }
-        $day = CarbonImmutable::parse($date);
-        $items = $this->calendar->range($day, $day, $context->now)['days'][$date] ?? [];
+        $items = $this->around(CarbonImmutable::parse($date), $context->now);
         $item = $this->find($items, $args['clave'] ?? null, $args['texto'] ?? null);
         $status = self::STATUS[$args['estado'] ?? 'hecho'] ?? 'done';
         if (($item['status'] ?? null) === $status) {
@@ -91,6 +92,28 @@ class CalendarMarkTool extends ChangeTool
         $this->calendar->mark($payload['item_key'], $payload['due'], $payload['status'], $payload['note'], $context->user, 'assistant');
 
         return new Outcome(($payload['status'] === 'done' ? 'Marcado como hecho: ' : 'Descartado: ') . $payload['title'] . '.', ['label' => 'Ver el calendario', 'to' => '/calendario']);
+    }
+
+    /**
+     * .109: lo de ese día, por el día que le tocaba (due_date) o por el que se muestra (date): un domingo se corre como mucho
+     * un día (al sábado o al lunes), así que alcanza con mirar los días de al lado. Primero lo que le tocaba ese día.
+     *
+     * @return list<array>
+     */
+    private function around(CarbonImmutable $day, CarbonImmutable $now): array
+    {
+        $date = $day->toDateString();
+        $hits = [];
+        foreach ($this->calendar->range($day->subDay(), $day->addDay(), $now)['days'] as $items) {
+            foreach ($items as $item) {
+                if ($item['due_date'] === $date || $item['date'] === $date) {
+                    $hits[$item['item_key'] . '|' . $item['due_date']] = $item;
+                }
+            }
+        }
+        usort($hits, fn ($a, $b) => ($a['due_date'] === $date ? 0 : 1) <=> ($b['due_date'] === $date ? 0 : 1));
+
+        return array_values($hits);
     }
 
     /** La cosa del día por su clave o por su texto (sin acentos). Si hay dudas, las dice. */
