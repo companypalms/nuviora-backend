@@ -43,6 +43,8 @@ final class MetaReminderRules
      */
     public static function fill(string $key, array &$out, string $due, string $today, array $facts): void
     {
+        // .108: las horas se dicen en la del dueño ($facts['zone']); las fechas de los datos vienen en la del negocio
+        self::$zones = isset($facts['zone'], $facts['business_zone']) ? [$facts['business_zone'], $facts['zone']] : null;
         $work = $due === $today ? ($facts['meta_work'] ?? null) : null;
         match ($key) {
             'meta_queue' => self::queue($out, $work),
@@ -394,10 +396,13 @@ final class MetaReminderRules
         return $parts ? self::join($parts) : null;
     }
 
-    /** "el lunes 26/10 a las 15:20". */
+    /** .108: [la zona de los datos, la del dueño], o null para dejarlas como vienen. */
+    private static ?array $zones = null;
+
+    /** "el lunes 26/10 a las 15:20" (.108: en la hora del dueño). */
     private static function when(string $at): string
     {
-        $d = CarbonImmutable::parse($at);
+        $d = self::$zones ? CarbonImmutable::parse($at, self::$zones[0])->setTimezone(self::$zones[1]) : CarbonImmutable::parse($at);
 
         return Schedule::dayName($d->toDateString()) . ' a las ' . $d->format('G:i');
     }

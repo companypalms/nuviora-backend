@@ -8,7 +8,9 @@ use App\Services\Assistant\Actions\Outcome;
 use App\Services\Assistant\Actions\Proposal;
 use App\Services\Assistant\Tools\ToolProblem;
 use App\Services\Calendar\Calendar;
+use App\Services\Calendar\CalendarSettings;
 use App\Services\Calendar\Rules\DayPlan;
+use Carbon\CarbonImmutable;
 use App\Services\Calendar\Rules\NoteRules;
 use App\Services\Calendar\Rules\Schedule;
 
@@ -17,7 +19,7 @@ class CalendarNoteTool extends ChangeTool
 {
     private const REPEATS = ['no' => 'none', 'semanal' => 'weekly', 'mensual' => 'monthly', 'quincenal' => 'twice_monthly'];
 
-    public function __construct(private Calendar $calendar)
+    public function __construct(private Calendar $calendar, private CalendarSettings $settings)
     {
     }
 
@@ -38,7 +40,8 @@ class CalendarNoteTool extends ChangeTool
             'properties' => [
                 'titulo' => ['type' => 'string', 'description' => 'Qué hay que hacer, corto: "Pagar el alquiler del local".'],
                 'fecha' => ['type' => 'string', 'description' => 'AAAA-MM-DD: el día (o el primero, si se repite).'],
-                'hora' => ['type' => ['string', 'null'], 'description' => 'HH:MM (24 h) o null.'],
+                // .108: la hora de las notas es la del dueño ("Tu hora" del calendario), no la del negocio
+                'hora' => ['type' => ['string', 'null'], 'description' => $this->hourHint()],
                 'tipo' => ['type' => 'string', 'enum' => ['tarea', 'pago'], 'description' => 'Un pago que cae domingo se adelanta al sábado; una tarea pasa al lunes.'],
                 'repetir' => ['type' => 'string', 'enum' => array_keys(self::REPEATS), 'description' => 'no, semanal, mensual o quincenal (el 15 y el último de cada mes).'],
                 'hasta' => ['type' => ['string', 'null'], 'description' => 'AAAA-MM-DD: hasta cuándo se repite, o null (sin fin).'],
@@ -50,6 +53,22 @@ class CalendarNoteTool extends ChangeTool
             'required' => ['titulo', 'fecha', 'hora', 'tipo', 'repetir', 'hasta', 'detalles', 'prioridad', 'minutos'],
             'additionalProperties' => false,
         ];
+    }
+
+    /** "HH:MM (24 h) en la hora del dueño (Portugal: ahora son las 13:05), o null." */
+    private function hourHint(): string
+    {
+        try {
+            $zone = $this->settings->zone();
+        } catch (\Throwable) {
+            $zone = ['key' => CalendarSettings::BUSINESS_ZONE];
+        }
+        if ($zone['key'] === CalendarSettings::BUSINESS_ZONE) {
+            return 'HH:MM (24 h) o null.';
+        }
+        $now = CarbonImmutable::now()->setTimezone($zone['key'])->format('H:i');
+
+        return "HH:MM (24 h) en la hora del dueño, que vive en {$zone['label']} (allí ahora son las {$now}; las horas que dice son de allí), o null.";
     }
 
     public function working(array $args): string

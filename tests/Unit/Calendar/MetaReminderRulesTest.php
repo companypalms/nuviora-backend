@@ -67,6 +67,18 @@ describe('Las entregas que esperan por el dueño', function () use ($open, $lead
         $none = $occ('meta_deliveries', ['meta_work' => $work([])]);
         expect($none['auto_done'])->toBeTrue()->and($none['details'])->toBe('No hay entregas esperando por ti.');
     });
+
+    it('.108: las horas van en la del dueño ("Tu hora"), con su día', function () use ($open, $work, $occ) {
+        $facts = ['zone' => 'Europe/Lisbon', 'business_zone' => 'America/Caracas', 'meta_work' => $work(['open' => [
+            $open(['code' => 'B0101', 'status' => 'review', 'pending_by' => 7, 'pending_editor' => 'Leo Líder', 'pending_at' => '2026-11-01 09:30:00']),
+            $open(['code' => 'L0101', 'landing' => true, 'status' => 'ready', 'status_at' => '2026-10-30 22:15:00']),
+        ]])];
+        $o = $occ('meta_deliveries', $facts);
+        expect($o['lines'][0]['note'])->toEndWith('entregó el domingo 1/11 a las 13:30')
+            ->and($o['lines'][1]['note'])->toStartWith('aprobada el sábado 31/10 a las 2:15');
+        // sin zona, como vienen
+        expect($occ('meta_deliveries', ['meta_work' => $facts['meta_work']])['lines'][0]['note'])->toEndWith('a las 9:30');
+    });
 });
 
 describe('Que los editores vayan al día', function () use ($open, $leaders, $work, $occ) {

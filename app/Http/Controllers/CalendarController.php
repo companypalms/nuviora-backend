@@ -138,6 +138,15 @@ class CalendarController extends Controller
         }]);
     }
 
+    /** .108 "Tu hora": la zona en que el dueño ve y anota las horas del calendario. */
+    public function saveTimezone(Request $request, Calendar $calendar): JsonResponse
+    {
+        $data = $request->validate(['timezone' => 'required|string|max:40']);
+        $calendar->saveTimezone($data['timezone'], $request->user(), CarbonImmutable::now());
+
+        return response()->json(['message' => 'Listo: las horas de tu calendario van en hora de ' . \App\Services\Calendar\CalendarSettings::ZONES[$data['timezone']] . '.']);
+    }
+
     /** "Deshacer": vuelve a quedar pendiente. */
     public function unmark(Request $request, Calendar $calendar): JsonResponse
     {

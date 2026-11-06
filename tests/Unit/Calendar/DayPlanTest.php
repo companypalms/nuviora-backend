@@ -60,7 +60,7 @@ describe('El orden del día', function () use ($item, $keys) {
         expect(array_column($plan, 'key'))->toBe(['urgent', 'alta', 'normal', 'baja', 'later']);
         expect(array_column($plan, 'label'))->toBe(['Urgente', 'Alta', 'Normal', 'Baja', 'A su hora']);
         expect($plan[0]['items'][0])->toBe(['item_key' => 'note:9', 'due_date' => '2026-11-04', 'reason' => 'Atrasada: era del 4/11.']);
-        expect($plan[4]['items'][0]['reason'])->toBe('A las 15:00 (hora de Venezuela).');
+        expect($plan[4]['items'][0]['reason'])->toBe('A las 15:00.');
         expect(DayPlan::order([$item('rule:rate', ['priority' => 'alta'])], [], '09:00'))->toHaveCount(1);
         expect(DayPlan::order([], [], '09:00'))->toBe([]);
     });

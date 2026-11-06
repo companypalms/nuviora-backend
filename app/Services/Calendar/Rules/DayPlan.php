@@ -123,7 +123,7 @@ final class DayPlan
             if ($time !== null && $soon !== null && $time <= $soon) {
                 $now[] = $item + ['reason' => ($time <= $nowHm ? "Era a las {$time}." : "Es a las {$time}.")];
             } elseif ($time !== null) {
-                $stages['later'][] = $item + ['reason' => "A las {$time} (hora de Venezuela)."];
+                $stages['later'][] = $item + ['reason' => "A las {$time}."];
             } else {
                 $stages[$item['priority']][] = $item;
             }

@@ -205,13 +205,13 @@ class ReminderFacts
             ->orderBy('created_at')
             ->pluck('created_at');
         foreach ($rows as $at) {
-            $days[$at->toDateString()] = $at->format('G:i');
+            $days[$at->toDateString()] = $this->clock($at);
         }
         $setting = Setting::get('rate_updated_at');
         if (is_string($setting) && $setting !== '') {
             $at = CarbonImmutable::parse($setting);
             if ($at->betweenIncluded($from->startOfDay(), $to->endOfDay())) {
-                $days[$at->toDateString()] = $at->format('G:i');
+                $days[$at->toDateString()] = $this->clock($at);
             }
         }
 
@@ -224,7 +224,7 @@ class ReminderFacts
         $days = [];
         foreach (\App\Models\MetaAnalysis::whereBetween('date', [$from->toDateString(), $to->toDateString()])->whereNotNull('viewed_at')
             ->orderBy('viewed_at')->get(['date', 'viewed_at']) as $a) {
-            $days[$a->date->toDateString()] ??= $a->viewed_at->setTimezone(config('app.timezone'))->format('G:i');
+            $days[$a->date->toDateString()] ??= $this->clock($a->viewed_at);
         }
 
         return $days;
@@ -239,10 +239,16 @@ class ReminderFacts
         $out = [];
         foreach (\App\Models\BusinessReport::whereNotNull('viewed_at')->where('period_to', '>=', $from->subDays(45)->toDateString())
             ->where('period_from', '<=', $to->toDateString())->orderBy('viewed_at')->get(['type', 'period_from', 'period_to', 'viewed_at']) as $r) {
-            $out["{$r->type}|{$r->period_from->toDateString()}|{$r->period_to->toDateString()}"] ??= $r->viewed_at->setTimezone(config('app.timezone'))->format('G:i');
+            $out["{$r->type}|{$r->period_from->toDateString()}|{$r->period_to->toDateString()}"] ??= $this->clock($r->viewed_at);
         }
 
         return $out;
+    }
+
+    /** .108: una hora ("9:12") en la hora del dueño ("Tu hora" del calendario); el día sigue siendo el del negocio. */
+    private function clock(\DateTimeInterface $at): string
+    {
+        return CarbonImmutable::instance($at)->setTimezone(app(\App\Services\Calendar\CalendarSettings::class)->timezone())->format('G:i');
     }
 
     /** Las tasas que hay guardadas (las activas), y cuándo se guardaron. */

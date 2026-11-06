@@ -76,7 +76,7 @@ class Calendar
         // .107: cada día en el orden en que se hace (lo atrasado sale en el de hoy, con today())
         $plans = [];
         foreach ($days as $date => $items) {
-            $plans[$date] = DayPlan::order(self::pendingOf($items), [], $date === $today ? $now->format('H:i') : null);
+            $plans[$date] = DayPlan::order(self::pendingOf($items), [], $date === $today ? $this->clock($now) : null);
         }
 
         return [
@@ -86,6 +86,7 @@ class Calendar
             'started_on' => $this->settings->startedOn($now),
             'days' => $days,
             'plans' => $plans,
+            'zone' => $this->settings->zone(),
         ];
     }
 
@@ -137,13 +138,15 @@ class Calendar
             'counts' => ['pending' => $pending, 'overdue' => count($overdue), 'done' => $done],
             'text' => self::summary($pending, count($overdue)),
             // .107 "Tu día": en qué orden se hace (por etapas) y cuántos minutos de trabajo faltan
-            'plan' => DayPlan::order(array_map($later, $open), array_map($later, $overdue), $now->format('H:i')),
+            // .108: "ya es la hora" en la hora del dueño (sus notas tienen la hora de su zona)
+            'plan' => DayPlan::order(array_map($later, $open), array_map($later, $overdue), $this->clock($now)),
             'minutes_left' => array_sum(array_column($open, 'minutes')) + array_sum(array_column($overdue, 'minutes')),
             // .108: lo atrasado que se resolvió hoy (cuenta en lo hecho de hoy y en su barra)
             'resolved' => $resolved,
             'timers' => $timers,
             'usual' => $this->usual(array_column(array_merge($items, $overdue), 'item_key')),
             'score' => $score,
+            'zone' => $this->settings->zone(),
         ];
     }
 
@@ -197,7 +200,22 @@ class Calendar
             'weekdays' => array_slice(Schedule::WEEKDAYS, 0, 6, true),
             // .107: los minutos y la prioridad de los gastos fijos que no tienen los suyos
             'expenses' => $plan(DayPlan::ALL_EXPENSES),
+            // .108: "Tu hora" y las que se pueden elegir
+            'timezone' => $this->settings->zone() + ['zones' => array_map(fn ($k, $l) => ['key' => $k, 'label' => $l], array_keys(CalendarSettings::ZONES), CalendarSettings::ZONES)],
         ];
+    }
+
+    /** .108 "Tu hora": la zona en que el dueño ve y anota las horas del calendario (todo lo demás sigue en la del negocio). */
+    public function saveTimezone(string $zone, User $by, CarbonImmutable $now): void
+    {
+        $this->settings->saveTimezone($zone, $by, $now);
+        self::forgetToday();
+    }
+
+    /** La hora de ahora ("13:05") en la zona del dueño. */
+    private function clock(CarbonImmutable $now): string
+    {
+        return $now->setTimezone($this->settings->timezone())->format('H:i');
     }
 
     /**
@@ -739,6 +757,8 @@ class Calendar
         if ($editorWeeks !== [] || $learningDays !== []) {
             $facts += $this->facts->metaWeeks($editorWeeks, $learningDays);
         }
+        // .108: las horas de lo que pasó (entregó, aprobó…) se dicen en la hora del dueño
+        $facts += ['zone' => $this->settings->timezone(), 'business_zone' => CalendarSettings::BUSINESS_ZONE];
 
         $items = [];
         foreach ($dates as $key => $list) {
@@ -785,6 +805,7 @@ class Calendar
             return [];
         }
         $items = $this->withPlan($items);
+        $zone = $this->settings->timezone();
         $marks = CalendarMark::with('marker:id,names,surnames')
             ->whereIn('item_key', array_unique(array_column($items, 'item_key')))
             ->whereIn('occurs_on', array_unique(array_column($items, 'due_date')))
@@ -806,7 +827,9 @@ class Calendar
                 'source' => $mark->source,
                 'by' => $mark->marker ? PersonName::of($mark->marker->names, $mark->marker->surnames) : null,
                 'at' => $mark->updated_at?->format('Y-m-d H:i'),
-            ] : ($item['auto_done'] ? ['status' => 'done', 'note' => $item['auto_note'], 'source' => 'auto', 'by' => null, 'at' => null] : null);
+                // .108: la misma, en la hora del dueño (lo que se ve)
+                'at_zone' => $mark->updated_at?->copy()->setTimezone($zone)->format('Y-m-d H:i'),
+            ] : ($item['auto_done'] ? ['status' => 'done', 'note' => $item['auto_note'], 'source' => 'auto', 'by' => null, 'at' => null, 'at_zone' => null] : null);
             unset($item['base_text'], $item['auto_done'], $item['auto_note']);
             $out[] = $item;
         }

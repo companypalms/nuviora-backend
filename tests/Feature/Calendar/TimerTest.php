@@ -201,6 +201,34 @@ describe('El reloj de cada tarea', function () {
         expect($today['score'])->toMatchArray(['on_time' => 1, 'timed' => 1]);
     });
 
+    it('"Tu hora": las horas del calendario en la zona que elige el dueño; los días siguen siendo los del negocio', function () {
+        expect(relojHoy($this)['zone'])->toBe(['key' => 'America/Caracas', 'label' => 'Venezuela']);
+        $this->putJson('/api/calendar/timezone', ['timezone' => 'Europe/Lisbon'])->assertOk()
+            ->assertJsonPath('message', 'Listo: las horas de tu calendario van en hora de Portugal.');
+        // 09:00 en Caracas son las 13:00 en Lisboa (noviembre, sin horario de verano)
+        $ya = relojNota($this, ['title' => 'Llamar al banco', 'time' => '13:05']);
+        $era = relojNota($this, ['title' => 'Pagar la luz', 'time' => '10:00']);
+        $luego = relojNota($this, ['title' => 'Reunión', 'time' => '16:00']);
+
+        $today = relojHoy($this);
+        expect($today['date'])->toBe('2026-11-06')->and($today['zone'])->toBe(['key' => 'Europe/Lisbon', 'label' => 'Portugal']);
+        expect(array_column($today['plan'], 'key'))->toBe(['urgent', 'later']);
+        expect($today['plan'][0]['items'])->toBe([
+            ['item_key' => $era['item_key'], 'due_date' => '2026-11-06', 'reason' => 'Era a las 10:00.'],
+            ['item_key' => $ya['item_key'], 'due_date' => '2026-11-06', 'reason' => 'Es a las 13:05.'],
+        ]);
+        expect($today['plan'][1]['items'][0])->toMatchArray(['item_key' => $luego['item_key'], 'reason' => 'A las 16:00.']);
+
+        $this->postJson('/api/calendar/marks', $ya + ['status' => 'done'])->assertOk();
+        $mark = collect(relojHoy($this)['items'])->firstWhere('item_key', $ya['item_key'])['mark'];
+        expect($mark)->toMatchArray(['at' => '2026-11-06 09:00', 'at_zone' => '2026-11-06 13:00']);
+
+        $settings = $this->getJson('/api/calendar/settings')->assertOk()->json('timezone');
+        expect($settings['key'])->toBe('Europe/Lisbon')->and(array_column($settings['zones'], 'label'))->toContain('Portugal', 'Venezuela');
+        $this->putJson('/api/calendar/timezone', ['timezone' => 'Marte/Base'])->assertStatus(422)
+            ->assertJsonPath('errors.timezone.0', 'Elige una de las zonas de la lista.');
+    });
+
     it('solo para lo de hoy (o atrasado), y solo el Admin', function () {
         $manana = relojNota($this, ['date' => '2026-11-07']);
         $this->postJson('/api/calendar/timer/start', $manana)->assertStatus(422)->assertJsonValidationErrors('item_key');

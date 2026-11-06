@@ -803,6 +803,8 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::delete('/order', [\App\Http\Controllers\CalendarController::class, 'resetOrder']);
         // .108: el reloj de cada tarea (empezar, pausar, +5 min, más tarde; "Hecho" es /marks)
         Route::post('/timer/{action}', [\App\Http\Controllers\CalendarController::class, 'timer'])->whereIn('action', ['start', 'pause', 'extend', 'later']);
+        // .108 "Tu hora": la zona de las horas del calendario del dueño (lo demás del sistema sigue en la de Venezuela)
+        Route::put('/timezone', [\App\Http\Controllers\CalendarController::class, 'saveTimezone']);
     });
 
     // El asistente del dueño (Etapa 4): su chat. Solo el Admin. Preguntar y limpiar tienen un límite por minuto; la

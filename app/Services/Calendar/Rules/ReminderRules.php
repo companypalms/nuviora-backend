@@ -103,13 +103,13 @@ final class ReminderRules
         'review_3days' => [
             'type' => 'review', 'group' => 'daily', 'repeat' => 'daily', 'accumulates' => false, 'auto' => true,
             'title' => 'Analizar los últimos 3 días',
-            'help' => 'Los números de los 3 días anteriores (hoy no cuenta, todavía no termina): sirven para corregir a tiempo lo que va mal. Tu reporte diario sale a las 12:45 a. m. y se tilda solo al abrirlo.',
+            'help' => 'Los números de los 3 días anteriores (hoy no cuenta, todavía no termina): sirven para corregir a tiempo lo que va mal. Tu reporte diario sale a las 12:45 a. m. (hora de Venezuela) y se tilda solo al abrirlo.',
             'link' => null,
         ],
         'review_week' => [
             'type' => 'review', 'group' => null, 'repeat' => 'weekly', 'accumulates' => true, 'auto' => true,
             'title' => 'Revisar la semana pasada',
-            'help' => 'El jueves ya llegaron los cierres de las agencias: se puede ver cuánto se ganó, cuánto se perdió y por producto, de lunes a domingo. Tu reporte semanal sale a las 12:45 a. m. y se tilda solo al abrirlo.',
+            'help' => 'El jueves ya llegaron los cierres de las agencias: se puede ver cuánto se ganó, cuánto se perdió y por producto, de lunes a domingo. Tu reporte semanal sale a las 12:45 a. m. (hora de Venezuela) y se tilda solo al abrirlo.',
             'link' => null,
         ],
         'editors_week' => [
@@ -127,7 +127,7 @@ final class ReminderRules
         'review_month' => [
             'type' => 'review', 'group' => null, 'repeat' => 'monthly', 'day' => 8, 'accumulates' => true, 'auto' => true,
             'title' => 'Revisar el mes pasado',
-            'help' => 'Pasada la primera semana, casi todo lo del mes anterior ya se entregó o se canceló y llegaron los cierres: sus números ya son casi definitivos. Tu reporte mensual sale a las 12:45 a. m. y se tilda solo al abrirlo.',
+            'help' => 'Pasada la primera semana, casi todo lo del mes anterior ya se entregó o se canceló y llegaron los cierres: sus números ya son casi definitivos. Tu reporte mensual sale a las 12:45 a. m. (hora de Venezuela) y se tilda solo al abrirlo.',
             'link' => null,
         ],
         'goals_month' => [
@@ -350,7 +350,7 @@ final class ReminderRules
     public static function routineText(array $r): string
     {
         if (!$r['ready']) {
-            return 'El análisis de hoy sale a las 12:30 a. m.: lo urgente, qué hacer con cada creativo y lo que le llega solo al editor líder.';
+            return 'El análisis de hoy sale a las 12:30 a. m. (hora de Venezuela): lo urgente, qué hacer con cada creativo y lo que le llega solo al editor líder.';
         }
         $parts = [$r['urgent'] > 0 ? 'Lo urgente: ' . ($r['urgent'] === 1 ? '1 cosa.' : "{$r['urgent']} cosas.") : 'Nada urgente en tus campañas.'];
         if ($r['calls']) {
