@@ -187,6 +187,20 @@ describe('El reloj de cada tarea', function () {
         expect(DB::table('calendar_days')->where('date', '2026-11-06')->first())->toMatchObject(['total' => 1, 'done' => 1]);
     });
 
+    it('lo atrasado que se hace hoy cuenta en lo hecho de hoy (resolved), con su reloj', function () {
+        $vieja = relojNota($this, ['title' => 'Lo del martes', 'date' => '2026-11-03']);
+        expect(relojHoy($this)['overdue'])->toHaveCount(1);
+        $this->postJson('/api/calendar/timer/start', $vieja)->assertOk();
+        $this->travelTo(CarbonImmutable::parse('2026-11-06 09:05:00'));
+        $this->postJson('/api/calendar/marks', $vieja + ['status' => 'done'])->assertOk();
+
+        $today = relojHoy($this);
+        expect($today['overdue'])->toBe([]);
+        expect(array_column($today['resolved'], 'item_key'))->toBe([$vieja['item_key']]);
+        expect($today['timers']["{$vieja['item_key']}|2026-11-03"])->toMatchArray(['finished' => true, 'on_time' => true]);
+        expect($today['score'])->toMatchArray(['on_time' => 1, 'timed' => 1]);
+    });
+
     it('solo para lo de hoy (o atrasado), y solo el Admin', function () {
         $manana = relojNota($this, ['date' => '2026-11-07']);
         $this->postJson('/api/calendar/timer/start', $manana)->assertStatus(422)->assertJsonValidationErrors('item_key');

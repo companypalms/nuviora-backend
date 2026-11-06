@@ -120,12 +120,12 @@ class Calendar
     {
         $today = $now->startOfDay();
         $items = $this->withStatus($this->occurrences($today, $today, $now), $today->toDateString());
-        $overdue = $this->overdue($now);
+        [$overdue, $resolved] = $this->pastOpen($now);
         $open = self::pendingOf($items);
         $pending = count($open);
         $done = count(array_filter($items, fn ($i) => $i['status'] === 'done'));
         // .108: el reloj de cada tarea; la que se dejó "Más tarde" va al final de su etapa
-        $timers = $this->timersOf(array_merge($items, $overdue));
+        $timers = $this->timersOf(array_merge($items, $overdue, $resolved));
         $later = fn (array $i) => $i + ['later' => $timers[self::planKeyOf($i)]['later_at'] ?? null];
         $score = $this->score($items, $overdue, $pending, $now);
 
@@ -139,6 +139,8 @@ class Calendar
             // .107 "Tu día": en qué orden se hace (por etapas) y cuántos minutos de trabajo faltan
             'plan' => DayPlan::order(array_map($later, $open), array_map($later, $overdue), $now->format('H:i')),
             'minutes_left' => array_sum(array_column($open, 'minutes')) + array_sum(array_column($overdue, 'minutes')),
+            // .108: lo atrasado que se resolvió hoy (cuenta en lo hecho de hoy y en su barra)
+            'resolved' => $resolved,
             'timers' => $timers,
             'usual' => $this->usual(array_column(array_merge($items, $overdue), 'item_key')),
             'score' => $score,
@@ -148,16 +150,30 @@ class Calendar
     /** Lo que quedó sin hacer en días anteriores y se acumula, de lo más viejo a lo más nuevo. */
     public function overdue(CarbonImmutable $now): array
     {
+        return $this->pastOpen($now)[0];
+    }
+
+    /**
+     * Lo atrasado (como overdue()) y, .108, lo atrasado que se hizo o descartó hoy (para que cuente en lo hecho de hoy).
+     *
+     * @return array{0: list<array>, 1: list<array>}
+     */
+    private function pastOpen(CarbonImmutable $now): array
+    {
         $started = CarbonImmutable::parse($this->settings->startedOn($now));
         $from = $now->startOfDay()->subDays(self::OVERDUE_DAYS)->max($started);
         $to = $now->startOfDay()->subDay();
         if ($from->gt($to)) {
-            return [];
+            return [[], []];
         }
-        $items = array_filter($this->withStatus($this->occurrences($from, $to, $now), $now->toDateString()), fn ($i) => $i['status'] === 'overdue');
-        usort($items, fn ($a, $b) => strcmp($a['date'], $b['date']));
+        $today = $now->toDateString();
+        $items = $this->withStatus($this->occurrences($from, $to, $now), $today);
+        $overdue = array_filter($items, fn ($i) => $i['status'] === 'overdue');
+        usort($overdue, fn ($a, $b) => strcmp($a['date'], $b['date']));
+        $resolved = array_filter($items, fn ($i) => $i['accumulates'] && in_array($i['status'], ['done', 'dismissed'], true)
+            && $i['mark'] !== null && $i['mark']['source'] !== 'auto' && str_starts_with((string) $i['mark']['at'], $today));
 
-        return array_values($items);
+        return [array_values($overdue), array_values($resolved)];
     }
 
     /** Los recordatorios del sistema, con lo que hacen y si están encendidos (la ventana "Recordatorios fijos"). */
