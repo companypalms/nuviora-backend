@@ -40,7 +40,7 @@ final class UrgentList
         'decrease' => 2, 'intervene' => 2, 'last_test' => 2, 'tracking' => 2, 'late_urgent' => 2,
         'hold_prune' => 3, 'few_batches' => 3, 'late_batch' => 3, 'launch_ready' => 3,
         'scale' => 4, 'launch_test' => 4,
-        'alarm' => 5, 'names' => 5,
+        'alarm' => 5, 'names' => 5, 'cooldown' => 5,
         'price' => 6,
     ];
 
@@ -50,7 +50,7 @@ final class UrgentList
         'intervene' => 'arreglar', 'last_test' => 'arreglar', 'tracking' => 'arreglar', 'hold_prune' => 'arreglar', 'few_batches' => 'arreglar',
         'late_urgent' => 'arreglar', 'late_batch' => 'arreglar', 'launch_ready' => 'arreglar',
         'scale' => 'crecer', 'launch_test' => 'crecer',
-        'stock_out' => 'aviso', 'stock_waiting' => 'aviso', 'alarm' => 'aviso', 'price' => 'aviso', 'names' => 'aviso',
+        'stock_out' => 'aviso', 'stock_waiting' => 'aviso', 'alarm' => 'aviso', 'price' => 'aviso', 'names' => 'aviso', 'cooldown' => 'aviso',
     ];
 
     /** Cuántos nombres de creativos caben en la línea del porqué. */
@@ -111,10 +111,17 @@ final class UrgentList
                 $n = $c['numbers'] ?? null;
                 $mode = $p['mode'] ?? 'normal';
                 // .87: los batches que hay que lanzar aquí (mínimo 2 vivos) y cuáles, de la banca de esta ciudad
-                $need = self::need($kind, $n, $mode);
+                $need = self::need($kind, $n, $mode, isset($a['cooldown']));
                 $launch = array_slice(self::offers($n), 0, $need);
                 if ($need > 0 && !in_array($kind, self::FEEDS, true)) {
                     $items[] = $base + self::few($p['product_id'], $c, $n, $launch, $short);
+                }
+                // .111: lo que espera las 24 horas de tu regla (subir, bajar o pausar) es un aviso con la hora
+                if ($kind === 'wait' && ($cool = $a['cooldown'] ?? null)) {
+                    $items[] = $base + ['key' => "{$p['product_id']}:{$c['campaign_meta_id']}:cooldown", 'city' => $c['city'], 'kind' => 'cooldown',
+                        'label' => $a['label'], 'text' => trim($a['reading'] . ' ' . ($a['proposal'] ?? '')), 'tone' => 'default',
+                        'where' => $short . ($c['city'] ? " · {$c['city']}" : ''), 'title' => self::cooling($cool), 'steps' => [], 'batches' => [],
+                        'why' => self::cooledBy($cool), 'detail' => array_values(array_filter([...self::numbers($n), $a['reading'], $a['proposal']]))];
                 }
                 if (!isset(self::SEVERITY[$kind])) {
                     continue; // mantener, esperar, nada: van en el detalle
@@ -128,7 +135,7 @@ final class UrgentList
                 $prune = $n['prune'] ?? [];
                 $items[] = $base + ['key' => "{$p['product_id']}:{$c['campaign_meta_id']}:{$kind}", 'city' => $c['city'], 'kind' => $kind,
                     'label' => $a['label'], 'text' => trim($a['reading'] . ' ' . ($a['proposal'] ?? '')), 'tone' => $a['tone'],
-                    'where' => $short . ($c['city'] ? " · {$c['city']}" : ''), 'title' => $wait ? self::waiting($kind, $n) : $mission['title'],
+                    'where' => $short . ($c['city'] ? " · {$c['city']}" : ''), 'title' => $wait ? self::waiting($kind, $n, $a['cooldown'] ?? null) : $mission['title'],
                     'steps' => $wait ? [] : $mission['steps'], 'batches' => $wait ? [] : $mission['batches'],
                     'why' => self::why($kind, $a, $n),
                     'detail' => array_values(array_filter([...self::numbers($n), $a['reading'], $a['proposal'], ...$c['notes'], ...$c['budget_notes'],
@@ -377,13 +384,14 @@ final class UrgentList
      * ciudad pide creativos (podar o intervenir), por lo menos 1. Nada en liquidación ni donde se pausa. Los análisis de
      * antes de la .87 no traen los vivos: solo el de la banca, como antes.
      */
-    public static function need(string $kind, ?array $n, string $mode): int
+    public static function need(string $kind, ?array $n, string $mode, bool $cooling = false): int
     {
         if ($n === null || $mode === 'liquidation' || in_array($kind, self::NO_BATCHES, true)) {
             return 0;
         }
         $live = $n['live'] ?? null;
-        if (in_array($kind, self::FEEDS, true)) {
+        // .111: en las 24 horas después de un cambio grande, un batch solo si quedan menos de 2 vivos
+        if (in_array($kind, self::FEEDS, true) && !$cooling) {
             return max(1, self::MIN_LIVE - (int) ($live ?? self::MIN_LIVE));
         }
 
@@ -453,13 +461,29 @@ final class UrgentList
     }
 
     /** `.87`: el aviso de una ciudad que pide creativos y hoy no tiene qué podar ni qué lanzar. */
-    private static function waiting(string $kind, ?array $n): string
+    private static function waiting(string $kind, ?array $n, ?array $cool = null): string
     {
         $live = $n['live'] ?? null;
+        if ($cool && ($live === null || $live >= self::MIN_LIVE)) {
+            return self::cooling($cool) . ': ' . lcfirst(self::cooledBy($cool));
+        }
         $state = $live !== null && $live < self::MIN_LIVE ? self::alive((int) $live) . '. ' : '';
 
         return $state . ($kind === 'intervene' ? 'No toques el presupuesto y espera un batch nuevo' : 'Espera un batch nuevo para meter creativos')
             . ': no hay en la banca. Cuando haya uno, te sale como misión.';
+    }
+
+    /** `.111`: "Espera hasta el 07/11 a las 20:10 para subir el presupuesto". */
+    private static function cooling(array $cool): string
+    {
+        return 'Espera hasta el ' . date('d/m', strtotime($cool['until'])) . ' a las ' . date('H:i', strtotime($cool['until'])) . ' para ' . $cool['held'];
+    }
+
+    /** `.111`: "El 06/11 a las 20:10 entró el batch «B0110 POSP»; tu regla: 24 horas para ver cómo resultó". */
+    private static function cooledBy(array $cool): string
+    {
+        return 'El ' . date('d/m', strtotime($cool['at'])) . ' a las ' . date('H:i', strtotime($cool['at'])) . ' ' . $cool['what']
+            . '; tu regla: ' . AdRules::num($cool['hours']) . ' horas para ver cómo resultó (hora de Venezuela)';
     }
 
     private static function alive(int $live): string

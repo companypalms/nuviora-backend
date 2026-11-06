@@ -13,6 +13,8 @@ namespace App\Services\Meta\Decisions\Rules;
  * - en el BE o encima: intervenir (podar y lanzar); 2 días cerrados después, −20 %; 5 días, pausar la ciudad; después el
  *   último test (1,5×C por día, 3 días) y, si falla, recomendar dejar el producto;
  * - nunca presupuesto y creativos el mismo día; la IA solo recomienda: el sistema no toca Meta.
+ * - `.111` (dueño, 2026-11-06): después de un cambio grande (subir o bajar el presupuesto, un batch nuevo, volver a
+ *   prenderla), 24 horas reales sin otro cambio grande en esa campaña (`cooldown`).
  */
 class CampaignRules
 {
@@ -41,6 +43,12 @@ class CampaignRules
     /** `.79`: qué hacer si una campaña (de un producto nuevo) no tiene C. */
     public const NO_TARGET = 'Escribe "CPA $X | BE $Y" en el nombre de la campaña o ponlo en Meta Ads › Productos y objetivos (si no tiene costo, registra la compra de inventario).';
 
+    /** `.111`: las acciones que son un cambio grande de presupuesto o de estado (esperan entero), y lo que dejan para después. */
+    private const BIG_CHANGES = ['scale' => 'subir el presupuesto', 'decrease' => 'bajar el presupuesto', 'pause_city' => 'pausar la campaña'];
+
+    /** `.111`: las acciones que meten creativos: en la espera solo se apagan los que pierden. */
+    private const FEEDS = ['intervene', 'hold_prune'];
+
     /** Las acciones de una campaña activa que llevan el aviso de stock. */
     private const WITH_STOCK_ALERT = ['scale', 'hold', 'hold_prune', 'intervene', 'decrease', 'wait'];
     // .100 (dueño, 2026-11-04: "lanzamos un batch a la vez"): un producto que ya vende pide 1 batch a la vez (antes U1 2–3 y U2 1–2)
@@ -59,12 +67,16 @@ class CampaignRules
      *                  ['days' => n, 'cpa' => x]), prune (nombres de anuncios perdedores), new_batches, bank_ready (los B####
      *                  en banca, listos para lanzar), c_source (manual o name si la C es una referencia), stock_alert (el
      *                  aviso de stock de la ciudad, sin frenar nada), stock_waiting (`.101`: los pedidos esperando stock, si
-     *                  pasan el mínimo: no se sube)
+     *                  pasan el mínimo: no se sube), recent_change (`.111`: el último cambio grande de las últimas 24 horas,
+     *                  de MetaDecisions::recentChange)
      * @return array{key: string, label: string, tone: string, data: string, reading: string, proposal: ?string, from: ?float, to: ?float}
      */
     public function action(array $in): array
     {
         $out = $this->decide($in);
+        if ($cool = $in['recent_change'] ?? null) {
+            $out = $this->cooldown($out, $cool, $in['prune'] ?? [], $in['mode'] ?? 'normal');
+        }
         $alert = $in['stock_alert'] ?? null;
         if ($alert && in_array($out['key'], self::WITH_STOCK_ALERT, true)) {
             $out['proposal'] = trim(($out['proposal'] ?? '') . ' Ojo: ' . $alert . '.');
@@ -120,7 +132,7 @@ class CampaignRules
             $streak = (int) ($in['streak_days'] ?? 0);
             if ($since === null) {
                 $history = ($in['history_since'] ?? null) === null ? ' (todavía sin historial de presupuestos y estados)' : '';
-                if ($in['budget_changed_today'] ?? false) {
+                if (($in['budget_changed_today'] ?? false) && !($in['recent_change'] ?? null)) {
                     return $this->out('wait', $data, 'En el break-even o encima, pero hoy ya se tocó el presupuesto.', 'Los creativos, mañana: nunca presupuesto y creativos el mismo día.');
                 }
 
@@ -135,7 +147,7 @@ class CampaignRules
                     $budget, null);
             }
             if ($days >= $this->s['decrease_after_days'] && !($in['decreased_since_intervention'] ?? false)) {
-                if ($in['new_ads_today'] ?? false) {
+                if (($in['new_ads_today'] ?? false) && !($in['recent_change'] ?? null)) {
                     return $this->out('wait', $data, "Sigue en el break-even o encima {$days} días después de intervenir, pero hoy entraron creativos nuevos.",
                         'Bajar el presupuesto mañana: nunca presupuesto y creativos el mismo día.');
                 }
@@ -166,6 +178,8 @@ class CampaignRules
             $purchases < $this->s['scale_min_purchases'] => 'Va bien, pero con poco volumen: ' . AdRules::num($purchases) . ' compras en 3 días (hacen falta ' . (int) $this->s['scale_min_purchases'] . ').',
             $be && ($in['cpa7'] ?? null) !== null && $in['cpa7'] > $be => 'Los 7 días no acompañan (CPA 7D ' . AdRules::money($in['cpa7']) . ', encima del BE).',
             ($in['freq3'] ?? null) !== null && $in['freq3'] >= $this->s['saturation_from'] => 'Va bien, pero la campaña está saturada (frecuencia ' . AdRules::num($in['freq3']) . '): primero creativos de arriba del embudo.',
+            // .111: con un cambio en las últimas 24 horas, la espera (cooldown) dice hasta cuándo y cuánto subir después
+            ($in['recent_change'] ?? null) !== null => null,
             (bool) ($in['increased_24h'] ?? false) => 'Ya se subió el presupuesto en las últimas 24 horas.',
             (bool) ($in['new_ads_today'] ?? false) => 'Hoy entraron creativos nuevos: el presupuesto, mañana.',
             default => null,
@@ -178,6 +192,38 @@ class CampaignRules
 
         return $this->out('scale', $data, 'CPA ' . AdRules::num(round(($c - $cpa) / $c * 100)) . ' % debajo de C con ' . AdRules::num($purchases) . ' compras en 3 días.',
             'Subir ' . AdRules::num($pct) . ' %' . ($to ? ': ' . AdRules::money($budget) . ' → ' . AdRules::money($to) : '') . '. Vigilar CPA y frecuencia.', $budget, $to);
+    }
+
+    /**
+     * `.111` (dueño, 2026-11-06: "darle tiempo a los batchs nuevos de recopilar datos, y no hacer muchos cambios que puedan
+     * romper la optimización y el aprendizaje"): en las 24 horas después de un cambio grande, ningún otro. Subir, bajar o
+     * pausar esperan, y dicen hasta cuándo y qué toca después. Donde se meten creativos solo se apagan los que pierden:
+     * frenar pérdidas no es un cambio de presupuesto ni de creativos. (Si quedan menos de 2 batches vivos, UrgentList lanza
+     * igual: esa regla va primero.)
+     */
+    private function cooldown(array $out, array $cool, array $prune, string $mode): array
+    {
+        $since = self::when($cool['at']) . ' ' . $cool['what'] . ', y tu regla es esperar ' . AdRules::num($cool['hours']) . ' horas para ver cómo resultó';
+        $until = self::when($cool['until']) . ' (hora de Venezuela)';
+        if (isset(self::BIG_CHANGES[$out['key']])) {
+            return $this->out('wait', $out['data'], $out['reading'] . ' Pero ' . $since . '.',
+                'Esperar hasta ' . $until . '. Después: ' . lcfirst((string) $out['proposal']))
+                + ['cooldown' => $cool + ['held' => self::BIG_CHANGES[$out['key']]]];
+        }
+        if (in_array($out['key'], self::FEEDS, true) && $mode !== 'liquidation') {
+            $names = $prune ? ' Apagar: ' . implode(', ', array_slice($prune, 0, 6)) . (count($prune) > 6 ? '…' : '') . '.' : '';
+
+            return array_merge($out, ['proposal' => ($prune ? 'Por ahora, solo apagar los que pierden.' : 'Por ahora, nada.')
+                . ' Los creativos nuevos, desde ' . $until . ': ' . $since . '.' . $names, 'cooldown' => $cool + ['held' => 'lanzar un batch']]);
+        }
+
+        return $out;
+    }
+
+    /** `.111`: "el 06/11 a las 20:10". */
+    private static function when(string $at): string
+    {
+        return 'el ' . date('d/m', strtotime($at)) . ' a las ' . date('H:i', strtotime($at));
     }
 
     /**

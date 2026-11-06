@@ -70,6 +70,10 @@ class DecisionSettings
         'stock_warn_days' => [3, 1, 90],         // .79: avisar "poco stock" con menos de 3 días de ventas (el stock ya no frena la subida)
         // .101: con 5+ pedidos esperando stock (de los últimos 14 días) en una ciudad: aviso con lo gastado y no se sube ahí
         'stock_waiting_min' => [5, 1, 1000],
+        // .111 (dueño, 2026-11-06): después de un cambio grande en una campaña (subir o bajar el presupuesto, un batch nuevo,
+        // volver a prenderla), 24 horas sin otro cambio grande ahí; y un anuncio nuevo no se apaga antes de 24 horas
+        'change_wait_hours' => [24, 0, 168],
+        'new_ad_hours' => [24, 0, 168],
         // Paso 4 — la cola de producción y la banca (el manual: 1–2 batches aprobados sin testear por producto)
         // .100: un batch a la vez por producto: la reserva es 1 (o 0: solo cuando una ciudad lo necesita)
         'bank_min' => [1, 0, 1],

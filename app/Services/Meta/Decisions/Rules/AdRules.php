@@ -438,6 +438,24 @@ class AdRules
     }
 
     /**
+     * `.111` (dueño, 2026-11-06: "darle tiempo a los batchs nuevos de recopilar datos"): un anuncio, batch o creativo con
+     * menos de new_ad_hours horas (24) en Meta todavía no es perdedor, aunque ya haya gastado 2×C: está en test.
+     *
+     * @param ?float $hours las horas desde que se creó su anuncio más viejo (null si no se sabe)
+     */
+    public function young(array $state, ?float $hours): ?array
+    {
+        $min = (float) $this->s['new_ad_hours'];
+        if (($state['key'] ?? null) !== 'loser' || $hours === null || $hours >= $min) {
+            return null;
+        }
+        $h = max(0, (int) floor($hours));
+
+        return $this->verdict('evaluation', $state['data'], 'En test: lleva ' . $h . ($h === 1 ? ' hora' : ' horas') . '; se juzga desde las '
+            . self::num($min) . ' (tu regla).', 'Esperar.');
+    }
+
+    /**
      * `.101` (dueño, 2026-11-04: el CRE002 de Termafit se apagó en Aragua con el CPA 9 % encima del BE y 10 compras): un CPA
      * en el BE o encima pierde de verdad si pasa el margen (20 %) o si ya tiene compras de sobra (20) para no ser suerte.
      */

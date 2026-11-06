@@ -211,6 +211,7 @@ class MetaDecisions
         }
 
         $history = $this->historyFor($f, $rules);
+        $now = now()->toDateTimeString();
 
         // Batches (ad sets). Si Meta no trajo los números del ad set, se suman los de sus anuncios
         foreach ($f['adsets'] as $id => $set) {
@@ -219,12 +220,19 @@ class MetaDecisions
             $windows = ($set['windows']['max']['totals']['impressions'] ?? 0) > 0 ? $set['windows']
                 : $this->sumAds(array_keys(array_filter($f['ads'], fn ($a) => $a['adset_meta_id'] === $id)), $f);
             $out['adsets'][$id] = $this->entity($windows, $c, $rules, 'batch', $history['adset'][$id] ?? [], $cpmChange[$set['campaign_meta_id']] ?? null, $tracking);
+            // .111: un batch nuevo (todos sus anuncios con menos de 24 horas) no es perdedor todavía
+            if ($young = $rules->young($out['adsets'][$id], self::ageHours($f, array_keys(array_filter($f['ads'], fn ($a) => $a['adset_meta_id'] === $id)), $now))) {
+                $out['adsets'][$id] = $young + ['causes' => []];
+            }
         }
         // Anuncios: el que concentra el gasto se apaga primero, no el batch
         $adVerdicts = [];
         foreach ($f['ads'] as $id => $ad) {
             $c = $campaigns[$ad['campaign_meta_id']] ?? null;
             $adVerdicts[$id] = $this->entity($ad['windows'], $c, $rules, 'anuncio', $history['ad'][$id] ?? [], $cpmChange[$ad['campaign_meta_id']] ?? null, $tracking);
+            if ($young = $rules->young($adVerdicts[$id], self::ageHours($f, [$id], $now))) {
+                $adVerdicts[$id] = $young + ['causes' => []];
+            }
         }
         // .65: un batch es perdedor solo si todos sus creativos perdieron
         foreach ($out['adsets'] as $setId => $v) {
@@ -282,6 +290,10 @@ class MetaDecisions
                 // .86: intermedio o en evaluación en toda su vida, pero perdiendo en los últimos 3 días en esta ciudad
                 if ($recent = $rules->recentLoser($w['3d']['totals'] ?? null, $states[$cid][$campaignId], $c['target'] ?? null, $c['break_even'] ?? null)) {
                     $states[$cid][$campaignId] = $recent + ['causes' => []];
+                }
+                // .111: si todos sus anuncios en esta ciudad tienen menos de 24 horas, todavía no se apaga
+                if ($young = $rules->young($states[$cid][$campaignId], self::ageHours($f, $agg[$cid]['ads_by_city'][$campaignId] ?? [], $now))) {
+                    $states[$cid][$campaignId] = $young + ['causes' => []];
                 }
                 if (in_array($states[$cid][$campaignId]['key'], ['proven', 'promising'], true)) {
                     $pick = $this->window($w);
@@ -461,6 +473,7 @@ class MetaDecisions
                 'decreased_since_intervention' => $intervention !== null && collect($h['budget_events'])->contains(fn ($e) => $e['to'] < $e['from'] && $e['date'] >= $intervention),
                 'history_since' => $history['history_since'], 'last_test' => $lastTest, 'prune' => $prune,
                 'bank_ready' => array_column($offers, 'code'),
+                'recent_change' => self::recentChange($h, $f, $id, now()->toDateTimeString(), (float) $s['change_wait_hours']),
             ]);
             $out['campaigns'][$id]['action'] = $action;
             // .82: los números de la ciudad, para la frase de cada tarea del análisis ("$10,29 por compra; tu límite es $7,22")
@@ -763,6 +776,57 @@ class MetaDecisions
         }
 
         return $out;
+    }
+
+    /**
+     * `.111` (dueño, 2026-11-06: "si se hizo un cambio importante en una campaña, como añadirle un batch nuevo o aumentarle
+     * el presupuesto, se deben esperar 24 horas para ver qué tal resultó ese cambio antes de tomar otra decisión"): el último
+     * cambio grande de la campaña en las últimas $hours horas: el presupuesto (la sincronización lo ve cada 30 minutos), un
+     * anuncio nuevo (su hora de creación en Meta) o volver a prenderla. PHP puro.
+     *
+     * @return array{what: string, at: string, until: string, hours: float}|null
+     */
+    public static function recentChange(array $h, array $f, string $campaignId, string $now, float $hours): ?array
+    {
+        if ($hours <= 0) {
+            return null;
+        }
+        $changes = [];
+        foreach ($h['budget_events'] ?? [] as $e) {
+            $changes[] = [$e['at'], ($e['to'] > $e['from'] ? 'subiste' : 'bajaste') . ' el presupuesto de ' . AdRules::money($e['from']) . ' a ' . AdRules::money($e['to'])];
+        }
+        foreach ($h['status_events'] ?? [] as $e) {
+            if ($e['to'] === 'ACTIVE' && $e['from'] === 'PAUSED') {
+                $changes[] = [$e['at'], 'volviste a prender la campaña'];
+            }
+        }
+        foreach ($f['ads'] ?? [] as $ad) {
+            if ((string) $ad['campaign_meta_id'] === $campaignId && ($ad['created_time'] ?? null)) {
+                $set = $f['adsets'][$ad['adset_meta_id']]['name'] ?? null;
+                $changes[] = [(string) $ad['created_time'], $set ? 'entró el batch «' . $set . '»' : 'entraron anuncios nuevos'];
+            }
+        }
+        $end = strtotime($now);
+        $recent = array_values(array_filter($changes, fn ($c) => strtotime($c[0]) > $end - $hours * 3600 && strtotime($c[0]) <= $end));
+        if (!$recent) {
+            return null;
+        }
+        usort($recent, fn ($a, $b) => strtotime($b[0]) <=> strtotime($a[0]));
+        [$at, $what] = $recent[0];
+
+        return ['what' => $what, 'at' => date('Y-m-d H:i:s', strtotime($at)), 'until' => date('Y-m-d H:i:s', strtotime($at) + (int) round($hours * 3600)),
+            'hours' => $hours];
+    }
+
+    /** `.111`: las horas desde que se creó el más viejo de unos anuncios (null si alguno no tiene la hora). PHP puro. */
+    public static function ageHours(array $f, array $adIds, string $now): ?float
+    {
+        $times = array_map(fn ($id) => $f['ads'][$id]['created_time'] ?? null, $adIds);
+        if (!$times || in_array(null, $times, true)) {
+            return null;
+        }
+
+        return (strtotime($now) - min(array_map('strtotime', $times))) / 3600;
     }
 
     /** El último día con gasto de cada creativo. */

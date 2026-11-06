@@ -120,6 +120,8 @@ class AdFacts
                 'creative_type' => $a->creative_type, 'video_length' => $a->video_length !== null ? (float) $a->video_length : null,
                 'angle_code' => $a->angle_code, 'batch_code' => $a->batch_code,
                 'active' => $a->effective_status === 'ACTIVE' && $a->missing_since === null,
+                // .111: cuándo se creó en Meta (hora de Venezuela), para no apagarlo antes de 24 horas
+                'created_time' => $a->created_time !== null ? (string) $a->created_time : null,
                 'windows' => $windows['ad'][(string) $a->meta_id] ?? [],
             ];
             if ($a->meta_creative_ref_id !== null && ($cr = $creativeRows->get($a->meta_creative_ref_id))) {
