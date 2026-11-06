@@ -39,6 +39,8 @@ use Illuminate\Support\Facades\DB;
  *   toca en su ciudad, porque no son culpa de la publicidad. Y un número propio pide N pedidos TERMINADOS (entregados o
  *   cancelados), no N compras de Meta. Medido en producción: los que terminan después del día 5 son casi todos
  *   cancelaciones, así que los abiertos siguen contando como no entregados.
+ * - `.110` (dueño, 2026-11-06, ZenPulse): tampoco cuentan los que estuvieron más de 12 horas en "Sin Stock" (Finanzas ›
+ *   Configuración), aunque después avanzaran, con su parte de Meta.
  */
 class FinancialCpa
 {
@@ -46,6 +48,7 @@ class FinancialCpa
     public const SETTING_LONG_WINDOW = 'finance.analysis_long_window_days';
     public const SETTING_FIXED_MIN = 'finance.fixed_cost_min_pct';
     public const SETTING_CITY_MIN_PURCHASES = 'finance.cpa_city_min_purchases';
+    public const SETTING_SIN_STOCK_HOURS = 'finance.cpa_sin_stock_hours';
 
     /** Los días con que se mide el % real de gastos fijos. */
     public const FIXED_LOOKBACK_DAYS = 30;
@@ -73,6 +76,37 @@ class FinancialCpa
     public static function minClosedOrders(): int
     {
         return max(0, (int) Setting::get(self::SETTING_CITY_MIN_PURCHASES, 30));
+    }
+
+    /** `.110`: las horas en "Sin Stock" desde las que un pedido ya no cuenta (el dueño eligió 12). */
+    public static function sinStockHours(): float
+    {
+        return max(0.0, (float) Setting::get(self::SETTING_SIN_STOCK_HOURS, 12));
+    }
+
+    /**
+     * `.110`: las horas que un pedido estuvo en un estado, sumando todas las veces (PHP puro). Sus cambios de estado en
+     * orden; si sigue ahí, cuenta hasta $now. Un cambio que deja el mismo estado (una reasignación) no corta.
+     *
+     * @param list<array{to: int, at: string}> $changes
+     */
+    public static function hoursIn(array $changes, int $status, string $now): float
+    {
+        $seconds = 0;
+        $since = null;
+        foreach ($changes as $c) {
+            if ($since === null && $c['to'] === $status) {
+                $since = strtotime($c['at']);
+            } elseif ($since !== null && $c['to'] !== $status) {
+                $seconds += strtotime($c['at']) - $since;
+                $since = null;
+            }
+        }
+        if ($since !== null) {
+            $seconds += max(0, strtotime($now) - $since);
+        }
+
+        return round($seconds / 3600, 2);
     }
 
     /** §60: [desde, hasta] de la cohorte madura de $days días (por defecto, la corta). */
@@ -178,6 +212,7 @@ class FinancialCpa
                     // .101: los pedidos terminados (para confiar en el número) y los que no cuentan por estar sin stock
                     'closed' => $econ['closed'],
                     'sin_stock' => $econ['sin_stock'],
+                    'sin_stock_hours' => self::sinStockHours(),
                     'meta_from' => $cityId !== null ? ($starts[$key] ?? null) : null,
                     'short' => $summary($s, 'short', $short[$key] ?? null),
                     'long' => $summary($l, 'long', $long[$key] ?? null),
@@ -365,18 +400,21 @@ class FinancialCpa
 
             return $key;
         };
-        // .101: los pedidos que hoy están en "Sin Stock" van aparte (stuck): no cuentan, y abajo se descuenta su parte de Meta
+        // .101: los pedidos que hoy están en "Sin Stock" van aparte (stuck): no cuentan, y abajo se descuenta su parte de Meta.
+        // .110: también los que estuvieron más de sinStockHours() horas, terminen como terminen
         $sinStock = (int) Status::where('description', OrderStatus::SIN_STOCK)->value('id');
+        $long = $this->longStockouts($from, $to, $sinStock);
+        $stuck = 'CASE WHEN status_id = ? THEN 1' . ($long ? ' WHEN order_id IN (' . implode(',', array_fill(0, count($long), '?')) . ') THEN 1' : '') . ' ELSE 0 END';
         $rows = DB::table('order_financials')->whereBetween('created_date', [$from->toDateString(), $to->toDateString()])
             ->whereNotNull('product_id')->whereNotNull('city_id')->groupBy('product_id', 'city_id', 'created_date', 'stuck')
-            ->selectRaw("product_id, city_id, created_date, COALESCE(status_id = ?, 0) AS stuck,
+            ->selectRaw("product_id, city_id, created_date, {$stuck} AS stuck,
                 SUM(kind = 'normal') AS created, SUM(kind = 'normal' AND outcome = 'delivered') AS delivered,
                 SUM(kind = 'normal' AND outcome IN ('delivered', 'not_delivered')) AS closed,
                 SUM(revenue_main + revenue_upsell - revenue_refunded) AS revenue,
                 SUM(cogs_main + cogs_upsell) AS cogs,
                 SUM(cogs_main + cogs_upsell + logistics_cost + delivery_cost + commission_deliverer + commission_seller + commission_upsell
                     + commission_leader + commission_other) AS variable,
-                SUM(delivery_missing_trips) AS missing_trips", [$sinStock])
+                SUM(delivery_missing_trips) AS missing_trips", [$sinStock, ...$long])
             ->get();
         foreach ($rows as $r) {
             $start = $starts["{$r->product_id}|{$r->city_id}"] ?? null;
@@ -424,6 +462,43 @@ class FinancialCpa
         }
 
         return $cells;
+    }
+
+    /**
+     * `.110` (dueño, 2026-11-06: ZenPulse arrancó el 27/10 sin el producto en las ciudades; en Carabobo 29 de sus 54
+     * pedidos pasaron por "Sin Stock" y la C salió $2,72): los pedidos de la cohorte que estuvieron más de sinStockHours()
+     * horas en "Sin Stock", sumando todas las veces. No es culpa de la publicidad. Se sacan también los que al final se
+     * entregaron (sacar solo los cancelados haría la C optimista); un rato corto (lo resolvió otra agencia) sí cuenta. El
+     * historial de estados está en order_tracking_comprehensive_logs desde febrero de 2026 (StatusChangeLog).
+     *
+     * @return list<int> order_id
+     */
+    private function longStockouts(CarbonInterface $from, CarbonInterface $to, int $sinStock): array
+    {
+        if ($sinStock === 0) {
+            return [];
+        }
+        $ids = DB::table('order_financials')->whereBetween('created_date', [$from->toDateString(), $to->toDateString()])
+            ->whereNotNull('order_id')->distinct()->pluck('order_id')->all();
+        $changes = [];
+        foreach (array_chunk($ids, 1000) as $chunk) {
+            $hit = DB::table('order_tracking_comprehensive_logs')->whereIn('order_id', $chunk)->where('to_status_id', $sinStock)->distinct()->pluck('order_id')->all();
+            if (!$hit) {
+                continue;
+            }
+            DB::table('order_tracking_comprehensive_logs')->whereIn('order_id', $hit)->whereNotNull('to_status_id')->orderBy('created_at')->orderBy('id')
+                ->get(['order_id', 'to_status_id', 'created_at'])
+                ->each(function ($l) use (&$changes) {
+                    $changes[(int) $l->order_id][] = ['to' => (int) $l->to_status_id, 'at' => (string) $l->created_at];
+                });
+        }
+        if (!$changes) {
+            return [];
+        }
+        $hours = self::sinStockHours();
+        $now = now()->toDateTimeString();
+
+        return array_keys(array_filter($changes, fn ($c) => self::hoursIn($c, $sinStock, $now) > $hours));
     }
 
     private function productOnlyExpenses(CarbonInterface $from, CarbonInterface $to): array

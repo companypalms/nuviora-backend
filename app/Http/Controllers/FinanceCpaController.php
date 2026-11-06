@@ -53,6 +53,7 @@ class FinanceCpaController extends Controller
                 'days' => FinancialCpa::shortDays(), 'long_days' => FinancialCpa::longDays()],
             'fixed' => $cpa->fixedShare(),
             'city_min_purchases' => FinancialCpa::minClosedOrders(),
+            'sin_stock_hours' => FinancialCpa::sinStockHours(),
             'last_computed_at' => $latest->max(fn ($v) => $v->computed_at)?->format('Y-m-d H:i'),
             'rows' => $latest->sortBy(fn ($v) => [$v->product_id, $v->city_id === null ? 0 : 1, $cities[$v->city_id] ?? ''])->values()
                 ->map(fn (TargetCpaVersion $v) => $v->toPayload() + [
@@ -90,6 +91,7 @@ class FinanceCpaController extends Controller
             'analysis_long_window_days' => FinancialCpa::longDays(),
             'fixed_cost_min_pct' => FinancialCpa::minFixedPct(),
             'cpa_city_min_purchases' => FinancialCpa::minClosedOrders(),
+            'cpa_sin_stock_hours' => FinancialCpa::sinStockHours(),
             'commissions' => CommissionService::amounts(),
             // §15: la regla de desgaste de los viajes de traslado
             'vehicle_wear' => TransferTrips::wearRule(),
@@ -112,6 +114,7 @@ class FinanceCpaController extends Controller
             'analysis_long_window_days' => 'sometimes|integer|min:1|max:180|gte:analysis_window_days',
             'fixed_cost_min_pct' => 'sometimes|numeric|min:0|max:90',
             'cpa_city_min_purchases' => 'sometimes|integer|min:0|max:10000',
+            'cpa_sin_stock_hours' => 'sometimes|numeric|min:0|max:720',
             'commission_order' => 'required|numeric|min:0|max:1000',
             'commission_upsell_unit' => 'required|numeric|min:0|max:1000',
             'commission_deliverer' => 'required|numeric|min:0|max:1000',
@@ -130,6 +133,9 @@ class FinanceCpaController extends Controller
         }
         if (isset($data['fixed_cost_min_pct'])) {
             Setting::set(FinancialCpa::SETTING_FIXED_MIN, round((float) $data['fixed_cost_min_pct'], 2));
+        }
+        if (isset($data['cpa_sin_stock_hours'])) {
+            Setting::set(FinancialCpa::SETTING_SIN_STOCK_HOURS, round((float) $data['cpa_sin_stock_hours'], 1));
         }
         Setting::set(CommissionService::SETTING_ORDER, round((float) $data['commission_order'], 2));
         Setting::set(CommissionService::SETTING_UPSELL_UNIT, round((float) $data['commission_upsell_unit'], 2));
@@ -174,6 +180,7 @@ class FinanceCpaController extends Controller
             'analysis_long_window_days' => FinancialCpa::longDays(),
             'fixed_cost_min_pct' => FinancialCpa::minFixedPct(),
             'cpa_city_min_purchases' => FinancialCpa::minClosedOrders(),
+            'cpa_sin_stock_hours' => FinancialCpa::sinStockHours(),
         ] + array_map(fn ($v) => round((float) $v, 2), CommissionService::amounts())
             + ['vehicle_wear' => TransferTrips::wearLabel(TransferTrips::wearRule()['mode'], TransferTrips::wearRule()['value'])];
     }

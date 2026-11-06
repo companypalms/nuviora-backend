@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Setting;
 use App\Services\Finance\ExpenseLedger;
 use App\Services\Finance\FinancialCpa;
 use App\Services\Finance\Shrinkage;
@@ -16,6 +17,7 @@ use Illuminate\Support\Facades\Schema;
 beforeEach(function () {
     Schema::create('order_financials', function ($t) {
         $t->id();
+        $t->unsignedBigInteger('order_id')->nullable();
         $t->unsignedBigInteger('product_id')->nullable();
         $t->unsignedBigInteger('city_id')->nullable();
         $t->date('created_date');
@@ -27,6 +29,20 @@ beforeEach(function () {
             $t->decimal($c, 12, 2)->default(0);
         }
         $t->unsignedInteger('delivery_missing_trips')->default(0);
+    });
+    // .110: el historial de estados y los ajustes (las horas en "Sin Stock")
+    Schema::create('order_tracking_comprehensive_logs', function ($t) {
+        $t->id();
+        $t->unsignedBigInteger('order_id');
+        $t->unsignedBigInteger('from_status_id')->nullable();
+        $t->unsignedBigInteger('to_status_id')->nullable();
+        $t->timestamps();
+    });
+    Schema::create('settings', function ($t) {
+        $t->id();
+        $t->string('key')->unique();
+        $t->text('value')->nullable();
+        $t->timestamps();
     });
     Schema::create('statuses', function ($t) {
         $t->id();
@@ -116,5 +132,70 @@ describe('.101: los pedidos sin stock no cuentan (Termafit, 29 y 30/10)', functi
     it('con 17 pedidos terminados no hay muestra: Termafit todavía no usa su propio número', function () {
         $e = FinancialCpa::economics(cohorteTermafit()['1177|'], 10, ['type' => 'sales', 'pct' => 20]);
         expect(FinancialCpa::pick($e, $e, 30))->toBe('long')->and($e['closed'])->toBeLessThan(30);
+    });
+});
+
+// .110 (dueño, 2026-11-06): ZenPulse arrancó el 27/10 sin el producto en las ciudades y la C salió baja; en Carabobo 29 de
+// sus 54 pedidos pasaron por "Sin Stock". Los que estuvieron más de 12 horas tampoco cuentan, aunque después avanzaran.
+// Aquí: los 11 de Distrito Capital ya salieron de "Sin Stock" (hoy están programados), después de $horas horas.
+
+function estuvieronSinStock(array $horas): void
+{
+    DB::table('order_financials')->update(['order_id' => DB::raw('id')]);
+    $ids = DB::table('order_financials')->where('status_id', 4)->pluck('id');
+    DB::table('order_financials')->whereIn('id', $ids)->update(['status_id' => 3]);
+    foreach ($ids as $id) {
+        $at = Carbon::parse('2026-10-29 10:00');
+        DB::table('order_tracking_comprehensive_logs')->insert(['order_id' => $id, 'from_status_id' => null, 'to_status_id' => 3, 'created_at' => $at->copy()->subHour()]);
+        foreach ($horas as $h) {
+            DB::table('order_tracking_comprehensive_logs')->insert(['order_id' => $id, 'from_status_id' => 3, 'to_status_id' => 4, 'created_at' => $at->copy()]);
+            // una reasignación mientras espera no lo saca de "Sin Stock"
+            DB::table('order_tracking_comprehensive_logs')->insert(['order_id' => $id, 'from_status_id' => 4, 'to_status_id' => 4, 'created_at' => $at->copy()->addMinutes(30)]);
+            DB::table('order_tracking_comprehensive_logs')->insert(['order_id' => $id, 'from_status_id' => 4, 'to_status_id' => 3, 'created_at' => $at->addMinutes((int) round($h * 60))->copy()]);
+            $at->addHour();
+        }
+    }
+}
+
+describe('.110: lo que estuvo más de 12 horas en "Sin Stock" tampoco cuenta', function () {
+    $cpa = fn () => FinancialCpa::economics(cohorteTermafit()['1177|'], 10, ['type' => 'sales', 'pct' => 20]);
+
+    it('14 horas esperando: aunque ya avanzaron, no cuentan (C $4,13 y BE $6,23, igual que si siguieran ahí)', function () use ($cpa) {
+        estuvieronSinStock([14]);
+        expect($cpa()['target'])->toBe(4.13)->and($cpa()['break_even'])->toBe(6.23)->and($cpa()['sin_stock'])->toBe(11)
+            ->and(round(cohorteTermafit()['1177|1']['purchases'], 2))->toBe(5.65);
+    });
+
+    it('un rato corto (2 horas) sí cuenta: C $2,91 y BE $4,39, como antes', function () use ($cpa) {
+        estuvieronSinStock([2]);
+        expect($cpa()['target'])->toBe(2.91)->and($cpa()['break_even'])->toBe(4.39)->and($cpa()['sin_stock'])->toBe(0);
+    });
+
+    it('se suman todas las veces: 7 horas y después 6 son 13', function () use ($cpa) {
+        estuvieronSinStock([7, 6]);
+        expect($cpa()['sin_stock'])->toBe(11);
+    });
+
+    it('también sale el que al final se entregó (sacar solo los cancelados haría la C optimista)', function () {
+        estuvieronSinStock([14]);
+        $id = DB::table('order_financials')->where('city_id', 1)->where('outcome', 'delivered')->value('id');
+        DB::table('order_tracking_comprehensive_logs')->insert([['order_id' => $id, 'from_status_id' => 3, 'to_status_id' => 4, 'created_at' => '2026-10-29 10:00'],
+            ['order_id' => $id, 'from_status_id' => 4, 'to_status_id' => 1, 'created_at' => '2026-10-30 06:00']]);
+        $p = cohorteTermafit()['1177|'];
+        expect((int) $p['created'])->toBe(24)->and((int) $p['delivered'])->toBe(8)->and((int) $p['sin_stock'])->toBe(12);
+    });
+
+    it('las horas se cambian en Finanzas › Configuración (con 15, los de 14 horas vuelven a contar)', function () use ($cpa) {
+        estuvieronSinStock([14]);
+        Setting::set(FinancialCpa::SETTING_SIN_STOCK_HOURS, 15);
+        expect(FinancialCpa::sinStockHours())->toBe(15.0)->and($cpa()['sin_stock'])->toBe(0);
+    });
+
+    it('las horas de un pedido (PHP puro): una reasignación no corta y si sigue ahí cuenta hasta ahora', function () {
+        $c = [['to' => 3, 'at' => '2026-10-29 08:00'], ['to' => 4, 'at' => '2026-10-29 10:00'], ['to' => 4, 'at' => '2026-10-29 11:00'],
+            ['to' => 3, 'at' => '2026-10-29 22:30'], ['to' => 4, 'at' => '2026-10-30 08:00']];
+        expect(FinancialCpa::hoursIn(array_slice($c, 0, 4), 4, '2026-10-31 00:00'))->toBe(12.5)
+            ->and(FinancialCpa::hoursIn($c, 4, '2026-10-30 10:00'))->toBe(14.5)
+            ->and(FinancialCpa::hoursIn([['to' => 1, 'at' => '2026-10-29 08:00']], 4, '2026-10-31 00:00'))->toBe(0.0);
     });
 });
