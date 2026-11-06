@@ -97,13 +97,13 @@ describe('El orden del día', function () use ($item, $keys) {
         ], [], '09:00');
 
         expect($keys($plan[0]))->toBe(['rule:meta_queue', 'rule:meta_bank', 'rule:meta_flow', 'rule:review_3days']);
-        expect($plan[0]['items'][0]['reason'])->toBe('Prioridad normal, en el orden que pusiste.');
+        expect($plan[0]['items'][0]['reason'])->toBe('Prioridad normal: en el orden que pusiste.');
         expect($plan[0]['items'][2]['reason'])->toBe('Prioridad normal.');
     });
 
     it('si nadie la movió, dice que va primero por ser la más corta (con empate, no)', function () use ($item) {
         $corta = DayPlan::order([$item('a', ['minutes' => 20]), $item('b', ['minutes' => 5])], [], '09:00');
-        expect($corta[0]['items'][0])->toMatchArray(['item_key' => 'b', 'reason' => 'Prioridad normal, y es la más corta.']);
+        expect($corta[0]['items'][0])->toMatchArray(['item_key' => 'b', 'reason' => 'Prioridad normal: es la más corta.']);
 
         $empate = DayPlan::order([$item('a', ['minutes' => 5]), $item('b', ['minutes' => 5])], [], '09:00');
         expect(array_column($empate[0]['items'], 'item_key'))->toBe(['a', 'b']);

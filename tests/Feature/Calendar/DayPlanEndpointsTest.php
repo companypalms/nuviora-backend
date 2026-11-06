@@ -146,7 +146,7 @@ describe('Tu día: prioridad, minutos y orden', function () {
         $plan = $this->getJson('/api/calendar/today?fresh=1')->json('plan');
         expect(array_column($plan, 'key'))->toBe(['normal']);
         expect(array_column($plan[0]['items'], 'item_key'))->toBe(["note:{$c}", "note:{$b}", "note:{$a}"]);
-        expect($plan[0]['items'][0]['reason'])->toBe('Prioridad normal, en el orden que pusiste.');
+        expect($plan[0]['items'][0]['reason'])->toBe('Prioridad normal: en el orden que pusiste.');
         expect(DB::table('calendar_item_plans')->where('item_key', "note:{$c}")->value('minutes'))->toBe(20);
 
         // cambiar la prioridad con un toque la saca de su lugar (va al final de su nuevo grupo)

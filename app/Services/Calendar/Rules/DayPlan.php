@@ -137,8 +137,8 @@ final class DayPlan
                 <=> [$b['rank'] === null ? 1 : 0, $b['rank'] ?? 0, $b['minutes'], $b['index']]);
             foreach ($stages[$p] as $i => $item) {
                 $stages[$p][$i]['reason'] = 'Prioridad ' . mb_strtolower(self::PRIORITIES[$p]) . ($item['rank'] !== null
-                    ? ', en el orden que pusiste.'
-                    : ($i === 0 && isset($stages[$p][1]) && $stages[$p][1]['minutes'] > $item['minutes'] ? ', y es la más corta.' : '.'));
+                    ? ': en el orden que pusiste.'
+                    : ($i === 0 && isset($stages[$p][1]) && $stages[$p][1]['minutes'] > $item['minutes'] ? ': es la más corta.' : '.'));
             }
         }
 
