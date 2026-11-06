@@ -43,6 +43,7 @@ beforeEach(function () {
     });
     (require database_path('migrations/2026_10_29_300000_create_calendar_tables.php'))->up();
     (require database_path('migrations/2026_11_06_100000_create_calendar_item_plans_table.php'))->up();
+    (require database_path('migrations/2026_11_06_200000_create_calendar_timers_and_days_tables.php'))->up();
 
     // Los recordatorios del sistema apagados: aquí solo cuentan las notas y lo que se guarda
     Setting::set('calendar', ['started_on' => '2026-11-01', 'rules' => array_map(fn () => ['on' => false], ReminderRules::RULES)]);

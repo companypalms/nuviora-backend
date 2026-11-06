@@ -801,6 +801,8 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::put('/item-plan', [\App\Http\Controllers\CalendarController::class, 'savePlan']);
         Route::put('/order', [\App\Http\Controllers\CalendarController::class, 'reorder']);
         Route::delete('/order', [\App\Http\Controllers\CalendarController::class, 'resetOrder']);
+        // .108: el reloj de cada tarea (empezar, pausar, +5 min, más tarde; "Hecho" es /marks)
+        Route::post('/timer/{action}', [\App\Http\Controllers\CalendarController::class, 'timer'])->whereIn('action', ['start', 'pause', 'extend', 'later']);
     });
 
     // El asistente del dueño (Etapa 4): su chat. Solo el Admin. Preguntar y limpiar tienen un límite por minuto; la

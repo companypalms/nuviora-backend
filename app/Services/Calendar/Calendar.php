@@ -2,9 +2,11 @@
 
 namespace App\Services\Calendar;
 
+use App\Models\CalendarDay;
 use App\Models\CalendarItemPlan;
 use App\Models\CalendarMark;
 use App\Models\CalendarNote;
+use App\Models\CalendarTimer;
 use App\Models\RecurringExpense;
 use App\Models\User;
 use App\Services\Calendar\Readers\ReminderFacts;
@@ -14,9 +16,11 @@ use App\Services\Calendar\Rules\NoteRules;
 use App\Services\Finance\OtherPayments;
 use App\Services\Calendar\Rules\ReminderRules;
 use App\Services\Calendar\Rules\Schedule;
+use App\Services\Calendar\Rules\TimerRules;
 use App\Services\Metrics\PersonName;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -34,6 +38,8 @@ use Illuminate\Validation\ValidationException;
  *   status     pending | done | dismissed | overdue (atrasada)
  *   auto       si se tilda sola; mark: quién la marcó (source "auto": se tildó sola), cuándo y con qué nota
  *   priority   alta | normal | baja; minutes cuánto toma; rank el lugar que le puso el dueño arrastrando (.107, DayPlan)
+ * Lo de hoy trae además (.108) el reloj de cada tarea (timers), cuánto sueles tardar (usual), lo hecho a tiempo y la racha
+ * (score), y la hora del servidor (server_now) para que el reloj de la pantalla no se adelante ni se atrase.
  * Las de todos los días que pasaron sin hacerse no se muestran: no se acumulan.
  */
 class Calendar
@@ -95,7 +101,8 @@ class Calendar
             Cache::forget($key);
         }
 
-        return Cache::remember($key, self::TODAY_CACHE_SECONDS, fn () => $this->computeToday($now));
+        // .108: la hora del servidor va aparte de lo guardado (el reloj de la pantalla la usa para no correrse)
+        return Cache::remember($key, self::TODAY_CACHE_SECONDS, fn () => $this->computeToday($now)) + ['server_now' => $now->toIso8601String()];
     }
 
     /** Lo de hoy se vuelve a calcular la próxima vez que se pida. */
@@ -117,6 +124,10 @@ class Calendar
         $open = self::pendingOf($items);
         $pending = count($open);
         $done = count(array_filter($items, fn ($i) => $i['status'] === 'done'));
+        // .108: el reloj de cada tarea; la que se dejó "Más tarde" va al final de su etapa
+        $timers = $this->timersOf(array_merge($items, $overdue));
+        $later = fn (array $i) => $i + ['later' => $timers[self::planKeyOf($i)]['later_at'] ?? null];
+        $score = $this->score($items, $overdue, $pending, $now);
 
         return [
             'date' => $today->toDateString(),
@@ -126,8 +137,11 @@ class Calendar
             'counts' => ['pending' => $pending, 'overdue' => count($overdue), 'done' => $done],
             'text' => self::summary($pending, count($overdue)),
             // .107 "Tu día": en qué orden se hace (por etapas) y cuántos minutos de trabajo faltan
-            'plan' => DayPlan::order($open, $overdue, $now->format('H:i')),
+            'plan' => DayPlan::order(array_map($later, $open), array_map($later, $overdue), $now->format('H:i')),
             'minutes_left' => array_sum(array_column($open, 'minutes')) + array_sum(array_column($overdue, 'minutes')),
+            'timers' => $timers,
+            'usual' => $this->usual(array_column(array_merge($items, $overdue), 'item_key')),
+            'score' => $score,
         ];
     }
 
@@ -257,10 +271,22 @@ class Calendar
         if (!$this->exists($itemKey, $due)) {
             throw ValidationException::withMessages(['item_key' => 'Eso ya no está en el calendario en esa fecha. Actualiza la página.']);
         }
-        CalendarMark::updateOrCreate(
-            ['item_key' => $itemKey, 'occurs_on' => $due],
-            ['status' => $status, 'note' => $note, 'source' => $source, 'marked_by' => $by->id],
-        );
+        DB::transaction(function () use ($itemKey, $due, $status, $note, $source, $by) {
+            CalendarMark::updateOrCreate(
+                ['item_key' => $itemKey, 'occurs_on' => $due],
+                ['status' => $status, 'note' => $note, 'source' => $source, 'marked_by' => $by->id],
+            );
+            // .108: al hacerla, su reloj termina (y queda si fue a tiempo); al descartarla, se pausa
+            if ($timer = $this->timerOf($itemKey, $due)) {
+                $now = CarbonImmutable::now();
+                $elapsed = TimerRules::elapsed($timer->spent_seconds, self::immutable($timer->started_at), $now);
+                $timer->fill(['spent_seconds' => $elapsed, 'started_at' => null]);
+                if ($status === 'done') {
+                    $timer->fill(['finished_at' => $now, 'on_time' => TimerRules::onTime($elapsed, $timer->minutes)]);
+                }
+                $timer->save();
+            }
+        });
         self::forgetToday();
     }
 
@@ -268,7 +294,49 @@ class Calendar
     public function unmark(string $itemKey, string $due): void
     {
         CalendarMark::where('item_key', $itemKey)->whereDate('occurs_on', $due)->delete();
+        // .108: si tenía reloj, vuelve a quedar en pausa con lo que corrió
+        $this->timerOf($itemKey, $due)?->update(['finished_at' => null, 'on_time' => null]);
         self::forgetToday();
+    }
+
+    /**
+     * .108: el reloj de una tarea de hoy (o atrasada): "start" (empezar o seguir; el que corría se pausa: uno a la vez),
+     * "pause", "extend" (+5 min) y "later" ("Más tarde": se pausa y va al final de su etapa). "Hecho" es mark().
+     */
+    public function timer(string $action, string $itemKey, string $due, User $by, CarbonImmutable $now): void
+    {
+        if ($due > $now->toDateString() || !$this->exists($itemKey, $due)) {
+            throw ValidationException::withMessages(['item_key' => 'Eso no está para hoy en el calendario. Actualiza la página.']);
+        }
+        $timer = $this->timerOf($itemKey, $due);
+        if ($timer?->finished_at !== null && $timer !== null) {
+            throw ValidationException::withMessages(['item_key' => 'Esa ya está hecha. Si quieres seguirla, primero toca "Deshacer".']);
+        }
+        DB::transaction(function () use ($action, $itemKey, $due, $by, $now, $timer) {
+            $timer ??= new CalendarTimer(['item_key' => $itemKey, 'occurs_on' => $due, 'minutes' => $this->minutesOf($itemKey), 'user_id' => $by->id]);
+            if ($action === 'start') {
+                CalendarTimer::whereNotNull('started_at')->whereNull('finished_at')->when($timer->exists, fn ($q) => $q->whereKeyNot($timer->getKey()))
+                    ->get()->each(fn (CalendarTimer $other) => self::pause($other, $now)->save());
+                $timer->fill(['started_at' => $timer->started_at ?? $now, 'later_at' => null]);
+            } elseif ($action === 'pause') {
+                self::pause($timer, $now);
+            } elseif ($action === 'extend') {
+                $timer->extra_minutes = min(TimerRules::MAX_EXTRA, (int) $timer->extra_minutes + TimerRules::EXTEND);
+            } else {
+                self::pause($timer, $now)->later_at = $now;
+            }
+            $timer->save();
+        });
+        self::forgetToday();
+    }
+
+    private static function pause(CalendarTimer $timer, CarbonImmutable $now): CalendarTimer
+    {
+        if ($timer->started_at !== null) {
+            $timer->fill(['spent_seconds' => TimerRules::elapsed((int) $timer->spent_seconds, self::immutable($timer->started_at), $now), 'started_at' => null]);
+        }
+
+        return $timer;
     }
 
     /** Anota una nota nueva (del dueño o, más adelante, del asistente). */
@@ -329,6 +397,102 @@ class Calendar
         }
 
         return $fields;
+    }
+
+    private function timerOf(string $itemKey, string $due): ?CalendarTimer
+    {
+        return CalendarTimer::where('item_key', $itemKey)->whereDate('occurs_on', $due)->first();
+    }
+
+    /** Los minutos que toma una cosa ahora (los del dueño o los de siempre): con eso empieza su reloj. */
+    private function minutesOf(string $itemKey): int
+    {
+        $plans = $this->plans([$itemKey, DayPlan::ALL_EXPENSES]);
+
+        return DayPlan::resolve($itemKey, $plans[$itemKey] ?? null, $plans[DayPlan::ALL_EXPENSES] ?? null)['minutes'];
+    }
+
+    /**
+     * .108: el reloj de cada cosa de la lista, por "item_key|due_date": sus minutos, los "+5", lo que corrió, desde cuándo
+     * corre (null: en pausa), cuándo se acaba, si se dejó para después y si se hizo a tiempo.
+     */
+    private function timersOf(array $items): array
+    {
+        if ($items === []) {
+            return [];
+        }
+        $wanted = array_flip(array_map([self::class, 'planKeyOf'], $items));
+        $out = [];
+        $rows = CalendarTimer::whereIn('item_key', array_unique(array_column($items, 'item_key')))
+            ->whereIn('occurs_on', array_unique(array_column($items, 'due_date')))->get();
+        foreach ($rows as $t) {
+            $key = $t->item_key . '|' . $t->occurs_on->toDateString();
+            if (!isset($wanted[$key])) {
+                continue;
+            }
+            $started = self::immutable($t->started_at);
+            $out[$key] = [
+                'minutes' => $t->minutes,
+                'extra_minutes' => $t->extra_minutes,
+                'spent_seconds' => $t->spent_seconds,
+                'started_at' => $started?->toIso8601String(),
+                'ends_at' => TimerRules::endsAt($t->minutes, $t->extra_minutes, $t->spent_seconds, $started)?->toIso8601String(),
+                'later_at' => $t->later_at?->toIso8601String(),
+                'finished' => $t->finished_at !== null,
+                'on_time' => $t->on_time,
+            ];
+        }
+
+        return $out;
+    }
+
+    /** .108: cuánto sueles tardar en cada cosa (desde la 3.ª vez con el reloj), en minutos. */
+    private function usual(array $itemKeys): array
+    {
+        if ($itemKeys === []) {
+            return [];
+        }
+        $seconds = [];
+        CalendarTimer::whereIn('item_key', array_values(array_unique($itemKeys)))->whereNotNull('finished_at')
+            ->orderByDesc('finished_at')->limit(1000)->get(['item_key', 'spent_seconds'])
+            ->each(function (CalendarTimer $t) use (&$seconds) { $seconds[$t->item_key][] = $t->spent_seconds; });
+
+        return array_filter(array_map([TimerRules::class, 'usual'], $seconds), fn ($m) => $m !== null);
+    }
+
+    /**
+     * .108: lo de hoy en números de verdad (hechas a tiempo con el reloj y la racha), y el resumen del día guardado (de ahí
+     * sale la racha de mañana). El día queda completo cuando no falta nada, ni de hoy ni atrasado.
+     */
+    private function score(array $items, array $overdue, int $pending, CarbonImmutable $now): array
+    {
+        $today = $now->toDateString();
+        $finished = CalendarTimer::whereBetween('finished_at', [$now->startOfDay(), $now->endOfDay()])->get(['on_time']);
+        $onTime = $finished->where('on_time', true)->count();
+        $allDone = $items !== [] && $pending === 0 && $overdue === [];
+        $day = CalendarDay::whereDate('date', $today)->first() ?? new CalendarDay(['date' => $today]);
+        $day->fill([
+            'total' => count($items),
+            'done' => count(array_filter($items, fn ($i) => $i['status'] === 'done')),
+            'timed' => $finished->count(),
+            'on_time' => $onTime,
+            'all_done_at' => $allDone ? ($day->all_done_at ?? $now) : null,
+        ])->save();
+
+        $days = CalendarDay::where('date', '>=', $now->subDays(400)->toDateString())->get(['date', 'all_done_at'])
+            ->mapWithKeys(fn (CalendarDay $d) => [$d->date->toDateString() => $d->all_done_at !== null])->all();
+
+        return ['on_time' => $onTime, 'timed' => $finished->count(), 'streak' => TimerRules::streak($days, $today), 'best' => TimerRules::best($days)];
+    }
+
+    private static function planKeyOf(array $item): string
+    {
+        return $item['item_key'] . '|' . $item['due_date'];
+    }
+
+    private static function immutable(mixed $date): ?CarbonImmutable
+    {
+        return $date ? CarbonImmutable::parse($date) : null;
     }
 
     /** .107: la prioridad y los minutos que llegaron con una nota (solo los que vinieron), revisados. */

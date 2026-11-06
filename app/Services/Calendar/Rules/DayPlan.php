@@ -101,8 +101,8 @@ final class DayPlan
 
     /**
      * El día en etapas, de lo primero a lo último. Entra lo pendiente de hoy (en el orden de siempre) y lo atrasado; cada
-     * cosa necesita item_key, due_date, date, time, priority, minutes y rank. $nowHm es la hora de Venezuela ("09:40"), o
-     * null para un día que no es hoy (lo que tiene hora va "a su hora").
+     * cosa necesita item_key, due_date, date, time, priority, minutes y rank (y later, .108: cuándo la dejó "Más tarde").
+     * $nowHm es la hora de Venezuela ("09:40"), o null para un día que no es hoy (lo que tiene hora va "a su hora").
      *
      * @return list<array{key: string, label: string, minutes: int, items: list<array{item_key: string, due_date: string, reason: string}>}>
      */
@@ -140,6 +140,14 @@ final class DayPlan
                     ? ': en el orden que pusiste.'
                     : ($i === 0 && isset($stages[$p][1]) && $stages[$p][1]['minutes'] > $item['minutes'] ? ': es la más corta.' : '.'));
             }
+        }
+
+        // .108 "Más tarde": la que el dueño dejó para después va al final de su etapa (en el orden en que las dejó)
+        foreach (['urgent', 'alta', 'normal', 'baja'] as $key) {
+            $now = array_values(array_filter($stages[$key], fn ($i) => empty($i['later'])));
+            $later = array_values(array_filter($stages[$key], fn ($i) => !empty($i['later'])));
+            usort($later, fn ($a, $b) => (string) $a['later'] <=> (string) $b['later']);
+            $stages[$key] = array_merge($now, array_map(fn ($i) => ['reason' => 'La dejaste para después.'] + $i, $later));
         }
 
         $out = [];

@@ -124,6 +124,20 @@ class CalendarController extends Controller
         return response()->json(['message' => 'Volvió el orden automático.']);
     }
 
+    /** .108: el reloj de una tarea de hoy: start (empezar o seguir), pause, extend (+5 min) o later ("Más tarde"). */
+    public function timer(Request $request, string $action, Calendar $calendar): JsonResponse
+    {
+        $data = $request->validate(['item_key' => 'required|string|max:60', 'due_date' => 'required|date_format:Y-m-d']);
+        $calendar->timer($action, $data['item_key'], $data['due_date'], $request->user(), CarbonImmutable::now());
+
+        return response()->json(['message' => match ($action) {
+            'start' => 'El reloj está corriendo.',
+            'pause' => 'En pausa.',
+            'extend' => '5 minutos más.',
+            default => 'La dejaste para después.',
+        }]);
+    }
+
     /** "Deshacer": vuelve a quedar pendiente. */
     public function unmark(Request $request, Calendar $calendar): JsonResponse
     {
