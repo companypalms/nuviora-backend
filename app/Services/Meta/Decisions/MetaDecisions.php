@@ -274,6 +274,11 @@ class MetaDecisions
                 $c = $campaigns[$campaignId] ?? null;
                 $states[$cid][$campaignId] = $this->entity($w, $c, $rules, 'creativo', $this->sumHistory($history['ad'], $agg[$cid]['ads_by_city'][$campaignId] ?? []),
                     $cpmChange[$campaignId] ?? null, $tracking);
+                // .110: si en esta ciudad ya vende aunque gastó poco, no está "sin datos" (y no lo deja ser "perdedor en todas")
+                $life = $w['max']['totals'] ?? [];
+                if ($early = $rules->sellingEarly($states[$cid][$campaignId], (float) ($life['spend'] ?? 0), (float) ($life['purchases'] ?? 0))) {
+                    $states[$cid][$campaignId] = $early + ['causes' => []];
+                }
                 // .86: intermedio o en evaluación en toda su vida, pero perdiendo en los últimos 3 días en esta ciudad
                 if ($recent = $rules->recentLoser($w['3d']['totals'] ?? null, $states[$cid][$campaignId], $c['target'] ?? null, $c['break_even'] ?? null)) {
                     $states[$cid][$campaignId] = $recent + ['causes' => []];

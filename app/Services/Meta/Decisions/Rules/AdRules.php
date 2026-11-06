@@ -422,6 +422,22 @@ class AdRules
     }
 
     /**
+     * `.110` (dueño, 2026-11-06: ZenPulse CREATIVO 7 salió "perdedor en todas las ciudades" y en Distrito Capital vendía: 2
+     * compras con CPA $2,47 y C $5,76): un creativo que en una ciudad todavía no gastó 1×C pero ya vende no está "sin datos":
+     * va bien por ahora (con menos de 1×C su CPA siempre queda debajo de C) y cuenta entre ciudades. Solo para creativos.
+     */
+    public function sellingEarly(array $state, float $spend, float $purchases): ?array
+    {
+        if (($state['key'] ?? null) !== 'no_data' || $purchases < 1) {
+            return null;
+        }
+
+        return $this->verdict('evaluation', $state['data'], 'Va bien por ahora: ' . self::num($purchases) . ($purchases == 1 ? ' compra' : ' compras')
+            . ' con CPA ' . self::money($spend / $purchases) . ', debajo de C. Todavía gastó menos de ' . self::num($this->s['no_data_cpa']) . '×C.',
+            'Mantener; se vuelve a mirar cada día.');
+    }
+
+    /**
      * `.101` (dueño, 2026-11-04: el CRE002 de Termafit se apagó en Aragua con el CPA 9 % encima del BE y 10 compras): un CPA
      * en el BE o encima pierde de verdad si pasa el margen (20 %) o si ya tiene compras de sobra (20) para no ser suerte.
      */
