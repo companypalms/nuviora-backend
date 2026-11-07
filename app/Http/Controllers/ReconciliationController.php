@@ -10,6 +10,7 @@ use App\Models\StatementSource;
 use App\Services\Payments\ReceiptChecker;
 use App\Services\Reconciliation\DayBuilder;
 use App\Services\Reconciliation\StatementImporter;
+use App\Services\Reconciliation\StatementMatcher;
 use App\Services\Reconciliation\StatementReader;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -55,11 +56,15 @@ class ReconciliationController extends Controller
         $items = $day->items()->with(['receipt', 'row.statement:id,original_name', 'resolver:id,names', 'source:id,name'])->orderBy('id')->get();
         $statements = $day->statements()->with(['source:id,name', 'uploader:id,names'])->orderBy('id')->get();
         $needed = $this->builder->neededSources($day);
+        $bs = app(StatementMatcher::class)->bsSources();
+        // `.115`: los pagos en bolívares que no aparecieron en su banco, que se buscan también en los otros
+        $missing = $items->filter(fn ($i) => in_array($i->method, StatementMatcher::BS, true) && in_array($i->status, ReconciliationItem::UNMATCHED, true));
         $sources = StatementSource::whereIn('id', $needed->merge($statements->pluck('statement_source_id'))->unique())->orderBy('name')->get()
-            ->map(function (StatementSource $s) use ($items, $statements, $day) {
+            ->map(function (StatementSource $s) use ($items, $statements, $day, $bs, $missing) {
                 $own = $items->where('statement_source_id', $s->id);
+                $searching = in_array($s->id, $bs, true) ? $missing->filter(fn ($i) => (int) $i->statement_source_id !== $s->id) : collect();
                 $current = $statements->first(fn ($st) => $st->statement_source_id === $s->id && !$st->replaced_at);
-                $dates = $own->map(fn ($i) => $i->paid_on?->toDateString() ?? $day->date->toDateString())->push($day->date->toDateString());
+                $dates = $own->merge($searching)->map(fn ($i) => $i->paid_on?->toDateString() ?? $day->date->toDateString())->push($day->date->toDateString());
 
                 return [
                     'id' => $s->id,
@@ -67,6 +72,7 @@ class ReconciliationController extends Controller
                     'currency' => $s->currency,
                     'payments' => $own->count(),
                     'pending' => $own->where('status', ReconciliationItem::PENDING)->count(),
+                    'searching' => $searching->count(),
                     // El extracto tiene que cubrir desde el pago más temprano hasta el día (§16: decir qué archivo necesita)
                     'range' => ['from' => $dates->min(), 'to' => $day->date->toDateString()],
                     'format_saved' => (bool) $s->format,
@@ -79,9 +85,15 @@ class ReconciliationController extends Controller
         $incidents = $items->whereIn('status', [ReconciliationItem::NOT_FOUND, ReconciliationItem::REVIEW]);
         $shown = $request->boolean('all') ? $items : $incidents;
 
+        // `.115`: las cuentas que recibieron pagos sin resolver y no tienen extracto asignado: el sistema no puede pedirlo
+        $open = $items->whereNotIn('status', ReconciliationItem::RESOLVED)->whereNotNull('company_account_id');
+        $unlinked = \App\Models\CompanyAccount::whereIn('id', $open->pluck('company_account_id')->unique())->whereNull('statement_source_id')->orderBy('name')->get()
+            ->map(fn ($a) => ['id' => $a->id, 'name' => $a->name, 'payments' => $open->where('company_account_id', $a->id)->count()])->values();
+
         return response()->json([
             'day' => $this->dayCard($day),
             'sources' => $sources,
+            'unlinked' => $unlinked,
             'summary' => $this->summary($items),
             'items' => $shown->values()->map(fn ($i) => $this->itemView($i, $byOrder->get($i->order_id))),
             'statements' => $statements->map(fn ($s) => $this->statementInfo($s)),
@@ -144,7 +156,7 @@ class ReconciliationController extends Controller
         if (!in_array($item->status, [ReconciliationItem::PENDING, ReconciliationItem::NOT_FOUND, ReconciliationItem::REVIEW], true)) {
             return response()->json(['status' => false, 'message' => 'Este pago ya está conciliado o resuelto.'], 422);
         }
-        $rowId = null;
+        $rowId = $moved = null;
         if ($request->input('action') === 'link') {
             $row = $this->rowsFor($item)->firstWhere('id', $request->integer('row_id'));
             if (!$row) {
@@ -154,8 +166,13 @@ class ReconciliationController extends Controller
                 return response()->json(['status' => false, 'message' => 'Ese movimiento ya es de otro pago (§21: cada movimiento sirve para un solo pago).'], 422);
             }
             $rowId = $row->id;
+            // `.115`: un movimiento del extracto de otro banco: el pago llegó a esa cuenta
+            $rowSource = (int) BankStatement::whereKey($row->bank_statement_id)->value('statement_source_id');
+            if ($rowSource !== (int) $item->statement_source_id) {
+                $moved = app(StatementMatcher::class)->accountFor($rowSource, $item->method);
+            }
         }
-        $before = ['estado' => $item->status, 'movimiento' => $item->bank_statement_row_id];
+        $before = ['estado' => $item->status, 'movimiento' => $item->bank_statement_row_id, 'cuenta' => $item->company_account_id];
         $status = [
             'confirm' => ReconciliationItem::CONFIRMED,
             'not_received' => ReconciliationItem::NOT_RECEIVED,
@@ -164,11 +181,11 @@ class ReconciliationController extends Controller
         $item->forceFill([
             'status' => $status, 'bank_statement_row_id' => $rowId, 'resolved_by' => Auth::id(), 'resolved_at' => now(),
             'note' => $request->input('note'),
-        ])->save();
+        ] + ($moved ? ['company_account_id' => $moved->id, 'statement_source_id' => $moved->statement_source_id] : []))->save();
         ReconciliationEvent::log($request->input('action'), Auth::id(), [
             'reconciliation_item_id' => $item->id,
             'data' => ['orden' => $item->order_name, 'monto' => $item->amount, 'moneda' => $item->currency, 'referencia' => $item->reference,
-                'antes' => $before, 'despues' => ['estado' => $status, 'movimiento' => $rowId]],
+                'antes' => $before, 'despues' => ['estado' => $status, 'movimiento' => $rowId, 'cuenta' => $item->company_account_id]],
             'note' => $request->input('note'),
         ]);
         $this->builder->refreshStatus($item->day);
@@ -201,11 +218,13 @@ class ReconciliationController extends Controller
         ])]);
     }
 
-    /** Los ingresos de los extractos actuales del día donde se busca ese pago (el de su cuenta o los de su método). */
+    /**
+     * Los ingresos de los extractos actuales del día donde se busca ese pago: el de su cuenta (o los de su método) y, en
+     * bolívares, los de los otros bancos (`.115`).
+     */
     private function rowsFor(ReconciliationItem $item)
     {
-        $sources = $item->statement_source_id ? [$item->statement_source_id]
-            : \App\Models\CompanyAccount::where('method', $item->method)->where('is_active', true)->whereNotNull('statement_source_id')->pluck('statement_source_id')->all();
+        $sources = app(StatementMatcher::class)->searchSources($item);
         $statementIds = BankStatement::current()->where('reconciliation_day_id', $item->reconciliation_day_id)->whereIn('statement_source_id', $sources)->pluck('id');
 
         return \App\Models\BankStatementRow::whereIn('bank_statement_id', $statementIds)->orderBy('line')->get();

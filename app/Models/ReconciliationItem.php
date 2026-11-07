@@ -22,6 +22,9 @@ class ReconciliationItem extends Model
     /** Los que ya no necesitan nada (§25: "todos los pagos conciliados o las incidencias resueltas manualmente"). */
     public const RESOLVED = [self::MATCHED, self::CONFIRMED, self::NOT_RECEIVED, self::LINKED];
 
+    /** Los que se buscaron y no se encontraron con seguridad: las incidencias (§24). */
+    public const UNMATCHED = [self::NOT_FOUND, self::REVIEW];
+
     /** Los que decidió el administrador: buscar otra vez no los cambia. */
     public const MANUAL = [self::CONFIRMED, self::NOT_RECEIVED, self::LINKED];
 

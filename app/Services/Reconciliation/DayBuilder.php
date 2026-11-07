@@ -74,7 +74,8 @@ class DayBuilder
     /**
      * Los extractos que hacen falta (§12 y §13): los de las cuentas que recibieron pagos ese día. Si de un pago no se
      * sabe la cuenta, los de todas las cuentas activas de su método. Con $open, solo los de pagos sin resolver: lo que el
-     * administrador ya resolvió a mano no necesita extracto.
+     * administrador ya resolvió a mano no necesita extracto. `.115`: si un pago en bolívares no apareció en su banco,
+     * también los de los otros bancos en bolívares, para buscarlo ahí.
      * @return Collection<int, int> ids de statement_sources
      */
     public function neededSources(ReconciliationDay $day, bool $open = false): Collection
@@ -83,12 +84,14 @@ class DayBuilder
         if ($open) {
             $query->whereNotIn('status', ReconciliationItem::RESOLVED);
         }
-        $items = $query->get(['statement_source_id', 'method']);
+        $items = $query->get(['statement_source_id', 'method', 'status']);
         $unknownMethods = $items->whereNull('statement_source_id')->pluck('method')->unique();
+        $missingBs = $items->contains(fn ($i) => in_array($i->method, StatementMatcher::BS, true) && in_array($i->status, ReconciliationItem::UNMATCHED, true));
 
         return $items->pluck('statement_source_id')->filter()
             ->merge($unknownMethods->isEmpty() ? [] : CompanyAccount::whereIn('method', $unknownMethods)->where('is_active', true)
                 ->whereNotNull('statement_source_id')->pluck('statement_source_id'))
+            ->merge($missingBs ? $this->matcher->bsSources() : [])
             ->map(fn ($id) => (int) $id)->unique()->values();
     }
 
