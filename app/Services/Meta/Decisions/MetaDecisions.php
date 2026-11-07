@@ -3,6 +3,7 @@
 namespace App\Services\Meta\Decisions;
 
 use App\Models\MetaCreative;
+use App\Services\Meta\Analysis\CreativeCalls;
 use App\Services\Meta\Decisions\Readers\AdFacts;
 use App\Services\Meta\Decisions\Readers\OpsFacts;
 use App\Services\Meta\Decisions\Rules\AdRules;
@@ -319,8 +320,24 @@ class MetaDecisions
             foreach ($byCity as $campaignId => $v) {
                 $cityNames[$campaigns[$campaignId]['city'] ?? $campaignId] = $v['key'];
             }
+            // .113: dónde sigue prendido y dónde todavía se prueba (prendido y sin 1×C gastado)
+            $activeIn = [];
+            $testing = [];
+            foreach ($byCity as $campaignId => $v) {
+                $activeIn[$campaignId] = collect($agg[$cid]['ads_by_city'][$campaignId] ?? [])->contains(fn ($m) => $f['ads'][$m]['active'] ?? false);
+                if ($v['key'] === 'no_data' && $activeIn[$campaignId]) {
+                    $target = $campaigns[$campaignId]['target'] ?? null;
+                    $testing[$campaignId] = $target ? $target * $s['no_data_cpa'] : null;
+                }
+            }
             $cross = $rules->crossCity($cityNames);
+            if ($testing && ($cross['key'] ?? null) === 'loser_all') {
+                $cross = null;
+            }
             $overall = $this->overall($byCity, $cross, $cityNames);
+            if ($overall['key'] === 'loser' && $testing) {
+                $overall = self::stillTesting($byCity, $testing, $activeIn, array_filter(array_map(fn ($c) => $c['city'] ?? null, $campaigns)), (float) $s['no_data_cpa']);
+            }
             $all = $agg[$cid]['all'];
             $w = $this->window($all);
             $isVideo = $cr['type'] !== 'image';
@@ -691,6 +708,36 @@ class MetaDecisions
         }
 
         return $v;
+    }
+
+    /**
+     * `.113` (dueño, 2026-11-07: ZenPulse C0153 salió "Apaga C0153 en todas las campañas" porque perdió en Aragua, pero en
+     * Carabobo seguía prendido con $1,15 gastados: "todavía no ha gastado suficiente como para poder determinarlo perdedor o
+     * ganador"): si pierde donde se probó, pero en otra ciudad sigue prendido sin haber gastado 1×C, no es perdedor en todas.
+     * Se apaga solo donde perdió y en las otras se sigue probando, también si ya perdió en 2 ciudades o más (lo eligió el
+     * dueño). Si ahí ya está apagado, sigue siendo perdedor (overall). PHP puro.
+     *
+     * @param array<string, array> $byCity el veredicto por campaña (ciudad)
+     * @param array<string, ?float> $testing campaña => desde cuánto gasto se juzga ahí (1×C), donde se sigue probando
+     * @param array<string, bool> $activeIn campaña => si sigue prendido ahí
+     * @param array<string, string> $cityOf campaña => ciudad
+     */
+    public static function stillTesting(array $byCity, array $testing, array $activeIn, array $cityOf, float $noDataCpa): array
+    {
+        $city = fn ($id) => $cityOf[$id] ?? (string) $id;
+        $lostIds = array_keys(array_filter($byCity, fn ($v) => $v['key'] === 'loser'));
+        $lost = array_map($city, $lostIds);
+        $lostOn = array_map($city, array_values(array_filter($lostIds, fn ($id) => $activeIn[$id] ?? false)));
+        $there = CreativeCalls::join(array_map($city, array_keys($testing)));
+        $from = count($testing) === 1 ? reset($testing) : null;
+        $wait = "En {$there} no lo toques: todavía se prueba ("
+            . ($from !== null ? 'se juzga ahí desde ' . AdRules::money($from) : 'se juzga en cada una cuando gaste ' . AdRules::num($noDataCpa) . '×C') . ').';
+
+        return ['key' => 'evaluation', 'label' => AdRules::STATES['evaluation']['label'], 'tone' => AdRules::STATES['evaluation']['tone'],
+            'data' => implode(' | ', array_map(fn ($id) => $city($id) . ': ' . $byCity[$id]['data'], [...$lostIds, ...array_keys($testing)])),
+            'reading' => 'Pierde en ' . CreativeCalls::join($lost) . "; en {$there} todavía no gastó " . AdRules::num($noDataCpa) . '×C.',
+            'proposal' => ($lostOn ? 'Apagarlo solo en ' . CreativeCalls::join($lostOn) . '. ' : '') . $wait,
+            'wait' => $wait, 'causes' => []];
     }
 
     /** Las ventanas de un creativo: sumando sus anuncios por ciudad (campaña) y en total. */

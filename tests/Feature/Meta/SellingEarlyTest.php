@@ -81,12 +81,13 @@ describe('.110: un creativo que vende en una ciudad no es "perdedor en todas"', 
             ->and(CreativeCalls::stopIn($cr))->toBe(['Carabobo']);
     });
 
-    it('si en Distrito Capital no hubiera vendido, sí sería perdedor en todas (como antes)', function () {
+    it('si en Distrito Capital no hubiera vendido, ahí todavía se probaría: se apaga solo en Carabobo (.113)', function () {
         $cr = zenCreative(zenMeta([4.94, 0, 1.72, 0, 0.98, 0]));
 
-        expect($cr['verdict']['key'])->toBe('loser')
-            ->and($cr['cross']['key'])->toBe('loser_all')
-            ->and(collect($cr['cities'])->firstWhere('city', 'Distrito Capital')['key'])->toBe('no_data');
+        expect($cr['verdict']['key'])->toBe('evaluation')
+            ->and($cr['cross'])->toBeNull()
+            ->and(collect($cr['cities'])->firstWhere('city', 'Distrito Capital')['key'])->toBe('no_data')
+            ->and(CreativeCalls::stopIn($cr))->toBe(['Carabobo']);
     });
 
     it('la regla: solo cambia "Sin datos" con 1 compra o más; lo demás queda igual', function () {

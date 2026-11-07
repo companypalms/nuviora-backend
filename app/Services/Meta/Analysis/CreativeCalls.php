@@ -95,7 +95,8 @@ final class CreativeCalls
             $winner => 'Va ganando: no lo toques y pide iteraciones de él.' . ($cities ? ' Ojo, lo que dice su ciudad:' . self::cityText($cities) : ''),
             $key === 'stop' => 'Apágalo.' . ($stage && isset(AdRules::STAGES[$stage]) ? ' Para aprender: lo más flojo fue ' . AdRules::STAGES[$stage] . '.' : ''),
             $key === 'iterate' => $stopText . ($fix === 'fatigue' ? 'Se está cansando: pide hooks nuevos.' : 'Lo flojo es ' . $stageName . ': pide versiones que lo arreglen.'),
-            default => $stopText . ($proposal !== '' ? $proposal : 'Déjalo correr.'),
+            // .113: si pierde en una ciudad y en otra todavía se prueba, "Apágalo en Aragua" ya lo dice: solo falta dónde esperar
+            default => $stopText . ($stopText !== '' && isset($cr['verdict']['wait']) ? $cr['verdict']['wait'] : ($proposal !== '' ? $proposal : 'Déjalo correr.')),
         };
         $editor = $winner || $key === 'iterate' ? self::editorText($cr, $winner && $fix === null ? null : $fix) : null;
         $label = match (true) {
