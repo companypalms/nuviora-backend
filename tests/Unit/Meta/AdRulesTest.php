@@ -116,6 +116,27 @@ describe('.86: el que se cae en los últimos 3 días (C = 4, BE = 5,70)', functi
     });
 });
 
+describe('.114: si en 3 días no llegó a 2×C, se mira la semana (FlexiStep en Carabobo: C $6,38, BE $9,78)', function () {
+    $intermedio = ['key' => 'intermediate', 'label' => 'Intermedio'];
+
+    it('CRE003-FLEX-FAS-BATCH003: $11,93 en 3 días y $26,43 en 7, sin compras: perdedor por la semana', function () use ($intermedio) {
+        $v = reglas()->recentLoser(['spend' => 11.93, 'purchases' => 0], $intermedio, 6.38, 9.78, ['spend' => 26.43, 'purchases' => 0]);
+        expect($v['key'])->toBe('loser')
+            ->and($v['data'])->toBe('7 días: gastó $26,43 (4,1×C) · 0 compras · C $6,38 · BE $9,78')
+            ->and($v['reading'])->toBe('Perdedor en los últimos 7 días: gastó 4,1×C sin compras (en toda su vida: intermedio).')
+            ->and(reglas()->recentLoser(['spend' => 11.93, 'purchases' => 0], $intermedio, 6.38, 9.78))->toBeNull();   // sin la semana, como antes
+    });
+
+    it('CRE007-FEX-FASP-REF007: $12,68 en 3 días sin compras, pero 5 compras en la semana con CPA debajo de C: sigue', function () use ($intermedio) {
+        expect(reglas()->recentLoser(['spend' => 12.68, 'purchases' => 0], $intermedio, 6.38, 9.78, ['spend' => 30.54, 'purchases' => 5]))->toBeNull();
+    });
+
+    it('si en 3 días ya llegó a 2×C, mandan los 3 días', function () use ($intermedio) {
+        $v = reglas()->recentLoser(['spend' => 13.0, 'purchases' => 0], $intermedio, 6.38, 9.78, ['spend' => 30.54, 'purchases' => 5]);
+        expect($v['reading'])->toBe('Perdedor en los últimos 3 días: gastó 2×C sin compras (en toda su vida: intermedio).');
+    });
+});
+
 describe('.101: margen antes de apagar por el BE (dueño, 2026-11-04)', function () {
     it('el CRE002 de Termafit en Aragua (CPA $4,78, 10 compras, BE $4,39) sigue en evaluación', function () {
         $v = reglas()->state(47.80, 10, 2.91, 4.39, 'creativo');

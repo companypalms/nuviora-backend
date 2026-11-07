@@ -398,13 +398,22 @@ class AdRules
      * sin compras, o con el CPA en el break-even o encima, es perdedor ahí aunque su vida completa esté bien. Los ganadores
      * siguen con su regla (si se caen, "ganador que falla"). `.101`: "encima" con el margen (clearlyAbove). PHP puro.
      *
+     * `.114` (dueño, 2026-11-07: CRE003-FLEX-FAS-BATCH003 en Carabobo no vendía desde el 28/10, pero gastaba ~$4 al día y
+     * en 3 días nunca llegaba a 2×C = $12,76): si en 3 días no llegó a 2×C, se mira la última semana, como en "ganador que
+     * falla".
+     *
      * @param array|null $recent los totales de los 3 días en esa ciudad (spend, purchases)
      * @param array $state el veredicto de toda su vida en esa ciudad
+     * @param array|null $week los totales de los 7 días en esa ciudad
      */
-    public function recentLoser(?array $recent, array $state, ?float $c, ?float $be): ?array
+    public function recentLoser(?array $recent, array $state, ?float $c, ?float $be, ?array $week = null): ?array
     {
         if (!$c || $c <= 0 || !in_array($state['key'] ?? null, ['intermediate', 'evaluation'], true)) {
             return null;
+        }
+        $days = 3;
+        if ($week !== null && (float) ($recent['spend'] ?? 0) < $c * $this->s['loser_spend_cpa']) {
+            [$recent, $days] = [$week, 7];
         }
         $spend = (float) ($recent['spend'] ?? 0);
         $purchases = (float) ($recent['purchases'] ?? 0);
@@ -412,10 +421,10 @@ class AdRules
         if ($spend < $c * $this->s['loser_spend_cpa'] || !$losing) {
             return null;
         }
-        $data = '3 días: ' . lcfirst($this->spendText($spend, $purchases, $c)) . ($purchases > 0 ? ' · CPA ' . self::money($spend / $purchases) : '')
+        $data = "{$days} días: " . lcfirst($this->spendText($spend, $purchases, $c)) . ($purchases > 0 ? ' · CPA ' . self::money($spend / $purchases) : '')
             . ' · C ' . self::money($c) . ($be !== null ? ' · BE ' . self::money($be) : '');
 
-        return $this->verdict('loser', $data, 'Perdedor en los últimos 3 días: gastó ' . self::num($spend / $c) . '×C '
+        return $this->verdict('loser', $data, "Perdedor en los últimos {$days} días: gastó " . self::num($spend / $c) . '×C '
             . ($purchases == 0 ? 'sin compras' : 'con el CPA ' . self::num(round(($spend / $purchases / $be - 1) * 100)) . ' % encima del break-even')
             . ' (en toda su vida: ' . mb_strtolower($state['label']) . ').',
             $this->offProposal('creativo'));

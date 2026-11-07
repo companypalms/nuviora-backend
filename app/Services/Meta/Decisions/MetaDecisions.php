@@ -289,7 +289,8 @@ class MetaDecisions
                     $states[$cid][$campaignId] = $early + ['causes' => []];
                 }
                 // .86: intermedio o en evaluación en toda su vida, pero perdiendo en los últimos 3 días en esta ciudad
-                if ($recent = $rules->recentLoser($w['3d']['totals'] ?? null, $states[$cid][$campaignId], $c['target'] ?? null, $c['break_even'] ?? null)) {
+                // (.114: o en los 7 días, si en 3 no llegó a 2×C)
+                if ($recent = $rules->recentLoser($w['3d']['totals'] ?? null, $states[$cid][$campaignId], $c['target'] ?? null, $c['break_even'] ?? null, $w['7d']['totals'] ?? null)) {
                     $states[$cid][$campaignId] = $recent + ['causes' => []];
                 }
                 // .111: si todos sus anuncios en esta ciudad tienen menos de 24 horas, todavía no se apaga
