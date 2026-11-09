@@ -21,6 +21,7 @@ use Carbon\CarbonImmutable;
  * - `.67`: Meta Ads y los editores van en su propio bloque (group "meta"): el análisis de campañas, los encargos por
  *   aprobar, las entregas que esperan al dueño, que los editores vayan al día y la banca; y cada semana, el trabajo de los
  *   editores (lunes) y lo que aprendimos (sábado). Lo que dicen lo arma MetaReminderRules.
+ * - `.116`: el ángulo que propone la IA, solo cuando hay uno por decidir (hidden: los demás días no sale).
  */
 final class ReminderRules
 {
@@ -80,6 +81,13 @@ final class ReminderRules
             'title' => 'Encargos por aprobar',
             'help' => 'Cada día, después de las 12:30 a. m., la IA propone los encargos del día: mientras no los apruebas, los editores no tienen trabajo nuevo. También avisa si un testeo terminó sin ganador y te toca decidir, o si a un producto activo le falta la ficha (sin ficha, la IA no le propone encargos). Se tilda solo cuando no queda nada.',
             'link' => '/meta-ads/cola',
+        ],
+        // .116 (dueño, 2026-11-09): "me gustaría que me lo propusiera a mí solamente (en mi calendario y en mis tareas por hacer en el día)"
+        'meta_angles' => [
+            'type' => 'task', 'group' => 'meta', 'repeat' => 'daily', 'accumulates' => false, 'auto' => true,
+            'title' => 'Decidir el ángulo nuevo',
+            'help' => 'A este producto ya no le quedan ángulos disponibles en su ficha y la IA te propone uno. Tú decides: ese, otro que recomiendes o uno de los que ya están. Mientras no decidas, no se piden batches nuevos de ese producto.',
+            'link' => null,
         ],
         'meta_deliveries' => [
             'type' => 'review', 'group' => 'meta', 'repeat' => 'daily', 'accumulates' => false, 'auto' => true,
@@ -196,8 +204,8 @@ final class ReminderRules
      *
      * Los pagos de la semana leen $facts['sellers'] y $facts['closures'] por el lunes de la semana que pagan.
      *
-     * @return array{title: string, details: string, link: ?string, actions: list<array{label: string, link?: string, mark?: string}>,
-     *               lines: list<array{label: string, value: string, note: ?string}>, auto_done: bool, auto_note: ?string}
+     * @return array{title: string, details: string, link: ?string, actions: list<array{label: string, link?: string, mark?: string, angle?: int}>,
+     *               lines: list<array{label: string, value: string, note: ?string}>, auto_done: bool, auto_note: ?string, hidden?: bool}
      */
     public static function occurrence(string $key, string $due, string $today, array $facts): array
     {
@@ -298,6 +306,7 @@ final class ReminderRules
                 break;
 
             case 'meta_queue':
+            case 'meta_angles':
             case 'meta_deliveries':
             case 'meta_flow':
             case 'meta_bank':

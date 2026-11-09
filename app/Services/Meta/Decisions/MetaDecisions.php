@@ -9,6 +9,7 @@ use App\Services\Meta\Decisions\Readers\OpsFacts;
 use App\Services\Meta\Decisions\Rules\AdRules;
 use App\Services\Meta\Decisions\Rules\CampaignRules;
 use App\Services\Meta\MetaMetrics;
+use App\Services\Meta\Products\AngleRest;
 use App\Services\Meta\Queue\QueueRules;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -241,6 +242,9 @@ class MetaDecisions
             $inside = array_keys(array_filter($f['ads'], fn ($a) => $a['adset_meta_id'] === $setId));
             $out['adsets'][$setId] = self::batchVerdict($v, array_map(fn ($adId) => ['name' => (string) $f['ads'][$adId]['name'], 'active' => (bool) $f['ads'][$adId]['active'],
                 'verdict' => $adVerdicts[$adId]], $inside));
+            // .116: el último día que gastó: desde ahí cuenta el descanso de su ángulo
+            $spent = array_keys(array_filter($history['adset'][$setId] ?? [], fn ($r) => $r['spend'] > 0));
+            $out['adsets'][$setId]['last_spend'] = $spent ? max($spent) : null;
         }
         foreach ($f['ads'] as $id => $ad) {
             $v = $adVerdicts[$id];
@@ -519,6 +523,26 @@ class MetaDecisions
             }
         }
 
+        // .116: los ángulos y los creativos que descansan: siguen prendidos, pero no se les piden más encargos
+        $angles = ($ops['angles'] ?? []) + ['order' => [], 'lost' => [], 'used' => [], 'chosen' => null, 'floors' => []];
+        $restN = (int) $s['angle_rest_batches'];
+        $restDays = (int) $s['angle_rest_days'];
+        $rested = AngleRest::angles(AngleRest::batches($f['adsets'], $f['ads'], $out['adsets']), $restN, $restDays, $today, $angles['floors']);
+        foreach ($out['creatives'] as $cid => $cr2) {
+            $angle = $cr2['angle_code'] ?? null;
+            $iterations = AngleRest::state($ops['iterations'][$cid] ?? [], $restN, $restDays, $today);
+            $why = match (true) {
+                $angle !== null && isset($rested[$angle]) => "No pidas más versiones: el ángulo {$angle} descansa " . AngleRest::untilText($rested[$angle]['until']) . '.',
+                $iterations !== null => 'No pidas más versiones de este creativo ' . AngleRest::untilText($iterations['until']) . ": perdieron sus últimas {$restN} iteraciones.",
+                default => null,
+            };
+            if ($why !== null) {
+                $out['creatives'][$cid]['rest'] = $why;
+            }
+        }
+        $restedCodes = array_map('strval', array_keys($rested));
+        $nextAngle = AngleRest::next($angles['order'], array_merge($angles['lost'], $restedCodes), array_merge($angles['used'], array_filter(array_column($out['creatives'], 'angle_code'))));
+
         // Urgencia y trabajo siguiente
         $healthy = 0;
         $failing = 0;
@@ -537,7 +561,7 @@ class MetaDecisions
             foreach ($f['creatives'][$cid]['ads'] ?? [] as $m) {
                 $p7 += (float) ($f['ads'][$m]['windows']['7d']['totals']['purchases'] ?? 0);
             }
-            if ($key === 'proven' && $p7 >= $s['proven_purchases'] && (!$winner || $p7 > $winner['p7'])) {
+            if ($key === 'proven' && empty($out['creatives'][$cid]['rest']) && $p7 >= $s['proven_purchases'] && (!$winner || $p7 > $winner['p7'])) {
                 $winner = ['id' => $cid, 'label' => $cr2['label'], 'p7' => $p7, 'iterate' => self::ITERATE[$cr2['video']['iterate'] ?? ''] ?? null,
                     'iterate_key' => $cr2['video']['iterate'] ?? null, // .99: qué prueba cada pieza de su iteración
                     'angle' => $cr2['angle_code'], 'type' => $cr2['type']];
@@ -565,8 +589,6 @@ class MetaDecisions
         }
         arsort($angleSpend);
         $mainAngle = array_key_first($angleSpend);
-        $failedBatches = $mainAngle ? count(array_unique(array_map(fn ($set) => $set['batch_code'] ?? $set['meta_id'], array_filter($f['adsets'],
-            fn ($set) => $set['angle_code'] === $mainAngle && ($out['adsets'][$set['meta_id']]['key'] ?? null) === 'loser')))) : 0;
         $saturated = [];
         foreach ($activeCities as $id => $c) {
             if (($c['windows']['3d']['metrics']['frequency'] ?? null) !== null && $c['windows']['3d']['metrics']['frequency'] >= $s['saturation_from']) {
@@ -581,12 +603,15 @@ class MetaDecisions
         $out['plan'] = [
             'urgency' => $urgency,
             'next_work' => $cr->nextWork(['mode' => $mode, 'winner' => $winner, 'saturated' => $saturated, 'main_angle' => $mainAngle,
-                'failed_batches_in_angle' => $failedBatches, 'bank' => $bank, 'needed' => $urgency['needed']], $urgency['batches']),
+                'rested' => $restedCodes, 'rest_batches' => $restN, 'bank' => $bank, 'needed' => $urgency['needed']], $urgency['batches']),
             'price' => $prices,
             'price_watch' => $cr->priceWatch($ops['price_change'] ?? null, $mainCampaign !== null ? ($minFor[$mainCampaign] ?? null) : null),
             'alarms' => array_values(array_unique($alarms)),
             // Paso 4b: lo mismo que el trabajo siguiente, en datos, para proponer los encargos
-            'work' => ['winner' => $winner, 'main_angle' => $mainAngle, 'failed_batches_in_angle' => $failedBatches, 'saturated' => $saturated],
+            'work' => ['winner' => $winner, 'main_angle' => $mainAngle, 'rested' => $restedCodes, 'rest_batches' => $restN, 'saturated' => $saturated],
+            // .116: los ángulos en descanso y cuál sigue, para el aviso del análisis
+            'rests' => array_map(fn ($code, $r) => ['angle' => (string) $code] + $r, array_keys($rested), $rested),
+            'next_angle' => $nextAngle,
             'money_at_risk' => round(array_sum(array_map(fn ($id) => (float) ($f['campaigns'][$id]['windows']['3d']['totals']['spend'] ?? 0),
                 array_keys(array_filter($actions, fn ($k) => in_array($k, ['intervene', 'decrease', 'pause_city', 'drop'], true))))), 2),
         ];

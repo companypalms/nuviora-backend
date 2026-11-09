@@ -3,6 +3,7 @@
 namespace App\Services\Meta\Products;
 
 use App\Models\AdAngle;
+use App\Models\AngleProposal;
 use App\Models\CreativeBatch;
 use App\Models\ProductPersona;
 use App\Models\ProductProfile;
@@ -260,8 +261,10 @@ class TestingPhase
     /**
      * Para las reglas de los productos que ya iteran: el orden de los ángulos de la ficha, los que perdieron en un testeo
      * (no reciben más encargos) y los que ya tuvieron algún batch.
+     * `.116`: lo que decidió el dueño: el ángulo que eligió y todavía no tiene encargo (chosen) y desde cuándo cuenta cada
+     * ángulo que eligió (floors: empieza de cero).
      *
-     * @return array{order: list<string>, lost: list<string>, used: list<string>}
+     * @return array{order: list<string>, lost: list<string>, used: list<string>, chosen: ?string, floors: array<string, string>}
      */
     public static function profileAngles(int $productId): array
     {
@@ -270,11 +273,21 @@ class TestingPhase
         foreach ($p->testing_results ?? [] as $r) {
             $lost = array_merge($lost, $r['lost'] ?? []);
         }
+        $floors = [];
+        $last = null;
+        foreach (AngleProposal::where('product_id', $productId)->whereNotNull('decided_angle')->orderBy('decided_at')->get(['decided_angle', 'decided_at']) as $d) {
+            $floors[$d->decided_angle] = $d->decided_at->setTimezone(config('app.timezone'))->toDateString();
+            $last = $d;
+        }
+        $waiting = $last !== null && !CreativeBatch::where('product_id', $productId)->where('status', '!=', 'discarded')->where('angle_code', $last->decided_angle)
+            ->where('created_at', '>=', $last->decided_at)->exists();
 
         return [
             'order' => array_column(self::angles($productId), 'code'),
-            'lost' => array_values(array_unique($lost)),
+            'lost' => array_values(array_diff(array_unique($lost), array_keys($floors))),
             'used' => CreativeBatch::where('product_id', $productId)->where('status', '!=', 'discarded')->whereNotNull('angle_code')->distinct()->pluck('angle_code')->all(),
+            'chosen' => $waiting ? $last->decided_angle : null,
+            'floors' => $floors,
         ];
     }
 

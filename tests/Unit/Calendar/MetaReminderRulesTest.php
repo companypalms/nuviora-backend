@@ -162,6 +162,34 @@ describe('Los encargos por aprobar y la banca', function () use ($work, $occ) {
     });
 });
 
+describe('.116: el ángulo que propone la IA', function () use ($work, $occ) {
+    $p = ['id' => 4, 'product' => 'FlexiStep', 'name' => 'Dolor en la oficina', 'about' => 'Le habla al que pasa sentado.', 'why' => 'No se ha probado.'];
+
+    it('sin nada por decidir no sale (ni otro día)', function () use ($work, $occ, $p) {
+        expect($occ('meta_angles', ['meta_work' => $work([])])['hidden'])->toBeTrue()
+            ->and($occ('meta_angles', ['meta_work' => $work(['angle_proposals' => [$p]])], '2026-11-03')['hidden'])->toBeTrue();
+    });
+
+    it('con una propuesta: qué propone, por qué y el botón para decidir', function () use ($work, $occ, $p) {
+        $o = $occ('meta_angles', ['meta_work' => $work(['angle_proposals' => [$p]])]);
+        expect($o['title'])->toBe('Decide el ángulo nuevo de FlexiStep')
+            ->and($o['details'])->toBe('La IA propone: Dolor en la oficina. Le habla al que pasa sentado. Por qué: No se ha probado.')
+            ->and($o['actions'])->toBe([['label' => 'Decidir', 'angle' => 4]])
+            ->and($o['hidden'] ?? false)->toBeFalse()->and($o['auto_done'])->toBeFalse();
+    });
+
+    it('si la IA no pudo, igual pide decidir', function () use ($work, $occ, $p) {
+        $o = $occ('meta_angles', ['meta_work' => $work(['angle_proposals' => [['name' => null, 'about' => null, 'why' => null] + $p]])]);
+        expect($o['details'])->toContain('la IA no pudo proponer uno hoy');
+    });
+
+    it('con varias: un botón por producto', function () use ($work, $occ, $p) {
+        $o = $occ('meta_angles', ['meta_work' => $work(['angle_proposals' => [$p, ['id' => 5, 'product' => 'Comprimax'] + $p]])]);
+        expect($o['title'])->toBe('Decide los ángulos nuevos de 2 productos')
+            ->and(array_column($o['actions'], 'label'))->toBe(['Decidir FlexiStep', 'Decidir Comprimax'])->and($o['lines'])->toHaveCount(2);
+    });
+});
+
 describe('Cada semana', function () use ($occ) {
     it('el trabajo de cada editor la semana pasada, con el Panel en Equipo y esas fechas', function () use ($occ) {
         $rows = [

@@ -12,6 +12,7 @@ use App\Services\Meta\Analysis\AnalysisSender;
 use App\Services\Meta\Analysis\MetaAnalyzer;
 use App\Services\Meta\Decisions\DecisionSettings;
 use App\Services\Meta\Decisions\MetaDecisions;
+use App\Services\Meta\Products\AngleProposals;
 use App\Services\Meta\Products\ProductProfileRules;
 use App\Services\Meta\Products\ProductProfiles;
 use App\Services\Meta\Products\TestingPhase;
@@ -54,6 +55,7 @@ class QueueProposer
         private ?QueueWriter $writer = null,
         private DecisionSettings $settings = new DecisionSettings(),
         private ?AnalysisSender $sender = null,
+        private AngleProposals $proposals = new AngleProposals(),
     ) {
     }
 
@@ -103,7 +105,9 @@ class QueueProposer
         $quotas = array_filter(array_map(fn ($dm) => $dm['slots']['new'], $demand));
         // 1. La iteración del creativo más importante de cada producto (.71/.78), con las indicaciones del análisis de hoy
         $analysis ??= MetaAnalysis::where('date', $today)->orderByDesc('version')->first();
-        $sent = $analysis && $quotas ? ($this->sender ?? new AnalysisSender($this->settings))->fill($analysis, $quotas) : ['sent' => [], 'used' => []];
+        // .116: si el dueño eligió un ángulo, el siguiente encargo es de ese ángulo
+        $chosen = array_filter($normal, fn ($d) => ($d['profile_angles']['chosen'] ?? null) !== null);
+        $sent = $analysis && $quotas ? ($this->sender ?? new AnalysisSender($this->settings))->fill($analysis, array_diff_key($quotas, $chosen)) : ['sent' => [], 'used' => []];
         $done = [];
         foreach ($sent['used'] as $pid => $used) {
             $quotas[$pid] = array_slice($quotas[$pid], count($used));
@@ -117,13 +121,19 @@ class QueueProposer
         $testing = array_map(fn ($items) => array_map(fn ($i) => $i + ['due' => $later], $items),
             TestingPhase::candidates(array_values(array_diff(array_intersect($testingIds, $complete), $stopped)), $decisions));
         $plan = ProposalRules::plan($normal, array_filter($quotas), $testing, $done);
+        // .116: sin ángulos disponibles no se pide nada: la IA se lo propone al dueño (solo a él) en su calendario
+        $noAngle = array_unique(array_column(array_filter($plan, fn ($p) => $p['needs_angle'] ?? false), 'product_id'));
+        $plan = array_values(array_filter($plan, fn ($p) => !($p['needs_angle'] ?? false)));
+        foreach ($noAngle as $pid) {
+            $this->proposals->ensure((int) $pid);
+        }
         // Lo que no se puede pedir: sin la ficha del producto o sin una ciudad donde probarlo (el líder lo ve igual)
         $planned = array_count_values(array_column($plan, 'product_id'));
         $unfilled = [];
         foreach (array_filter($quotas) as $pid => $dates) {
             foreach (array_slice($dates, (int) ($planned[$pid] ?? 0)) as $date) {
                 $unfilled[] = ['product_id' => (int) $pid, 'product' => $demand[$pid]['product'], 'due' => $date, 'why' => self::reason($demand[$pid], $date, $today),
-                    'blocked' => isset($normal[$pid]) ? 'No hay una ciudad activa con stock donde probarlo.' : 'Falta la ficha del producto: el dueño la completa para que la IA escriba el encargo.'];
+                    'blocked' => in_array($pid, $noAngle, false) ? 'El dueño tiene que elegir el ángulo.' : (isset($normal[$pid]) ? 'No hay una ciudad activa con stock donde probarlo.' : 'Falta la ficha del producto: el dueño la completa para que la IA escriba el encargo.')];
             }
         }
         foreach ($plan as $i => &$p) {
@@ -255,10 +265,7 @@ class QueueProposer
     {
         $clean = fn ($v) => is_string($v) && trim($v) !== '' ? trim($v) : null;
         $angle = $p['angle_code'];
-        if ($angle === null && $p['kind'] === 'new_angle' && is_string($t['angulo_codigo'] ?? null)) {
-            $angle = mb_substr(preg_replace('/[^A-Z0-9]/', '', strtoupper($t['angulo_codigo'])), 0, 20) ?: null;
-        }
-        $hypothesis = $clean(($p['kind'] === 'new_angle' && $clean($t['angulo_nombre'] ?? null) ? 'Ángulo nuevo: ' . trim($t['angulo_nombre']) . '. ' : '') . ($t['hipotesis'] ?? ''));
+        $hypothesis = $clean($t['hipotesis'] ?? null);
         $batch = CreativeBatch::create([
             'product_id' => $p['product_id'], 'kind' => $p['kind'], 'angle_code' => $angle, 'concept' => mb_substr((string) $clean($t['concepto'] ?? null), 0, 120) ?: null,
             'hypothesis' => $hypothesis, 'audience' => mb_substr((string) $clean($t['publico'] ?? null), 0, 255) ?: null,

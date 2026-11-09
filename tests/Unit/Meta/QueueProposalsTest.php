@@ -16,7 +16,7 @@ function productoCola(int $id, string $name, int $level, string $batches, array 
         ],
         'creatives' => [],
         'plan' => ['urgency' => ['level' => $level, 'label' => "U{$level}", 'batches' => $batches, 'reasons' => []], 'money_at_risk' => 0,
-            'work' => ['winner' => null, 'main_angle' => 'FASP', 'failed_batches_in_angle' => 0, 'saturated' => []]],
+            'work' => ['winner' => null, 'main_angle' => 'FASP', 'rested' => [], 'saturated' => []]],
     ], $extra);
 }
 
@@ -95,9 +95,9 @@ describe('Qué tipo de encargo', function () {
         expect($p['iterate'])->toBe('el formato: la imagen ganadora pasa a video')->and($p['format'])->toBe('video');
     });
 
-    it('sin ganador: concepto nuevo; ángulo nuevo solo si el ángulo ya falló en 2 batches; arriba del embudo si se satura', function () {
-        expect(ProposalRules::kind(['winner' => null, 'main_angle' => 'FASP', 'failed_batches_in_angle' => 1], 0))->toBe('new_concept')
-            ->and(ProposalRules::kind(['winner' => null, 'main_angle' => 'FASP', 'failed_batches_in_angle' => 2], 0))->toBe('new_angle')
+    it('sin ganador: concepto nuevo; ángulo nuevo si el ángulo descansa (.116); arriba del embudo si se satura', function () {
+        expect(ProposalRules::kind(['winner' => null, 'main_angle' => 'FASP', 'rested' => []], 0))->toBe('new_concept')
+            ->and(ProposalRules::kind(['winner' => null, 'main_angle' => 'FASP', 'rested' => ['FASP']], 0))->toBe('new_angle')
             ->and(ProposalRules::kind(['winner' => ['id' => 1], 'saturated' => ['Caracas']], 1))->toBe('top_funnel')
             ->and(ProposalRules::kind(['winner' => ['id' => 1], 'saturated' => []], 1))->toBe('new_concept');
     });

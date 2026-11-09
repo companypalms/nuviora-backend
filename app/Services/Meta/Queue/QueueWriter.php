@@ -54,7 +54,6 @@ Para cada encargo escribe, con su clave:
 - estilo: el estilo del video, uno de: testimonio, animado (video animado), venta_directa, demostracion, ugc, antes_despues, problema_solucion u otro. En una iteración, el de la referencia, salvo que lo que se pruebe sea otro estilo. Si un ángulo lleva más de un batch en el testeo, estilos distintos.
 - ideas: exactamente la cantidad de versiones pedida; una idea por versión, como sugerencia ("una versión más corta", "otra que…"), no como orden ni guion.
 - entregables: qué entrega el editor (cantidad de videos o imágenes, formato 9:16, duración aproximada).
-- angulo_codigo y angulo_nombre: solo en un ángulo nuevo cuyo ángulo dice "nuevo (proponlo)", un código de 3 a 6 letras que no esté en la lista de ángulos del producto y su nombre; en los demás, null.
 Y para cada batch testeado que venga en los datos, su aprendizaje en 1 o 2 frases, con su clave: qué hipótesis se probó (el ángulo, el buyer persona, el estilo, el concepto) y qué nos enseña, qué repetir o qué evitar. Solo con lo que dicen los datos. El aprendizaje es para el dueño: se guarda en "Lo que sabemos" del producto y lo lees antes de los encargos siguientes.
 TXT;
 
@@ -65,7 +64,7 @@ TXT;
         'properties' => [
             'encargos' => ['type' => 'array', 'items' => [
                 'type' => 'object', 'additionalProperties' => false,
-                'required' => ['clave', 'hipotesis', 'probando', 'objetivo', 'conservar', 'mejorar', 'publico', 'buyer', 'concepto', 'estilo', 'ideas', 'entregables', 'angulo_codigo', 'angulo_nombre'],
+                'required' => ['clave', 'hipotesis', 'probando', 'objetivo', 'conservar', 'mejorar', 'publico', 'buyer', 'concepto', 'estilo', 'ideas', 'entregables'],
                 'properties' => [
                     'clave' => ['type' => 'string'],
                     'hipotesis' => ['type' => 'string'],
@@ -79,8 +78,6 @@ TXT;
                     'estilo' => ['type' => 'string', 'enum' => ['testimonio', 'animado', 'venta_directa', 'demostracion', 'ugc', 'antes_despues', 'problema_solucion', 'otro']],
                     'ideas' => ['type' => 'array', 'items' => ['type' => 'string']],
                     'entregables' => ['type' => 'string'],
-                    'angulo_codigo' => ['type' => ['string', 'null']],
-                    'angulo_nombre' => ['type' => ['string', 'null']],
                 ],
             ]],
             'aprendizajes' => ['type' => 'array', 'items' => [
@@ -119,7 +116,7 @@ TXT;
                     $lines[] = "Buyer persona del ángulo: {$t['persona']}";
                 }
             }
-            $lines[] = 'Ángulo: ' . ($p['angle_code'] ?? 'nuevo (proponlo)') . (isset($c['angles'][$p['angle_code'] ?? '']) ? ' — ' . $c['angles'][$p['angle_code']] : '');
+            $lines[] = 'Ángulo: ' . ($p['angle_code'] ?? 'sin ángulo') . (isset($c['angles'][$p['angle_code'] ?? '']) ? ' — ' . $c['angles'][$p['angle_code']] : '');
             if ($p['reference']) {
                 $lines[] = "Referencia: {$p['reference']}" . ($p['reference_type'] ? " ({$p['reference_type']})" : '');
                 foreach ($c['reference_texts'] ?? [] as $t) {
@@ -260,7 +257,6 @@ TXT;
                 'concepto' => $p['kind'] === 'iteration' ? 'El mismo de la referencia' : '',
                 'ideas' => array_map(fn ($i) => 'Versión ' . ($i + 1) . ': tú decides cómo.', range(0, $p['pieces'] - 1)),
                 'entregables' => "{$p['pieces']} " . ($p['format'] === 'image' ? 'imágenes' : 'videos 9:16'),
-                'angulo_codigo' => null, 'angulo_nombre' => null,
             ], $plan),
             'aprendizajes' => [],
         ];

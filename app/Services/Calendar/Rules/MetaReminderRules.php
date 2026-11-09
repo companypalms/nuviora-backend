@@ -48,6 +48,7 @@ final class MetaReminderRules
         $work = $due === $today ? ($facts['meta_work'] ?? null) : null;
         match ($key) {
             'meta_queue' => self::queue($out, $work),
+            'meta_angles' => self::angles($out, $work),
             'meta_deliveries' => self::deliveries($out, $work),
             'meta_flow' => self::flow($out, $work),
             'meta_bank' => self::bank($out, $work, $today),
@@ -143,6 +144,30 @@ final class MetaReminderRules
     public static function count(int $n, string $one, string $many): string
     {
         return $n === 1 ? "1 {$one}" : "{$n} {$many}";
+    }
+
+    /** `.116`: lo que propone la IA para los productos sin ángulos disponibles. Solo sale hoy y si hay algo por decidir. */
+    private static function angles(array &$out, ?array $work): void
+    {
+        $list = $work['angle_proposals'] ?? [];
+        if ($list === []) {
+            $out['hidden'] = true;
+
+            return;
+        }
+        $one = count($list) === 1;
+        $out['title'] = $one ? "Decide el ángulo nuevo de {$list[0]['product']}" : 'Decide los ángulos nuevos de ' . count($list) . ' productos';
+        $out['details'] = $one ? self::angleText($list[0]) : 'A estos productos ya no les quedan ángulos disponibles. Mientras no decidas, no se piden batches nuevos de ellos.';
+        if (!$one) {
+            $out['lines'] = array_map(fn ($p) => ['label' => $p['product'], 'value' => $p['name'] ?? 'Sin propuesta', 'note' => $p['about']], $list);
+        }
+        $out['actions'] = array_map(fn ($p) => ['label' => $one ? 'Decidir' : "Decidir {$p['product']}", 'angle' => $p['id']], $list);
+    }
+
+    private static function angleText(array $p): string
+    {
+        return $p['name'] === null ? 'A este producto ya no le quedan ángulos disponibles y la IA no pudo proponer uno hoy: elige tú.'
+            : trim("La IA propone: {$p['name']}. " . ($p['about'] ? rtrim($p['about'], '.') . '. ' : '') . ($p['why'] ? 'Por qué: ' . rtrim($p['why'], '.') . '.' : ''));
     }
 
     private static function queue(array &$out, ?array $work): void

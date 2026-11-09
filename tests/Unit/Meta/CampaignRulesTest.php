@@ -173,8 +173,8 @@ describe('Presupuesto, urgencia y trabajo siguiente', function () {
     it('iteraciones de un ganador, un concepto nuevo o un ángulo nuevo, y creativos de arriba si está saturada', function () {
         $r = campana();
         expect($r->nextWork(['winner' => ['label' => 'C004 GINE', 'iterate' => 'el hook (los primeros segundos)']], '1')[0])->toContain('Iteraciones de C004 GINE')
-            ->and($r->nextWork(['main_angle' => 'FASP', 'failed_batches_in_angle' => 2], '2–3')[0])->toContain('Un ángulo nuevo')
-            ->and($r->nextWork(['main_angle' => 'FASP', 'failed_batches_in_angle' => 1], '1–2')[0])->toContain('Un concepto nuevo dentro de FASP')
+            ->and($r->nextWork(['main_angle' => 'FASP', 'rested' => ['FASP'], 'rest_batches' => 3], '2–3')[0])->toContain('Otro ángulo')
+            ->and($r->nextWork(['main_angle' => 'FASP', 'rested' => []], '1–2')[0])->toContain('Un concepto nuevo dentro de FASP')
             ->and($r->nextWork(['saturated' => ['Caracas']], '1'))->toHaveCount(2)
             ->and($r->nextWork(['mode' => 'liquidation'], '0')[0])->toContain('liquidación');
     });

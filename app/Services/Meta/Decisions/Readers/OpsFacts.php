@@ -3,9 +3,12 @@
 namespace App\Services\Meta\Decisions\Readers;
 
 use App\Constants\OrderStatus;
+use App\Models\CreativeBatch;
 use App\Models\Status;
 use App\Services\Finance\FinancialCpa;
 use App\Services\Inventory\CityStock;
+use App\Services\Meta\Products\TestingPhase;
+use App\Services\Meta\Queue\EditorRules;
 use App\Services\Meta\Queue\QueueRules;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -143,6 +146,10 @@ class OpsFacts
             ->groupBy('product_id', 'city_id')->selectRaw('product_id, city_id, COUNT(*) n, MIN(created_date) since')->get()
             ->mapWithKeys(fn ($r) => ["{$r->product_id}|{$r->city_id}" => ['orders' => (int) $r->n, 'since' => substr((string) $r->since, 0, 10)]]);
 
+        // .116: las iteraciones ya testeadas de cada creativo, para no seguir iterando lo que ya perdió
+        $iterations = CreativeBatch::whereIn('product_id', $productIds)->where('status', 'tested')->where('kind', 'iteration')->whereNotNull('reference_creative_id')->whereNotNull('tested_at')
+            ->get(['id', 'product_id', 'number', 'status', 'reference_creative_id', 'result', 'tested_at'])->groupBy('product_id');
+
         foreach ($productIds as $pid) {
             $cities = [];
             foreach ($cityIds as $cid) {
@@ -162,6 +169,9 @@ class OpsFacts
             }
             $out[$pid] = ['price' => isset($prices[$pid]) ? (float) $prices[$pid] : null, 'price_change' => $this->priceChange($pid),
                 'cities' => $cities, 'version' => $versions["{$pid}|"] ?? null,
+                // .116: los ángulos de la ficha, lo que decidió el dueño y las iteraciones de cada creativo
+                'angles' => TestingPhase::profileAngles((int) $pid),
+                'iterations' => self::iterations($iterations[$pid] ?? collect()),
                 'bank' => ['codes' => ($bank[$pid] ?? collect())->map(fn ($b) => QueueRules::batchCode((int) $b->number))->values()->all(),
                     // .89: los del testeo se lanzan juntos ("Lanza el testeo"), no sueltos como reserva de una ciudad
                     'ready' => ($bank[$pid] ?? collect())->filter(fn ($b) => $b->status === 'bank' && $b->testing_round === null)
@@ -169,6 +179,19 @@ class OpsFacts
                     'launched' => ($launched[$pid] ?? collect())->map(fn ($b) => QueueRules::batchCode((int) $b->number))->values()->all(),
                     'names' => ($bank[$pid] ?? collect())->mapWithKeys(fn ($b) => [QueueRules::batchCode((int) $b->number) => \App\Services\Meta\Naming::batch((int) $b->number,
                         $b->angle_code, ($pieces[$b->id] ?? collect())->pluck('number')->all())])->all()]];
+        }
+
+        return $out;
+    }
+
+    /** `.116`: por creativo, sus iteraciones con su resultado (para AngleRest). */
+    private static function iterations($batches): array
+    {
+        $out = [];
+        foreach ($batches as $b) {
+            $date = $b->tested_at->setTimezone(config('app.timezone'))->toDateString();
+            $out[(int) $b->reference_creative_id][] = ['code' => (string) $b->code(), 'launched' => $date, 'ended' => $date,
+                'outcome' => ['Ganó' => 'won', 'Perdió' => 'lost'][EditorRules::result('tested', array_values($b->result['verdicts'] ?? []))] ?? 'tie'];
         }
 
         return $out;

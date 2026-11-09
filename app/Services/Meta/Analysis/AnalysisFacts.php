@@ -75,6 +75,8 @@ final class AnalysisFacts
                 'type' => $cr['type'] ?? null,
                 'call' => CreativeCalls::call($cr, $cityActions),
                 'numbers' => CreativeCalls::numbers($cr),
+                // .116: si su ángulo o sus iteraciones descansan, no se le piden más versiones
+                'rest' => $cr['rest'] ?? null,
             ], array_slice($creatives, 0, self::MAX_CREATIVES));
             $batches = [];
             foreach ($p['adsets'] ?? [] as $id => $v) {
@@ -87,6 +89,8 @@ final class AnalysisFacts
                 'urgency' => $plan['urgency'] ?? null, 'money_at_risk' => $plan['money_at_risk'] ?? 0,
                 'next_work' => $plan['next_work'] ?? [], 'price' => $plan['price'] ?? [], 'price_watch' => $plan['price_watch'] ?? null,
                 'alarms' => $plan['alarms'] ?? [], 'tracking' => $p['tracking'] ?? null,
+                // .116: los ángulos en descanso y cuál sigue
+                'rests' => $plan['rests'] ?? [], 'next_angle' => $plan['next_angle'] ?? null,
                 'cities' => $cities, 'creatives' => $creatives, 'batches' => $batches, 'stop_by_city' => $stopByCity, 'stop_all' => $stopAll,
             ];
         }

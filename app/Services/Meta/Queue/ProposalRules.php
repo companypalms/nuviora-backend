@@ -10,11 +10,15 @@ namespace App\Services\Meta\Queue;
  *   ganadores para escalar (U3) y el resto (U4); dentro, más dinero en riesgo primero. Nunca un producto sin stock, en
  *   pausa, abandonado ni en liquidación.
  * - Qué: con un ganador con volumen, iteraciones de ese ganador; si no, un concepto nuevo dentro del ángulo principal, o
- *   un ángulo nuevo solo si ese ángulo ya falló en 2 batches; si la campaña se satura, creativos de arriba del embudo.
+ *   un ángulo nuevo si ese ángulo descansa (`.116`, Products\AngleRest: perdieron sus últimos 3 batches); si la campaña se
+ *   satura, creativos de arriba del embudo.
  * - El creativo de referencia: consistencia entre ciudades > volumen > distancia al CPA objetivo. La ciudad de
  *   aprendizaje: la que más vendió en 7 días y tiene stock.
  * - `.65`: los batches del testeo (Products\TestingPhase::candidates) van después de U1 y U2 y antes de lo demás. Los
  *   ángulos que perdieron en un testeo no reciben más encargos, y un ángulo nuevo es primero uno de la ficha sin probar.
+ * - `.116` (dueño, 2026-11-09): la IA ya no inventa ángulos que le lleguen al líder. Si no queda ninguno disponible, el
+ *   encargo sale con needs_angle: no se pide, y la IA se lo propone solo al dueño en su calendario. Lo que él elija (chosen)
+ *   es el ángulo del siguiente encargo.
  */
 final class ProposalRules
 {
@@ -79,7 +83,8 @@ final class ProposalRules
     public static function kind(array $work, int $n): string
     {
         $winner = $work['winner'] ?? null;
-        $primary = $winner ? 'iteration' : ((($work['failed_batches_in_angle'] ?? 0) >= 2 && ($work['main_angle'] ?? null)) ? 'new_angle' : 'new_concept');
+        $rested = ($work['main_angle'] ?? null) !== null && in_array($work['main_angle'], $work['rested'] ?? [], true);
+        $primary = ($work['chosen'] ?? null) !== null ? 'new_angle' : ($winner ? 'iteration' : ($rested ? 'new_angle' : 'new_concept'));
         $sequence = [$primary];
         if ($work['saturated'] ?? []) {
             $sequence[] = 'top_funnel';
@@ -92,18 +97,22 @@ final class ProposalRules
     private static function one(array $d, int $n, array $city): array
     {
         $work = $d['plan']['work'] ?? [];
-        $kind = self::kind($work, $n);
+        // .65: un ángulo que perdió en un testeo no recibe más encargos; un ángulo nuevo es primero uno de la ficha sin probar
+        // .116: tampoco uno en descanso; y lo que eligió el dueño va primero
+        $pa = ($d['profile_angles'] ?? []) + ['order' => [], 'lost' => [], 'used' => [], 'chosen' => null];
+        $chosen = $pa['chosen'];
+        $blocked = array_values(array_diff(array_merge($pa['lost'], $work['rested'] ?? []), [$chosen]));
+        $kind = self::kind(['chosen' => $chosen] + $work, $n);
         $winner = $work['winner'] ?? null;
         $failedAngle = $work['main_angle'] ?? null;
-        // .65: un ángulo que perdió en un testeo no recibe más encargos; un ángulo nuevo es primero uno de la ficha sin probar
-        $pa = ($d['profile_angles'] ?? []) + ['order' => [], 'lost' => [], 'used' => []];
-        $mainAngle = $failedAngle !== null && in_array($failedAngle, $pa['lost'], true)
-            ? (array_values(array_diff($pa['order'], $pa['lost']))[0] ?? null) : $failedAngle;
+        $available = array_values(array_diff($pa['order'], $blocked));
+        $mainAngle = $failedAngle !== null && in_array($failedAngle, $blocked, true) ? ($available[0] ?? null) : $failedAngle;
         // .99 (dueño: "tengo que desarrollar tres piezas del ángulo nervio vago"): un concepto nuevo siempre dice de qué
         // ángulo; si no se sabe el principal, el primero de la ficha que no perdió
-        $conceptAngle = $mainAngle ?? (array_values(array_diff($pa['order'], $pa['lost']))[0] ?? null);
+        $conceptAngle = $chosen ?? $mainAngle ?? ($available[0] ?? null);
         $tried = array_merge($pa['used'], array_filter(array_column($d['creatives'] ?? [], 'angle_code')));
-        $fresh = $kind === 'new_angle' ? (array_values(array_diff($pa['order'], $pa['lost'], $tried))[0] ?? null) : null;
+        $untried = array_values(array_diff($available, $tried))[0] ?? null;
+        $fresh = $kind === 'new_angle' ? ($chosen ?? $untried ?? $available[0] ?? null) : null;
         $ref = match ($kind) {
             'iteration' => $winner ? ['id' => $winner['id'], 'label' => $winner['label'], 'type' => $winner['type'] ?? null, 'angle' => $winner['angle'] ?? null] : null,
             'new_angle' => null,
@@ -112,15 +121,18 @@ final class ProposalRules
         $iterate = match ($kind) {
             'iteration' => ($ref['type'] ?? null) === 'image' ? 'el formato: la imagen ganadora pasa a video' : ($winner['iterate'] ?? 'el hook (los primeros segundos)'),
             'top_funnel' => 'creativos de arriba del embudo: para gente que todavía no conoce el problema ni el producto',
-            'new_angle' => 'un ángulo nuevo' . ($fresh ? " de tu ficha que todavía no se probó ({$fresh})" : '') . ': '
-                . ($failedAngle ? "{$failedAngle} ya falló en " . (int) ($work['failed_batches_in_angle'] ?? 0) . ' batches' : 'sin un ángulo que funcione'),
+            'new_angle' => $chosen !== null ? "el ángulo que eligió el dueño ({$chosen})" : 'otro ángulo' . ($fresh ? ($fresh === $untried ? " de tu ficha que todavía no se probó ({$fresh})" : " de tu ficha ({$fresh})") : '') . ': '
+                . ($failedAngle ? "{$failedAngle} descansa porque perdieron sus últimos " . (int) ($work['rest_batches'] ?? 3) . ' batches' : 'sin un ángulo que funcione'),
             default => 'un concepto nuevo' . ($conceptAngle ? " dentro de {$conceptAngle}" : ''),
         };
         $u = $d['plan']['urgency'];
+        $angle = $kind === 'new_angle' ? $fresh : ($kind === 'iteration' ? ($ref['angle'] ?? $mainAngle) : $conceptAngle);
 
         return [
             'product_id' => (int) $d['product']['id'], 'product' => $d['product']['name'], 'kind' => $kind,
-            'angle_code' => $kind === 'new_angle' ? $fresh : ($kind === 'iteration' ? ($ref['angle'] ?? $mainAngle) : $conceptAngle),
+            'angle_code' => $angle,
+            // .116: no queda ningún ángulo disponible: este encargo no se pide, y la IA se lo propone al dueño
+            'needs_angle' => $kind !== 'iteration' && $angle === null,
             'reference_id' => $ref['id'] ?? null, 'reference' => $ref['label'] ?? null, 'reference_type' => $ref['type'] ?? null,
             'city_id' => $city['city_id'], 'city' => $city['city'], 'format' => 'video', 'iterate' => $iterate, 'urgency' => (int) $u['level'],
             // .99: qué prueba cada pieza (una iteración: el hook, un tramo o el formato; lo demás, el tipo del encargo)

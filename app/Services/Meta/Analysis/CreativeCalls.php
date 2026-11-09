@@ -68,6 +68,9 @@ final class CreativeCalls
         $cities = self::cities($cr, $cityActions);
         $scaleCities = array_filter($cities, fn ($a) => $a['key'] === 'scale');
         $stopIn = self::stopIn($cr);
+        // .116: su ángulo o sus iteraciones descansan: sigue prendido, pero no se piden más versiones
+        $rest = $cr['rest'] ?? null;
+        $ask = $rest === null ? ' y pide iteraciones de él' : '';
         // Qué tiene que arreglar el editor: el cansancio, el primer tramo flojo del video o, si un ganador falla sin una causa
         // que no sea del video, hooks nuevos
         $notVideo = array_intersect($causes, self::NOT_VIDEO) !== [] && !in_array('fatigue', $causes, true);
@@ -82,7 +85,7 @@ final class CreativeCalls
             $winner && $scaleCities !== [] => 'scale',
             $winner => 'keep',
             $verdict === 'loser' => 'stop',
-            in_array($verdict, ['failing', 'intermediate'], true) && $fix !== null => 'iterate',
+            in_array($verdict, ['failing', 'intermediate'], true) && $fix !== null && $rest === null => 'iterate',
             default => 'keep',
         };
         $proposal = trim((string) ($cr['verdict']['proposal'] ?? ''));
@@ -90,15 +93,16 @@ final class CreativeCalls
         $stageName = AdRules::STAGES[$fix] ?? ($fix === 'fatigue' ? 'el cansancio' : 'el formato');
 
         $todo = match (true) {
-            $key === 'stop_city' => $stopText . 'Donde gana, no lo toques y pide iteraciones de él.' . ($scaleCities ? self::cityText($scaleCities) : ''),
-            $key === 'scale' => 'Va ganando: no toques el anuncio, sube el presupuesto y pide iteraciones de él.' . self::cityText($scaleCities),
-            $winner => 'Va ganando: no lo toques y pide iteraciones de él.' . ($cities ? ' Ojo, lo que dice su ciudad:' . self::cityText($cities) : ''),
+            $key === 'stop_city' => $stopText . 'Donde gana, no lo toques' . $ask . '.' . ($scaleCities ? self::cityText($scaleCities) : ''),
+            $key === 'scale' => 'Va ganando: no toques el anuncio, sube el presupuesto' . $ask . '.' . self::cityText($scaleCities),
+            $winner => 'Va ganando: no lo toques' . $ask . '.' . ($cities ? ' Ojo, lo que dice su ciudad:' . self::cityText($cities) : ''),
             $key === 'stop' => 'Apágalo.' . ($stage && isset(AdRules::STAGES[$stage]) ? ' Para aprender: lo más flojo fue ' . AdRules::STAGES[$stage] . '.' : ''),
             $key === 'iterate' => $stopText . ($fix === 'fatigue' ? 'Se está cansando: pide hooks nuevos.' : 'Lo flojo es ' . $stageName . ': pide versiones que lo arreglen.'),
             // .113: si pierde en una ciudad y en otra todavía se prueba, "Apágalo en Aragua" ya lo dice: solo falta dónde esperar
             default => $stopText . ($stopText !== '' && isset($cr['verdict']['wait']) ? $cr['verdict']['wait'] : ($proposal !== '' ? $proposal : 'Déjalo correr.')),
         };
-        $editor = $winner || $key === 'iterate' ? self::editorText($cr, $winner && $fix === null ? null : $fix) : null;
+        $todo .= $rest !== null ? ' ' . $rest : '';
+        $editor = ($winner || $key === 'iterate') && $rest === null ? self::editorText($cr, $winner && $fix === null ? null : $fix) : null;
         $label = match (true) {
             $key === 'stop_city' => 'PARAR EN ' . mb_strtoupper(self::join($stopIn)),
             $stopIn !== [] && $key !== 'stop' => self::CALLS[$key]['label'] . ' · PARAR EN ' . mb_strtoupper(self::join($stopIn)),

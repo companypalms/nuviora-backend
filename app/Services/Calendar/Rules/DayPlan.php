@@ -48,6 +48,7 @@ final class DayPlan
         'meta_deliveries' => ['priority' => 'normal', 'minutes' => 15],
         'meta_flow' => ['priority' => 'normal', 'minutes' => 5],
         'meta_bank' => ['priority' => 'normal', 'minutes' => 10],
+        'meta_angles' => ['priority' => 'alta', 'minutes' => 5],
         'review_3days' => ['priority' => 'normal', 'minutes' => 15],
         'review_week' => ['priority' => 'normal', 'minutes' => 30],
         'editors_week' => ['priority' => 'normal', 'minutes' => 20],

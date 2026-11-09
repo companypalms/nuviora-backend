@@ -2,6 +2,7 @@
 
 namespace App\Services\Calendar\Readers;
 
+use App\Models\AngleProposal;
 use App\Models\CreativeBatch;
 use App\Models\CreativeBatchDelivery;
 use App\Models\LandingTask;
@@ -39,6 +40,9 @@ class MetaReminderFacts
                 'landings' => $this->countByProduct(LandingTask::where('status', 'proposed')->pluck('product_id'), $names),
             ],
             'testing' => $this->testing($names),
+            // .116: los ángulos que la IA le propone al dueño
+            'angle_proposals' => AngleProposal::where('status', AngleProposal::PENDING)->orderBy('id')->get(['id', 'product_id', 'name', 'about', 'why'])
+                ->map(fn (AngleProposal $p) => ['id' => (int) $p->id, 'product' => $names[$p->product_id] ?? "Producto {$p->product_id}", 'name' => $p->name, 'about' => $p->about, 'why' => $p->why])->all(),
             'no_profile' => $this->noProfile($names),
             'no_reference' => $this->noReference($names),
             'open' => array_merge($this->openBatches($names), $this->openLandings($names)),

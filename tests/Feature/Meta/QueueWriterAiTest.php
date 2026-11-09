@@ -16,7 +16,7 @@ describe('Los encargos redactados por la IA', function () use ($respuestaCola) {
     it('pregunta sin guardar nada, con el tono del dueño y sin curas ni avales inventados', function () use ($respuestaCola) {
         config(['services.openai.key' => LLAVE_FALSA_COLA, 'services.openai.meta_analysis_model' => 'modelo-de-prueba']);
         $data = ['encargos' => [['clave' => 'E1', 'hipotesis' => 'h', 'publico' => 'p', 'concepto' => 'c', 'conservar' => 'k', 'piezas' => ['a', 'b', 'c'],
-            'entregables' => 'e', 'angulo_codigo' => null, 'angulo_nombre' => null]], 'aprendizajes' => []];
+            'entregables' => 'e']], 'aprendizajes' => []];
         Http::fake(['api.openai.com/*' => $respuestaCola($data)]);
 
         $r = (new QueueWriter())->ask('encargos');

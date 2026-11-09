@@ -649,6 +649,9 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::get('/angles', [\App\Http\Controllers\MetaAnglesController::class, 'index']);
         Route::put('/angles/{angle}', [\App\Http\Controllers\MetaAnglesController::class, 'update']);
         Route::post('/angles/propose', [\App\Http\Controllers\MetaAnglesController::class, 'propose'])->middleware('throttle:10,1');
+        // .116: el ángulo que la IA le propone al dueño cuando a un producto se le acaban los de su ficha
+        Route::get('/angle-proposals/{proposal}', [\App\Http\Controllers\MetaAngleProposalController::class, 'show'])->whereNumber('proposal');
+        Route::post('/angle-proposals/{proposal}/decide', [\App\Http\Controllers\MetaAngleProposalController::class, 'decide'])->whereNumber('proposal');
         Route::get('/product-modes', [\App\Http\Controllers\MetaAnglesController::class, 'modes']);
         Route::put('/product-modes/{product}', [\App\Http\Controllers\MetaAnglesController::class, 'setMode']);
         // .64: la ficha de cada producto (la lee la IA de los encargos y las landings)

@@ -766,6 +766,9 @@ class Calendar
             $pattern = ReminderRules::pattern($key, $rules);
             foreach ($list as $d) {
                 $o = ReminderRules::occurrence($key, $d['due'], $today, $facts);
+                if ($o['hidden'] ?? false) {
+                    continue;
+                }
                 $items[] = [
                     'item_key' => "rule:{$key}",
                     'date' => $d['date'],

@@ -20,7 +20,7 @@ function productoTesteo(int $id, string $name, int $level, string $batches, arra
         'campaigns' => ["c{$id}" => ['city' => 'Caracas', 'city_id' => 1, 'active' => true, 'stock' => 50, 'purchases7' => 20, 'action' => ['key' => 'hold', 'label' => 'Mantener']]],
         'creatives' => [],
         'plan' => ['urgency' => ['level' => $level, 'label' => "U{$level}", 'batches' => $batches, 'reasons' => []], 'money_at_risk' => 0,
-            'work' => $work + ['winner' => null, 'main_angle' => 'FASP', 'failed_batches_in_angle' => 0, 'saturated' => []]],
+            'work' => $work + ['winner' => null, 'main_angle' => 'FASP', 'rested' => [], 'saturated' => []]],
     ], $extra);
 }
 
@@ -116,11 +116,11 @@ describe('Las propuestas de la mañana', function () use ($item) {
         $pa = ['order' => ['FASP', 'NERV', 'TOBI'], 'lost' => ['FASP'], 'used' => ['FASP']];
         $concept = ProposalRules::plan([1 => productoTesteo(1, 'Prod', 4, '1', [], ['profile_angles' => $pa])], [1 => ['2026-11-03']])[0];
         expect($concept['kind'])->toBe('new_concept')->and($concept['angle_code'])->toBe('NERV');
-        $angle = ProposalRules::plan([1 => productoTesteo(1, 'Prod', 4, '1', ['failed_batches_in_angle' => 2],
+        $angle = ProposalRules::plan([1 => productoTesteo(1, 'Prod', 4, '1', ['rested' => ['FASP']],
             ['profile_angles' => ['order' => ['FASP', 'NERV', 'TOBI'], 'lost' => [], 'used' => ['FASP', 'NERV']]])], [1 => ['2026-11-03']])[0];
         expect($angle['kind'])->toBe('new_angle')->and($angle['angle_code'])->toBe('TOBI')->and($angle['iterate'])->toContain('de tu ficha que todavía no se probó (TOBI)');
-        // Sin ficha, como antes: la IA propone el ángulo nuevo
-        expect(ProposalRules::plan([1 => productoTesteo(1, 'Prod', 4, '1', ['failed_batches_in_angle' => 2])], [1 => ['2026-11-03']])[0]['angle_code'])->toBeNull();
+        // .116: sin ángulos disponibles no se inventa ninguno: lo decide el dueño
+        expect(ProposalRules::plan([1 => productoTesteo(1, 'Prod', 4, '1', ['rested' => ['FASP']])], [1 => ['2026-11-03']])[0])->toMatchArray(['angle_code' => null, 'needs_angle' => true]);
     });
 
     it('la IA sabe que es el testeo y que dos batches del mismo ángulo tienen que ser distintos', function () use ($item) {

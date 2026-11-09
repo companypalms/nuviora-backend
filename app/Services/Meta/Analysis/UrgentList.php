@@ -3,6 +3,7 @@
 namespace App\Services\Meta\Analysis;
 
 use App\Services\Meta\Decisions\Rules\AdRules;
+use App\Services\Meta\Products\AngleRest;
 use App\Services\Meta\Decisions\Rules\CampaignRules;
 use App\Services\Meta\Queue\ForecastRules;
 
@@ -40,7 +41,7 @@ final class UrgentList
         'decrease' => 2, 'intervene' => 2, 'last_test' => 2, 'tracking' => 2, 'late_urgent' => 2,
         'hold_prune' => 3, 'few_batches' => 3, 'late_batch' => 3, 'launch_ready' => 3,
         'scale' => 4, 'launch_test' => 4,
-        'alarm' => 5, 'names' => 5, 'cooldown' => 5,
+        'alarm' => 5, 'names' => 5, 'cooldown' => 5, 'angle_rest' => 5,
         'price' => 6,
     ];
 
@@ -50,7 +51,7 @@ final class UrgentList
         'intervene' => 'arreglar', 'last_test' => 'arreglar', 'tracking' => 'arreglar', 'hold_prune' => 'arreglar', 'few_batches' => 'arreglar',
         'late_urgent' => 'arreglar', 'late_batch' => 'arreglar', 'launch_ready' => 'arreglar',
         'scale' => 'crecer', 'launch_test' => 'crecer',
-        'stock_out' => 'aviso', 'stock_waiting' => 'aviso', 'alarm' => 'aviso', 'price' => 'aviso', 'names' => 'aviso', 'cooldown' => 'aviso',
+        'stock_out' => 'aviso', 'stock_waiting' => 'aviso', 'alarm' => 'aviso', 'price' => 'aviso', 'names' => 'aviso', 'cooldown' => 'aviso', 'angle_rest' => 'aviso',
     ];
 
     /** Cuántos nombres de creativos caben en la línea del porqué. */
@@ -162,6 +163,13 @@ final class UrgentList
                     'steps' => $kind === 'tracking' ? ['Abre el Administrador de eventos de Meta.', 'Revisa que el píxel y la API de conversiones estén recibiendo las compras.'] : [],
                     'why' => match ($kind) { 'tracking' => self::firstSentence(preg_replace('/^Tracking:\s*/u', '', $t)), 'stock_waiting' => $waiting[1] ?? null, default => null },
                     'detail' => in_array($kind, ['tracking', 'stock_waiting'], true) ? [$t] : []];
+            }
+            // .116: un ángulo que descansa: qué perdió y qué sigue
+            foreach ($p['rests'] ?? [] as $r) {
+                $next = ($p['next_angle'] ?? null) ? "El próximo encargo será de {$p['next_angle']}." : 'Ya no quedan ángulos en la ficha: te llegará una propuesta a tu calendario.';
+                $text = "El ángulo {$r['angle']} descansa " . AngleRest::untilText($r['until']) . ': perdieron sus últimos ' . count($r['codes']) . ' batches (' . AngleRest::codesText($r['codes']) . "). {$next}";
+                $items[] = $base + ['key' => "{$p['product_id']}:rest:{$r['angle']}", 'city' => null, 'kind' => 'angle_rest', 'label' => 'Ángulo en descanso', 'text' => $text, 'tone' => 'warning',
+                    'where' => $short, 'title' => $text, 'steps' => [], 'why' => null, 'detail' => []];
             }
             if ($p['price_watch']) {
                 $items[] = $base + ['key' => "{$p['product_id']}:price_watch", 'city' => null, 'kind' => 'price', 'label' => 'Precio',

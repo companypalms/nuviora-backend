@@ -414,8 +414,8 @@ class CampaignRules
      * Qué producir: iteraciones de un ganador, un concepto nuevo o un ángulo nuevo, y creativos de arriba del embudo si
      * las campañas están saturadas.
      *
-     * @param array $p mode, winner (['label', 'iterate']|null), saturated (ciudades), main_angle, failed_batches_in_angle,
-     *                 bank (los B#### aprobados sin testear), needed (lo que se pedía antes de restar la banca)
+     * @param array $p mode, winner (['label', 'iterate']|null), saturated (ciudades), main_angle, rested (.116: los ángulos en
+     *                 descanso), rest_batches, bank (los B#### aprobados sin testear), needed (lo que se pedía antes de restar la banca)
      * @return string[]
      */
     public function nextWork(array $p, string $batches): array
@@ -431,8 +431,8 @@ class CampaignRules
         $out = [];
         if ($w = $p['winner'] ?? null) {
             $out[] = 'Iteraciones de ' . $w['label'] . ': el mismo concepto, cambiando ' . ($w['iterate'] ?? 'el hook') . '.';
-        } elseif (($p['failed_batches_in_angle'] ?? 0) >= 2 && ($p['main_angle'] ?? null)) {
-            $out[] = 'Un ángulo nuevo: ' . $p['main_angle'] . ' ya falló en ' . $p['failed_batches_in_angle'] . ' batches.';
+        } elseif (($p['main_angle'] ?? null) && in_array($p['main_angle'], $p['rested'] ?? [], true)) {
+            $out[] = 'Otro ángulo: ' . $p['main_angle'] . ' descansa porque perdieron sus últimos ' . (int) ($p['rest_batches'] ?? 3) . ' batches.';
         } else {
             $out[] = 'Un concepto nuevo' . (($p['main_angle'] ?? null) ? ' dentro de ' . $p['main_angle'] : '') . '.';
         }

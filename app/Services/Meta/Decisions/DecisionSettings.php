@@ -89,6 +89,9 @@ class DecisionSettings
         'new_products_month' => [4, 0, 60],      // productos nuevos al mes (dueño: "1 por semana")…
         'start_batches' => [3, 0, 10],           // …con 3 batches de inicio cada uno
         'batch_life_days' => [7, 1, 90],         // lo que dura un batch bueno, mientras no haya historia en Meta
+        // .116: con 3 batches perdidos seguidos un ángulo (o un creativo, con sus iteraciones) descansa 14 días
+        'angle_rest_batches' => [3, 1, 20],
+        'angle_rest_days' => [14, 1, 365],
         // Paso 6a — las landings: con menos no se opina
         'landing_min_clicks' => [100, 1, 100000],   // de la visita
         'landing_min_visits' => [300, 1, 1000000],  // de la compra
