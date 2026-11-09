@@ -124,13 +124,19 @@ class AdRules
     /**
      * ¿Un ganador que empezó a fallar? Fue ganador y en lo reciente (3 días, o 7 si en 3 casi no gastó) está en el
      * break-even o encima, o gastó 2×C sin comprar.
+     *
+     * `.121` (dueño, 2026-11-09, al revisar todas las reglas: FlexiStep CRE001 en Carabobo seguía "PROVEN" con 3 días sin
+     * compras y $7,83 gastados, menos de 2×C, y la semana en $14,03 por compra con el BE en $10,49): 3 días sin compras que
+     * no llegaron a 2×C no dicen nada; se mira la semana.
      */
     public function isFailing(bool $goodHistory, ?array $w3, ?array $w7, ?float $c, ?float $be): bool
     {
         if (!$goodHistory || $c === null) {
             return false;
         }
-        $recent = ($w3['totals']['spend'] ?? 0) >= $c * $this->s['no_data_cpa'] ? $w3 : $w7;
+        $spend3 = (float) ($w3['totals']['spend'] ?? 0);
+        $quiet = $w7 !== null && (float) ($w3['totals']['purchases'] ?? 0) == 0 && $spend3 < $c * $this->s['loser_spend_cpa'];
+        $recent = $spend3 >= $c * $this->s['no_data_cpa'] && !$quiet ? $w3 : $w7;
         if (!$recent) {
             return false;
         }
@@ -403,19 +409,22 @@ class AdRules
      * en 3 días nunca llegaba a 2×C = $12,76): si en 3 días no llegó a 2×C, se mira la última semana, como en "ganador que
      * falla".
      *
+     * `.121`: también un prometedor que deja de vender (con 3 o 4 compras baratas, su vida lo tapaba un tiempo). Y si se juzga
+     * por la semana pero en los últimos 3 días vendió debajo del BE, no pierde: se está recuperando (recentWindow).
+     *
      * @param array|null $recent los totales de los 3 días en esa ciudad (spend, purchases)
      * @param array $state el veredicto de toda su vida en esa ciudad
      * @param array|null $week los totales de los 7 días en esa ciudad
      */
     public function recentLoser(?array $recent, array $state, ?float $c, ?float $be, ?array $week = null, bool $estimated = false): ?array
     {
-        if (!$c || $c <= 0 || !in_array($state['key'] ?? null, ['intermediate', 'evaluation'], true)) {
+        if (!$c || $c <= 0 || !in_array($state['key'] ?? null, ['intermediate', 'evaluation', 'promising'], true)) {
             return null;
         }
-        $days = 3;
-        if ($week !== null && (float) ($recent['spend'] ?? 0) < $c * $this->s['loser_spend_cpa']) {
-            [$recent, $days] = [$week, 7];
+        if (!($window = $this->recentWindow($recent, $week, $c * $this->s['loser_spend_cpa'], $be))) {
+            return null;
         }
+        [$recent, $days] = $window;
         $spend = (float) ($recent['spend'] ?? 0);
         $purchases = (float) ($recent['purchases'] ?? 0);
         $losing = $purchases == 0 || ($be !== null && $this->clearlyAbove($spend / $purchases, $be, $purchases));
@@ -435,36 +444,85 @@ class AdRules
      * `.119` (dueño, 2026-11-09: ZenPulse CREATIVO 5 en Caracas era "ganador que falla" y en 3 días gastó $51,87 con el CPA en
      * $10,37 y el BE en $7,61: "nunca podemos permitirnos perder dinero sin una razón buena justificada"): un ganador que falla
      * se apaga en esa ciudad si en 3 días gastó 3×C o más sin compras, o con el CPA claramente encima del BE. Si en 3 días no
-     * llegó a 3×C, se mira la semana (como en recentLoser). Sigue siendo un ganador: su clave no cambia y se itera. La única
-     * razón para dejarlo prendido es el tracking: ahí las ventas existen y Meta no las ve. PHP puro.
+     * llegó a 3×C, se mira la semana (como en recentLoser). Sigue siendo un ganador: su clave no cambia y se itera. PHP puro.
+     *
+     * `.121`: el tracking ya no lo deja prendido sin límite (si quedaba mal por semanas, ningún ganador de ese producto se
+     * apagaba). Si Meta ve menos compras que los pedidos reales ($tracking, en %), se decide igual con las compras ajustadas a
+     * ese porcentaje, y hace falta más gasto para decidir; si ve de más, nada cambia. Y si se juzga por la semana pero en los
+     * últimos 3 días vendió debajo del BE, no se apaga: se está recuperando (recentWindow).
      *
      * @param array $state el veredicto de ese creativo en esa ciudad
      * @param array|null $recent los totales de los 3 días en esa ciudad (spend, purchases)
      * @param array|null $week los totales de los 7 días en esa ciudad
+     * @param float|null $tracking las compras de Meta sobre los pedidos reales del producto, en % (null si no se sabe)
      */
-    public function failingStop(array $state, ?array $recent, ?float $c, ?float $be, ?array $week = null, bool $estimated = false): ?array
+    public function failingStop(array $state, ?array $recent, ?float $c, ?float $be, ?array $week = null, bool $estimated = false, ?float $tracking = null): ?array
     {
-        if (($state['key'] ?? null) !== 'failing' || !$c || $c <= 0 || in_array('tracking', array_column($state['causes'] ?? [], 'key'), true)) {
+        if (($state['key'] ?? null) !== 'failing' || !$c || $c <= 0) {
             return null;
         }
-        $cap = $c * $this->s['evaluation_cap_cpa'];
-        $days = 3;
-        if ($week !== null && (float) ($recent['spend'] ?? 0) < $cap) {
-            [$recent, $days] = [$week, 7];
+        $seen = $tracking !== null && $tracking < $this->s['tracking_low_pct'] ? max($tracking, 1) / 100 : 1.0;
+        $cap = $c * $this->s['evaluation_cap_cpa'] / $seen;
+        if (!($window = $this->recentWindow($recent, $week, $cap, $be, $seen))) {
+            return null;
         }
+        [$recent, $days] = $window;
         $spend = (float) ($recent['spend'] ?? 0);
-        $purchases = (float) ($recent['purchases'] ?? 0);
+        $raw = (float) ($recent['purchases'] ?? 0);
+        $purchases = $raw / $seen;
         $losing = $purchases == 0 || ($be !== null && $this->clearlyAbove($spend / $purchases, $be, $purchases));
         if ($spend < $cap || !$losing) {
             return null;
         }
-        $data = "{$days} días: " . lcfirst($this->spendText($spend, $purchases, $c)) . ($purchases > 0 ? ' · CPA ' . self::money($spend / $purchases) : '')
+        $data = "{$days} días: " . lcfirst($this->spendText($spend, $raw, $c)) . ($raw > 0 ? ' · CPA ' . self::money($spend / $raw) : '')
             . ' · C ' . self::money($c) . self::beText($be, $estimated);
+        $adjusted = $seen < 1 ? ', ya contando que Meta ve solo el ' . self::num($tracking) . ' % de tus pedidos' : '';
 
         return array_merge($state, ['stop' => true, 'data' => $data,
             'reading' => "Pierde dinero: en los últimos {$days} días gastó " . self::num($spend / $c) . '×C '
-                . ($purchases == 0 ? 'sin compras' : 'con el CPA ' . self::num(round(($spend / $purchases / $be - 1) * 100)) . ' % encima del break-even') . '. ' . $state['reading'],
+                . ($purchases == 0 ? 'sin compras' : 'con el CPA ' . self::num(round(($spend / $purchases / $be - 1) * 100)) . ' % encima del break-even') . $adjusted . '. ' . $state['reading'],
             'proposal' => 'Apagarlo en esta ciudad e iterarlo en un batch nuevo: fue ganador.']);
+    }
+
+    /**
+     * `.121`: con qué se juzga lo reciente: los 3 días si ahí gastó lo suficiente ($min); si no, la semana, salvo que en esos
+     * 3 días haya vendido con el CPA debajo del BE (dueño, 2026-11-09: "puede ser que se esté comenzando a recuperar"): ahí no
+     * se juzga por lo de antes. $seen: la parte de las compras reales que ve Meta (1 = todas).
+     *
+     * @return array{0: array, 1: int}|null los totales y de cuántos días son, o null si no hay nada que juzgar
+     */
+    private function recentWindow(?array $recent, ?array $week, float $min, ?float $be, float $seen = 1.0): ?array
+    {
+        if ($week === null || (float) ($recent['spend'] ?? 0) >= $min) {
+            return [$recent ?? [], 3];
+        }
+        $purchases = (float) ($recent['purchases'] ?? 0) / $seen;
+        if ($be !== null && $purchases > 0 && (float) ($recent['spend'] ?? 0) / $purchases < $be) {
+            return null;
+        }
+
+        return [$week, 7];
+    }
+
+    /**
+     * `.121` (dueño, 2026-11-09, al revisar todas las reglas): un perdedor por toda su vida que en los últimos 3 días cerrados
+     * vendió 2 compras o más con el CPA en C o debajo se recuperó: no se manda a apagar mientras siga así. Se mira cada día:
+     * si vuelve a caer, vuelve a ser perdedor. PHP puro.
+     *
+     * @param array|null $recent los totales de los 3 días (spend, purchases)
+     */
+    public function recovered(array $state, ?array $recent, ?float $c, ?float $be = null, bool $estimated = false): ?array
+    {
+        $spend = (float) ($recent['spend'] ?? 0);
+        $purchases = (float) ($recent['purchases'] ?? 0);
+        if (($state['key'] ?? null) !== 'loser' || !$c || $c <= 0 || $purchases < $this->s['recovered_purchases'] || $spend / $purchases > $c) {
+            return null;
+        }
+        $data = '3 días: ' . lcfirst($this->spendText($spend, $purchases, $c)) . ' · CPA ' . self::money($spend / $purchases)
+            . ' · C ' . self::money($c) . self::beText($be, $estimated);
+
+        return $this->verdict('evaluation', $data, 'Se recuperó: en los últimos 3 días vendió ' . self::num($purchases) . ' compras con CPA '
+            . self::money($spend / $purchases) . ', en C o debajo (en toda su vida: perdedor).', 'Mantener; se vuelve a mirar cada día.');
     }
 
     /**

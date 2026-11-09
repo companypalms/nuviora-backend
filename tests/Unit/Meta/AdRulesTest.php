@@ -124,11 +124,38 @@ describe('.119: un ganador que falla y pierde dinero se apaga en esa ciudad (Zen
             ->and(reglas()->failingStop($falla, ['spend' => 150.0, 'purchases' => 21], 4.44, 7.61))->toBeNull();     // debajo del BE
     });
 
-    it('la única razón para dejarlo prendido es el tracking', function () use ($falla) {
+    it('ninguna causa lo deja prendido (.121: tampoco el tracking)', function () use ($falla) {
         $conCausa = fn (string $k) => ['causes' => [['key' => $k]]] + $falla;
-        expect(reglas()->failingStop($conCausa('tracking'), ['spend' => 51.87, 'purchases' => 5], 4.44, 7.61))->toBeNull()
+        expect(reglas()->failingStop($conCausa('tracking'), ['spend' => 51.87, 'purchases' => 5], 4.44, 7.61)['stop'])->toBeTrue()
             ->and(reglas()->failingStop($conCausa('auction'), ['spend' => 51.87, 'purchases' => 5], 4.44, 7.61)['stop'])->toBeTrue()
             ->and(reglas()->failingStop($conCausa('fatigue'), ['spend' => 51.87, 'purchases' => 5], 4.44, 7.61)['stop'])->toBeTrue();
+    });
+
+    it('.121: si Meta ve menos compras que los pedidos reales, se decide con las compras ajustadas', function () use ($falla) {
+        $r = reglas();
+        // Meta ve el 60 %: 5 compras son ≈ 8,3 reales → CPA ≈ $6,22, debajo del BE: no pierde
+        expect($r->failingStop($falla, ['spend' => 51.87, 'purchases' => 5], 4.44, 7.61, null, false, 60.0))->toBeNull();
+        // con 3 compras (≈ 5 reales, CPA ≈ $10,37) sí, y lo dice; los números que muestra son los de Meta
+        $v = $r->failingStop($falla, ['spend' => 51.87, 'purchases' => 3], 4.44, 7.61, null, false, 60.0);
+        expect($v['stop'])->toBeTrue()
+            ->and($v['data'])->toBe('3 días: gastó $51,87 (11,7×C) · 3 compras · CPA $17,29 · C $4,44 · BE $7,61')
+            ->and($v['reading'])->toBe('Pierde dinero: en los últimos 3 días gastó 11,7×C con el CPA 36 % encima del break-even, ya contando que Meta ve solo el 60 % de tus pedidos. Fue ganador.');
+        // sin compras hace falta más gasto para decidir: 3×C ÷ 0,6 = $22,20
+        expect($r->failingStop($falla, ['spend' => 14.0, 'purchases' => 0], 4.44, 7.61, null, false, 60.0))->toBeNull()
+            ->and($r->failingStop($falla, ['spend' => 23.0, 'purchases' => 0], 4.44, 7.61, null, false, 60.0)['stop'])->toBeTrue();
+        // si Meta ve de más (130 %) o el tracking está bien (95 %), se decide como siempre
+        expect($r->failingStop($falla, ['spend' => 51.87, 'purchases' => 5], 4.44, 7.61, null, false, 130.0)['stop'])->toBeTrue()
+            ->and($r->failingStop($falla, ['spend' => 51.87, 'purchases' => 5], 4.44, 7.61, null, false, 95.0)['stop'])->toBeTrue()
+            ->and($r->failingStop($falla, ['spend' => 51.87, 'purchases' => 5], 4.44, 7.61, null, false, 95.0)['reading'])->not->toContain('Meta ve');
+    });
+
+    it('.121: si se juzga por la semana pero en los últimos 3 días vendió debajo del BE, no se apaga', function () use ($falla) {
+        // la semana pierde ($20,00 con 2 compras), pero en 3 días vendió 1 a $5,00
+        expect(reglas()->failingStop($falla, ['spend' => 5.0, 'purchases' => 1], 4.44, 7.61, ['spend' => 20.0, 'purchases' => 2]))->toBeNull()
+            // con el CPA de los 3 días en el BE o encima, manda la semana
+            ->and(reglas()->failingStop($falla, ['spend' => 8.0, 'purchases' => 1], 4.44, 7.61, ['spend' => 20.0, 'purchases' => 2])['stop'])->toBeTrue()
+            // y sin compras en los 3 días, también
+            ->and(reglas()->failingStop($falla, ['spend' => 5.0, 'purchases' => 0], 4.44, 7.61, ['spend' => 20.0, 'purchases' => 2])['stop'])->toBeTrue();
     });
 
     it('solo a los ganadores que fallan, y con su C', function () use ($falla) {
@@ -141,6 +168,53 @@ describe('.119: un ganador que falla y pierde dinero se apaga en esa ciudad (Zen
 
     it('debajo del BE nunca pierde, aunque tenga 20 compras', function () {
         expect(reglas()->recentLoser(['spend' => 100.0, 'purchases' => 21], ['key' => 'intermediate', 'label' => 'Intermedio'], 4.0, 5.7))->toBeNull();
+    });
+});
+
+describe('.121: lo reciente se mira mejor (FlexiStep: en Carabobo C = 6,67 y BE = 10,49; en Caracas C = 4,87 y BE = 7,21)', function () {
+    it('un ganador con 3 días sin compras que no llegó a 2×C se juzga por la semana', function () {
+        $r = reglas();
+        $quieto = ventana(['spend' => 7.83, 'purchases' => 0]);
+        expect($r->isFailing(true, $quieto, ventana(['spend' => 28.06, 'purchases' => 2]), 6.67, 10.49))->toBeTrue()   // CRE001 en Carabobo: la semana en $14,03
+            ->and($r->isFailing(true, $quieto, ventana(['spend' => 28.06, 'purchases' => 4]), 6.67, 10.49))->toBeFalse() // la semana en $7,02: va bien
+            ->and($r->isFailing(true, $quieto, ventana(['spend' => 14.0, 'purchases' => 0]), 6.67, 10.49))->toBeTrue()   // la semana, 2×C sin compras
+            ->and($r->isFailing(true, $quieto, null, 6.67, 10.49))->toBeFalse()                                           // sin la semana, como antes
+            // CRE001 en Caracas: en 3 días vendió 2 a $5,24; no se mira la semana ($9,46)
+            ->and($r->isFailing(true, ventana(['spend' => 10.47, 'purchases' => 2]), ventana(['spend' => 28.39, 'purchases' => 3]), 4.87, 7.21))->toBeFalse();
+    });
+
+    it('un prometedor que deja de vender pierde en esa ciudad, como un intermedio', function () {
+        $prometedor = ['key' => 'promising', 'label' => 'Prometedor'];
+        $v = reglas()->recentLoser(['spend' => 14.0, 'purchases' => 0], $prometedor, 6.67, 10.49);
+        expect($v['key'])->toBe('loser')
+            ->and($v['reading'])->toBe('Perdedor en los últimos 3 días: gastó 2,1×C sin compras (en toda su vida: prometedor).')
+            ->and(reglas()->recentLoser(['spend' => 13.0, 'purchases' => 0], $prometedor, 6.67, 10.49))->toBeNull()  // todavía no llegó a 2×C
+            ->and(reglas()->recentLoser(['spend' => 14.0, 'purchases' => 2], $prometedor, 6.67, 10.49))->toBeNull(); // vende a $7,00, debajo del BE
+    });
+
+    it('si se juzga por la semana pero en los últimos 3 días vendió debajo del BE, no pierde', function () {
+        $intermedio = ['key' => 'intermediate', 'label' => 'Intermedio'];
+        $semana = ['spend' => 40.0, 'purchases' => 2]; // $20,00 por compra
+        expect(reglas()->recentLoser(['spend' => 5.0, 'purchases' => 1], $intermedio, 6.67, 10.49, $semana))->toBeNull()
+            ->and(reglas()->recentLoser(['spend' => 11.0, 'purchases' => 1], $intermedio, 6.67, 10.49, $semana)['key'])->toBe('loser')  // $11,00: encima del BE
+            ->and(reglas()->recentLoser(['spend' => 5.0, 'purchases' => 0], $intermedio, 6.67, 10.49, $semana)['key'])->toBe('loser');   // sin compras
+    });
+
+    it('un perdedor que en los últimos 3 días vendió 2 o más en C o debajo se recuperó', function () {
+        $r = reglas();
+        $perdedor = $r->state(60, 3, 6.67, 10.49, 'creativo');
+        expect($perdedor['key'])->toBe('loser');
+        $v = $r->recovered($perdedor, ['spend' => 6.0, 'purchases' => 2], 6.67, 10.49);
+        expect($v['key'])->toBe('evaluation')
+            ->and($v['data'])->toBe('3 días: gastó $6,00 (0,9×C) · 2 compras · CPA $3,00 · C $6,67 · BE $10,49')
+            ->and($v['reading'])->toBe('Se recuperó: en los últimos 3 días vendió 2 compras con CPA $3,00, en C o debajo (en toda su vida: perdedor).')
+            ->and($v['proposal'])->toBe('Mantener; se vuelve a mirar cada día.')
+            ->and($r->recovered($perdedor, ['spend' => 3.0, 'purchases' => 1], 6.67, 10.49))->toBeNull()   // 1 sola compra
+            ->and($r->recovered($perdedor, ['spend' => 14.0, 'purchases' => 2], 6.67, 10.49))->toBeNull()  // $7,00: encima de C
+            ->and($r->recovered($perdedor, ['spend' => 0.0, 'purchases' => 0], 6.67, 10.49))->toBeNull()
+            ->and($r->recovered($perdedor, null, 6.67, 10.49))->toBeNull()
+            ->and($r->recovered(['key' => 'intermediate'] + $perdedor, ['spend' => 6.0, 'purchases' => 2], 6.67, 10.49))->toBeNull()
+            ->and(reglas(['recovered_purchases' => 3])->recovered($perdedor, ['spend' => 6.0, 'purchases' => 2], 6.67, 10.49))->toBeNull();
     });
 });
 

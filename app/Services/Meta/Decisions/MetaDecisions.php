@@ -280,6 +280,10 @@ class MetaDecisions
         foreach ($f['ads'] as $id => $ad) {
             $c = $campaigns[$ad['campaign_meta_id']] ?? null;
             $adVerdicts[$id] = $this->entity($ad['windows'], $c, $rules, 'anuncio', $history['ad'][$id] ?? [], $cpmChange[$ad['campaign_meta_id']] ?? null, $tracking);
+            // .121: perdedor por toda su vida, pero en los últimos 3 días vende en C o debajo: no se poda
+            if ($back = $rules->recovered($adVerdicts[$id], $ad['windows']['3d']['totals'] ?? null, $c['target'] ?? null, $c['break_even'] ?? null, (bool) ($c['break_even_estimated'] ?? false))) {
+                $adVerdicts[$id] = $back + ['causes' => []];
+            }
             if ($young = $rules->young($adVerdicts[$id], self::ageHours($f, [$id], $now))) {
                 $adVerdicts[$id] = $young + ['causes' => []];
             }
@@ -343,13 +347,17 @@ class MetaDecisions
                 if ($early = $rules->sellingEarly($states[$cid][$campaignId], (float) ($life['spend'] ?? 0), (float) ($life['purchases'] ?? 0))) {
                     $states[$cid][$campaignId] = $early + ['causes' => []];
                 }
+                // .121: perdedor por toda su vida, pero en los últimos 3 días vende en C o debajo: se recuperó
+                if ($back = $rules->recovered($states[$cid][$campaignId], $w['3d']['totals'] ?? null, $c['target'] ?? null, $c['break_even'] ?? null, $estimated)) {
+                    $states[$cid][$campaignId] = $back + ['causes' => []];
+                }
                 // .86: intermedio o en evaluación en toda su vida, pero perdiendo en los últimos 3 días en esta ciudad
-                // (.114: o en los 7 días, si en 3 no llegó a 2×C)
+                // (.114: o en los 7 días, si en 3 no llegó a 2×C; .121: también un prometedor)
                 if ($recent = $rules->recentLoser($w['3d']['totals'] ?? null, $states[$cid][$campaignId], $c['target'] ?? null, $c['break_even'] ?? null, $w['7d']['totals'] ?? null, $estimated)) {
                     $states[$cid][$campaignId] = $recent + ['causes' => []];
                 }
                 // .119: un ganador que falla y pierde dinero se apaga en esta ciudad (y se sigue iterando)
-                if ($stop = $rules->failingStop($states[$cid][$campaignId], $w['3d']['totals'] ?? null, $c['target'] ?? null, $c['break_even'] ?? null, $w['7d']['totals'] ?? null, $estimated)) {
+                if ($stop = $rules->failingStop($states[$cid][$campaignId], $w['3d']['totals'] ?? null, $c['target'] ?? null, $c['break_even'] ?? null, $w['7d']['totals'] ?? null, $estimated, $tracking)) {
                     $states[$cid][$campaignId] = $stop;
                 }
                 $wasWinner[$cid] = ($wasWinner[$cid] ?? false) || $good;
