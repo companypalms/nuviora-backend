@@ -48,6 +48,9 @@ use App\Services\Meta\Upload\UploadRules;
  * sin una razón buena justificada"): un producto en pausa con una campaña prendida es una misión de apagarla (`product_off`);
  * el producto entero 14 días sin dejar dinero es una misión para decidir (`drop_product`), nunca automática; y si los datos
  * de Meta son viejos, se avisa (`stale`).
+ *
+ * `.126` (dueño, 2026-11-09: "pesa más ganar en dólares, la ganancia siempre va a pesar más"): cada misión de una ciudad dice
+ * lo que dejó en 3 días (compras de Meta × BE − gasto), y las de subir salen ordenadas: primero la que más deja.
  */
 final class UrgentList
 {
@@ -155,7 +158,8 @@ final class UrgentList
                     continue; // en liquidación no entran creativos: si no hay qué podar, es mantener
                 }
                 $prune = $n['prune'] ?? [];
-                $items[] = $base + ['key' => "{$p['product_id']}:{$c['campaign_meta_id']}:{$kind}", 'city' => $c['city'], 'kind' => $kind,
+                // .126: las de subir, primero la que más deja
+                $items[] = ['_gain' => $kind === 'scale' ? (float) ($n['gain3'] ?? 0) : 0.0] + $base + ['key' => "{$p['product_id']}:{$c['campaign_meta_id']}:{$kind}", 'city' => $c['city'], 'kind' => $kind,
                     'label' => $a['label'], 'text' => trim($a['reading'] . ' ' . ($a['proposal'] ?? '')), 'tone' => $a['tone'],
                     'where' => $short . ($c['city'] ? " · {$c['city']}" : ''), 'title' => $wait ? self::waiting($kind, $n, $a['cooldown'] ?? null, $a['ladder'] ?? null) : $mission['title'],
                     'steps' => $wait ? [] : $mission['steps'], 'batches' => $wait ? [] : $mission['batches'],
@@ -218,11 +222,11 @@ final class UrgentList
             $i['money'] ??= null;
         }
         unset($i);
-        usort($items, fn ($a, $b) => [$a['severity'], $a['_level'], -$a['_risk'], $a['product'], (string) $a['city']]
-            <=> [$b['severity'], $b['_level'], -$b['_risk'], $b['product'], (string) $b['city']]);
+        usort($items, fn ($a, $b) => [$a['severity'], -($a['_gain'] ?? 0), $a['_level'], -$a['_risk'], $a['product'], (string) $a['city']]
+            <=> [$b['severity'], -($b['_gain'] ?? 0), $b['_level'], -$b['_risk'], $b['product'], (string) $b['city']]);
 
         // .89: los testeos listos para lanzar (TestingLaunch), al final: van en "Crecer"
-        return [...array_map(fn ($i) => array_diff_key($i, ['_level' => 1, '_risk' => 1]), $items), ...array_map(fn ($t) => self::testLaunch($t), $tests),
+        return [...array_map(fn ($i) => array_diff_key($i, ['_level' => 1, '_risk' => 1, '_gain' => 1]), $items), ...array_map(fn ($t) => self::testLaunch($t), $tests),
             ...array_map(fn ($n) => self::names($n), $names)];
     }
 
@@ -837,8 +841,9 @@ final class UrgentList
         }
 
         return match ($kind) {
+            // .126: "… · deja unos $350,00 por día"
             'scale' => (($a['from'] ?? null) && ($a['to'] ?? null) ? '+' . AdRules::num(round(($a['to'] / $a['from'] - 1) * 100)) . ' % · ' : '')
-                . "{$cpa}; tu objetivo es {$c}",
+                . "{$cpa}; tu objetivo es {$c}" . (($n['gain3'] ?? 0) > 0 ? ' · deja unos ' . AdRules::money($n['gain3'] / 3) . ' por día' : ''),
             'hold_prune' => $be ? "{$cpa}: entre tu objetivo ({$c}) y tu {$limit} ({$be})" : "{$cpa}; tu objetivo es {$c}",
             // .123: "−17 % · $6,55 por compra: entre tu objetivo ($4,44) y tu límite ($7,61)"
             'step_down' => (($a['from'] ?? null) && ($a['to'] ?? null) ? '−' . AdRules::num(abs(round(($a['to'] / $a['from'] - 1) * 100))) . ' % · ' : '')
@@ -865,6 +870,9 @@ final class UrgentList
                 : 'Tu objetivo (C) aquí es ' . AdRules::money($n['c']) . ($n['be'] ? ' y tu límite para no perder (BE) es ' . AdRules::money($n['be']) : '')
                     . ($source ? " ({$source})" : '') . '.',
             $n['budget'] ? 'Presupuesto: ' . AdRules::money($n['budget']) . ' por día.' : null,
+            // .126: lo que dejó, en dólares (con el BE estimado, se dice)
+            ($n['gain3'] ?? null) !== null ? 'En 3 días ' . ($n['gain3'] >= 0 ? 'dejó unos ' : 'perdió unos ') . AdRules::money(abs($n['gain3'])) . ' (compras × tu BE'
+                . (!empty($n['be_estimated']) ? ' estimado' : '') . ' − gasto): unos ' . AdRules::money(abs($n['gain3']) / 3) . ' por día.' : null,
         ]));
     }
 

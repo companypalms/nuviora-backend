@@ -217,6 +217,12 @@ final class CreativeCalls
      *
      * @return list<string>
      */
+    /** `.126`: "Dejó unos $373,00" o "Perdió unos $11,00". */
+    public static function left(float $gain): string
+    {
+        return ($gain >= 0 ? 'Dejó unos ' : 'Perdió unos ') . AnalysisFacts::money(abs($gain));
+    }
+
     public static function numbers(array $cr): array
     {
         $m = $cr['metrics'] ?? null;
@@ -253,6 +259,14 @@ final class CreativeCalls
         if ($w = $cr['week'] ?? null) {
             $out[] = '7 días: gasto ' . AnalysisFacts::money((float) $w['spend']) . ' · ' . self::num((float) $w['purchases']) . ' compras'
                 . ($w['cpa'] !== null ? ' · CPA ' . AnalysisFacts::money((float) $w['cpa']) : '');
+        }
+        // .126 (dueño, 2026-11-09: "la ganancia siempre va a pesar más"): lo que dejó, en dólares
+        $g = $cr['gain'] ?? null;
+        if (($g['week'] ?? null) !== null || ($g['life'] ?? null) !== null) {
+            $out[] = implode(' · ', array_filter([
+                ($g['week'] ?? null) !== null ? self::left((float) $g['week']) . ' en 7 días' : null,
+                ($g['life'] ?? null) !== null ? mb_strtolower(self::left((float) $g['life'])) . ' en toda su vida' : null,
+            ])) . ' (compras × tu BE − gasto)';
         }
 
         return $out;

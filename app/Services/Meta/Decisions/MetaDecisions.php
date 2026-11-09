@@ -437,6 +437,8 @@ class MetaDecisions
                 // Paso 3: sus 7 días, para ordenar los creativos en el análisis de la mañana
                 'week' => ['spend' => round((float) ($all['7d']['totals']['spend'] ?? 0), 2), 'purchases' => (float) ($all['7d']['totals']['purchases'] ?? 0),
                     'cpa' => isset($all['7d']['metrics']['cpa']) ? round((float) $all['7d']['metrics']['cpa'], 2) : null],
+                // .126 (dueño, 2026-11-09: "la ganancia siempre va a pesar más"): lo que dejó, sumando cada ciudad con su BE
+                'gain' => self::creativeGain($agg[$cid]['cities'], $campaigns),
             ];
         }
 
@@ -599,7 +601,10 @@ class MetaDecisions
                 'streak' => $streak['days'], 'prune' => $prune,
                 // .87: los batches vivos (contando lo que se apaga hoy) y lo que puede lanzar, en orden
                 'live' => self::live($f, $out, $id, in_array($action['key'], ['hold_prune', 'intervene'], true)), 'offers' => $offers,
-                'mins' => ['off' => $mins['off'], 'keep' => $mins['keep']]]
+                'mins' => ['off' => $mins['off'], 'keep' => $mins['keep']],
+                // .126: lo que dejó la campaña (compras × BE − gasto) en 3 y en 7 días
+                'gain3' => self::gain((float) ($w3['totals']['spend'] ?? 0), (float) ($w3['totals']['purchases'] ?? 0), $c['break_even']),
+                'gain7' => self::gain((float) ($w7['totals']['spend'] ?? 0), (float) ($w7['totals']['purchases'] ?? 0), $c['break_even'])]
                 // .120: el BE es estimado (C × esto): la campaña no tiene uno real
                 + (($c['break_even_estimated'] ?? null) ? ['be_estimated' => (float) $c['break_even_estimated']] : []);
             $out['campaigns'][$id]['budget_notes'] = $cr->budgetNotes($budget, (float) $h['mins'], $newBatches, $c['target'], $mins['missing']);
@@ -659,8 +664,12 @@ class MetaDecisions
             foreach ($f['creatives'][$cid]['ads'] ?? [] as $m) {
                 $p7 += (float) ($f['ads'][$m]['windows']['7d']['totals']['purchases'] ?? 0);
             }
-            if ($key === 'proven' && empty($out['creatives'][$cid]['rest']) && $p7 >= $s['proven_purchases'] && (!$winner || $p7 > $winner['p7'])) {
-                $winner = ['id' => $cid, 'label' => $cr2['label'], 'p7' => $p7, 'iterate' => self::ITERATE[$cr2['video']['iterate'] ?? ''] ?? null,
+            // .126 (dueño, 2026-11-09: "pesa más ganar en dólares"): el ganador es el que más dólares deja en 7 días (antes, el que
+            // más compras tenía); si a alguno no se le puede calcular (sin BE), por compras como antes
+            $g7 = $cr2['gain']['week'] ?? null;
+            $better = !$winner || ($g7 !== null && $winner['gain'] !== null ? $g7 > $winner['gain'] : $p7 > $winner['p7']);
+            if ($key === 'proven' && empty($out['creatives'][$cid]['rest']) && $p7 >= $s['proven_purchases'] && $better) {
+                $winner = ['id' => $cid, 'label' => $cr2['label'], 'p7' => $p7, 'gain' => $g7, 'iterate' => self::ITERATE[$cr2['video']['iterate'] ?? ''] ?? null,
                     'iterate_key' => $cr2['video']['iterate'] ?? null, // .99: qué prueba cada pieza de su iteración
                     'angle' => $cr2['angle_code'], 'type' => $cr2['type']];
             }
@@ -715,6 +724,8 @@ class MetaDecisions
             // .117: el producto se quedó sin ninguna ciudad prendida y no alcanza para prender una: lo decide el dueño
             'no_city' => $f['campaigns'] && !$activeCities && !$relaunches && $mode === 'normal' && !isset($dismissed["{$f['product']['id']}:no_city"])
                 ? ['have' => $relaunchOffers, 'need' => (int) $s['relaunch_batches']] : null,
+            // .126: lo que dejó el producto entero en 3 y en 7 días (la suma de sus campañas con BE, prendidas o no)
+            'gain' => self::productGain($f['campaigns']),
             // .125 (dueño, 2026-11-09: "sí debemos establecer un límite para soltar producto, dependiendo de su CPA y si hicimos
             // cambios y no mejoró"): el producto entero lleva 14 días sin dejar dinero, con batches nuevos en ese tiempo. Lo decide
             // él; si dice que no, no se le vuelve a preguntar en esos días
@@ -1092,6 +1103,63 @@ class MetaDecisions
         }
 
         return ['since' => $since, 'batch' => $batch, 'lowered' => $lowered, 'undo' => $undo];
+    }
+
+    /**
+     * `.126` (dueño, 2026-11-09: "pesa más ganar en dólares, la ganancia siempre va a pesar más"): la ganancia estimada de un
+     * gasto: compras de Meta × BE − gasto. El BE es lo que deja cada compra de Meta antes de pagar la publicidad (ya trae
+     * los costos, las entregas y los gastos fijos). Sin BE no se puede calcular. PHP puro.
+     */
+    public static function gain(float $spend, float $purchases, ?float $be): ?float
+    {
+        return $be ? round($purchases * $be - $spend, 2) : null;
+    }
+
+    /**
+     * `.126`: lo que dejó un creativo en 7 días y en toda su vida, sumando cada ciudad con su BE (las ciudades sin BE no
+     * entran; si ninguna lo tiene, null). PHP puro.
+     *
+     * @param array<string, array> $cities campaña => sus ventanas (creativeWindows)
+     * @return array{week: ?float, life: ?float}
+     */
+    public static function creativeGain(array $cities, array $campaigns): array
+    {
+        $out = ['week' => null, 'life' => null];
+        foreach ($cities as $campaignId => $w) {
+            $be = $campaigns[$campaignId]['break_even'] ?? null;
+            foreach (['week' => '7d', 'life' => 'max'] as $key => $window) {
+                $g = self::gain((float) ($w[$window]['totals']['spend'] ?? 0), (float) ($w[$window]['totals']['purchases'] ?? 0), $be ? (float) $be : null);
+                if ($g !== null) {
+                    $out[$key] = round(($out[$key] ?? 0) + $g, 2);
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * `.126`: lo que dejó el producto entero en 3 y en 7 días: la suma de sus campañas con BE (también las apagadas que
+     * gastaron en esos días). Null si ninguna tiene BE. PHP puro.
+     *
+     * @return array{d3: float, d7: float, spend3: float, spend7: float}|null
+     */
+    public static function productGain(array $campaigns): ?array
+    {
+        $out = null;
+        foreach ($campaigns as $c) {
+            if (!($c['break_even'] ?? null)) {
+                continue;
+            }
+            $out ??= ['d3' => 0.0, 'd7' => 0.0, 'spend3' => 0.0, 'spend7' => 0.0];
+            foreach (['3' => '3d', '7' => '7d'] as $n => $window) {
+                $spend = (float) ($c['windows'][$window]['totals']['spend'] ?? 0);
+                $out["spend{$n}"] = round($out["spend{$n}"] + $spend, 2);
+                $out["d{$n}"] = round($out["d{$n}"] + self::gain($spend, (float) ($c['windows'][$window]['totals']['purchases'] ?? 0), (float) $c['break_even']), 2);
+            }
+        }
+
+        return $out;
     }
 
     /**

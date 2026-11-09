@@ -67,6 +67,11 @@ final class AnalysisFacts
                 }
             }
             usort($creatives, fn ($a, $b) => ($b['week']['spend'] ?? 0) <=> ($a['week']['spend'] ?? 0));
+            // .126 (dueño, 2026-11-09: "la ganancia siempre va a pesar más"): entran los 12 que más gastaron, como siempre (así no
+            // se esconde uno que gasta y pierde), y se ordenan por lo que dejaron en 7 días (el que no se puede calcular, al final)
+            $creatives = array_slice($creatives, 0, self::MAX_CREATIVES);
+            usort($creatives, fn ($a, $b) => [($b['gain']['week'] ?? null) !== null ? 1 : 0, $b['gain']['week'] ?? 0, $b['week']['spend'] ?? 0]
+                <=> [($a['gain']['week'] ?? null) !== null ? 1 : 0, $a['gain']['week'] ?? 0, $a['week']['spend'] ?? 0]);
             $creatives = array_map(fn ($cr) => [
                 'id' => $cr['id'], 'label' => $cr['label'], 'verdict' => $cr['verdict']['label'], 'verdict_key' => $cr['verdict']['key'],
                 'tone' => $cr['verdict']['tone'], 'reading' => $cr['verdict']['reading'], 'proposal' => $cr['verdict']['proposal'],
@@ -81,7 +86,9 @@ final class AnalysisFacts
                 'numbers' => CreativeCalls::numbers($cr),
                 // .116: si su ángulo o sus iteraciones descansan, no se le piden más versiones
                 'rest' => $cr['rest'] ?? null,
-            ], array_slice($creatives, 0, self::MAX_CREATIVES));
+                // .126: lo que dejó en 7 días y en toda su vida
+                'gain' => $cr['gain'] ?? null,
+            ], $creatives);
             $batches = [];
             foreach ($p['adsets'] ?? [] as $id => $v) {
                 if (in_array($v['key'], ['loser', 'failing'], true) && isset($names['adsets'][$id])) {
@@ -99,6 +106,8 @@ final class AnalysisFacts
                 'no_city' => $plan['no_city'] ?? null,
                 // .125: el producto entero lleva 14 días sin dejar dinero: lo decide el dueño
                 'drop' => $plan['drop'] ?? null,
+                // .126: lo que dejó el producto en 3 y en 7 días
+                'gain' => $plan['gain'] ?? null,
                 'cities' => $cities, 'creatives' => $creatives, 'batches' => $batches, 'stop_by_city' => $stopByCity, 'stop_all' => $stopAll,
                 // .119: los ganadores ya apagados siguen en la fila de iteraciones (no salen en la lista del análisis)
                 'off_winners' => array_values(array_map(fn ($cr) => ['id' => $cr['id'], 'label' => $cr['label'], 'verdict_key' => $cr['verdict']['key'], 'off_winner' => true,
@@ -106,7 +115,9 @@ final class AnalysisFacts
                     array_filter($p['creatives'] ?? [], fn ($cr) => !empty($cr['off_winner']) && empty($cr['rest'])))),
             ];
         }
-        usort($out, fn ($a, $b) => [($a['urgency']['level'] ?? 9), -$a['money_at_risk'], $a['product']] <=> [($b['urgency']['level'] ?? 9), -$b['money_at_risk'], $b['product']]);
+        // .126: primero el que más deja en 7 días (antes, el más urgente); el que no se puede calcular, al final, por urgencia
+        usort($out, fn ($a, $b) => [($a['gain'] ?? null) === null ? 1 : 0, -($a['gain']['d7'] ?? 0), ($a['urgency']['level'] ?? 9), -$a['money_at_risk'], $a['product']]
+            <=> [($b['gain'] ?? null) === null ? 1 : 0, -($b['gain']['d7'] ?? 0), ($b['urgency']['level'] ?? 9), -$b['money_at_risk'], $b['product']]);
 
         return $out;
     }
