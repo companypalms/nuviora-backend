@@ -286,6 +286,12 @@ class MetaDecisions
             if ($back = $rules->recovered($adVerdicts[$id], $ad['windows']['3d']['totals'] ?? null, $c['target'] ?? null, $c['break_even'] ?? null, (bool) ($c['break_even_estimated'] ?? false))) {
                 $adVerdicts[$id] = $back + ['causes' => []];
             }
+            // .127 (dueño, 2026-11-09: "sí acepto gastar 3C" con buenas señales): con 0 o 1 compra y buenas señales, hasta 3×C
+            $life = $ad['windows']['max'] ?? null;
+            if ($wait = $rules->patient($adVerdicts[$id], (float) ($life['totals']['spend'] ?? 0), (float) ($life['totals']['purchases'] ?? 0), $c['target'] ?? null,
+                $rules->signals($life, ($ad['creative_type'] ?? null) !== 'image'))) {
+                $adVerdicts[$id] = $wait + ['causes' => []];
+            }
             if ($young = $rules->young($adVerdicts[$id], self::ageHours($f, [$id], $now))) {
                 $adVerdicts[$id] = $young + ['causes' => []];
             }
@@ -363,6 +369,11 @@ class MetaDecisions
                     $states[$cid][$campaignId] = $stop;
                 }
                 $wasWinner[$cid] = ($wasWinner[$cid] ?? false) || $good;
+                // .127: con 0 o 1 compra en toda su vida aquí y buenas señales, se le da hasta 3×C antes de apagarlo
+                if ($wait = $rules->patient($states[$cid][$campaignId], (float) ($life['spend'] ?? 0), (float) ($life['purchases'] ?? 0), $c['target'] ?? null,
+                    $rules->signals($w['max'] ?? null, $cr['type'] !== 'image'))) {
+                    $states[$cid][$campaignId] = $wait + ['causes' => []];
+                }
                 // .111: si todos sus anuncios en esta ciudad tienen menos de 24 horas, todavía no se apaga
                 if ($young = $rules->young($states[$cid][$campaignId], self::ageHours($f, $agg[$cid]['ads_by_city'][$campaignId] ?? [], $now))) {
                     $states[$cid][$campaignId] = $young + ['causes' => []];

@@ -20,6 +20,9 @@ class DecisionSettings
         'no_data_cpa' => [1.0, 0.1, 10],        // gasto < 1×C = sin datos
         'loser_spend_cpa' => [2.0, 0.5, 20],    // gasto ≥ 2×C con 0 o 1 compra = perdedor
         'evaluation_cap_cpa' => [3.0, 1, 30],   // con 2+ compras y CPA ≥ BE: en evaluación hasta 3×C
+        // .127 (dueño, 2026-11-09: "sí acepto gastar 3C" cuando sus variables —hook rate, hold rate, etcétera— son buenas): un
+        // perdedor por 0 o 1 compra con buenas señales (2 buenas y ninguna floja) no se apaga a 2×C: se le da hasta 3×C
+        'patience_cpa' => [3.0, 1, 30],
         // .101 (dueño, 2026-11-04): con menos de 20 compras, perdedor por el BE solo con el CPA 20 % o más encima
         'loser_be_margin_pct' => [20, 0, 100],
         'loser_be_margin_purchases' => [20, 2, 1000],

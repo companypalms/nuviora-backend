@@ -547,6 +547,56 @@ class AdRules
      *
      * @param ?float $hours las horas desde que se creó su anuncio más viejo (null si no se sabe)
      */
+    /**
+     * `.127` (dueño, 2026-11-09: "sí acepto gastar 3C" cuando sus variables —hook rate, hold rate, etcétera— son buenas; eligió
+     * "2 buenas y ninguna floja"): las señales de un anuncio o creativo, con tus números de Reglas (bueno desde / flojo debajo
+     * de). De hook, hold y CTR único, los que tengan muestra: son buenas si al menos 2 son buenas y ninguna es floja; en una
+     * imagen, si el CTR es bueno. Null si no hay muestra para leerlas.
+     *
+     * @param ?array $w ventana con totals y metrics
+     * @return array{good: bool, text: string}|null
+     */
+    public function signals(?array $w, bool $isVideo): ?array
+    {
+        $m = $w['metrics'] ?? [];
+        $t = $w['totals'] ?? [];
+        $enough = fn (string $stage, $base) => (float) ($base ?? 0) >= self::STAGE_MIN[$stage];
+        $values = array_filter([
+            'hook' => $isVideo && $enough('hook', $t['impressions'] ?? 0) ? ($m['hook_rate'] ?? null) : null,
+            'hold' => $isVideo && $enough('after_hook', $t['video_3s_plays'] ?? 0) ? ($m['hold_rate'] ?? null) : null,
+            'ctr' => $enough('click', $t['impressions'] ?? 0) ? ($m['unique_ctr'] ?? null) : null,
+        ], fn ($v) => $v !== null);
+        if (!$values) {
+            return null;
+        }
+        $good = array_filter($values, fn ($v, $k) => $v >= $this->s["{$k}_good"], ARRAY_FILTER_USE_BOTH);
+        $weak = array_filter($values, fn ($v, $k) => $v < $this->s["{$k}_weak"], ARRAY_FILTER_USE_BOTH);
+        $labels = ['hook' => 'hook', 'hold' => 'hold', 'ctr' => 'CTR'];
+
+        return ['good' => !$weak && ($isVideo ? count($good) >= 2 : isset($good['ctr'])),
+            'text' => implode(' · ', array_map(fn ($v, $k) => $labels[$k] . ' ' . self::num(round((float) $v, 1)) . ' %', $values, array_keys($values)))];
+    }
+
+    /**
+     * `.127`: paciencia. Un perdedor por pocas compras (0 o 1, con 2×C gastado en toda su vida) que tiene buenas señales y
+     * todavía no llegó a `patience_cpa`×C queda en evaluación hasta ahí; si llega con 0 o 1 compra, se apaga como siempre.
+     * Cuesta como mucho un C más por creativo: a 2×C se apagan unos 4 de cada 10 creativos que en realidad venden a tu C; a
+     * 3×C, unos 2 de cada 10.
+     */
+    public function patient(array $state, float $spend, float $purchases, ?float $c, ?array $signals): ?array
+    {
+        if (($state['key'] ?? null) !== 'loser' || !$c || $c <= 0 || $purchases > 1 || !($signals['good'] ?? false) || $spend >= $c * $this->s['patience_cpa']) {
+            return null;
+        }
+        $cap = $c * $this->s['patience_cpa'];
+
+        // El porqué va en lo que se propone: es lo que se lee en la lista de creativos del análisis
+        return $this->verdict('evaluation', $state['data'], 'En evaluación, con paciencia: gastó ' . self::num($spend / $c) . '×C con '
+            . ($purchases == 0 ? 'ninguna compra' : 'una sola compra') . ', pero sus señales son buenas.',
+            "Tiene buenas señales ({$signals['text']}): darle hasta " . self::money($cap) . ' (' . self::num($this->s['patience_cpa']) . '×C); si llega ahí con 0 o 1 compra, apagarlo.')
+            + ['patient' => true];
+    }
+
     public function young(array $state, ?float $hours): ?array
     {
         $min = (float) $this->s['new_ad_hours'];
