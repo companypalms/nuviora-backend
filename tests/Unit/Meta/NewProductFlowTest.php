@@ -104,7 +104,11 @@ describe('.89: lanzar el testeo y los atrasados en correcciones', function () {
                 'En cada una, crea los 3 ad sets: «B0110 POSP» con los anuncios «C0457 POSP» y «C0458 POSP»; «B0111 POSP» con el anuncio «C0459 POSP»; '
                     . '«B0112 GYM» con el anuncio «C0460 GYM» (sus videos, aquí abajo).',
                 'Presupuesto de arranque por campaña: entre $30,00 y $36,00 por día (tu regla: C × 3 batches × 2,5 a 3).',
+                // .124: el gasto mínimo de cada ad set y los parámetros de URL de sus anuncios
+                'Ponle a cada ad set nuevo un gasto mínimo diario de $4,00 (tu CPA de referencia). Va solo mientras se prueba.',
+                'En cada anuncio nuevo, abre «Seguimiento» y pega los parámetros de URL (botón «Copiar parámetros», aquí abajo).',
             ])
+            ->and($i['copy']['text'])->toBe('utm_source=facebook&utm_medium=paid&utm_campaign={{campaign.id}}&utm_term={{adset.id}}&utm_content={{ad.id}}')
             ->and($i['batches'])->toBe(['B0110', 'B0111', 'B0112']); // .102: los videos de los 3, en la misión
     });
 
@@ -112,13 +116,18 @@ describe('.89: lanzar el testeo y los atrasados en correcciones', function () {
         $i = UrgentList::testLaunch($test(['linked' => false, 'target' => null]));
         expect($i['steps'][0])->toBe('Antes: pásale a tu asistente el link de Termafit en Shopify (así sus pedidos se suman a Termafit).')
             ->and($i['steps'][1])->toStartWith('Antes: pon el CPA de referencia de Termafit')
-            ->and($i['steps'])->toHaveCount(4);
+            ->and($i['steps'])->toHaveCount(6)
+            ->and($i['steps'][4])->toBe('Ponle a cada ad set nuevo un gasto mínimo diario igual al CPA del nombre de su campaña (o a tu C, si no lo trae). Va solo mientras se prueba.');
     });
 
     it('un producto que ya vende: los ángulos nuevos en todas sus campañas', function () use ($test) {
         $i = UrgentList::testLaunch($test(['round' => 2, 'campaigns' => [['name' => 'TERMAFIT | CCS', 'city' => 'Distrito Capital'], ['name' => 'TERMAFIT | MCAY', 'city' => 'Aragua']]]));
         expect($i['title'])->toBe('Lanza los ángulos nuevos de Termafit: B0110, B0111 y B0112')
-            ->and($i['steps'][0])->toStartWith('En cada campaña de Termafit («TERMAFIT | CCS» y «TERMAFIT | MCAY»), crea los 3 ad sets: «B0110 POSP» con los anuncios');
+            ->and($i['steps'][0])->toStartWith('En cada campaña de Termafit («TERMAFIT | CCS» y «TERMAFIT | MCAY»), crea los 3 ad sets: «B0110 POSP» con los anuncios')
+            // .124: sus campañas no traen el CPA en el nombre: el mínimo es su C
+            ->and($i['steps'][2])->toBe('Ponle a cada ad set nuevo un gasto mínimo diario de $4,00 (tu C). Va solo mientras se prueba.');
+        $named = UrgentList::testLaunch($test(['round' => 2, 'campaigns' => [['name' => 'TERMAFIT | MCAY | CBO | HV | CPA $4| BE $5.6| 29/10/2026', 'city' => 'Aragua']]]));
+        expect($named['steps'][2])->toBe('Ponle a cada ad set nuevo un gasto mínimo diario de $4,00 (el CPA del nombre de la campaña). Va solo mientras se prueba.');
     });
 
     it('entregó a tiempo pero las correcciones pasaron de la fecha "lista": presiona al líder', function () {

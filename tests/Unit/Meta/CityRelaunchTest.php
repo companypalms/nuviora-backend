@@ -99,8 +99,12 @@ describe('La misión', function () {
             ->and($i['steps'][1])->toBe('Deja apagados los ad sets y los anuncios que ya estaban: esta vez solo van estos 3.')
             ->and($i['steps'][2])->toContain('Crea el ad set «B1 POSP»')
             ->and($i['steps'][4])->toContain('Duplica el ad set «B3 POSP» de la campaña «FLEXI | CCS»')
-            ->and($i['steps'][5])->toBe('Pon el presupuesto de arranque entre $37,50 y $45,00 por día (tu regla: C × 3 batches × 2,5 a 3).')
-            ->and($i['steps'][6])->toBe('Prende la campaña.')
+            // .124: el gasto mínimo de cada ad set nuevo y los parámetros de URL de sus anuncios
+            ->and($i['steps'][5])->toBe('Ponle a cada ad set nuevo un gasto mínimo diario de $5,00 (tu C aquí). Va solo mientras se prueba.')
+            ->and($i['steps'][6])->toBe('En cada anuncio nuevo, abre «Seguimiento» y pega los parámetros de URL (botón «Copiar parámetros», aquí abajo).')
+            ->and($i['copy'])->toBe(['label' => 'Copiar parámetros', 'text' => 'utm_source=facebook&utm_medium=paid&utm_campaign={{campaign.id}}&utm_term={{adset.id}}&utm_content={{ad.id}}'])
+            ->and($i['steps'][7])->toBe('Pon el presupuesto de arranque entre $37,50 y $45,00 por día (tu regla: C × 3 batches × 2,5 a 3).')
+            ->and($i['steps'][8])->toBe('Prende la campaña.')
             ->and(UrgentList::tally([$i], [])['tasks'])->toBe(1);
     });
 

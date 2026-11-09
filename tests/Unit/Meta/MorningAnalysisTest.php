@@ -104,7 +104,9 @@ describe('.82: tu día en Meta Ads', function () {
             ->and($by['intervene']['detail'][0])->toBe('En 3 días: gastaste $72,00 y Meta vio 7 compras = $10,29 por compra.')
             ->and($by['intervene']['detail'][1])->toBe('Tu objetivo (C) aquí es $5,39 y tu límite para no perder (BE) es $7,22.')
             ->and($by['hold_prune']['title'])->toBe('Apaga 1 anuncio caro y lanza B0104')
-            ->and($by['hold_prune']['steps'])->toBe(['Abre la campaña de FlexiStep en Carabobo.', 'Apaga «AD 3».', 'Lanza el batch «B0104» de la banca (sus videos, aquí abajo).'])
+            ->and($by['hold_prune']['steps'])->toBe(['Abre la campaña de FlexiStep en Carabobo.', 'Apaga «AD 3».', 'Lanza el batch «B0104» de la banca (sus videos, aquí abajo).',
+                // .124: el gasto mínimo del ad set nuevo y los parámetros de URL
+                'Ponle al ad set nuevo un gasto mínimo diario de $5,39 (tu C aquí). Va solo mientras se prueba.', 'En cada anuncio nuevo, abre «Seguimiento» y pega los parámetros de URL (botón «Copiar parámetros», aquí abajo).'])
             ->and($by['hold_prune']['why'])->toBe('$7,35 por compra: entre tu objetivo ($5,39) y tu límite ($7,22)')
             ->and($by['alarm']['group'])->toBe('aviso')
             ->and($by['alarm']['title'])->toBe('Poco stock en Caracas: quedan 3 unidades.')
@@ -236,7 +238,8 @@ describe('.87: los batches por ciudad', function () {
         // con 2 vivos, pide 1 (el que ya gana en Aragua va primero); con 0 vivos, 2
         expect($uno['title'])->toBe('Lanza B0102')
             ->and($uno['steps'])->toBe(['Abre la campaña «FLEXISTEP | CBOBO».',
-                'Duplica el ad set «B0102 FASP» de la campaña «FLEXISTEP | Aragua» en esta campaña, con el mismo nombre (sin « - Copia») (en Aragua: prometedor).'])
+                'Duplica el ad set «B0102 FASP» de la campaña «FLEXISTEP | Aragua» en esta campaña, con el mismo nombre (sin « - Copia») (en Aragua: prometedor).',
+                'Ponle al ad set nuevo un gasto mínimo diario de $5,36 (tu C aquí). Va solo mientras se prueba.', 'En cada anuncio nuevo, abre «Seguimiento» y pega los parámetros de URL (botón «Copiar parámetros», aquí abajo).'])
             ->and($dos['title'])->toBe('Lanza B0102 y B0103')
             ->and($dos['steps'][2])->toBe('Lanza el batch «B0103» de la banca (sus videos, aquí abajo).')
             ->and($dos['detail'])->toContain('No queda ningún batch vivo aquí (ad sets prendidos con algún anuncio prendido, sin contar lo que apagas hoy). Tu regla: nunca menos de 2.')
@@ -261,7 +264,9 @@ describe('.87: los batches por ciudad', function () {
         expect($few->keys()->sort()->values()->all())->toBe(['Aragua', 'Caracas'])
             ->and($few['Aragua']['title'])->toBe('Lanza 1 batch más: B0103')
             ->and($few['Aragua']['group'])->toBe('arreglar')
-            ->and($few['Aragua']['steps'])->toBe(['Abre la campaña «FLEXISTEP | ARAGUA».', 'Lanza el batch «B0103» de la banca (sus videos, aquí abajo).'])
+            ->and($few['Aragua']['steps'])->toBe(['Abre la campaña «FLEXISTEP | ARAGUA».', 'Lanza el batch «B0103» de la banca (sus videos, aquí abajo).',
+                'Ponle al ad set nuevo un gasto mínimo diario de $5,36 (tu C aquí). Va solo mientras se prueba.', 'En cada anuncio nuevo, abre «Seguimiento» y pega los parámetros de URL (botón «Copiar parámetros», aquí abajo).'])
+            ->and($few['Aragua']['copy']['text'])->toContain('utm_content={{ad.id}}')->and($few['Caracas']['copy'])->toBeNull()
             ->and($few['Aragua']['why'])->toBe('Solo queda 1 batch vivo: $25,00 por día cae todo en él; con 2, Meta reparte')
             ->and($few['Caracas']['title'])->toBe('Solo queda 1 batch vivo y no hay más en la banca')
             ->and($few['Caracas']['group'])->toBe('aviso')

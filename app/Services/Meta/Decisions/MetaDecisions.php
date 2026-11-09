@@ -563,15 +563,18 @@ class MetaDecisions
                 'band' => self::band($h, $f, $id, $c['target'] ? (float) $c['target'] : null, $budget !== null ? (float) $budget : null, $today, $yesterday, (int) $s['band_undo_days']),
             ]);
             $out['campaigns'][$id]['action'] = $action;
+            // .124: los batches vivos que ya se probaron y siguen con gasto mínimo, los que todavía se prueban y los que se prueban sin mínimo
+            $mins = self::testedMins($f, $out, $id, in_array($action['key'], ['hold_prune', 'intervene'], true), now()->toDateTimeString(), (int) $s['min_spend_days']);
             // .82: los números de la ciudad, para la frase de cada tarea del análisis ("$10,29 por compra; tu límite es $7,22")
             $out['campaigns'][$id]['numbers'] = ['spend3' => (float) ($w3['totals']['spend'] ?? 0), 'purchases3' => (float) ($w3['totals']['purchases'] ?? 0),
                 'c' => $c['target'], 'be' => $c['break_even'], 'source' => $c['target_source'] ?? null, 'budget' => $budget,
                 'streak' => $streak['days'], 'prune' => $prune,
                 // .87: los batches vivos (contando lo que se apaga hoy) y lo que puede lanzar, en orden
-                'live' => self::live($f, $out, $id, in_array($action['key'], ['hold_prune', 'intervene'], true)), 'offers' => $offers]
+                'live' => self::live($f, $out, $id, in_array($action['key'], ['hold_prune', 'intervene'], true)), 'offers' => $offers,
+                'mins' => ['off' => $mins['off'], 'keep' => $mins['keep']]]
                 // .120: el BE es estimado (C × esto): la campaña no tiene uno real
                 + (($c['break_even_estimated'] ?? null) ? ['be_estimated' => (float) $c['break_even_estimated']] : []);
-            $out['campaigns'][$id]['budget_notes'] = $cr->budgetNotes($budget, (float) $h['mins'], $newBatches, $c['target']);
+            $out['campaigns'][$id]['budget_notes'] = $cr->budgetNotes($budget, (float) $h['mins'], $newBatches, $c['target'], $mins['missing']);
             $actions[$id] = $action['key'];
 
             // El precio: el mínimo con el CPA de 7 días; se ofrece junto al escalado
@@ -696,6 +699,12 @@ class MetaDecisions
      */
     public static function live(array $f, array $out, string $campaignId, bool $prunes): int
     {
+        return count(self::liveSets($f, $out, $campaignId, $prunes));
+    }
+
+    /** Los ad sets vivos de una campaña (ver `live`). @return array<string, true> */
+    private static function liveSets(array $f, array $out, string $campaignId, bool $prunes): array
+    {
         $sets = [];
         foreach ($f['ads'] as $adId => $ad) {
             $set = $f['adsets'][$ad['adset_meta_id']] ?? null;
@@ -711,7 +720,48 @@ class MetaDecisions
             }
         }
 
-        return count($sets);
+        return $sets;
+    }
+
+    /**
+     * `.124` (dueño, 2026-11-09: "cuando ese batch ya se probó, es decir, ya tiene tiempo activo y ha tenido algunos datos, se
+     * procede a eliminar ese gasto mínimo… le damos la libertad a Meta para distribuir ese presupuesto en otros batches que
+     * sean más ganadores"): los batches vivos de una campaña que siguen con gasto mínimo. Ya se probó (`off`) el que tiene
+     * veredicto en esa ciudad (los mismos que pasan un encargo de "En test" a "Testeado") o lleva $days días prendido; los
+     * demás todavía se prueban (`keep`) y su mínimo se queda; y los que se prueban sin mínimo (`missing`). PHP puro.
+     *
+     * @return array{off: list<array{adset: string, min: float, why: string}>, keep: list<array{adset: string, min: float}>, missing: list<string>}
+     */
+    public static function testedMins(array $f, array $out, string $campaignId, bool $prunes, string $now, int $days): array
+    {
+        $res = ['off' => [], 'keep' => [], 'missing' => []];
+        foreach (array_keys(self::liveSets($f, $out, $campaignId, $prunes)) as $setId) {
+            $set = $f['adsets'][$setId] ?? null;
+            // Los análisis y las pruebas de antes no traen el mínimo de cada ad set: ahí no se opina
+            if (!$set || !array_key_exists('min_spend', $set)) {
+                continue;
+            }
+            $min = (float) $set['min_spend'];
+            $v = $out['adsets'][$setId] ?? null;
+            $born = array_filter([$set['created_time'] ?? null, ...array_map(fn ($ad) => (string) $ad['adset_meta_id'] === (string) $setId ? ($ad['created_time'] ?? null) : null, $f['ads'])]);
+            $age = $born ? (int) floor((strtotime($now) - min(array_map('strtotime', $born))) / 86400) : null;
+            $why = match (true) {
+                in_array($v['key'] ?? null, QueueRules::FINAL_VERDICTS, true) => (string) ($v['label'] ?? 'Ya tiene veredicto'),
+                $age !== null && $age >= $days => "lleva {$age} días prendido",
+                default => null,
+            };
+            if ($min <= 0) {
+                if ($why === null) {
+                    $res['missing'][] = (string) $set['name'];
+                }
+            } elseif ($why !== null) {
+                $res['off'][] = ['adset' => (string) $set['name'], 'min' => $min, 'why' => $why];
+            } else {
+                $res['keep'][] = ['adset' => (string) $set['name'], 'min' => $min];
+            }
+        }
+
+        return $res;
     }
 
     /** `.119`: si el creativo de este anuncio es un ganador que pierde dinero en esta ciudad. */

@@ -70,9 +70,11 @@ class DecisionSettings
         'relaunch_batches' => [3, 1, 10],        // .117: una campaña apagada se prende con 3 batches nunca publicados en esa ciudad
         'startup_min_mult' => [2.5, 1, 10],      // presupuesto de arranque = C × batches nuevos × 2,5 a 3
         'startup_max_mult' => [3, 1, 10],
-        'mins_low_pct' => [25, 0, 100],          // los mínimos de los ad sets: menos del 25 % del presupuesto = bajos
-        'mins_ok_pct' => [40, 0, 100],           // hasta 40 % bien
+        'mins_ok_pct' => [40, 0, 100],           // los mínimos de los ad sets: hasta el 40 % del presupuesto, bien
         'mins_review_pct' => [50, 0, 100],       // hasta 50 % revisar; más, no
+        // .124 (dueño, 2026-11-09): el gasto mínimo de un batch es solo mientras se prueba: se pide quitarlo cuando ya tiene
+        // veredicto en esa ciudad o, si no, a los 7 días de prendido
+        'min_spend_days' => [7, 1, 60],
         'price_step' => [2, 0.1, 100],           // probar bajar el precio de a $2
         'stock_warn_days' => [3, 1, 90],         // .79: avisar "poco stock" con menos de 3 días de ventas (el stock ya no frena la subida)
         // .101: con 5+ pedidos esperando stock (de los últimos 14 días) en una ciudad: aviso con lo gastado y no se sube ahí

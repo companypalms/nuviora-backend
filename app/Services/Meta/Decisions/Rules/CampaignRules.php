@@ -390,10 +390,13 @@ class CampaignRules
 
     /**
      * Los mínimos de gasto de los ad sets contra el presupuesto de la campaña, y el presupuesto para los batches nuevos.
+     * `.124` (dueño, 2026-11-09: el gasto mínimo va solo mientras el batch se prueba): ya no avisa que los mínimos son "bajos"
+     * (con los probados sin mínimo, eso es lo normal); avisa de los batches que se prueban sin su mínimo ($noMin).
      *
+     * @param list<string> $noMin los batches que todavía se prueban y no tienen gasto mínimo
      * @return string[]
      */
-    public function budgetNotes(?float $budget, float $mins, int $newBatches, ?float $c): array
+    public function budgetNotes(?float $budget, float $mins, int $newBatches, ?float $c, array $noMin = []): array
     {
         $notes = [];
         if ($budget && $mins > 0) {
@@ -401,7 +404,6 @@ class CampaignRules
             $notes[] = match (true) {
                 $share > $this->s['mins_review_pct'] => 'Los mínimos de los ad sets son el ' . AdRules::num($share) . ' % del presupuesto: demasiado (más del ' . AdRules::num($this->s['mins_review_pct']) . ' %).',
                 $share > $this->s['mins_ok_pct'] => 'Los mínimos de los ad sets son el ' . AdRules::num($share) . ' % del presupuesto: revisar.',
-                $share < $this->s['mins_low_pct'] && $newBatches > 0 => 'Los mínimos de los ad sets son solo el ' . AdRules::num($share) . ' % del presupuesto: los batches nuevos pueden no gastar.',
                 default => null,
             } ?? '';
         }
@@ -412,6 +414,12 @@ class CampaignRules
                 $notes[] = "Para {$newBatches} " . ($newBatches === 1 ? 'batch nuevo' : 'batches nuevos') . ' el presupuesto debería estar entre ' . AdRules::money($min) . ' y ' . AdRules::money($max)
                     . ' (≈' . AdRules::money($c) . ' de mínimo por batch nuevo).';
             }
+        }
+
+        if ($noMin) {
+            $notes[] = implode(', ', $noMin) . (count($noMin) === 1 ? ' todavía se prueba y no tiene' : ' todavía se prueban y no tienen')
+                . ' gasto mínimo: puede que Meta no ' . (count($noMin) === 1 ? 'lo' : 'los') . ' muestre. Tu regla: el CPA del nombre de la campaña' . ($c ? ' (o tu C, ' . AdRules::money($c) . ')' : '')
+                . ' por día, mientras se prueba.';
         }
 
         return array_values(array_filter($notes));

@@ -237,7 +237,12 @@ describe('Presupuesto, urgencia y trabajo siguiente', function () {
         expect(campana()->budgetNotes(40, 24, 0, 4)[0])->toContain('demasiado')
             ->and(campana()->budgetNotes(40, 18, 0, 4)[0])->toContain('revisar')
             ->and(campana()->budgetNotes(15, 0, 2, 4.0)[0])->toContain('entre $20,00 y $24,00')
-            ->and(campana()->budgetNotes(40, 12, 0, 4))->toBe([]);
+            ->and(campana()->budgetNotes(40, 12, 0, 4))->toBe([])
+            // .124: con los batches probados sin mínimo, "mínimos bajos" ya no es un aviso; sí un batch que se prueba sin su mínimo
+            ->and(campana()->budgetNotes(106.8, 5, 1, 4.87))->toBe([])
+            ->and(campana()->budgetNotes(106.8, 5, 1, 4.87, ['B0121 FLEX']))->toBe(['B0121 FLEX todavía se prueba y no tiene gasto mínimo: puede que Meta no lo muestre. '
+                . 'Tu regla: el CPA del nombre de la campaña (o tu C, $4,87) por día, mientras se prueba.'])
+            ->and(DecisionSettings::defaults())->not->toHaveKey('mins_low_pct');
     });
 
     it('U1 a U5', function () {

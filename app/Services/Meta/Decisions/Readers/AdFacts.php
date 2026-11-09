@@ -28,6 +28,14 @@ class AdFacts
 
     private const LEVELS = ['campaign', 'adset', 'ad'];
 
+    /** `.124`: el gasto mínimo diario de un ad set (Meta lo da en centavos, en `daily_min_spend_target`). PHP puro. */
+    public static function minSpend(?string $meta): float
+    {
+        $v = (json_decode((string) $meta, true) ?: [])['daily_min_spend_target'] ?? null;
+
+        return is_numeric($v) ? round((float) $v / 100, 2) : 0.0;
+    }
+
     /** @return array{3d: array, prev: array, 7d: array, yesterday: array} [desde, hasta] de cada ventana */
     public static function dates(): array
     {
@@ -56,7 +64,7 @@ class AdFacts
             ->get(['c.meta_id', 'c.name', 'c.product_id', 'c.city_id', 'ci.name as city', 'c.effective_status', 'c.missing_since', 'c.meta']);
         $campaignIds = $campaigns->pluck('meta_id')->map(fn ($v) => (string) $v)->all();
         $adsets = DB::table('meta_adsets')->whereIn('campaign_meta_id', $campaignIds ?: ['-'])
-            ->get(['meta_id', 'name', 'campaign_meta_id', 'effective_status', 'missing_since', 'batch_code', 'angle_code', 'concept', 'stage']);
+            ->get(['meta_id', 'name', 'campaign_meta_id', 'effective_status', 'missing_since', 'batch_code', 'angle_code', 'concept', 'stage', 'created_time', 'meta']);
         $ads = DB::table('meta_ads')->whereIn('campaign_meta_id', $campaignIds ?: ['-'])
             ->get(['id', 'meta_id', 'name', 'campaign_meta_id', 'adset_meta_id', 'effective_status', 'missing_since', 'meta_creative_ref_id',
                 'creative_type', 'video_length', 'angle_code', 'batch_code', 'created_time']);
@@ -107,6 +115,8 @@ class AdFacts
                 // .87: si ya no está en Meta, no se puede duplicar en otra ciudad
                 'missing' => $s->missing_since !== null,
                 'batch_code' => $s->batch_code, 'angle_code' => $s->angle_code, 'concept' => $s->concept, 'stage' => $s->stage,
+                // .124: su gasto mínimo diario (CBO), en la moneda de la cuenta, y cuándo se creó, para pedir que se quite cuando ya se probó
+                'min_spend' => self::minSpend($s->meta), 'created_time' => $s->created_time !== null ? (string) $s->created_time : null,
                 'windows' => $windows['adset'][(string) $s->meta_id] ?? [],
             ];
         }

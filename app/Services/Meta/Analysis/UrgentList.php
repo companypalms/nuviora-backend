@@ -2,10 +2,12 @@
 
 namespace App\Services\Meta\Analysis;
 
+use App\Services\Meta\CampaignNameTargets;
 use App\Services\Meta\Decisions\Rules\AdRules;
 use App\Services\Meta\Products\AngleRest;
 use App\Services\Meta\Decisions\Rules\CampaignRules;
 use App\Services\Meta\Queue\ForecastRules;
+use App\Services\Meta\Upload\UploadRules;
 
 /**
  * La lista de lo más urgente a lo menos urgente del análisis de la mañana (Etapa 5, paso 3a), en PHP puro. La arman las
@@ -36,6 +38,11 @@ use App\Services\Meta\Queue\ForecastRules;
  * `.123` (dueño, 2026-11-09: "solo un cambio grande a la vez"): entre C y BE, mientras se espera a ver si el último cambio
  * devolvió la campaña a C, no se lanza otro batch (solo si quedan menos de 2 vivos); y devolver la última subida
  * (`step_down`) es una misión de "Arreglar".
+ *
+ * `.124` (dueño, 2026-11-09: "todos los batches nuevos los colocamos con un gasto mínimo… cuando ese batch ya se probó… se
+ * procede a eliminar ese gasto mínimo"): cada misión que lanza un batch dice qué gasto mínimo ponerle a su ad set y pide
+ * pegar los parámetros de URL en los anuncios nuevos (`copy`: el texto para copiar); y una misión de "Arreglar" por campaña
+ * pide quitar el mínimo de los batches que ya se probaron (`min_spend`). No es un cambio grande: no espera las 24 horas.
  */
 final class UrgentList
 {
@@ -43,7 +50,7 @@ final class UrgentList
     public const SEVERITY = [
         'pause_city' => 1, 'not_sold' => 1, 'stock_out' => 1, 'stock_waiting' => 1, 'stop_creatives' => 1,
         'decrease' => 2, 'intervene' => 2, 'tracking' => 2, 'late_urgent' => 2,
-        'hold_prune' => 3, 'step_down' => 3, 'few_batches' => 3, 'late_batch' => 3, 'launch_ready' => 3, 'no_city' => 3, 'no_be' => 3,
+        'hold_prune' => 3, 'step_down' => 3, 'few_batches' => 3, 'min_spend' => 3, 'late_batch' => 3, 'launch_ready' => 3, 'no_city' => 3, 'no_be' => 3,
         'scale' => 4, 'launch_test' => 4, 'relaunch' => 4, 'new_product_late' => 4,
         'alarm' => 5, 'names' => 5, 'cooldown' => 5, 'angle_rest' => 5, 'left_city' => 5,
         'price' => 6,
@@ -52,7 +59,7 @@ final class UrgentList
     /** `.82`: en qué grupo de la pantalla va cada cosa. */
     public const GROUP = [
         'pause_city' => 'frenar', 'not_sold' => 'frenar', 'stop_creatives' => 'frenar', 'decrease' => 'frenar',
-        'intervene' => 'arreglar', 'tracking' => 'arreglar', 'hold_prune' => 'arreglar', 'step_down' => 'arreglar', 'few_batches' => 'arreglar',
+        'intervene' => 'arreglar', 'tracking' => 'arreglar', 'hold_prune' => 'arreglar', 'step_down' => 'arreglar', 'few_batches' => 'arreglar', 'min_spend' => 'arreglar',
         'late_urgent' => 'arreglar', 'late_batch' => 'arreglar', 'launch_ready' => 'arreglar', 'no_city' => 'arreglar', 'no_be' => 'arreglar',
         'scale' => 'crecer', 'launch_test' => 'crecer', 'relaunch' => 'crecer', 'new_product_late' => 'crecer',
         'stock_out' => 'aviso', 'stock_waiting' => 'aviso', 'alarm' => 'aviso', 'price' => 'aviso', 'names' => 'aviso', 'cooldown' => 'aviso', 'angle_rest' => 'aviso', 'left_city' => 'aviso',
@@ -129,6 +136,10 @@ final class UrgentList
                         'where' => $short . ($c['city'] ? " · {$c['city']}" : ''), 'title' => self::cooling($cool), 'steps' => [], 'batches' => [],
                         'why' => self::cooledBy($cool), 'detail' => array_values(array_filter([...self::numbers($n), $a['reading'], $a['proposal']]))];
                 }
+                // .124: los batches que ya se probaron y siguen con gasto mínimo (no donde la campaña se pausa ni en un producto en pausa)
+                if (($n['mins']['off'] ?? []) && !in_array($kind, ['pause_city', 'not_sold'], true) && !in_array($mode, ['paused', 'abandoned'], true)) {
+                    $items[] = $base + self::minSpend((int) $p['product_id'], $c, $n, $short);
+                }
                 if (!isset(self::SEVERITY[$kind])) {
                     continue; // mantener, esperar, nada: van en el detalle
                 }
@@ -143,6 +154,7 @@ final class UrgentList
                     'label' => $a['label'], 'text' => trim($a['reading'] . ' ' . ($a['proposal'] ?? '')), 'tone' => $a['tone'],
                     'where' => $short . ($c['city'] ? " · {$c['city']}" : ''), 'title' => $wait ? self::waiting($kind, $n, $a['cooldown'] ?? null, $a['ladder'] ?? null) : $mission['title'],
                     'steps' => $wait ? [] : $mission['steps'], 'batches' => $wait ? [] : $mission['batches'],
+                    'copy' => $wait ? null : $mission['copy'],
                     'why' => self::why($kind, $a, $n),
                     'detail' => array_values(array_filter([...self::numbers($n), $a['reading'], $a['proposal'], ...$c['notes'], ...$c['budget_notes'],
                         count($prune) > self::NAMES_IN_STEP ? 'Todos los anuncios a apagar: ' . CreativeCalls::join($prune) . '.' : null, self::liveLine($n)])),
@@ -244,15 +256,18 @@ final class UrgentList
         // .89: con los nombres exactos de cada ad set y sus anuncios
         $upload = "crea los {$n} ad sets: " . implode('; ', array_map(fn ($b) => self::adsetWithAds((string) ($b['adset'] ?? $b['code']), $b['ads'] ?? []), $t['batches']))
             . ' (sus videos, aquí abajo).';
+        // .124: el gasto mínimo de cada ad set nuevo y los parámetros de URL de sus anuncios
+        $c = $t['target'] ?? null;
         if ($t['campaigns'] !== []) {
             $title = "Lanza los ángulos nuevos de {$short}: {$codes}";
             $why = "Ronda {$t['round']} del testeo: sus {$n} batches están listos en la banca";
+            $mins = array_values(array_unique(array_filter(array_map(fn ($x) => CampaignNameTargets::parse($x['name'] ?? null)['target_cpa'] ?? null, $t['campaigns']))));
             $steps = ['En cada campaña de ' . $short . ' (' . CreativeCalls::join(array_map(fn ($c) => self::q($c['name']), $t['campaigns'])) . '), ' . $upload,
-                'No toques los anuncios que ya están: los batches del testeo van en sus propios ad sets.'];
+                'No toques los anuncios que ya están: los batches del testeo van en sus propios ad sets.',
+                ...self::newAdSteps($n, count($mins) === 1 ? [(float) $mins[0], 'el CPA del nombre de la campaña'] : ($mins === [] && $c ? [(float) $c, 'tu C'] : null))];
         } else {
             $title = "Lanza el testeo de {$short}: {$codes}";
             $why = "Producto nuevo: sus {$n} batches del testeo están listos en la banca";
-            $c = $t['target'] ?? null;
             $steps = array_values(array_filter([
                 $t['linked'] ? null : "Antes: pásale a tu asistente el link de {$short} en Shopify (así sus pedidos se suman a {$short}).",
                 $c ? null : "Antes: pon el CPA de referencia de {$short} en Meta Ads › Productos y objetivos (sin él no se puede juzgar el testeo).",
@@ -265,12 +280,13 @@ final class UrgentList
                 'En cada una, ' . $upload,
                 $c ? 'Presupuesto de arranque por campaña: entre ' . AdRules::money($c * $n * $t['min']) . ' y ' . AdRules::money($c * $n * $t['max'])
                     . " por día (tu regla: C × {$n} batches × " . AdRules::num($t['min']) . ' a ' . AdRules::num($t['max']) . ').' : null,
+                ...self::newAdSteps($n, $c ? [(float) $c, 'tu CPA de referencia'] : null),
             ]));
         }
 
         return ['key' => "{$t['product_id']}:test:{$t['round']}", 'product_id' => $t['product_id'], 'product' => $t['product'], 'urgency' => null,
             'city' => null, 'kind' => 'launch_test', 'label' => 'Testeo', 'tone' => 'success', 'text' => "{$why}.", 'where' => $short,
-            'title' => $title, 'steps' => $steps, 'batches' => array_values(array_map('strval', array_column($t['batches'], 'code'))), 'why' => $why,
+            'title' => $title, 'steps' => $steps, 'batches' => array_values(array_map('strval', array_column($t['batches'], 'code'))), 'copy' => self::urlTags(), 'why' => $why,
             'detail' => [], 'money' => null, 'severity' => self::SEVERITY['launch_test'], 'group' => self::GROUP['launch_test']];
     }
 
@@ -349,7 +365,7 @@ final class UrgentList
      * `.83`: qué hacer en una frase corta que empieza con el verbo (sin el producto ni la ciudad: van en `where`) y cómo, en
      * pasos de Ads Manager con los nombres exactos.
      *
-     * @return array{title: string, steps: list<string>, batches: list<string>}
+     * @return array{title: string, steps: list<string>, batches: list<string>, copy: ?array{label: string, text: string}}
      */
     private static function mission(string $kind, array $a, ?array $n, ?string $campaign, ?string $city, string $short, bool $stopHere, string $mode, array $launch = []): array
     {
@@ -364,7 +380,7 @@ final class UrgentList
             . ($count > self::NAMES_IN_STEP ? ' y ' . ($count - self::NAMES_IN_STEP) . ' más (todos en «¿Por qué?»)' : '') . '.' : null;
         // .87: qué lanzar (de la banca o duplicado de otra ciudad); si no hay nada, la misión no lo pide ("cuando llegue")
         $go = $launch ? CreativeCalls::join(array_column($launch, 'code')) : null;
-        $launchSteps = self::launchSteps($launch);
+        $launchSteps = self::launchSteps($launch, self::newMin($campaign, $n));
         $pct = $from && $to ? ' (' . ($to > $from ? '+' : '−') . AdRules::num(abs(round(($to / $from - 1) * 100))) . ' %)' : '';
         $switchOff = ['Apágala con el interruptor de la izquierda.'];
 
@@ -403,7 +419,10 @@ final class UrgentList
         // .102: los de la banca que lanza (podar e intervenir; en liquidación no entran creativos)
         $batches = (in_array($kind, self::FEEDS, true) || $kind === 'relaunch') && $mode !== 'liquidation' ? self::bankCodes($launch) : [];
 
-        return ['title' => $title, 'steps' => array_values(array_filter($steps, fn ($s) => $s !== '')), 'batches' => $batches];
+        // .124: los parámetros de URL para copiar, si la misión lanza algo
+        $launches = $launch !== [] && (in_array($kind, self::FEEDS, true) && $mode !== 'liquidation' || $kind === 'relaunch');
+
+        return ['title' => $title, 'steps' => array_values(array_filter($steps, fn ($s) => $s !== '')), 'batches' => $batches, 'copy' => $launches ? self::urlTags() : null];
     }
 
     /**
@@ -441,17 +460,92 @@ final class UrgentList
         return $n['offers'] ?? (($n['bank'] ?? null) ? [['code' => (string) $n['bank'], 'how' => 'bank']] : []);
     }
 
-    /** `.87`: cómo lanzar cada batch: el de la banca, o duplicar el ad set de la ciudad donde ya salió. @return list<string> */
-    private static function launchSteps(array $launch): array
+    /**
+     * `.87`: cómo lanzar cada batch: el de la banca, o duplicar el ad set de la ciudad donde ya salió. `.124`: y dos pasos
+     * más: el gasto mínimo de cada ad set nuevo ($min: [monto, de dónde sale]) y los parámetros de URL de sus anuncios.
+     *
+     * @return list<string>
+     */
+    private static function launchSteps(array $launch, ?array $min = null): array
     {
+        if ($launch === []) {
+            return [];
+        }
         // .89: con los nombres exactos (el ad set y sus anuncios), para que todos hablen de lo mismo
-        return array_map(fn ($o) => match (true) {
+        return [...array_map(fn ($o) => match (true) {
             ($o['how'] ?? 'bank') === 'copy' => 'Duplica el ad set ' . self::q((string) $o['adset']) . ' de '
                 . (($o['campaign'] ?? null) ? 'la campaña ' . self::q($o['campaign']) : ($o['city'] ?? 'la otra ciudad'))
                 . ' en esta campaña, con el mismo nombre (sin « - Copia»)' . (($o['city'] ?? null) && ($o['verdict'] ?? null) ? " (en {$o['city']}: " . mb_strtolower($o['verdict']) . ')' : '') . '.',
             !empty($o['adset']) => 'Crea el ad set ' . self::adsetWithAds($o['adset'], $o['ads'] ?? []) . ' (sus videos, aquí abajo).',
             default => 'Lanza el batch ' . self::q((string) $o['code']) . ' de la banca (sus videos, aquí abajo).',
-        }, $launch);
+        }, $launch), ...self::newAdSteps(count($launch), $min)];
+    }
+
+    /**
+     * `.124` (dueño, 2026-11-09: "todos los batches nuevos los colocamos con un gasto mínimo de 4 o de 5 dólares, dependiendo de
+     * cuál es el CPA con el que nosotros estamos creando esta campaña. Es decir, el CPA, el nombre de la campaña"; y los
+     * parámetros de URL, "sí, en los anuncios nuevos"): los dos pasos que cierran cada lanzamiento.
+     *
+     * @param ?array{0: float, 1: string} $min el monto y de dónde sale
+     * @return list<string>
+     */
+    private static function newAdSteps(int $sets, ?array $min): array
+    {
+        $each = $sets === 1 ? 'al ad set nuevo' : 'a cada ad set nuevo';
+
+        return [
+            $min ? "Ponle {$each} un gasto mínimo diario de " . AdRules::money($min[0]) . " ({$min[1]}). Va solo mientras se prueba."
+                : "Ponle {$each} un gasto mínimo diario igual al CPA del nombre de su campaña (o a tu C, si no lo trae). Va solo mientras se prueba.",
+            'En cada anuncio nuevo, abre «Seguimiento» y pega los parámetros de URL (botón «Copiar parámetros», aquí abajo).',
+        ];
+    }
+
+    /** `.124`: el gasto mínimo de un batch nuevo: el CPA del nombre de la campaña o, si no lo trae, la C de esa ciudad. @return ?array{0: float, 1: string} */
+    private static function newMin(?string $campaign, ?array $n): ?array
+    {
+        if (($name = CampaignNameTargets::parse($campaign)['target_cpa'] ?? null) !== null) {
+            return [(float) $name, 'el CPA del nombre de la campaña'];
+        }
+
+        return ($n['c'] ?? null) ? [(float) $n['c'], 'tu C aquí'] : null;
+    }
+
+    /** `.124`: los parámetros de URL de un anuncio nuevo (los de la `.53`: dicen de qué anuncio viene cada pedido). */
+    public static function urlTags(): array
+    {
+        return ['label' => 'Copiar parámetros', 'text' => UploadRules::urlTags(null)];
+    }
+
+    /**
+     * `.124` (dueño, 2026-11-09: "cuando un batch ya deja de estar en estatus de testeo, debe quitarse el gasto mínimo del
+     * batch… para darle más libertad a Meta"): los batches vivos de una campaña que ya se probaron y siguen con gasto mínimo.
+     */
+    private static function minSpend(int $productId, array $c, array $n, string $short): array
+    {
+        $off = $n['mins']['off'];
+        $keep = $n['mins']['keep'] ?? [];
+        $count = count($off);
+        $total = array_sum(array_column($off, 'min'));
+        $same = count(array_unique(array_map(fn ($o) => (string) $o['min'], $off))) === 1;
+        $names = CreativeCalls::join(array_map(fn ($o) => self::q($o['adset']) . ($same ? '' : ' (' . AdRules::money($o['min']) . ')'), $off));
+        $budget = ($n['budget'] ?? null) ? ' de ' . AdRules::money($n['budget']) : '';
+
+        return ['key' => "{$productId}:{$c['campaign_meta_id']}:min_spend", 'city' => $c['city'], 'kind' => 'min_spend', 'label' => 'Gasto mínimo', 'tone' => 'info',
+            'text' => 'Quitar el gasto mínimo de ' . CreativeCalls::join(array_column($off, 'adset')) . ': ya se ' . ($count === 1 ? 'probó.' : 'probaron.'),
+            'where' => $short . ($c['city'] ? " · {$c['city']}" : ''),
+            'title' => $count === 1 ? "Quita el gasto mínimo de {$off[0]['adset']}: ya se probó" : "Quita el gasto mínimo de {$count} batches que ya se probaron",
+            'steps' => array_values(array_filter([
+                self::open($c['campaign'] ?? null, $short, $c['city']),
+                ($count === 1 ? 'Edita el conjunto de anuncios ' : 'Edita cada uno de estos conjuntos de anuncios: ') . $names . '.',
+                'En «Presupuesto y calendario» › «Límites de gasto del conjunto de anuncios», borra el mínimo diario' . ($same ? ' (' . AdRules::money($off[0]['min']) . ')' : '') . ' y publica.',
+                $keep ? 'No toques el de ' . CreativeCalls::join(array_map(fn ($o) => self::q($o['adset']), $keep)) . ': todavía se ' . (count($keep) === 1 ? 'prueba.' : 'prueban.') : null,
+            ])),
+            'batches' => [],
+            'why' => AdRules::money($total) . "{$budget} por día " . ($count === 1 ? 'está amarrado a un batch que ya se probó' : 'están amarrados a batches que ya se probaron'),
+            'detail' => [...array_map(fn ($o) => "{$o['adset']}: mínimo " . AdRules::money($o['min']) . " por día · {$o['why']}.", $off),
+                'Tu regla: el gasto mínimo es solo mientras el batch se prueba. Sin él, Meta pasa esa plata a los que más venden.',
+                'No es un cambio grande: no hace falta esperar 24 horas.'],
+            'money' => null];
     }
 
     /**
@@ -489,8 +583,8 @@ final class UrgentList
                 $live === 1 && count($launch) === 1 => "Lanza 1 batch más: {$go}",
                 default => "Lanza {$go}",
             },
-            'steps' => $launch ? [self::open($c['campaign'] ?? null, $short, $c['city']), ...self::launchSteps($launch)] : [],
-            'batches' => self::bankCodes($launch),
+            'steps' => $launch ? [self::open($c['campaign'] ?? null, $short, $c['city']), ...self::launchSteps($launch, self::newMin($c['campaign'] ?? null, $n))] : [],
+            'batches' => self::bankCodes($launch), 'copy' => $launch ? self::urlTags() : null,
             'why' => $live === 0 ? 'No queda ningún batch vivo: la campaña no tiene anuncios que mostrar'
                 : "Solo queda 1 batch vivo: {$budget} cae todo en él; con 2, Meta reparte",
             'detail' => array_values(array_filter([self::liveLine($n), $launch === [] ? 'Cuando haya un batch en la banca, te sale como misión.' : null])),
@@ -622,7 +716,7 @@ final class UrgentList
      * `.89` (dueño: "en el análisis de campaña del día me debe decir que debo lanzar"): un batch que llegó a la banca durante
      * el día y que una o más ciudades necesitan ya. Se agrega al análisis de hoy (BankArrival), con su grupo y su urgencia.
      *
-     * @param list<array{city: ?string, campaign: ?string, offer: array, why: ?string}> $cities
+     * @param list<array{city: ?string, campaign: ?string, offer: array, why: ?string, c?: ?float}> $cities
      */
     public static function launchReady(int $productId, string $product, string $code, array $cities, string $at): array
     {
@@ -631,14 +725,14 @@ final class UrgentList
         $steps = [];
         foreach ($cities as $c) {
             $steps[] = self::open($c['campaign'], $short, $c['city']);
-            array_push($steps, ...self::launchSteps([$c['offer']]));
+            array_push($steps, ...self::launchSteps([$c['offer']], self::newMin($c['campaign'], ['c' => $c['c'] ?? null])));
         }
         $whys = array_values(array_filter(array_map(fn ($c) => $c['city'] && $c['why'] ? "{$c['city']} {$c['why']}" : null, $cities)));
 
         return ['key' => "{$productId}:ready:{$code}", 'product_id' => $productId, 'product' => $product, 'urgency' => null,
             'city' => count($cities) === 1 ? $cities[0]['city'] : null, 'kind' => 'launch_ready', 'label' => 'Lanzar', 'tone' => 'success',
             'text' => "{$code} llegó a la banca a las {$at} (hora de Venezuela).", 'where' => $short . ($names !== '' ? " · {$names}" : ''),
-            'title' => "Lanza {$code}: ya llegó a la banca", 'steps' => $steps, 'batches' => self::bankCodes(array_column($cities, 'offer')),
+            'title' => "Lanza {$code}: ya llegó a la banca", 'steps' => $steps, 'batches' => self::bankCodes(array_column($cities, 'offer')), 'copy' => self::urlTags(),
             'why' => "Llegó a la banca a las {$at}" . ($whys ? ' · ' . implode('; ', $whys) : ''),
             'detail' => [], 'money' => null, 'severity' => self::SEVERITY['launch_ready'], 'group' => self::GROUP['launch_ready']];
     }

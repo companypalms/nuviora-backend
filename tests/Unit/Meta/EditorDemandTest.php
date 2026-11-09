@@ -150,7 +150,10 @@ describe('.89: el flujo sin botones', function () {
             'offer' => ['code' => 'B0108', 'how' => 'bank'], 'why' => 'subió de su costo objetivo']], '15:20');
         expect($i['title'])->toBe('Lanza B0108: ya llegó a la banca')->and($i['group'])->toBe('arreglar')
             ->and($i['where'])->toBe('Demo Sérum facial · Valencia')
-            ->and($i['steps'])->toBe(['Abre la campaña «SERUM | VLC».', 'Lanza el batch «B0108» de la banca (sus videos, aquí abajo).'])
+            // .124: con el gasto mínimo del ad set nuevo y los parámetros de URL (aquí la campaña no trae su CPA ni su C)
+            ->and($i['steps'])->toBe(['Abre la campaña «SERUM | VLC».', 'Lanza el batch «B0108» de la banca (sus videos, aquí abajo).',
+                'Ponle al ad set nuevo un gasto mínimo diario igual al CPA del nombre de su campaña (o a tu C, si no lo trae). Va solo mientras se prueba.', 'En cada anuncio nuevo, abre «Seguimiento» y pega los parámetros de URL (botón «Copiar parámetros», aquí abajo).'])
+            ->and($i['copy']['label'])->toBe('Copiar parámetros')
             ->and($i['why'])->toBe('Llegó a la banca a las 15:20 · Valencia subió de su costo objetivo')
             ->and($i['batches'])->toBe(['B0108']); // .102: sus videos se bajan en la misión
     });
