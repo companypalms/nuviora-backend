@@ -9,6 +9,9 @@ use Illuminate\Support\Facades\DB;
  * dueño escribe en el nombre de sus campañas ("… | CPA $4| BE $5.6| …", "CPA OBJ $4 | BE $5.5", "CPA 3.7 | BE 7.8").
  * Solo valen como referencia de un producto nuevo, hasta que el sistema tenga sus pedidos terminados (`.101`; antes,
  * compras de Meta maduras; MetaAdsReport::effectiveTarget); después manda el número del sistema.
+ *
+ * `.122` (2026-11-09: en ResistBarPro y Releev el dueño escribió "CPA 4$ / CPABE 5.5$" y el BE no se leía: las 6 campañas
+ * quedaban sin límite): el BE también se lee pegado al CPA ("CPABE", "CPA BE", "CPA_BE").
  */
 final class CampaignNameTargets
 {
@@ -24,7 +27,8 @@ final class CampaignNameTargets
             return null;
         }
         $target = (float) str_replace(',', '.', $c[1]);
-        $be = preg_match('/\bBE\s*[:=]?\s*' . $num . '/iu', $name, $b) ? (float) str_replace(',', '.', $b[1]) : null;
+        // .122: también pegado al CPA, como lo escribe el dueño ("CPABE 5.5$", "CPA_BE 5.5")
+        $be = preg_match('/(?:\b|(?<=CPA)|(?<=_))BE\s*[:=]?\s*' . $num . '/iu', $name, $b) ? (float) str_replace(',', '.', $b[1]) : null;
         if ($target <= 0 || $target >= 1000) {
             return null;
         }
