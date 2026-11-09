@@ -38,9 +38,10 @@ class AdRules
      * El estado por gasto y compras (de toda la vida del anuncio o batch).
      *
      * @param string $unit "anuncio", "batch" o "creativo", para la propuesta
+     * @param bool $estimated `.120`: el BE es estimado (la campaña no tiene uno real): se dice al lado
      * @return array{key: string, label: string, tone: string, data: string, reading: string, proposal: ?string}
      */
-    public function state(float $spend, float $purchases, ?float $c, ?float $be, string $unit = 'anuncio'): array
+    public function state(float $spend, float $purchases, ?float $c, ?float $be, string $unit = 'anuncio', bool $estimated = false): array
     {
         $cpa = $purchases > 0 ? $spend / $purchases : null;
         if ($c === null || $c <= 0) {
@@ -48,7 +49,7 @@ class AdRules
                 CampaignRules::NO_TARGET);
         }
         $data = $this->spendText($spend, $purchases, $c) . ($cpa !== null ? ' · CPA ' . self::money($cpa) : '')
-            . ' · C ' . self::money($c) . ($be !== null ? ' · BE ' . self::money($be) : '');
+            . ' · C ' . self::money($c) . self::beText($be, $estimated);
         $times = $spend / $c;
         if ($cpa !== null && $purchases >= $this->s['proven_purchases'] && $cpa <= $c) {
             return $this->verdict('proven', $data, 'Ganador: ' . self::num($purchases) . ' compras con CPA debajo de C.',
@@ -406,7 +407,7 @@ class AdRules
      * @param array $state el veredicto de toda su vida en esa ciudad
      * @param array|null $week los totales de los 7 días en esa ciudad
      */
-    public function recentLoser(?array $recent, array $state, ?float $c, ?float $be, ?array $week = null): ?array
+    public function recentLoser(?array $recent, array $state, ?float $c, ?float $be, ?array $week = null, bool $estimated = false): ?array
     {
         if (!$c || $c <= 0 || !in_array($state['key'] ?? null, ['intermediate', 'evaluation'], true)) {
             return null;
@@ -422,7 +423,7 @@ class AdRules
             return null;
         }
         $data = "{$days} días: " . lcfirst($this->spendText($spend, $purchases, $c)) . ($purchases > 0 ? ' · CPA ' . self::money($spend / $purchases) : '')
-            . ' · C ' . self::money($c) . ($be !== null ? ' · BE ' . self::money($be) : '');
+            . ' · C ' . self::money($c) . self::beText($be, $estimated);
 
         return $this->verdict('loser', $data, "Perdedor en los últimos {$days} días: gastó " . self::num($spend / $c) . '×C '
             . ($purchases == 0 ? 'sin compras' : 'con el CPA ' . self::num(round(($spend / $purchases / $be - 1) * 100)) . ' % encima del break-even')
@@ -441,7 +442,7 @@ class AdRules
      * @param array|null $recent los totales de los 3 días en esa ciudad (spend, purchases)
      * @param array|null $week los totales de los 7 días en esa ciudad
      */
-    public function failingStop(array $state, ?array $recent, ?float $c, ?float $be, ?array $week = null): ?array
+    public function failingStop(array $state, ?array $recent, ?float $c, ?float $be, ?array $week = null, bool $estimated = false): ?array
     {
         if (($state['key'] ?? null) !== 'failing' || !$c || $c <= 0 || in_array('tracking', array_column($state['causes'] ?? [], 'key'), true)) {
             return null;
@@ -458,7 +459,7 @@ class AdRules
             return null;
         }
         $data = "{$days} días: " . lcfirst($this->spendText($spend, $purchases, $c)) . ($purchases > 0 ? ' · CPA ' . self::money($spend / $purchases) : '')
-            . ' · C ' . self::money($c) . ($be !== null ? ' · BE ' . self::money($be) : '');
+            . ' · C ' . self::money($c) . self::beText($be, $estimated);
 
         return array_merge($state, ['stop' => true, 'data' => $data,
             'reading' => "Pierde dinero: en los últimos {$days} días gastó " . self::num($spend / $c) . '×C '
@@ -507,6 +508,12 @@ class AdRules
     private function clearlyAbove(float $cpa, float $be, float $purchases): bool
     {
         return $cpa >= $be && ($cpa >= $be * (1 + $this->s['loser_be_margin_pct'] / 100) || $purchases >= $this->s['loser_be_margin_purchases']);
+    }
+
+    /** " · BE $6,00"; `.120`: " · BE $6,00 (estimado)" si la campaña no tiene uno real. */
+    private static function beText(?float $be, bool $estimated): string
+    {
+        return $be !== null ? ' · BE ' . self::money($be) . ($estimated ? ' (estimado)' : '') : '';
     }
 
     private function spendText(float $spend, float $purchases, ?float $c): string

@@ -39,7 +39,7 @@ final class UrgentList
     public const SEVERITY = [
         'pause_city' => 1, 'not_sold' => 1, 'stock_out' => 1, 'stock_waiting' => 1, 'stop_creatives' => 1,
         'decrease' => 2, 'intervene' => 2, 'tracking' => 2, 'late_urgent' => 2,
-        'hold_prune' => 3, 'few_batches' => 3, 'late_batch' => 3, 'launch_ready' => 3, 'no_city' => 3,
+        'hold_prune' => 3, 'few_batches' => 3, 'late_batch' => 3, 'launch_ready' => 3, 'no_city' => 3, 'no_be' => 3,
         'scale' => 4, 'launch_test' => 4, 'relaunch' => 4, 'new_product_late' => 4,
         'alarm' => 5, 'names' => 5, 'cooldown' => 5, 'angle_rest' => 5, 'left_city' => 5,
         'price' => 6,
@@ -49,7 +49,7 @@ final class UrgentList
     public const GROUP = [
         'pause_city' => 'frenar', 'not_sold' => 'frenar', 'stop_creatives' => 'frenar', 'decrease' => 'frenar',
         'intervene' => 'arreglar', 'tracking' => 'arreglar', 'hold_prune' => 'arreglar', 'few_batches' => 'arreglar',
-        'late_urgent' => 'arreglar', 'late_batch' => 'arreglar', 'launch_ready' => 'arreglar', 'no_city' => 'arreglar',
+        'late_urgent' => 'arreglar', 'late_batch' => 'arreglar', 'launch_ready' => 'arreglar', 'no_city' => 'arreglar', 'no_be' => 'arreglar',
         'scale' => 'crecer', 'launch_test' => 'crecer', 'relaunch' => 'crecer', 'new_product_late' => 'crecer',
         'stock_out' => 'aviso', 'stock_waiting' => 'aviso', 'alarm' => 'aviso', 'price' => 'aviso', 'names' => 'aviso', 'cooldown' => 'aviso', 'angle_rest' => 'aviso', 'left_city' => 'aviso',
     ];
@@ -167,6 +167,10 @@ final class UrgentList
             // .117: se quedó sin ninguna ciudad prendida
             if ($p['no_city'] ?? null) {
                 $items[] = $base + self::noCity((int) $p['product_id'], $short, $p['no_city']);
+            }
+            // .120: campañas con C y sin BE: deciden con uno estimado hasta que ponga el real
+            if ($noBe = array_values(array_filter($p['cities'], fn ($c) => !empty($c['numbers']['be_estimated'])))) {
+                $items[] = $base + self::noBe((int) $p['product_id'], $short, $noBe);
             }
             // .116: un ángulo que descansa: qué perdió y qué sigue
             foreach ($p['rests'] ?? [] as $r) {
@@ -486,6 +490,29 @@ final class UrgentList
             'why' => $why, 'detail' => [], 'money' => null];
     }
 
+    /**
+     * `.120` (dueño, 2026-11-09: "nunca podemos permitirnos perder dinero sin una razón buena justificada"): sus campañas con C
+     * y sin BE deciden con uno estimado (C × be_estimate_mult); la misión es poner el real, donde ya puso la C.
+     *
+     * @param list<array> $cities las ciudades del análisis con numbers.be_estimated (el multiplicador)
+     */
+    private static function noBe(int $productId, string $short, array $cities): array
+    {
+        $n = $cities[0]['numbers'];
+        $mult = rtrim(rtrim(number_format((float) $n['be_estimated'], 2, ',', '.'), '0'), ',');
+        $names = array_values(array_filter(array_map(fn ($c) => $c['campaign'] ?? null, $cities)));
+        $why = 'Sin BE no hay límite para frenar; mientras tanto se usa ' . AdRules::money($n['be']) . " ({$mult} × tu C de " . AdRules::money($n['c']) . ')';
+        $steps = ($n['source'] ?? null) === 'name'
+            ? ['En Ads Manager, agrega «| BE $X» con tu BE real al nombre de ' . ($names ? CreativeCalls::join(array_map(fn ($x) => self::q($x), $names)) : "las campañas de {$short}") . '.',
+                "O ponlo una sola vez en Meta Ads › Productos y objetivos: el Target CPA y el Break-even CPA de {$short}."]
+            : ['Abre Meta Ads › Productos y objetivos.', "Ponle a {$short} su Break-even CPA (ya tiene el Target CPA) y guarda."];
+
+        return ['key' => "{$productId}:no_be", 'city' => null, 'kind' => 'no_be', 'label' => 'Sin break-even', 'tone' => 'warning', 'text' => "{$why}.", 'where' => $short,
+            'title' => 'Pon el BE real: hoy se decide con uno estimado', 'steps' => $steps, 'why' => $why,
+            'detail' => array_map(fn ($c) => ($c['city'] ?? 'Sin ciudad') . ': C ' . AdRules::money($c['numbers']['c']) . ' · BE estimado ' . AdRules::money($c['numbers']['be']) . '.', $cities),
+            'money' => null];
+    }
+
     /** `.87`: el aviso de una ciudad que pide creativos y hoy no tiene qué podar ni qué lanzar. */
     private static function waiting(string $kind, ?array $n, ?array $cool = null): string
     {
@@ -626,14 +653,16 @@ final class UrgentList
         $cpa = $n['purchases3'] > 0 ? AdRules::money($n['spend3'] / $n['purchases3']) . ' por compra' : AdRules::money($n['spend3']) . ' gastados sin compras';
         $c = AdRules::money($n['c']);
         $be = $n['be'] ? AdRules::money($n['be']) : null;
+        // .120: si el BE es estimado, se dice
+        $limit = !empty($n['be_estimated']) ? 'límite estimado' : 'límite';
         $streak = (int) ($n['streak'] ?? 0);
         $days = $streak > 0 ? " · {$streak} " . ($streak === 1 ? 'día' : 'días') . ' encima' : '';
 
         return match ($kind) {
             'scale' => (($a['from'] ?? null) && ($a['to'] ?? null) ? '+' . AdRules::num(round(($a['to'] / $a['from'] - 1) * 100)) . ' % · ' : '')
                 . "{$cpa}; tu objetivo es {$c}",
-            'hold_prune' => $be ? "{$cpa}: entre tu objetivo ({$c}) y tu límite ({$be})" : "{$cpa}; tu objetivo es {$c}",
-            default => ($be ? "{$cpa}; tu límite es {$be}" : "{$cpa}; tu objetivo es {$c}") . $days,
+            'hold_prune' => $be ? "{$cpa}: entre tu objetivo ({$c}) y tu {$limit} ({$be})" : "{$cpa}; tu objetivo es {$c}",
+            default => ($be ? "{$cpa}; tu {$limit} es {$be}" : "{$cpa}; tu objetivo es {$c}") . $days,
         };
     }
 
@@ -649,8 +678,11 @@ final class UrgentList
             'En 3 días: gastaste ' . AdRules::money($n['spend3']) . ($n['purchases3'] > 0
                 ? ' y Meta vio ' . AdRules::num($n['purchases3']) . ' ' . ($n['purchases3'] == 1 ? 'compra' : 'compras') . ' = ' . AdRules::money($n['spend3'] / $n['purchases3']) . ' por compra.'
                 : ' y Meta no vio compras.'),
-            'Tu objetivo (C) aquí es ' . AdRules::money($n['c']) . ($n['be'] ? ' y tu límite para no perder (BE) es ' . AdRules::money($n['be']) : '')
-                . ($source ? " ({$source})" : '') . '.',
+            // .120: si el BE es estimado, la referencia es solo de la C
+            !empty($n['be_estimated'])
+                ? 'Tu objetivo (C) aquí es ' . AdRules::money($n['c']) . ($source ? " ({$source})" : '') . '. Todavía no tiene BE: se usa ' . AdRules::money($n['be']) . ', estimado.'
+                : 'Tu objetivo (C) aquí es ' . AdRules::money($n['c']) . ($n['be'] ? ' y tu límite para no perder (BE) es ' . AdRules::money($n['be']) : '')
+                    . ($source ? " ({$source})" : '') . '.',
             $n['budget'] ? 'Presupuesto: ' . AdRules::money($n['budget']) . ' por día.' : null,
         ]));
     }

@@ -77,11 +77,29 @@ class MetaDecisions
         $products = $ops->products(array_keys($facts), array_values(array_unique($cityIds)));
         $out = [];
         foreach ($facts as $pid => $f) {
+            $f = self::estimateBe($f, (float) $s['be_estimate_mult']);
             $out[$pid] = $this->product($f, $rules, $s);
             $out[$pid] = $this->plan($f, $out[$pid], $history, $products[$pid] ?? null, new CampaignRules($s), $s);
         }
 
         return $out;
+    }
+
+    /**
+     * `.120` (dueño, 2026-11-09: "nunca podemos permitirnos perder dinero sin una razón buena justificada"; ResistBarPro y
+     * Releev gastaban con la C del nombre de la campaña y sin BE: nada las podía frenar): una campaña con C y sin BE decide
+     * con uno estimado (C × be_estimate_mult) hasta que el dueño ponga el real. Queda marcada con el multiplicador. PHP puro.
+     */
+    public static function estimateBe(array $f, float $mult): array
+    {
+        foreach ($f['campaigns'] as $id => $c) {
+            if (($c['target'] ?? null) && !($c['break_even'] ?? null)) {
+                $f['campaigns'][$id]['break_even'] = round($c['target'] * $mult, 2);
+                $f['campaigns'][$id]['break_even_estimated'] = $mult;
+            }
+        }
+
+        return $f;
     }
 
     /**
@@ -319,6 +337,7 @@ class MetaDecisions
                 $states[$cid][$campaignId] = $this->entity($w, $c, $rules, 'creativo', $this->sumHistory($history['ad'], $agg[$cid]['ads_by_city'][$campaignId] ?? []),
                     $cpmChange[$campaignId] ?? null, $tracking);
                 $good = $states[$cid][$campaignId]['good'] ?? false;
+                $estimated = (bool) ($c['break_even_estimated'] ?? false);
                 // .110: si en esta ciudad ya vende aunque gastó poco, no está "sin datos" (y no lo deja ser "perdedor en todas")
                 $life = $w['max']['totals'] ?? [];
                 if ($early = $rules->sellingEarly($states[$cid][$campaignId], (float) ($life['spend'] ?? 0), (float) ($life['purchases'] ?? 0))) {
@@ -326,11 +345,11 @@ class MetaDecisions
                 }
                 // .86: intermedio o en evaluación en toda su vida, pero perdiendo en los últimos 3 días en esta ciudad
                 // (.114: o en los 7 días, si en 3 no llegó a 2×C)
-                if ($recent = $rules->recentLoser($w['3d']['totals'] ?? null, $states[$cid][$campaignId], $c['target'] ?? null, $c['break_even'] ?? null, $w['7d']['totals'] ?? null)) {
+                if ($recent = $rules->recentLoser($w['3d']['totals'] ?? null, $states[$cid][$campaignId], $c['target'] ?? null, $c['break_even'] ?? null, $w['7d']['totals'] ?? null, $estimated)) {
                     $states[$cid][$campaignId] = $recent + ['causes' => []];
                 }
                 // .119: un ganador que falla y pierde dinero se apaga en esta ciudad (y se sigue iterando)
-                if ($stop = $rules->failingStop($states[$cid][$campaignId], $w['3d']['totals'] ?? null, $c['target'] ?? null, $c['break_even'] ?? null, $w['7d']['totals'] ?? null)) {
+                if ($stop = $rules->failingStop($states[$cid][$campaignId], $w['3d']['totals'] ?? null, $c['target'] ?? null, $c['break_even'] ?? null, $w['7d']['totals'] ?? null, $estimated)) {
                     $states[$cid][$campaignId] = $stop;
                 }
                 $wasWinner[$cid] = ($wasWinner[$cid] ?? false) || $good;
@@ -519,7 +538,7 @@ class MetaDecisions
             // .87: lo que puede lanzar esta ciudad: la banca y los batches que ya salieron en otra ciudad, no en esta
             $offers = self::offers($f, $out, $id, $ops['bank']['launched'] ?? [], $ops['bank']['ready'] ?? [], $ops['bank']['names'] ?? []);
             $action = $cr->action([
-                'c' => $c['target'], 'be' => $c['break_even'], 'mode' => $mode, 'budget' => $budget,
+                'c' => $c['target'], 'be' => $c['break_even'], 'be_estimated' => (bool) ($c['break_even_estimated'] ?? false), 'mode' => $mode, 'budget' => $budget,
                 'spend3' => $w3['totals']['spend'] ?? 0, 'purchases3' => $w3['totals']['purchases'] ?? 0, 'cpa7' => $cpa7, 'freq3' => $w3['metrics']['frequency'] ?? null,
                 'stock_alert' => $stockAlert, 'stock_waiting' => $stockWaiting, 'c_source' => $c['target_source'] ?? null,
                 'increased_24h' => collect($h['budget_events'])->contains(fn ($e) => $e['to'] > $e['from'] && strtotime($e['at']) >= strtotime('-24 hours')),
@@ -537,7 +556,9 @@ class MetaDecisions
                 'c' => $c['target'], 'be' => $c['break_even'], 'source' => $c['target_source'] ?? null, 'budget' => $budget,
                 'streak' => $streak['days'], 'prune' => $prune,
                 // .87: los batches vivos (contando lo que se apaga hoy) y lo que puede lanzar, en orden
-                'live' => self::live($f, $out, $id, in_array($action['key'], ['hold_prune', 'intervene'], true)), 'offers' => $offers];
+                'live' => self::live($f, $out, $id, in_array($action['key'], ['hold_prune', 'intervene'], true)), 'offers' => $offers]
+                // .120: el BE es estimado (C × esto): la campaña no tiene uno real
+                + (($c['break_even_estimated'] ?? null) ? ['be_estimated' => (float) $c['break_even_estimated']] : []);
             $out['campaigns'][$id]['budget_notes'] = $cr->budgetNotes($budget, (float) $h['mins'], $newBatches, $c['target']);
             $actions[$id] = $action['key'];
 
@@ -738,7 +759,7 @@ class MetaDecisions
     private function entity(array $windows, ?array $c, AdRules $rules, string $unit, array $daily, ?float $cityCpmChange, ?float $tracking): array
     {
         $life = $windows['max']['totals'] ?? null;
-        $state = $rules->state((float) ($life['spend'] ?? 0), (float) ($life['purchases'] ?? 0), $c['target'] ?? null, $c['break_even'] ?? null, $unit);
+        $state = $rules->state((float) ($life['spend'] ?? 0), (float) ($life['purchases'] ?? 0), $c['target'] ?? null, $c['break_even'] ?? null, $unit, (bool) ($c['break_even_estimated'] ?? false));
         $good = in_array($state['key'], ['no_target', 'no_data'], true) ? false : $rules->hadGoodHistory($state, $daily, $c['target'] ?? null);
         if ($rules->isFailing($good, $windows['3d'] ?? null, $windows['7d'] ?? null, $c['target'] ?? null, $c['break_even'] ?? null)) {
             $causes = $rules->whatChanged($windows['3d'] ?? null, $windows['prev'] ?? null, $windows['max'] ?? null, $cityCpmChange, $tracking);

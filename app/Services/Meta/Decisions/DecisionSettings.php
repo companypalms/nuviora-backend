@@ -23,6 +23,8 @@ class DecisionSettings
         // .101 (dueño, 2026-11-04): con menos de 20 compras, perdedor por el BE solo con el CPA 20 % o más encima
         'loser_be_margin_pct' => [20, 0, 100],
         'loser_be_margin_purchases' => [20, 2, 1000],
+        // .120 (dueño, 2026-11-09): una campaña con C y sin BE no se queda sin límite: se estima en C × esto hasta que ponga el real
+        'be_estimate_mult' => [1.5, 1, 5],
         'promising_purchases' => [3, 1, 100],   // 3+ compras con CPA ≤ C = prometedor
         'proven_purchases' => [5, 1, 100],      // 5+ compras con CPA ≤ C = PROVEN
         // Embudo y saturación (frecuencia de los 3 días cerrados)

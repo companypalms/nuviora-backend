@@ -73,7 +73,7 @@ class CampaignRules
      *                  en banca, listos para lanzar), c_source (manual o name si la C es una referencia), stock_alert (el
      *                  aviso de stock de la ciudad, sin frenar nada), stock_waiting (`.101`: los pedidos esperando stock, si
      *                  pasan el mínimo: no se sube), recent_change (`.111`: el último cambio grande de las últimas 24 horas,
-     *                  de MetaDecisions::recentChange)
+     *                  de MetaDecisions::recentChange), be_estimated (`.120`: el BE es estimado, la campaña no tiene uno real)
      * @return array{key: string, label: string, tone: string, data: string, reading: string, proposal: ?string, from: ?float, to: ?float}
      */
     public function action(array $in): array
@@ -106,9 +106,11 @@ class CampaignRules
         $spend = (float) ($in['spend3'] ?? 0);
         $purchases = (float) ($in['purchases3'] ?? 0);
         $cpa = $purchases > 0 ? $spend / $purchases : null;
+        $source = isset(self::SOURCES[$in['c_source'] ?? '']) ? ' (' . self::SOURCES[$in['c_source']] . ')' : '';
+        // .120: si el BE es estimado, la referencia es solo de la C
         $data = '3 días: gasto ' . AdRules::money($spend) . ' · ' . AdRules::num($purchases) . ' compras' . ($cpa !== null ? ' · CPA ' . AdRules::money($cpa) : '')
-            . ' · C ' . AdRules::money($c) . ($be ? ' · BE ' . AdRules::money($be) : '')
-            . (isset(self::SOURCES[$in['c_source'] ?? '']) ? ' (' . self::SOURCES[$in['c_source']] . ')' : '')
+            . ' · C ' . AdRules::money($c)
+            . ($be && ($in['be_estimated'] ?? false) ? $source . ' · BE ' . AdRules::money($be) . ' (estimado)' : ($be ? ' · BE ' . AdRules::money($be) : '') . $source)
             . ($budget ? ' · presupuesto ' . AdRules::money($budget) . '/día' : '');
         $prune = $in['prune'] ?? [];
         $pruneText = $prune ? ' Apagar: ' . implode(', ', array_slice($prune, 0, 6)) . (count($prune) > 6 ? '…' : '') . '.' : '';
