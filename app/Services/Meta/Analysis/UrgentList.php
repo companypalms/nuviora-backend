@@ -43,26 +43,31 @@ use App\Services\Meta\Upload\UploadRules;
  * procede a eliminar ese gasto mínimo"): cada misión que lanza un batch dice qué gasto mínimo ponerle a su ad set y pide
  * pegar los parámetros de URL en los anuncios nuevos (`copy`: el texto para copiar); y una misión de "Arreglar" por campaña
  * pide quitar el mínimo de los batches que ya se probaron (`min_spend`). No es un cambio grande: no espera las 24 horas.
+ *
+ * `.125` (dueño, 2026-11-09: "sí debemos establecer un límite para soltar producto"; "nunca podemos permitirnos perder dinero
+ * sin una razón buena justificada"): un producto en pausa con una campaña prendida es una misión de apagarla (`product_off`);
+ * el producto entero 14 días sin dejar dinero es una misión para decidir (`drop_product`), nunca automática; y si los datos
+ * de Meta son viejos, se avisa (`stale`).
  */
 final class UrgentList
 {
     /** Qué tan urgente es cada cosa (menos es más urgente). */
     public const SEVERITY = [
-        'pause_city' => 1, 'not_sold' => 1, 'stock_out' => 1, 'stock_waiting' => 1, 'stop_creatives' => 1,
-        'decrease' => 2, 'intervene' => 2, 'tracking' => 2, 'late_urgent' => 2,
+        'pause_city' => 1, 'not_sold' => 1, 'product_off' => 1, 'stock_out' => 1, 'stock_waiting' => 1, 'stop_creatives' => 1,
+        'decrease' => 2, 'intervene' => 2, 'tracking' => 2, 'late_urgent' => 2, 'drop_product' => 2,
         'hold_prune' => 3, 'step_down' => 3, 'few_batches' => 3, 'min_spend' => 3, 'late_batch' => 3, 'launch_ready' => 3, 'no_city' => 3, 'no_be' => 3,
         'scale' => 4, 'launch_test' => 4, 'relaunch' => 4, 'new_product_late' => 4,
-        'alarm' => 5, 'names' => 5, 'cooldown' => 5, 'angle_rest' => 5, 'left_city' => 5,
+        'alarm' => 5, 'names' => 5, 'cooldown' => 5, 'angle_rest' => 5, 'left_city' => 5, 'stale' => 5,
         'price' => 6,
     ];
 
     /** `.82`: en qué grupo de la pantalla va cada cosa. */
     public const GROUP = [
-        'pause_city' => 'frenar', 'not_sold' => 'frenar', 'stop_creatives' => 'frenar', 'decrease' => 'frenar',
+        'pause_city' => 'frenar', 'not_sold' => 'frenar', 'product_off' => 'frenar', 'drop_product' => 'frenar', 'stop_creatives' => 'frenar', 'decrease' => 'frenar',
         'intervene' => 'arreglar', 'tracking' => 'arreglar', 'hold_prune' => 'arreglar', 'step_down' => 'arreglar', 'few_batches' => 'arreglar', 'min_spend' => 'arreglar',
         'late_urgent' => 'arreglar', 'late_batch' => 'arreglar', 'launch_ready' => 'arreglar', 'no_city' => 'arreglar', 'no_be' => 'arreglar',
         'scale' => 'crecer', 'launch_test' => 'crecer', 'relaunch' => 'crecer', 'new_product_late' => 'crecer',
-        'stock_out' => 'aviso', 'stock_waiting' => 'aviso', 'alarm' => 'aviso', 'price' => 'aviso', 'names' => 'aviso', 'cooldown' => 'aviso', 'angle_rest' => 'aviso', 'left_city' => 'aviso',
+        'stock_out' => 'aviso', 'stock_waiting' => 'aviso', 'alarm' => 'aviso', 'price' => 'aviso', 'names' => 'aviso', 'cooldown' => 'aviso', 'angle_rest' => 'aviso', 'left_city' => 'aviso', 'stale' => 'aviso',
     ];
 
     /** Cuántos nombres de creativos caben en la línea del porqué. */
@@ -75,7 +80,7 @@ final class UrgentList
     private const FEEDS = ['hold_prune', 'intervene'];
 
     /** `.87`: las ciudades que se pausan o se prenden con sus propios batches (`.117`): ahí no se lanzan aparte. */
-    private const NO_BATCHES = ['pause_city', 'not_sold', 'relaunch', 'left_city'];
+    private const NO_BATCHES = ['pause_city', 'not_sold', 'product_off', 'relaunch', 'left_city'];
 
     /** `.87`: el mínimo de batches vivos en una campaña prendida (dueño: "por lo menos montar dos batch"). */
     public const MIN_LIVE = 2;
@@ -137,7 +142,7 @@ final class UrgentList
                         'why' => self::cooledBy($cool), 'detail' => array_values(array_filter([...self::numbers($n), $a['reading'], $a['proposal']]))];
                 }
                 // .124: los batches que ya se probaron y siguen con gasto mínimo (no donde la campaña se pausa ni en un producto en pausa)
-                if (($n['mins']['off'] ?? []) && !in_array($kind, ['pause_city', 'not_sold'], true) && !in_array($mode, ['paused', 'abandoned'], true)) {
+                if (($n['mins']['off'] ?? []) && !in_array($kind, ['pause_city', 'not_sold', 'product_off'], true) && !in_array($mode, ['paused', 'abandoned'], true)) {
                     $items[] = $base + self::minSpend((int) $p['product_id'], $c, $n, $short);
                 }
                 if (!isset(self::SEVERITY[$kind])) {
@@ -180,6 +185,10 @@ final class UrgentList
                     'steps' => $kind === 'tracking' ? ['Abre el Administrador de eventos de Meta.', 'Revisa que el píxel y la API de conversiones estén recibiendo las compras.'] : [],
                     'why' => match ($kind) { 'tracking' => self::firstSentence(preg_replace('/^Tracking:\s*/u', '', $t)), 'stock_waiting' => $waiting[1] ?? null, default => null },
                     'detail' => in_array($kind, ['tracking', 'stock_waiting'], true) ? [$t] : []];
+            }
+            // .125: el producto entero lleva 14 días sin dejar dinero: lo decide el dueño
+            if ($p['drop'] ?? null) {
+                $items[] = $base + self::drop((int) $p['product_id'], $short, $p['drop']);
             }
             // .117: se quedó sin ninguna ciudad prendida
             if ($p['no_city'] ?? null) {
@@ -313,16 +322,16 @@ final class UrgentList
         return match (true) {
             $kind === 'scale' && $from && $to => ['cut' => null, 'add' => round($to - $from, 2)],
             in_array($kind, ['decrease', 'step_down'], true) && $from && $to => ['cut' => round($from - $to, 2), 'add' => null],
-            $kind === 'pause_city' && $budget => ['cut' => round((float) $budget, 2), 'add' => null],
+            in_array($kind, ['pause_city', 'product_off'], true) && $budget => ['cut' => round((float) $budget, 2), 'add' => null],
             $kind === 'relaunch' && $to => ['cut' => null, 'add' => round((float) $to, 2)],
             default => null,
         };
     }
 
-    /** La clase de cosa que pide la regla de una ciudad ("No se vende aquí" es pausarla). */
+    /** La clase de cosa que pide la regla de una ciudad ("No se vende aquí" es pausarla; `.125`: "Producto en pausa", también). */
     private static function kind(array $a): string
     {
-        return $a['key'] === 'none' && $a['label'] === 'No se vende aquí' ? 'not_sold' : $a['key'];
+        return $a['key'] !== 'none' ? $a['key'] : (['No se vende aquí' => 'not_sold', 'Producto en pausa' => 'product_off'][$a['label']] ?? 'none');
     }
 
     /** `.82`: apagar creativos: los perdedores en todas las ciudades ($city null) o los que pierden en una ciudad. */
@@ -393,8 +402,11 @@ final class UrgentList
             'step_down' => [$to ? 'Devuelve la última subida: baja el presupuesto a ' . AdRules::money($to) . ' por día' : 'Devuelve la última subida',
                 [$open, $from && $to ? 'Cambia el presupuesto diario de ' . AdRules::money($from) . ' a ' . AdRules::money($to) . "{$pct}." : (string) $a['proposal'],
                     'No lances batches hoy: un cambio grande a la vez.']],
-            'pause_city' => ['Pausa la campaña', [$open, ...$switchOff]],
+            // .125: si es por los 14 días sin dejar dinero, lo dice
+            'pause_city' => [($a['chronic'] ?? null) ? "Pausa la campaña: {$a['chronic']['days']} días sin dejar dinero" : 'Pausa la campaña', [$open, ...$switchOff]],
             'not_sold' => ['Pausa la campaña: ahí no se vende', [$open, ...$switchOff]],
+            // .125: el producto está en pausa o abandonado y la campaña sigue gastando
+            'product_off' => ['Pausa la campaña: el producto está en pausa', [$open, ...$switchOff]],
             // .117: se prende solo con los batches nuevos
             'relaunch' => ["Prende esta campaña con {$go}", [$open, 'Deja apagados los ad sets y los anuncios que ya estaban: esta vez solo van estos ' . count($launch) . '.', ...$launchSteps,
                 'Pon el presupuesto de arranque entre ' . AdRules::money((float) $to) . ' y ' . AdRules::money((float) $from) . ' por día (tu regla: C × ' . count($launch) . ' batches × 2,5 a 3).', 'Prende la campaña.']],
@@ -591,6 +603,49 @@ final class UrgentList
             'money' => null] + ($launch === [] ? ['group' => 'aviso'] : []);
     }
 
+    /**
+     * `.125` (dueño, 2026-11-09: "sí debemos establecer un límite para soltar producto, dependiendo de su CPA y si hicimos
+     * cambios y no mejoró"): el producto entero lleva 14 días sin dejar dinero, con batches nuevos en ese tiempo. Es una
+     * decisión suya: el sistema no pausa nada solo, y con "No estoy de acuerdo" no se le vuelve a preguntar en esos días.
+     *
+     * @param array{days: int, spend: float, purchases: float, profit: float, batches: int, cities: list<array>} $d
+     */
+    private static function drop(int $productId, string $short, array $d): array
+    {
+        $left = $d['profit'] < 0 ? 'dejó −' . AdRules::money(abs($d['profit'])) : 'no dejó nada';
+        $why = "En {$d['days']} días gastó " . AdRules::money($d['spend']) . " y {$left}, con " . ($d['batches'] === 1 ? '1 batch nuevo' : "{$d['batches']} batches nuevos");
+
+        return ['key' => "{$productId}:drop_product", 'city' => null, 'kind' => 'drop_product', 'label' => 'Soltar el producto', 'tone' => 'error', 'text' => "{$why}.", 'where' => $short,
+            'title' => "Decide si sueltas {$short}: {$d['days']} días sin dejar dinero",
+            'steps' => ["Si lo sueltas: dile a tu asistente «pausa {$short}». Después te sale la misión de apagar sus campañas.",
+                "Si le das otra oportunidad: dile a tu asistente «pon {$short} en testeo»: se piden batches de ángulos nuevos.",
+                "Si prefieres esperar: toca «No estoy de acuerdo» y no te lo vuelvo a preguntar en {$d['days']} días."],
+            'why' => $why,
+            'detail' => [...array_map(fn ($c) => ($c['city'] ?? 'Sin ciudad') . ': gastó ' . AdRules::money($c['spend']) . ' · ' . AdRules::num($c['purchases']) . ' compras'
+                . ($c['purchases'] > 0 ? ' · ' . AdRules::money($c['spend'] / $c['purchases']) . ' por compra' : '') . ' · BE ' . AdRules::money($c['be']) . '.', $d['cities']),
+                'Lo que dejó = compras de Meta × tu BE − gasto. El sistema no pausa nada solo: lo decides tú.'],
+            'money' => null];
+    }
+
+    /**
+     * `.125`: los datos de Meta son viejos (la última lectura fue hace más de $hours horas): un aviso, arriba de los demás,
+     * para no decidir con números de ayer. PHP puro.
+     */
+    public static function stale(?string $last, string $now, float $hours): ?array
+    {
+        $ago = $last !== null ? (strtotime($now) - strtotime($last)) / 3600 : null;
+        if ($ago !== null && $ago < $hours) {
+            return null;
+        }
+        $text = $last === null ? 'Meta todavía no se ha leído nunca'
+            : 'La última lectura de Meta fue hace ' . (int) floor($ago) . ' horas (el ' . date('d/m', strtotime($last)) . ' a las ' . date('H:i', strtotime($last)) . ', hora de Venezuela)';
+
+        return ['key' => 'stale:' . date('Y-m-d', strtotime($now)), 'product_id' => 0, 'product' => 'Meta', 'urgency' => null, 'city' => null, 'kind' => 'stale', 'label' => 'Datos viejos',
+            'tone' => 'warning', 'text' => "{$text}.", 'where' => 'Meta',
+            'title' => "{$text}: estas misiones pueden estar hechas con números viejos. Revisa la conexión en Meta Ads › Configuración y vuelve a analizar",
+            'steps' => [], 'why' => null, 'detail' => [], 'money' => null, 'severity' => self::SEVERITY['stale'], 'group' => self::GROUP['stale']];
+    }
+
     /** `.117`: el producto se quedó sin ninguna ciudad prendida y no alcanzan los batches para prender una. */
     private static function noCity(int $productId, string $short, array $n): array
     {
@@ -760,9 +815,10 @@ final class UrgentList
     /** `.82`: el porqué en una línea ("+20 % · $3,54 por compra; tu objetivo es $5,39"). */
     private static function why(string $kind, array $a, ?array $n): ?string
     {
-        if (in_array($kind, ['not_sold', 'relaunch', 'left_city'], true) || $n === null) {
+        if (in_array($kind, ['not_sold', 'product_off', 'relaunch', 'left_city'], true) || $n === null) {
             return match ($kind) {
                 'not_sold' => 'Está marcado como no disponible en esa ciudad',
+                'product_off' => 'Gastó ' . AdRules::money((float) ($n['spend3'] ?? 0)) . ' en 3 días con el producto en pausa',
                 'relaunch' => 'Hay ' . count($n['offers'] ?? []) . ' batches que nunca se publicaron aquí',
                 default => self::firstSentence($a['reading']),
             };
@@ -774,6 +830,11 @@ final class UrgentList
         $limit = !empty($n['be_estimated']) ? 'límite estimado' : 'límite';
         $streak = (int) ($n['streak'] ?? 0);
         $days = $streak > 0 ? " · {$streak} " . ($streak === 1 ? 'día' : 'días') . ' encima' : '';
+        // .125: "En 14 días gastó $290,10 a $8,53 por compra; tu límite es $7,49"
+        if ($kind === 'pause_city' && ($ch = $a['chronic'] ?? null) && $be) {
+            return "En {$ch['days']} días gastó " . AdRules::money($ch['spend']) . ($ch['purchases'] > 0 ? ' a ' . AdRules::money($ch['spend'] / $ch['purchases']) . ' por compra' : ' sin compras')
+                . "; tu {$limit} es {$be}";
+        }
 
         return match ($kind) {
             'scale' => (($a['from'] ?? null) && ($a['to'] ?? null) ? '+' . AdRules::num(round(($a['to'] / $a['from'] - 1) * 100)) . ' % · ' : '')

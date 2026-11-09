@@ -170,6 +170,61 @@ describe('.123: entre C y BE, un cambio grande a la vez', function () {
     });
 });
 
+describe('.125: campañas que no dejan dinero', function () {
+    // Dueño, 2026-11-09: "sí debemos establecer un límite… dependiendo de su CPA y si hicimos cambios y no mejoró"; "puede ser que
+    // la campaña se esté comenzando a recuperar e igual me la mande a apagar". FlexiStep Aragua: C $5,01, BE $7,49, $25 por día.
+    $flexi = fn (array $in) => campana()->action(array_merge(['c' => 5.01, 'be' => 7.49, 'mode' => 'normal', 'budget' => 25.0, 'spend3' => 95.3, 'purchases3' => 6,
+        'cpa7' => 11.68, 'freq3' => 1.68, 'streak_days' => 3], $in));
+    $catorce = ['days' => 14, 'spend' => 290.1, 'purchases' => 34.0, 'batches' => 4, 'lowered' => 0];
+
+    it('14 días en el BE o encima con 10×C gastado, y los últimos 3 también: pausar la ciudad', function () use ($flexi, $catorce) {
+        $a = $flexi(['chronic' => $catorce]);
+        expect($a['key'])->toBe('pause_city')->and($a['chronic'])->toBe($catorce)
+            ->and($a['reading'])->toBe('14 días sin dejar dinero: gastó $290,10 y vendió a $8,53 por compra, en tu BE ($7,49) o encima; y en los últimos 3 días tampoco. '
+                . 'En ese tiempo entraron anuncios nuevos 4 veces, y no mejoró.');
+        // lo que se intentó: también las bajadas de presupuesto; y si no se hizo nada, lo dice
+        expect($flexi(['chronic' => ['batches' => 1, 'lowered' => 2] + $catorce])['reading'])->toEndWith('En ese tiempo entraron anuncios nuevos 1 vez y bajaste el presupuesto 2 veces, y no mejoró.')
+            ->and($flexi(['chronic' => ['batches' => 0] + $catorce])['reading'])->toEndWith('En ese tiempo no se le hizo ningún cambio.');
+    });
+
+    it('tu protección: si en los últimos 3 días vende debajo del BE, no se pausa', function () use ($flexi, $catorce) {
+        // 27/10: $78,90 y 11 compras en 3 días = $7,17 (BE $7,49): entre C y BE
+        expect($flexi(['spend3' => 78.9, 'purchases3' => 11, 'chronic' => $catorce])['key'])->toBe('hold_prune');
+    });
+
+    it('no aplica con poco gasto en los 14 días, si esos 14 días dejaron dinero, o sin 14 días de historia', function () use ($flexi, $catorce) {
+        expect($flexi(['chronic' => ['spend' => 45.0, 'purchases' => 5.0] + $catorce])['key'])->toBe('intervene')
+            ->and($flexi(['chronic' => ['purchases' => 45.0] + $catorce])['key'])->toBe('intervene')
+            ->and($flexi(['chronic' => null])['key'])->toBe('intervene');
+        // en Reglas se cambia el 10×C
+        expect(campana(['chronic_min_cpa' => 60.0])->action(['c' => 5.01, 'be' => 7.49, 'mode' => 'normal', 'budget' => 25.0, 'spend3' => 95.3, 'purchases3' => 6, 'chronic' => $catorce])['key'])->toBe('intervene')
+            ->and(DecisionSettings::defaults()['chronic_days'])->toBe(14.0)->and(DecisionSettings::defaults()['chronic_min_cpa'])->toBe(10.0);
+    });
+
+    it('sin batch para lanzar, la cuenta corre: 2 días cerrados, bajar 20 %; 5, pausar ("sí, que corra")', function () use ($flexi) {
+        $sin = fn (int $days, array $in = []) => $flexi(['intervention' => '2026-11-06', 'closed_since_intervention' => $days, 'no_batch' => true] + $in);
+        expect($sin(1)['key'])->toBe('intervene')
+            ->and($sin(1)['proposal'])->toBe('Intervenir: podar y lanzar un batch nuevo. No tocar el presupuesto hoy. Si no llega un batch y sigue igual 2 días cerrados, toca bajar 20 %.')
+            ->and($sin(2)['key'])->toBe('decrease')->and($sin(2)['to'])->toBe(20.0)
+            ->and($sin(2)['reading'])->toBe('Sigue en el break-even o encima 2 días cerrados y sin batch para lanzar.')
+            ->and($sin(3, ['decreased_since_intervention' => true])['key'])->toBe('wait')
+            ->and($sin(3, ['decreased_since_intervention' => true])['reading'])->toBe('En el break-even o encima hace 3 días cerrados, sin batch para lanzar.')
+            ->and($sin(5, ['decreased_since_intervention' => true])['key'])->toBe('pause_city')
+            ->and($sin(5)['reading'])->toBe('5 días cerrados en el break-even o encima, sin batch para lanzar.');
+        // con un batch para lanzar, como siempre: la cuenta empieza con la intervención
+        expect($flexi(['intervention' => null])['key'])->toBe('intervene')->and($flexi(['intervention' => null])['proposal'])->not->toContain('Si no llega un batch');
+    });
+
+    it('los dos textos que confundían', function () use ($flexi) {
+        // "Rentable" con 0 compras
+        $a = $flexi(['spend3' => 8.0, 'purchases3' => 0]);
+        expect($a['key'])->toBe('hold_prune')->and($a['reading'])->toBe('Sin compras en 3 días: gastó $8,00, menos de 2×C. Todavía no se puede juzgar.');
+        // "Por ahora, nada" mientras otra misión mandaba a apagar un creativo ahí
+        $cool = ['what' => 'subiste el presupuesto de $20,00 a $25,00', 'at' => '2026-11-08 20:00:00', 'until' => '2026-11-09 20:00:00', 'hours' => 24.0];
+        expect($flexi(['spend3' => 78.9, 'purchases3' => 11, 'recent_change' => $cool])['proposal'])->toStartWith('Por ahora, ningún cambio grande aquí. Los creativos nuevos, desde el 09/11 a las 20:00');
+    });
+});
+
 describe('Entre C y BE, y en el break-even o encima', function () {
     it('entre C y BE: mantener y podar los perdedores', function () {
         $a = accion(['spend3' => 30, 'purchases3' => 6, 'prune' => ['C003 FASP']]);

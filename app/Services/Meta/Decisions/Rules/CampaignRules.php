@@ -14,7 +14,10 @@ namespace App\Services\Meta\Decisions\Rules;
  *   cambio y 3 días cerrados para ver si vuelve a C; primero el batch, después devolver la última subida, y así;
  * - `.123` (dueño: "la subida de presupuesto siempre va primero"; la frecuencia, "solo aviso"): la frecuencia alta ya no
  *   frena la subida;
- * - en el BE o encima: intervenir (podar y lanzar); 2 días cerrados después, −20 %; 5 días, pausar la ciudad;
+ * - en el BE o encima: intervenir (podar y lanzar); 2 días cerrados después, −20 %; 5 días, pausar la ciudad. `.125` (dueño,
+ *   2026-11-09): sin batch para lanzar, la cuenta corre igual desde el primer día en el BE ("sí, que corra"); y una campaña
+ *   que en 14 días no dejó dinero (CPA de 14 días en el BE o encima, con 10×C gastado) y en los últimos 3 tampoco, se pausa.
+ *   Si en los últimos 3 días vende debajo del BE no se pausa: "puede ser que la campaña se esté comenzando a recuperar";
  * - `.117` (dueño, 2026-11-09): una campaña apagada espera a tener 3 batches que nunca se publicaron en esa ciudad y se
  *   prende con esos 3 (reemplaza el "último test"); si vuelve a perder y se apaga, se recomienda dejar el producto ahí;
  * - nunca presupuesto y creativos el mismo día; la IA solo recomienda: el sistema no toca Meta.
@@ -79,7 +82,9 @@ class CampaignRules
      *                  aviso de stock de la ciudad, sin frenar nada), stock_waiting (`.101`: los pedidos esperando stock, si
      *                  pasan el mínimo: no se sube), recent_change (`.111`: el último cambio grande de las últimas 24 horas,
      *                  de MetaDecisions::recentChange), be_estimated (`.120`: el BE es estimado, la campaña no tiene uno real),
-     *                  band (`.123`: lo último que se hizo desde que se pasó de C, de MetaDecisions::band)
+     *                  band (`.123`: lo último que se hizo desde que se pasó de C, de MetaDecisions::band), chronic (`.125`: lo
+     *                  gastado, vendido e intentado en los últimos 14 días, de MetaDecisions::chronic), no_batch (`.125`: en el
+     *                  BE o encima y sin nada que lanzar: la cuenta corre desde el primer día)
      * @return array{key: string, label: string, tone: string, data: string, reading: string, proposal: ?string, from: ?float, to: ?float}
      */
     public function action(array $in): array
@@ -131,22 +136,39 @@ class CampaignRules
             if ($mode === 'liquidation') {
                 return $this->out('hold_prune', $data, 'En liquidación y en el break-even o encima.', 'Dejar solo los anuncios cerca o debajo del BE; sin creativos nuevos.' . $pruneText);
             }
+            $relaunch = 'Pausar la ciudad. Se vuelve a prender cuando haya ' . (int) $this->s['relaunch_batches'] . ' batches que nunca se publicaron ahí.';
+            // .125: 14 días sin dejar dinero, y los últimos 3 tampoco (aquí el CPA de 3 días ya está en el BE o encima)
+            $ch = $in['chronic'] ?? null;
+            if ($ch && $ch['spend'] >= $c * $this->s['chronic_min_cpa'] && ($ch['purchases'] <= 0 || $ch['spend'] / $ch['purchases'] >= $be)) {
+                $tried = array_filter([
+                    ($ch['batches'] ?? 0) > 0 ? 'entraron anuncios nuevos ' . ($ch['batches'] === 1 ? '1 vez' : "{$ch['batches']} veces") : null,
+                    ($ch['lowered'] ?? 0) > 0 ? 'bajaste el presupuesto ' . ($ch['lowered'] === 1 ? '1 vez' : "{$ch['lowered']} veces") : null,
+                ]);
+
+                return $this->out('pause_city', $data, "{$ch['days']} días sin dejar dinero: gastó " . AdRules::money($ch['spend'])
+                    . ($ch['purchases'] > 0 ? ' y vendió a ' . AdRules::money($ch['spend'] / $ch['purchases']) . ' por compra' : ' sin compras') . ', en tu BE (' . AdRules::money($be)
+                    . ') o encima; y en los últimos 3 días tampoco. ' . ($tried ? 'En ese tiempo ' . implode(' y ', $tried) . ', y no mejoró.' : 'En ese tiempo no se le hizo ningún cambio.'),
+                    $relaunch, $budget, null) + ['chronic' => $ch];
+            }
             $since = $in['intervention'] ?? null;
             $days = (int) ($in['closed_since_intervention'] ?? 0);
             $streak = (int) ($in['streak_days'] ?? 0);
-            if ($since === null) {
+            // .125 (dueño, 2026-11-09: "sí, que corra"): sin batch para lanzar, la cuenta corre desde el primer día en el BE o encima
+            $stuck = (bool) ($in['no_batch'] ?? false);
+            $after = $stuck ? 'y sin batch para lanzar' : 'después de intervenir';
+            if ($since === null || $stuck && $days < $this->s['decrease_after_days']) {
                 $history = ($in['history_since'] ?? null) === null ? ' (todavía sin historial de presupuestos y estados)' : '';
                 if (($in['budget_changed_today'] ?? false) && !($in['recent_change'] ?? null)) {
                     return $this->out('wait', $data, 'En el break-even o encima, pero hoy ya se tocó el presupuesto.', 'Los creativos, mañana: nunca presupuesto y creativos el mismo día.');
                 }
 
                 return $this->out('intervene', $data, 'En el break-even o encima' . ($streak ? " hace {$streak} " . ($streak === 1 ? 'día' : 'días') : '') . $history . '.',
-                    'Intervenir: podar y lanzar ' . (($in['bank_ready'] ?? []) ? $in['bank_ready'][0] . ' de la banca' : 'un batch nuevo') . '. No tocar el presupuesto hoy.' . $pruneText);
+                    'Intervenir: podar y lanzar ' . (($in['bank_ready'] ?? []) ? $in['bank_ready'][0] . ' de la banca' : 'un batch nuevo') . '. No tocar el presupuesto hoy.'
+                    . ($stuck ? ' Si no llega un batch y sigue igual ' . (int) $this->s['decrease_after_days'] . ' días cerrados, toca bajar ' . AdRules::num($this->s['decrease_pct']) . ' %.' : '') . $pruneText);
             }
             if ($days >= $this->s['pause_after_days']) {
-                return $this->out('pause_city', $data, "{$days} días cerrados en el break-even o encima desde la primera intervención.",
-                    'Pausar la ciudad. Se vuelve a prender cuando haya ' . (int) $this->s['relaunch_batches'] . ' batches que nunca se publicaron ahí.',
-                    $budget, null);
+                return $this->out('pause_city', $data, $stuck ? "{$days} días cerrados en el break-even o encima, sin batch para lanzar."
+                    : "{$days} días cerrados en el break-even o encima desde la primera intervención.", $relaunch, $budget, null);
             }
             if ($days >= $this->s['decrease_after_days'] && !($in['decreased_since_intervention'] ?? false)) {
                 if (($in['new_ads_today'] ?? false) && !($in['recent_change'] ?? null)) {
@@ -155,11 +177,12 @@ class CampaignRules
                 }
                 $to = $budget ? round($budget * (1 - $this->s['decrease_pct'] / 100), 2) : null;
 
-                return $this->out('decrease', $data, "Sigue en el break-even o encima {$days} días cerrados después de intervenir.",
+                return $this->out('decrease', $data, "Sigue en el break-even o encima {$days} días cerrados {$after}.",
                     'Bajar ' . AdRules::num($this->s['decrease_pct']) . ' %' . ($to ? ': ' . AdRules::money($budget) . ' → ' . AdRules::money($to) : '') . '.', $budget, $to);
             }
 
-            return $this->out('wait', $data, "Intervenida hace {$days} " . ($days === 1 ? 'día cerrado' : 'días cerrados') . '.',
+            return $this->out('wait', $data, $stuck ? "En el break-even o encima hace {$days} " . ($days === 1 ? 'día cerrado' : 'días cerrados') . ', sin batch para lanzar.'
+                : "Intervenida hace {$days} " . ($days === 1 ? 'día cerrado' : 'días cerrados') . '.',
                 ($in['decreased_since_intervention'] ?? false) ? 'Ya se bajó el presupuesto: esperar. A los ' . (int) $this->s['pause_after_days'] . ' días, pausar la ciudad.'
                     : 'Esperar: si sigue igual ' . (int) $this->s['decrease_after_days'] . ' días cerrados, bajar ' . AdRules::num($this->s['decrease_pct']) . ' %.');
         }
@@ -208,7 +231,9 @@ class CampaignRules
      */
     private function band(array $in, string $data, string $pruneText): array
     {
-        $reading = 'Rentable pero no escalable: CPA entre C y el break-even.';
+        // .125: sin compras no es "rentable": todavía no gastó lo que hace falta para juzgarla
+        $reading = (float) ($in['purchases3'] ?? 0) > 0 ? 'Rentable pero no escalable: CPA entre C y el break-even.'
+            : 'Sin compras en 3 días: gastó ' . AdRules::money((float) ($in['spend3'] ?? 0)) . ', menos de ' . AdRules::num($this->s['loser_spend_cpa']) . '×C. Todavía no se puede juzgar.';
         $budget = $in['budget'] ?? null;
         $wait = (int) $this->s['band_wait_days'];
         $days = $wait === 1 ? '1 día cerrado' : "{$wait} días cerrados";
@@ -266,7 +291,8 @@ class CampaignRules
         if (in_array($out['key'], self::FEEDS, true) && $mode !== 'liquidation') {
             $names = $prune ? ' Apagar: ' . implode(', ', array_slice($prune, 0, 6)) . (count($prune) > 6 ? '…' : '') . '.' : '';
 
-            return array_merge($out, ['proposal' => ($prune ? 'Por ahora, solo apagar los que pierden.' : 'Por ahora, nada.')
+            // .125: "ningún cambio grande" (antes "nada": confundía cuando otra misión mandaba a apagar un creativo ahí)
+            return array_merge($out, ['proposal' => ($prune ? 'Por ahora, solo apagar los que pierden.' : 'Por ahora, ningún cambio grande aquí.')
                 . ' Los creativos nuevos, desde ' . $until . ': ' . $since . '.' . $names, 'cooldown' => $cool + ['held' => 'lanzar un batch']]);
         }
 

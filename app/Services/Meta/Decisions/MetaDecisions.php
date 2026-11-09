@@ -497,6 +497,16 @@ class MetaDecisions
                 $actions[$id] = 'pause_city';
                 continue;
             }
+            // .125: el producto está en pausa o abandonado y su campaña sigue prendida y gastando: hay que apagarla
+            if (in_array($mode, ['paused', 'abandoned'], true) && (float) ($w3['totals']['spend'] ?? 0) > 0) {
+                $out['campaigns'][$id]['action'] = ['key' => 'none', 'label' => 'Producto en pausa', 'tone' => 'error', 'data' => '',
+                    'reading' => 'El producto está ' . ($mode === 'paused' ? 'en pausa' : 'abandonado') . ' y esta campaña sigue prendida: gastó '
+                        . AdRules::money((float) $w3['totals']['spend']) . ' en 3 días.', 'proposal' => 'Pausar la campaña.', 'from' => $budget, 'to' => null];
+                $out['campaigns'][$id]['numbers'] = ['spend3' => (float) $w3['totals']['spend'], 'purchases3' => (float) ($w3['totals']['purchases'] ?? 0), 'c' => $c['target'],
+                    'be' => $c['break_even'], 'source' => $c['target_source'] ?? null, 'budget' => $budget, 'streak' => 0, 'prune' => []];
+                $actions[$id] = 'none';
+                continue;
+            }
             $streak = $c['break_even'] ? CampaignRules::streak($h['daily'], (float) $c['break_even'], $yesterday) : ['days' => 0, 'start' => null];
             $intervention = null;
             if ($streak['days'] > 0) {
@@ -547,6 +557,14 @@ class MetaDecisions
             }
             // .87: lo que puede lanzar esta ciudad: la banca y los batches que ya salieron en otra ciudad, no en esta
             $offers = self::offers($f, $out, $id, $ops['bank']['launched'] ?? [], $ops['bank']['ready'] ?? [], $ops['bank']['names'] ?? []);
+            // .125 (dueño, 2026-11-09: "sí, que corra"): en el BE o encima y sin nada que lanzar, la cuenta corre desde el primer día
+            $noBatch = $streak['days'] > 0 && $offers === [] && $mode === 'normal';
+            if ($noBatch && ($intervention === null || $intervention > $streak['start'])) {
+                $intervention = $streak['start'];
+                $closed = max(0, (int) round((strtotime($yesterday) - strtotime($intervention)) / 86400));
+            }
+            // .125: lo que gastó y vendió en los últimos 14 días cerrados, y lo que se intentó
+            $chronic = self::chronic($h, $yesterday, (int) $s['chronic_days']);
             $action = $cr->action([
                 'c' => $c['target'], 'be' => $c['break_even'], 'be_estimated' => (bool) ($c['break_even_estimated'] ?? false), 'mode' => $mode, 'budget' => $budget,
                 'spend3' => $w3['totals']['spend'] ?? 0, 'purchases3' => $w3['totals']['purchases'] ?? 0, 'cpa7' => $cpa7, 'freq3' => $w3['metrics']['frequency'] ?? null,
@@ -561,8 +579,18 @@ class MetaDecisions
                 'recent_change' => self::recentChange($h, $f, $id, now()->toDateTimeString(), (float) $s['change_wait_hours']),
                 // .123: entre C y BE, lo último que se hizo desde que la campaña se pasó de C
                 'band' => self::band($h, $f, $id, $c['target'] ? (float) $c['target'] : null, $budget !== null ? (float) $budget : null, $today, $yesterday, (int) $s['band_undo_days']),
+                'chronic' => $chronic, 'no_batch' => $noBatch,
             ]);
             $out['campaigns'][$id]['action'] = $action;
+            // .125 (dueño: "puede ser que la campaña se esté comenzando a recuperar e igual me la mande a apagar"): 14 días sin
+            // dejar dinero, pero en los últimos 3 vende debajo del BE: no se pausa, y se dice por qué
+            $cpa3 = ($w3['totals']['purchases'] ?? 0) > 0 ? $w3['totals']['spend'] / $w3['totals']['purchases'] : null;
+            if ($chronic && $c['target'] && $c['break_even'] && $cpa3 !== null && $cpa3 < $c['break_even'] && $chronic['spend'] >= $c['target'] * $s['chronic_min_cpa']
+                && ($chronic['purchases'] <= 0 || $chronic['spend'] / $chronic['purchases'] >= $c['break_even'])) {
+                $out['campaigns'][$id]['notes'][] = ['key' => 'recovering', 'label' => 'Se está recuperando', 'text' => "En {$chronic['days']} días gastó " . AdRules::money($chronic['spend'])
+                    . ($chronic['purchases'] > 0 ? ' y vendió a ' . AdRules::money($chronic['spend'] / $chronic['purchases']) . ' por compra' : ' sin compras') . ' (en tu BE o encima), pero en los últimos 3 días vende a '
+                    . AdRules::money($cpa3) . ', debajo del BE: no se pausa. Se vuelve a mirar cada día.'];
+            }
             // .124: los batches vivos que ya se probaron y siguen con gasto mínimo, los que todavía se prueban y los que se prueban sin mínimo
             $mins = self::testedMins($f, $out, $id, in_array($action['key'], ['hold_prune', 'intervene'], true), now()->toDateTimeString(), (int) $s['min_spend_days']);
             // .82: los números de la ciudad, para la frase de cada tarea del análisis ("$10,29 por compra; tu límite es $7,22")
@@ -687,6 +715,11 @@ class MetaDecisions
             // .117: el producto se quedó sin ninguna ciudad prendida y no alcanza para prender una: lo decide el dueño
             'no_city' => $f['campaigns'] && !$activeCities && !$relaunches && $mode === 'normal' && !isset($dismissed["{$f['product']['id']}:no_city"])
                 ? ['have' => $relaunchOffers, 'need' => (int) $s['relaunch_batches']] : null,
+            // .125 (dueño, 2026-11-09: "sí debemos establecer un límite para soltar producto, dependiendo de su CPA y si hicimos
+            // cambios y no mejoró"): el producto entero lleva 14 días sin dejar dinero, con batches nuevos en ese tiempo. Lo decide
+            // él; si dice que no, no se le vuelve a preguntar en esos días
+            'drop' => $mode === 'normal' && $activeCities && (($dismissed["{$f['product']['id']}:drop_product"] ?? '') < date('Y-m-d', strtotime("{$today} -" . (int) $s['chronic_days'] . ' days')))
+                ? self::dropProduct($f, $history['campaigns'] ?? [], $yesterday, (int) $s['chronic_days'], (float) $s['chronic_min_cpa'], (int) $s['drop_min_batches']) : null,
         ];
 
         return $out;
@@ -1059,6 +1092,81 @@ class MetaDecisions
         }
 
         return ['since' => $since, 'batch' => $batch, 'lowered' => $lowered, 'undo' => $undo];
+    }
+
+    /**
+     * `.125`: lo que gastó y vendió una campaña en sus últimos $days días cerrados y lo que se intentó en ese tiempo (las veces
+     * que entraron anuncios nuevos y las que se bajó el presupuesto). Null si todavía no lleva $days días gastando. PHP puro.
+     *
+     * @return array{days: int, spend: float, purchases: float, batches: int, lowered: int}|null
+     */
+    public static function chronic(array $h, string $yesterday, int $days): ?array
+    {
+        $daily = $h['daily'] ?? [];
+        $from = date('Y-m-d', strtotime("{$yesterday} -" . ($days - 1) . ' days'));
+        $spent = array_keys(array_filter($daily, fn ($r) => ($r['spend'] ?? 0) > 0));
+        if (!$spent || min($spent) > $from) {
+            return null;
+        }
+        $window = array_filter($daily, fn ($d) => $d >= $from && $d <= $yesterday, ARRAY_FILTER_USE_KEY);
+
+        return ['days' => $days, 'spend' => round((float) array_sum(array_column($window, 'spend')), 2), 'purchases' => (float) array_sum(array_column($window, 'purchases')),
+            'batches' => count(array_unique(array_filter($h['new_ads'] ?? [], fn ($d) => $d >= $from && $d <= $yesterday))),
+            'lowered' => count(array_filter($h['budget_events'] ?? [], fn ($e) => $e['to'] < $e['from'] && $e['date'] >= $from && $e['date'] <= $yesterday))];
+    }
+
+    /**
+     * `.125` (dueño, 2026-11-09: "sí debemos establecer un límite para soltar producto, dependiendo de su CPA y si hicimos
+     * cambios y no mejoró"): el producto entero en sus últimos $days días cerrados: si entre todas sus campañas no dejó dinero
+     * (compras × BE − gasto ≤ 0, con $minCpa×C gastado en cada una que gastó) y en ese tiempo entraron $minBatches batches o
+     * más. Null si no aplica, o si todavía no lleva $days días gastando. PHP puro.
+     *
+     * @return array{days: int, spend: float, purchases: float, profit: float, batches: int, cities: list<array{city: ?string, spend: float, purchases: float, be: float}>}|null
+     */
+    public static function dropProduct(array $f, array $histories, string $yesterday, int $days, float $minCpa, int $minBatches): ?array
+    {
+        $from = date('Y-m-d', strtotime("{$yesterday} -" . ($days - 1) . ' days'));
+        $spend = $buys = $profit = $need = 0.0;
+        $first = null;
+        $cities = [];
+        $dates = [];
+        foreach ($f['campaigns'] as $id => $c) {
+            $h = $histories[(string) $id] ?? [];
+            $daily = $h['daily'] ?? [];
+            if (!$c['target'] || !$c['break_even'] || !$daily) {
+                continue;
+            }
+            $spent = array_keys(array_filter($daily, fn ($r) => ($r['spend'] ?? 0) > 0));
+            $first = $spent ? min($first ?? '9999', min($spent)) : $first;
+            $window = array_filter($daily, fn ($d) => $d >= $from && $d <= $yesterday, ARRAY_FILTER_USE_KEY);
+            $s = (float) array_sum(array_column($window, 'spend'));
+            $p = (float) array_sum(array_column($window, 'purchases'));
+            if ($s <= 0) {
+                continue;
+            }
+            $spend += $s;
+            $buys += $p;
+            $profit += $p * $c['break_even'] - $s;
+            $need += $minCpa * $c['target'];
+            $cities[] = ['city' => $c['city'] ?? null, 'spend' => round($s, 2), 'purchases' => $p, 'be' => (float) $c['break_even']];
+            array_push($dates, ...array_filter($h['new_ads'] ?? [], fn ($d) => $d >= $from && $d <= $yesterday));
+        }
+        if ($first === null || $first > $from || $spend <= 0 || $spend < $need || $profit > 0) {
+            return null;
+        }
+        // Un batch que salió en 3 ciudades cuenta una vez: por el nombre de su ad set o, si no se sabe cuándo se creó, por el día
+        $names = [];
+        foreach ($f['adsets'] ?? [] as $set) {
+            if (($set['created_time'] ?? null) && isset($f['campaigns'][$set['campaign_meta_id']]) && date('Y-m-d', strtotime((string) $set['created_time'])) >= $from) {
+                $names[(string) $set['name']] = true;
+            }
+        }
+        $batches = $names ? count($names) : count(array_unique($dates));
+        if ($batches < $minBatches) {
+            return null;
+        }
+
+        return ['days' => $days, 'spend' => round($spend, 2), 'purchases' => $buys, 'profit' => round($profit, 2), 'batches' => $batches, 'cities' => $cities];
     }
 
     /** `.111`: las horas desde que se creó el más viejo de unos anuncios (null si alguno no tiene la hora). PHP puro. */

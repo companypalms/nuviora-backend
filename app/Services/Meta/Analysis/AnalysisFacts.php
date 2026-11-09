@@ -35,7 +35,9 @@ final class AnalysisFacts
                         // .111: la espera de 24 horas después de un cambio grande (hasta cuándo y qué)
                         + (isset($a['cooldown']) ? ['cooldown' => $a['cooldown']] : [])
                         // .123: entre C y BE, qué se espera y hasta cuándo
-                        + (isset($a['ladder']) ? ['ladder' => $a['ladder']] : []),
+                        + (isset($a['ladder']) ? ['ladder' => $a['ladder']] : [])
+                        // .125: los 14 días sin dejar dinero (lo gastado, lo vendido y lo que se intentó)
+                        + (isset($a['chronic']) ? ['chronic' => $a['chronic']] : []),
                     'notes' => array_map(fn ($n) => $n['label'] . ': ' . $n['text'], $c['notes'] ?? []),
                     'budget_notes' => $c['budget_notes'] ?? [],
                     'price_option' => $c['price_option']['text'] ?? null,
@@ -95,6 +97,8 @@ final class AnalysisFacts
                 'rests' => $plan['rests'] ?? [], 'next_angle' => $plan['next_angle'] ?? null,
                 // .117: se quedó sin ninguna ciudad prendida
                 'no_city' => $plan['no_city'] ?? null,
+                // .125: el producto entero lleva 14 días sin dejar dinero: lo decide el dueño
+                'drop' => $plan['drop'] ?? null,
                 'cities' => $cities, 'creatives' => $creatives, 'batches' => $batches, 'stop_by_city' => $stopByCity, 'stop_all' => $stopAll,
                 // .119: los ganadores ya apagados siguen en la fila de iteraciones (no salen en la lista del análisis)
                 'off_winners' => array_values(array_map(fn ($cr) => ['id' => $cr['id'], 'label' => $cr['label'], 'verdict_key' => $cr['verdict']['key'], 'off_winner' => true,

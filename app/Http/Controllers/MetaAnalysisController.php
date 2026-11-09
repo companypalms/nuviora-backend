@@ -103,8 +103,9 @@ class MetaAnalysisController extends Controller
             $marks[$data['key']] = ['status' => $data['status'], 'note' => $data['note'] ?? null, 'by' => Auth::user()?->names, 'at' => now()->toIso8601String()];
         }
         $analysis->forceFill(['marks' => $marks ?: null])->save();
-        // .117: con "No estoy de acuerdo", prender esa ciudad no se vuelve a sugerir (si lo deshace, sí)
-        if (preg_match('/:(relaunch|no_city)$/', $data['key'])) {
+        // .117: con "No estoy de acuerdo", prender esa ciudad no se vuelve a sugerir (si lo deshace, sí). .125: y "decide si
+        // sueltas el producto" no se vuelve a preguntar en 14 días
+        if (preg_match('/:(relaunch|no_city|drop_product)$/', $data['key'])) {
             $dismissed = (array) Setting::get(OpsFacts::DISMISSED, []);
             if (($data['status'] ?? null) === 'disagree') {
                 $dismissed[$data['key']] = now(config('app.timezone'))->toDateString();

@@ -51,6 +51,10 @@ class MetaAnalyzer
         if ($behind = $this->missionLate($date)) {
             $urgent[] = $behind;
         }
+        // .125: si los datos de Meta son viejos, se avisa arriba de todo
+        if ($stale = self::staleNotice()) {
+            array_unshift($urgent, $stale);
+        }
         $input = AnalysisFacts::input($facts);
 
         $row = ['status' => 'ok', 'text' => null, 'model' => null, 'tokens_in' => null, 'tokens_out' => null, 'error' => null, 'warnings' => []];
@@ -119,6 +123,27 @@ class MetaAnalyzer
             app(\App\Services\Meta\Products\ProductMemories::class)->refreshChanged();
         } catch (\Throwable $e) {
             report($e);
+        }
+    }
+
+    /** `.125`: el aviso de datos viejos, con la última lectura de las cuentas activas. Si algo falla, el análisis sale igual. */
+    private static function staleNotice(): ?array
+    {
+        try {
+            $synced = \App\Models\MetaAdAccount::where('is_active', true)->pluck('last_synced_at');
+            if ($synced->isEmpty()) {
+                return null;
+            }
+            // La cuenta que hace más tiempo no se lee manda (una que nunca se leyó, también)
+            $last = $synced->contains(null) ? null : $synced->min();
+            $tz = config('app.timezone');
+
+            return UrgentList::stale($last !== null ? \Illuminate\Support\Carbon::parse($last)->setTimezone($tz)->toDateTimeString() : null, now($tz)->toDateTimeString(),
+                (float) (new \App\Services\Meta\Decisions\DecisionSettings())->get()['sync_stale_hours']);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return null;
         }
     }
 

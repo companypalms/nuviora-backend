@@ -67,6 +67,14 @@ class DecisionSettings
         // volvió a C, devolver la última subida (una de los últimos 14 días); después de cada cambio, otros 3 días cerrados
         'band_wait_days' => [3, 1, 30],
         'band_undo_days' => [14, 1, 90],
+        // .125 (dueño, 2026-11-09: "sí debemos establecer un límite… dependiendo de su CPA y si hicimos cambios y no mejoró"; "puede
+        // ser que la campaña se esté comenzando a recuperar"): una campaña que en 14 días vendió en el BE o encima (con 10×C
+        // gastado) y en los últimos 3 días también, se pausa; el producto entero así, con 2 batches o más lanzados, es una misión
+        // para decidir. Y si los datos de Meta tienen más de 6 horas, se avisa
+        'chronic_days' => [14, 7, 60],
+        'chronic_min_cpa' => [10, 1, 500],
+        'drop_min_batches' => [2, 0, 20],
+        'sync_stale_hours' => [6, 1, 72],
         'relaunch_batches' => [3, 1, 10],        // .117: una campaña apagada se prende con 3 batches nunca publicados en esa ciudad
         'startup_min_mult' => [2.5, 1, 10],      // presupuesto de arranque = C × batches nuevos × 2,5 a 3
         'startup_max_mult' => [3, 1, 10],

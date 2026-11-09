@@ -96,7 +96,8 @@ describe('"No estoy de acuerdo"', function () {
             $t->timestamps();
         });
         Sanctum::actingAs(User::forceCreate(['names' => 'Dueño', 'email' => 'd@test', 'password' => 'x', 'role_id' => Role::forceCreate(['description' => 'Admin'])->id]));
-        $this->analysis = MetaAnalysis::forceCreate(['date' => '2026-11-09', 'urgent' => [['key' => '5:200:relaunch', 'kind' => 'relaunch'], ['key' => '5:200:scale', 'kind' => 'scale']]]);
+        $this->analysis = MetaAnalysis::forceCreate(['date' => '2026-11-09', 'urgent' => [['key' => '5:200:relaunch', 'kind' => 'relaunch'], ['key' => '5:200:scale', 'kind' => 'scale'],
+            ['key' => '5:drop_product', 'kind' => 'drop_product']]]);
     });
 
     it('prender esa ciudad no se vuelve a sugerir; si lo deshace, sí', function () {
@@ -105,6 +106,13 @@ describe('"No estoy de acuerdo"', function () {
         expect(array_keys((array) Setting::get(OpsFacts::DISMISSED, [])))->toBe(['5:200:relaunch']);
         $this->putJson($url, ['key' => '5:200:relaunch', 'status' => null])->assertOk();
         expect((array) Setting::get(OpsFacts::DISMISSED, []))->toBe([]);
+    });
+
+    it('.125: "decide si sueltas el producto": guarda el día, para no volver a preguntar en 14 días', function () {
+        $this->travelTo(\Carbon\CarbonImmutable::parse('2026-11-09 09:00:00'));
+        $url = "/api/meta/analysis/{$this->analysis->id}/marks";
+        $this->putJson($url, ['key' => '5:drop_product', 'status' => 'disagree', 'note' => 'Le doy 2 semanas más'])->assertOk();
+        expect((array) Setting::get(OpsFacts::DISMISSED, []))->toBe(['5:drop_product' => '2026-11-09']);
     });
 
     it('en otras misiones no guarda nada, y "Hecho" tampoco', function () {
