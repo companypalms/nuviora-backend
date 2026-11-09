@@ -40,7 +40,7 @@ final class UrgentList
         'pause_city' => 1, 'not_sold' => 1, 'stock_out' => 1, 'stock_waiting' => 1, 'stop_creatives' => 1,
         'decrease' => 2, 'intervene' => 2, 'tracking' => 2, 'late_urgent' => 2,
         'hold_prune' => 3, 'few_batches' => 3, 'late_batch' => 3, 'launch_ready' => 3, 'no_city' => 3,
-        'scale' => 4, 'launch_test' => 4, 'relaunch' => 4,
+        'scale' => 4, 'launch_test' => 4, 'relaunch' => 4, 'new_product_late' => 4,
         'alarm' => 5, 'names' => 5, 'cooldown' => 5, 'angle_rest' => 5, 'left_city' => 5,
         'price' => 6,
     ];
@@ -50,7 +50,7 @@ final class UrgentList
         'pause_city' => 'frenar', 'not_sold' => 'frenar', 'stop_creatives' => 'frenar', 'decrease' => 'frenar',
         'intervene' => 'arreglar', 'tracking' => 'arreglar', 'hold_prune' => 'arreglar', 'few_batches' => 'arreglar',
         'late_urgent' => 'arreglar', 'late_batch' => 'arreglar', 'launch_ready' => 'arreglar', 'no_city' => 'arreglar',
-        'scale' => 'crecer', 'launch_test' => 'crecer', 'relaunch' => 'crecer',
+        'scale' => 'crecer', 'launch_test' => 'crecer', 'relaunch' => 'crecer', 'new_product_late' => 'crecer',
         'stock_out' => 'aviso', 'stock_waiting' => 'aviso', 'alarm' => 'aviso', 'price' => 'aviso', 'names' => 'aviso', 'cooldown' => 'aviso', 'angle_rest' => 'aviso', 'left_city' => 'aviso',
     ];
 
@@ -247,6 +247,8 @@ final class UrgentList
             $steps = array_values(array_filter([
                 $t['linked'] ? null : "Antes: pásale a tu asistente el link de {$short} en Shopify (así sus pedidos se suman a {$short}).",
                 $c ? null : "Antes: pon el CPA de referencia de {$short} en Meta Ads › Productos y objetivos (sin él no se puede juzgar el testeo).",
+                // .118: primero la landing
+                ($t['landing_pending'] ?? false) ? "Antes: termina la landing de {$short} y márcala en la misión de producto nuevo." : null,
                 $t['cities'] ? 'Crea una campaña CBO en cada ciudad, con estos nombres: '
                     . CreativeCalls::join(array_map(fn ($city) => self::q(\App\Services\Meta\Naming::campaign($t['product'], $city, $t['date'] ?? 'today')), $t['cities'])) . '.'
                     : 'Crea una campaña CBO en cada ciudad donde vendes, con el nombre ' . self::q(\App\Services\Meta\Naming::product($t['product']) . ' | CIUDAD | CBO | '

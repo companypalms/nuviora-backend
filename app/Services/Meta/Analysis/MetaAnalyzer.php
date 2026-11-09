@@ -4,6 +4,7 @@ namespace App\Services\Meta\Analysis;
 
 use App\Models\MetaAnalysis;
 use App\Services\Meta\Decisions\MetaDecisions;
+use App\Services\Meta\Products\NewProductMissions;
 use App\Services\Meta\Queue\QueueProposer;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -46,6 +47,10 @@ class MetaAnalyzer
         // .89: y los testeos listos para lanzar (todos sus batches en la banca)
         $urgent = UrgentList::build($facts, $late, \App\Services\Meta\Queue\LateBatches::leader(), \App\Services\Meta\Queue\TestingLaunch::ready(),
             \App\Services\Meta\NameCheck::find()); // .89: y lo que no se puede reconocer por su nombre
+        // .118: si va tarde con el producto nuevo, es una misión de hoy
+        if ($behind = $this->missionLate($date)) {
+            $urgent[] = $behind;
+        }
         $input = AnalysisFacts::input($facts);
 
         $row = ['status' => 'ok', 'text' => null, 'model' => null, 'tokens_in' => null, 'tokens_out' => null, 'error' => null, 'warnings' => []];
@@ -79,16 +84,16 @@ class MetaAnalyzer
             ]);
         });
         if ($later) {
-            \Illuminate\Support\defer(fn () => $this->afterwards($analysis, $userId, $late));
+            \Illuminate\Support\defer(fn () => $this->afterwards($analysis, $userId, $late, $decisions));
         } else {
-            $this->afterwards($analysis, $userId, $late);
+            $this->afterwards($analysis, $userId, $late, $decisions);
         }
 
         return $analysis;
     }
 
     /** Lo que sigue al análisis guardado: los encargos, lo que va al editor líder y "Lo que sabemos". Si algo falla, el análisis queda igual. */
-    private function afterwards(MetaAnalysis $analysis, ?int $userId, array $late = []): void
+    private function afterwards(MetaAnalysis $analysis, ?int $userId, array $late = [], array $decisions = []): void
     {
         // .89: el sistema también presiona: al editor líder, en su campanita, lo atrasado (una vez por día)
         try {
@@ -103,11 +108,29 @@ class MetaAnalyzer
         } catch (\Throwable $e) {
             report($e);
         }
+        // .118: si ya hay banca y equipo, se abre la misión de lanzar un producto nuevo
+        try {
+            (new NewProductMissions())->evaluate($decisions, $analysis->date->toDateString(), QueueProposer::forecast()['verdict'] ?? null);
+        } catch (\Throwable $e) {
+            report($e);
+        }
         // .66: el resumen de "Lo que sabemos" de los productos con batches testeados o notas nuevas
         try {
             app(\App\Services\Meta\Products\ProductMemories::class)->refreshChanged();
         } catch (\Throwable $e) {
             report($e);
+        }
+    }
+
+    /** `.118`: la misión de "vas tarde con el producto nuevo". Si algo falla, el análisis sale igual. */
+    private function missionLate(string $date): ?array
+    {
+        try {
+            return (new NewProductMissions())->lateItem($date);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return null;
         }
     }
 

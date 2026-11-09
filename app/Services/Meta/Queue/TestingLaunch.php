@@ -57,6 +57,7 @@ class TestingLaunch
                 'linked' => (int) ($product?->product_id ?? 0) > 0, 'campaigns' => $campaigns,
                 'cities' => $campaigns === [] ? array_values(array_unique(array_filter(array_column(self::campaigns(null), 'city')))) : [],
                 'target' => $target !== null ? (float) $target : null, 'min' => (float) $s['startup_min_mult'], 'max' => (float) $s['startup_max_mult'],
+                'landing_pending' => \App\Services\Meta\Products\NewProductMissions::landingPending($pid), // .118
             ];
         }
 

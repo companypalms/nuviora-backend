@@ -609,6 +609,7 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::get('/analysis', [\App\Http\Controllers\MetaAnalysisController::class, 'index']);
         Route::post('/analysis/run', [\App\Http\Controllers\MetaAnalysisController::class, 'run'])->middleware('throttle:5,1');
         Route::put('/analysis/{analysis}/marks', [\App\Http\Controllers\MetaAnalysisController::class, 'mark']);
+        Route::post('/new-product-mission/{mission}/done', [\App\Http\Controllers\MetaAnalysisController::class, 'missionDone'])->whereNumber('mission'); // .118
         Route::get('/analysis/videos', [\App\Http\Controllers\MetaAnalysisController::class, 'videos']); // .102
         // Etapa 5, paso 4a: la cola de producción y la banca
         Route::get('/queue', [\App\Http\Controllers\MetaQueueController::class, 'index']);

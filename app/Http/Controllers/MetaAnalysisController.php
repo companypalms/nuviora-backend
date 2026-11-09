@@ -5,12 +5,15 @@ namespace App\Http\Controllers;
 use App\Models\CreativeBatch;
 use App\Models\CreativeBatchPiece;
 use App\Models\MetaAnalysis;
+use App\Models\NewProductMission;
 use App\Models\Setting;
 use App\Models\StoredFile;
 use App\Services\Meta\Analysis\AnalysisSender;
 use App\Services\Meta\Analysis\DayStreak;
 use App\Services\Meta\Analysis\MetaAnalyzer;
 use App\Services\Meta\Decisions\Readers\OpsFacts;
+use App\Services\Meta\Products\NewProductMissions;
+use App\Services\Meta\Products\NewProductRules;
 use App\Services\Meta\Queue\QueueRules;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -43,6 +46,7 @@ class MetaAnalysisController extends Controller
                 ->map(fn ($r) => ['date' => substr((string) $r->date, 0, 10), 'versions' => (int) $r->versions]),
             'runs_left' => MetaAnalyzer::runsLeft(),
             'queue_pending' => CreativeBatch::where('status', 'proposed')->count(), // paso 4b
+            'new_product' => $this->newProduct(), // .118
         ]);
     }
 
@@ -87,6 +91,11 @@ class MetaAnalysisController extends Controller
             'status' => ['nullable', Rule::in(['done', 'disagree'])],
             'note' => 'nullable|string|max:500',
         ]);
+        // .118: "vas tarde con el producto nuevo": no se puede descartar, y "Hecho" termina la etapa
+        if (preg_match('/^new_product:(\d+):(\w+)$/', $data['key'], $m)) {
+            (new NewProductMissions())->fromList((int) $m[1], $m[2], $data['status'] ?? null);
+            $analysis->refresh();
+        }
         $marks = $analysis->marks ?? [];
         if (($data['status'] ?? null) === null) {
             unset($marks[$data['key']]);
@@ -106,6 +115,28 @@ class MetaAnalysisController extends Controller
         }
 
         return response()->json(['marks' => $analysis->marks ?? []]);
+    }
+
+    /** `.118`: "Hecho" en una etapa de la misión de producto nuevo. */
+    public function missionDone(Request $request, NewProductMission $mission)
+    {
+        $data = $request->validate(['stage' => ['required', Rule::in(array_keys(NewProductRules::STAGES))]]);
+        $missions = new NewProductMissions();
+        $missions->complete($mission, $data['stage']);
+
+        return response()->json(['view' => $missions->view()]);
+    }
+
+    /** `.118`: la misión de producto nuevo; si falla, la pantalla se muestra igual. */
+    private function newProduct(): ?array
+    {
+        try {
+            return (new NewProductMissions())->view();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return null;
+        }
     }
 
     /**
