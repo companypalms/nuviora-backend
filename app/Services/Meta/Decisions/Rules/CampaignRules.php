@@ -10,8 +10,9 @@ namespace App\Services\Meta\Decisions\Rules;
  *   stock ya no frena la subida ni pide pausar: queda como aviso ("al día siguiente ya tenemos stock"). `.101`
  *   (2026-11-04, 55 pedidos de Termafit esperando stock 6 días): con pedidos esperando stock en la ciudad no se sube ahí;
  * - entre C y BE: mantener, podar y meter creativos;
- * - en el BE o encima: intervenir (podar y lanzar); 2 días cerrados después, −20 %; 5 días, pausar la ciudad; después el
- *   último test (1,5×C por día, 3 días) y, si falla, recomendar dejar el producto;
+ * - en el BE o encima: intervenir (podar y lanzar); 2 días cerrados después, −20 %; 5 días, pausar la ciudad;
+ * - `.117` (dueño, 2026-11-09): una campaña apagada espera a tener 3 batches que nunca se publicaron en esa ciudad y se
+ *   prende con esos 3 (reemplaza el "último test"); si vuelve a perder y se apaga, se recomienda dejar el producto ahí;
  * - nunca presupuesto y creativos el mismo día; la IA solo recomienda: el sistema no toca Meta.
  * - `.111` (dueño, 2026-11-06): después de un cambio grande (subir o bajar el presupuesto, un batch nuevo, volver a
  *   prenderla), 24 horas reales sin otro cambio grande en esa campaña (`cooldown`).
@@ -28,8 +29,8 @@ class CampaignRules
         'intervene' => ['label' => 'Intervenir', 'tone' => 'warning'],
         'decrease' => ['label' => 'Bajar', 'tone' => 'warning'],
         'pause_city' => ['label' => 'Pausar la ciudad', 'tone' => 'error'],
-        'last_test' => ['label' => 'Último test', 'tone' => 'warning'],
-        'drop' => ['label' => 'Dejar el producto aquí', 'tone' => 'error'],
+        'relaunch' => ['label' => 'Prender otra vez', 'tone' => 'success'],
+        'left_city' => ['label' => 'Dejar el producto aquí', 'tone' => 'warning'],
     ];
 
     public const URGENCY = [1 => 'U1 · urgente', 2 => 'U2 · atención', 3 => 'U3 · escalando', 4 => 'U4 · sano', 5 => 'U5 · sin trabajo'];
@@ -51,6 +52,10 @@ class CampaignRules
 
     /** Las acciones de una campaña activa que llevan el aviso de stock. */
     private const WITH_STOCK_ALERT = ['scale', 'hold', 'hold_prune', 'intervene', 'decrease', 'wait'];
+
+    /** `.117`: cuántos días se sigue avisando que se recomienda dejar el producto en una ciudad. */
+    private const LEFT_NOTICE_DAYS = 14;
+
     // .100 (dueño, 2026-11-04: "lanzamos un batch a la vez"): un producto que ya vende pide 1 batch a la vez (antes U1 2–3 y U2 1–2)
     public const BATCHES = [1 => '1', 2 => '1', 3 => '1', 4 => '0–1', 5 => '0'];
 
@@ -63,8 +68,8 @@ class CampaignRules
      *
      * @param array $in c, be, mode, budget, spend3, purchases3, cpa3, cpa7, freq3, stock_ok, stock_note,
      *                  increased_24h, budget_changed_today, new_ads_today, streak_days, intervention (fecha o null),
-     *                  closed_since_intervention, decreased_since_intervention, history_since, last_test (null o
-     *                  ['days' => n, 'cpa' => x]), prune (nombres de anuncios perdedores), new_batches, bank_ready (los B####
+     *                  closed_since_intervention, decreased_since_intervention, history_since, prune (nombres de anuncios
+     *                  perdedores), new_batches, bank_ready (los B####
      *                  en banca, listos para lanzar), c_source (manual o name si la C es una referencia), stock_alert (el
      *                  aviso de stock de la ciudad, sin frenar nada), stock_waiting (`.101`: los pedidos esperando stock, si
      *                  pasan el mínimo: no se sube), recent_change (`.111`: el último cambio grande de las últimas 24 horas,
@@ -108,16 +113,6 @@ class CampaignRules
         $prune = $in['prune'] ?? [];
         $pruneText = $prune ? ' Apagar: ' . implode(', ', array_slice($prune, 0, 6)) . (count($prune) > 6 ? '…' : '') . '.' : '';
 
-        // El último test en curso: si después de sus días sigue en el BE o encima, se recomienda dejar el producto aquí
-        if ($lt = $in['last_test'] ?? null) {
-            if ($lt['days'] >= $this->s['last_test_days'] && $be && ($lt['cpa'] === null || $lt['cpa'] >= $be)) {
-                return $this->out('drop', $data, 'El último test (' . (int) $lt['days'] . ' días) también quedó en el break-even o encima.',
-                    'Recomendación: dejar el producto en esta ciudad. Lo decides tú.');
-            }
-            if ($lt['days'] < $this->s['last_test_days']) {
-                return $this->out('wait', $data, 'Último test en curso (' . (int) $lt['days'] . ' de ' . (int) $this->s['last_test_days'] . ' días).', 'No tocar nada hasta terminarlo.');
-            }
-        }
         if ($spend < $c * $this->s['no_data_cpa']) {
             return $this->out('wait', $data, 'En 3 días gastó menos de ' . AdRules::num($this->s['no_data_cpa']) . '×C: todavía no alcanza para decidir.', null);
         }
@@ -140,10 +135,8 @@ class CampaignRules
                     'Intervenir: podar y lanzar ' . (($in['bank_ready'] ?? []) ? $in['bank_ready'][0] . ' de la banca' : 'un batch nuevo') . '. No tocar el presupuesto hoy.' . $pruneText);
             }
             if ($days >= $this->s['pause_after_days']) {
-                $test = $c * $this->s['last_test_budget_cpa'];
-
                 return $this->out('pause_city', $data, "{$days} días cerrados en el break-even o encima desde la primera intervención.",
-                    'Pausar la ciudad. Después, el último test: un batch nuevo con ' . AdRules::money($test) . ' por día durante ' . (int) $this->s['last_test_days'] . ' días.',
+                    'Pausar la ciudad. Se vuelve a prender cuando haya ' . (int) $this->s['relaunch_batches'] . ' batches que nunca se publicaron ahí.',
                     $budget, null);
             }
             if ($days >= $this->s['decrease_after_days'] && !($in['decreased_since_intervention'] ?? false)) {
@@ -382,7 +375,7 @@ class CampaignRules
             in_array($p['mode'] ?? 'normal', ['paused', 'abandoned'], true) => 5,
             (bool) ($p['stock_all_out'] ?? false) => 5,
             $noTarget => 5,
-            (bool) array_intersect($actions, ['intervene', 'decrease', 'pause_city', 'last_test', 'drop']) || (int) ($p['healthy'] ?? 0) === 0 && $actions => 1,
+            (bool) array_intersect($actions, ['intervene', 'decrease', 'pause_city']) || (int) ($p['healthy'] ?? 0) === 0 && $actions => 1,
             in_array('hold_prune', $actions, true) || (int) ($p['failing'] ?? 0) > 0 => 2,
             in_array('scale', $actions, true) => 3,
             default => 4,
@@ -394,7 +387,7 @@ class CampaignRules
                 default => 'Sin CPA objetivo ni break-even: no se puede juzgar',
             };
         }
-        if (array_intersect($actions, ['intervene', 'decrease', 'pause_city', 'last_test', 'drop'])) {
+        if (array_intersect($actions, ['intervene', 'decrease', 'pause_city'])) {
             $reasons[] = 'Ciudades en el break-even o encima';
         }
         if ((int) ($p['healthy'] ?? 0) === 0 && $actions && $level < 5) {
@@ -408,6 +401,64 @@ class CampaignRules
             ? 'U5 · sin CPA de referencia' : self::URGENCY[$level];
 
         return ['level' => $level, 'label' => $label, 'batches' => $batches, 'reasons' => $reasons];
+    }
+
+    /**
+     * `.117` (dueño, 2026-11-09: "cuando una campaña se apaga, se debe esperar a tener 3 batch nuevos otra vez para reactivarla
+     * con esos 3 batchs, no se tiene que acelerar el proceso únicamente por esa ciudad"): qué hacer con una campaña apagada.
+     * Si ya se prendió otra vez con batches nuevos y volvió a perder, se recomienda dejar el producto ahí (lo decide él);
+     * si no, sale cuando hay 3 batches nunca publicados en esa ciudad. Mientras tanto, nada: no se piden batches por ella.
+     *
+     * @param array{mode: string, c: ?float, be: ?float, city_free: bool, available: bool, dismissed: bool, offers: list<array>, status_events: list<array>,
+     *     new_ads: list<string>, daily: array<string, array>, today: string} $in city_free: no hay otra campaña prendida de ese producto en la ciudad
+     * @return ?array la acción (relaunch o left_city), o null si no hay nada que hacer
+     */
+    public function relaunch(array $in): ?array
+    {
+        $c = $in['c'] ?? null;
+        if (!$c || ($in['mode'] ?? 'normal') !== 'normal' || !($in['city_free'] ?? true) || !($in['available'] ?? true) || ($in['dismissed'] ?? false)) {
+            return null;
+        }
+        if ($lost = self::lostAfterRelaunch($in['status_events'] ?? [], $in['new_ads'] ?? [], $in['daily'] ?? [], (float) $c, $in['be'] ?? null)) {
+            return strtotime($lost['off']) >= strtotime($in['today'] . ' -' . self::LEFT_NOTICE_DAYS . ' days')
+                ? $this->out('left_city', '', 'La volviste a prender con batches nuevos el ' . date('d/m', strtotime($lost['on'])) . ' y también perdió.', 'Recomendación: dejar el producto en esta ciudad. Lo decides tú.')
+                : null;
+        }
+        $need = (int) $this->s['relaunch_batches'];
+        if (count($in['offers'] ?? []) < $need) {
+            return null;
+        }
+        $min = round($c * $need * $this->s['startup_min_mult'], 2);
+        $max = round($c * $need * $this->s['startup_max_mult'], 2);
+
+        return $this->out('relaunch', '', "Hay {$need} batches que nunca se publicaron en esta ciudad.",
+            "Prenderla solo con esos {$need} y un presupuesto de arranque entre " . AdRules::money($min) . ' y ' . AdRules::money($max) . ' por día.', $max, $min);
+    }
+
+    /** `.117`: se apagó, se prendió otra vez con anuncios nuevos, volvió a apagarse y no vendió debajo del BE. PHP puro. */
+    private static function lostAfterRelaunch(array $events, array $newAds, array $daily, float $c, ?float $be): ?array
+    {
+        $turnsOff = fn ($e) => $e['from'] === 'ACTIVE' && $e['to'] !== 'ACTIVE';
+        $off = $on = null;
+        $before = false;
+        foreach (array_reverse(array_values($events)) as $e) {
+            if ($off === null) {
+                $off = $turnsOff($e) ? $e : null;
+            } elseif ($on === null) {
+                $on = $e['to'] === 'ACTIVE' ? $e : null;
+            } elseif ($turnsOff($e)) {
+                $before = true;
+                break;
+            }
+        }
+        if (!$before || !$be || !array_filter($newAds, fn ($d) => abs(strtotime($d) - strtotime($on['date'])) <= 2 * 86400)) {
+            return null;
+        }
+        $between = array_filter($daily, fn ($d) => $d >= $on['date'] && $d <= $off['date'], ARRAY_FILTER_USE_KEY);
+        $spend = array_sum(array_column($between, 'spend'));
+        $buys = array_sum(array_column($between, 'purchases'));
+
+        return $spend >= $c && ($buys <= 0 || $spend / $buys >= $be) ? ['on' => $on['date'], 'off' => $off['date']] : null;
     }
 
     /**

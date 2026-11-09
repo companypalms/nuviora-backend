@@ -37,21 +37,21 @@ final class UrgentList
 {
     /** Qué tan urgente es cada cosa (menos es más urgente). */
     public const SEVERITY = [
-        'drop' => 1, 'pause_city' => 1, 'not_sold' => 1, 'stock_out' => 1, 'stock_waiting' => 1, 'stop_creatives' => 1,
-        'decrease' => 2, 'intervene' => 2, 'last_test' => 2, 'tracking' => 2, 'late_urgent' => 2,
-        'hold_prune' => 3, 'few_batches' => 3, 'late_batch' => 3, 'launch_ready' => 3,
-        'scale' => 4, 'launch_test' => 4,
-        'alarm' => 5, 'names' => 5, 'cooldown' => 5, 'angle_rest' => 5,
+        'pause_city' => 1, 'not_sold' => 1, 'stock_out' => 1, 'stock_waiting' => 1, 'stop_creatives' => 1,
+        'decrease' => 2, 'intervene' => 2, 'tracking' => 2, 'late_urgent' => 2,
+        'hold_prune' => 3, 'few_batches' => 3, 'late_batch' => 3, 'launch_ready' => 3, 'no_city' => 3,
+        'scale' => 4, 'launch_test' => 4, 'relaunch' => 4,
+        'alarm' => 5, 'names' => 5, 'cooldown' => 5, 'angle_rest' => 5, 'left_city' => 5,
         'price' => 6,
     ];
 
     /** `.82`: en qué grupo de la pantalla va cada cosa. */
     public const GROUP = [
-        'drop' => 'frenar', 'pause_city' => 'frenar', 'not_sold' => 'frenar', 'stop_creatives' => 'frenar', 'decrease' => 'frenar',
-        'intervene' => 'arreglar', 'last_test' => 'arreglar', 'tracking' => 'arreglar', 'hold_prune' => 'arreglar', 'few_batches' => 'arreglar',
-        'late_urgent' => 'arreglar', 'late_batch' => 'arreglar', 'launch_ready' => 'arreglar',
-        'scale' => 'crecer', 'launch_test' => 'crecer',
-        'stock_out' => 'aviso', 'stock_waiting' => 'aviso', 'alarm' => 'aviso', 'price' => 'aviso', 'names' => 'aviso', 'cooldown' => 'aviso', 'angle_rest' => 'aviso',
+        'pause_city' => 'frenar', 'not_sold' => 'frenar', 'stop_creatives' => 'frenar', 'decrease' => 'frenar',
+        'intervene' => 'arreglar', 'tracking' => 'arreglar', 'hold_prune' => 'arreglar', 'few_batches' => 'arreglar',
+        'late_urgent' => 'arreglar', 'late_batch' => 'arreglar', 'launch_ready' => 'arreglar', 'no_city' => 'arreglar',
+        'scale' => 'crecer', 'launch_test' => 'crecer', 'relaunch' => 'crecer',
+        'stock_out' => 'aviso', 'stock_waiting' => 'aviso', 'alarm' => 'aviso', 'price' => 'aviso', 'names' => 'aviso', 'cooldown' => 'aviso', 'angle_rest' => 'aviso', 'left_city' => 'aviso',
     ];
 
     /** Cuántos nombres de creativos caben en la línea del porqué. */
@@ -63,8 +63,8 @@ final class UrgentList
     /** `.87`: las ciudades que piden creativos: su misión ya lanza los batches que hagan falta. */
     private const FEEDS = ['hold_prune', 'intervene'];
 
-    /** `.87`: las ciudades que se pausan o tienen su propio test: ahí no se lanzan batches. */
-    private const NO_BATCHES = ['pause_city', 'not_sold', 'drop', 'last_test'];
+    /** `.87`: las ciudades que se pausan o se prenden con sus propios batches (`.117`): ahí no se lanzan aparte. */
+    private const NO_BATCHES = ['pause_city', 'not_sold', 'relaunch', 'left_city'];
 
     /** `.87`: el mínimo de batches vivos en una campaña prendida (dueño: "por lo menos montar dos batch"). */
     public const MIN_LIVE = 2;
@@ -95,7 +95,7 @@ final class UrgentList
             $stopCity = [];
             foreach ($p['stop_by_city'] ?? [] as $city => $labels) {
                 $labels = array_values(array_diff($labels, $stopAll));
-                if ($labels && !in_array($kinds[(string) $city] ?? null, ['pause_city', 'not_sold', 'drop'], true)) {
+                if ($labels && !in_array($kinds[(string) $city] ?? null, ['pause_city', 'not_sold'], true)) {
                     $stopCity[(string) $city] = $labels;
                 }
             }
@@ -127,7 +127,7 @@ final class UrgentList
                 if (!isset(self::SEVERITY[$kind])) {
                     continue; // mantener, esperar, nada: van en el detalle
                 }
-                $mission = self::mission($kind, $a, $n, $c['campaign'] ?? null, $c['city'], $short, isset($stopCity[(string) $c['city']]), $mode, $launch);
+                $mission = self::mission($kind, $a, $n, $c['campaign'] ?? null, $c['city'], $short, isset($stopCity[(string) $c['city']]), $mode, $kind === 'relaunch' ? self::offers($n) : $launch);
                 // .87: nada que hacer hoy en Ads Manager (no hay qué podar ni qué lanzar): un aviso, no una misión
                 $wait = $mission['title'] === null;
                 if ($wait && $mode === 'liquidation') {
@@ -163,6 +163,10 @@ final class UrgentList
                     'steps' => $kind === 'tracking' ? ['Abre el Administrador de eventos de Meta.', 'Revisa que el píxel y la API de conversiones estén recibiendo las compras.'] : [],
                     'why' => match ($kind) { 'tracking' => self::firstSentence(preg_replace('/^Tracking:\s*/u', '', $t)), 'stock_waiting' => $waiting[1] ?? null, default => null },
                     'detail' => in_array($kind, ['tracking', 'stock_waiting'], true) ? [$t] : []];
+            }
+            // .117: se quedó sin ninguna ciudad prendida
+            if ($p['no_city'] ?? null) {
+                $items[] = $base + self::noCity((int) $p['product_id'], $short, $p['no_city']);
             }
             // .116: un ángulo que descansa: qué perdió y qué sigue
             foreach ($p['rests'] ?? [] as $r) {
@@ -282,7 +286,8 @@ final class UrgentList
         return match (true) {
             $kind === 'scale' && $from && $to => ['cut' => null, 'add' => round($to - $from, 2)],
             $kind === 'decrease' && $from && $to => ['cut' => round($from - $to, 2), 'add' => null],
-            in_array($kind, ['pause_city', 'drop'], true) && $budget => ['cut' => round((float) $budget, 2), 'add' => null],
+            $kind === 'pause_city' && $budget => ['cut' => round((float) $budget, 2), 'add' => null],
+            $kind === 'relaunch' && $to => ['cut' => null, 'add' => round((float) $to, 2)],
             default => null,
         };
     }
@@ -351,7 +356,6 @@ final class UrgentList
         $launchSteps = self::launchSteps($launch);
         $pct = $from && $to ? ' (' . ($to > $from ? '+' : '−') . AdRules::num(abs(round(($to / $from - 1) * 100))) . ' %)' : '';
         $switchOff = ['Apágala con el interruptor de la izquierda.'];
-        preg_match('/(\$[\d.,]+) por día durante (\d+) días/u', (string) ($a['proposal'] ?? ''), $test);
 
         [$title, $steps] = match ($kind) {
             'scale' => [$to ? 'Sube el presupuesto a ' . AdRules::money($to) . ' por día' : 'Sube el presupuesto',
@@ -360,9 +364,10 @@ final class UrgentList
                 [$open, $from && $to ? 'Cambia el presupuesto diario de ' . AdRules::money($from) . ' a ' . AdRules::money($to) . "{$pct}." : (string) $a['proposal']]],
             'pause_city' => ['Pausa la campaña', [$open, ...$switchOff]],
             'not_sold' => ['Pausa la campaña: ahí no se vende', [$open, ...$switchOff]],
-            'drop' => ['Decide si dejas de vender aquí', ['Si lo dejas: ' . lcfirst($open), ...$switchOff, 'Si quieres seguir: toca «No estoy de acuerdo» y escribe por qué.']],
-            'last_test' => ['Si quieres, haz el último test', [$open, $test ? "Lanza un batch nuevo con {$test[1]} por día durante {$test[2]} días." : (string) $a['proposal'],
-                'Si también pierde, deja el producto en esta ciudad.']],
+            // .117: se prende solo con los batches nuevos
+            'relaunch' => ["Prende esta campaña con {$go}", [$open, 'Deja apagados los ad sets y los anuncios que ya estaban: esta vez solo van estos ' . count($launch) . '.', ...$launchSteps,
+                'Pon el presupuesto de arranque entre ' . AdRules::money((float) $to) . ' y ' . AdRules::money((float) $from) . ' por día (tu regla: C × ' . count($launch) . ' batches × 2,5 a 3).', 'Prende la campaña.']],
+            'left_city' => ['Te recomiendo dejar el producto aquí: volvió a perder con batches nuevos. Lo decides tú', []],
             'intervene' => [match (true) {
                 $count && $go => "Apaga {$losing} y lanza {$go}",
                 $count > 0 => "Apaga {$losing}",
@@ -381,7 +386,7 @@ final class UrgentList
         };
 
         // .102: los de la banca que lanza (podar e intervenir; en liquidación no entran creativos)
-        $batches = in_array($kind, self::FEEDS, true) && $mode !== 'liquidation' ? self::bankCodes($launch) : [];
+        $batches = (in_array($kind, self::FEEDS, true) || $kind === 'relaunch') && $mode !== 'liquidation' ? self::bankCodes($launch) : [];
 
         return ['title' => $title, 'steps' => array_values(array_filter($steps, fn ($s) => $s !== '')), 'batches' => $batches];
     }
@@ -466,6 +471,17 @@ final class UrgentList
                 : "Solo queda 1 batch vivo: {$budget} cae todo en él; con 2, Meta reparte",
             'detail' => array_values(array_filter([self::liveLine($n), $launch === [] ? 'Cuando haya un batch en la banca, te sale como misión.' : null])),
             'money' => null] + ($launch === [] ? ['group' => 'aviso'] : []);
+    }
+
+    /** `.117`: el producto se quedó sin ninguna ciudad prendida y no alcanzan los batches para prender una. */
+    private static function noCity(int $productId, string $short, array $n): array
+    {
+        $why = "Tiene {$n['have']} de los {$n['need']} batches sin publicar que hacen falta para volver a prender una ciudad, y sin ciudades prendidas no se piden más";
+
+        return ['key' => "{$productId}:no_city", 'city' => null, 'kind' => 'no_city', 'label' => 'Sin ciudades', 'tone' => 'warning', 'text' => "{$why}.", 'where' => $short,
+            'title' => 'Se quedó sin ninguna ciudad prendida: decide qué hacer',
+            'steps' => ["Si ya no lo vas a vender: dile a tu asistente «pausa {$short}».", "Si quieres volver a lanzarlo: dile a tu asistente «pon {$short} en testeo»: se piden los batches que faltan, contando los que ya están hechos."],
+            'why' => $why, 'detail' => [], 'money' => null];
     }
 
     /** `.87`: el aviso de una ciudad que pide creativos y hoy no tiene qué podar ni qué lanzar. */
@@ -598,11 +614,10 @@ final class UrgentList
     /** `.82`: el porqué en una línea ("+20 % · $3,54 por compra; tu objetivo es $5,39"). */
     private static function why(string $kind, array $a, ?array $n): ?string
     {
-        if (in_array($kind, ['not_sold', 'drop', 'last_test'], true) || $n === null) {
+        if (in_array($kind, ['not_sold', 'relaunch', 'left_city'], true) || $n === null) {
             return match ($kind) {
                 'not_sold' => 'Está marcado como no disponible en esa ciudad',
-                'drop' => 'El último test también quedó en tu límite o encima',
-                'last_test' => 'Se pausó por estar en tu límite o encima',
+                'relaunch' => 'Hay ' . count($n['offers'] ?? []) . ' batches que nunca se publicaron aquí',
                 default => self::firstSentence($a['reading']),
             };
         }

@@ -4,6 +4,7 @@ namespace App\Services\Meta\Decisions\Readers;
 
 use App\Constants\OrderStatus;
 use App\Models\CreativeBatch;
+use App\Models\Setting;
 use App\Models\Status;
 use App\Services\Finance\FinancialCpa;
 use App\Services\Inventory\CityStock;
@@ -23,6 +24,9 @@ use Illuminate\Support\Facades\DB;
  */
 class OpsFacts
 {
+    /** `.117`: las misiones de prender una ciudad que el dueño descartó (su clave => la fecha). */
+    public const DISMISSED = 'meta_dismissed_missions';
+
     /** `.101`: los pedidos que esperan stock se cuentan desde hace 14 días (los de hace meses ya no se van a entregar). */
     public const WAITING_DAYS = 14;
 
@@ -147,6 +151,8 @@ class OpsFacts
             ->mapWithKeys(fn ($r) => ["{$r->product_id}|{$r->city_id}" => ['orders' => (int) $r->n, 'since' => substr((string) $r->since, 0, 10)]]);
 
         // .116: las iteraciones ya testeadas de cada creativo, para no seguir iterando lo que ya perdió
+        // .117: las misiones que el dueño descartó con "No estoy de acuerdo": no se vuelven a sugerir
+        $dismissed = (array) Setting::get(self::DISMISSED, []);
         $iterations = CreativeBatch::whereIn('product_id', $productIds)->where('status', 'tested')->where('kind', 'iteration')->whereNotNull('reference_creative_id')->whereNotNull('tested_at')
             ->get(['id', 'product_id', 'number', 'status', 'reference_creative_id', 'result', 'tested_at'])->groupBy('product_id');
 
@@ -171,6 +177,7 @@ class OpsFacts
                 'cities' => $cities, 'version' => $versions["{$pid}|"] ?? null,
                 // .116: los ángulos de la ficha, lo que decidió el dueño y las iteraciones de cada creativo
                 'angles' => TestingPhase::profileAngles((int) $pid),
+                'dismissed' => $dismissed,
                 'iterations' => self::iterations($iterations[$pid] ?? collect()),
                 'bank' => ['codes' => ($bank[$pid] ?? collect())->map(fn ($b) => QueueRules::batchCode((int) $b->number))->values()->all(),
                     // .89: los del testeo se lanzan juntos ("Lanza el testeo"), no sueltos como reserva de una ciudad

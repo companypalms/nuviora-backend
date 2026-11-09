@@ -91,6 +91,8 @@ final class AnalysisFacts
                 'alarms' => $plan['alarms'] ?? [], 'tracking' => $p['tracking'] ?? null,
                 // .116: los ángulos en descanso y cuál sigue
                 'rests' => $plan['rests'] ?? [], 'next_angle' => $plan['next_angle'] ?? null,
+                // .117: se quedó sin ninguna ciudad prendida
+                'no_city' => $plan['no_city'] ?? null,
                 'cities' => $cities, 'creatives' => $creatives, 'batches' => $batches, 'stop_by_city' => $stopByCity, 'stop_all' => $stopAll,
             ];
         }

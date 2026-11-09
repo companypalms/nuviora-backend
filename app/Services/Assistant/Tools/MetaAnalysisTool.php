@@ -26,7 +26,7 @@ class MetaAnalysisTool extends MetaTool
 
     public function description(): string
     {
-        return 'El análisis de las campañas de Meta Ads de un día (sale cada día a las 12:30 a. m., hora de Venezuela, o cuando el dueño toca "Volver a analizar"): la lista de lo más urgente a lo menos urgente que arman las reglas del dueño, con sus montos (bajar, subir o pausar el presupuesto de una ciudad, podar anuncios, el último test, precio, stock, tracking); lo que el dueño ya marcó como hecho o con lo que no estuvo de acuerdo; y lo que escribió la IA de cada producto (diagnóstico, decisiones creativas, mensaje para el editor líder, aprendizaje). Úsala para "cómo van las campañas", "qué hago hoy en Meta", "qué es lo urgente en publicidad".';
+        return 'El análisis de las campañas de Meta Ads de un día (sale cada día a las 12:30 a. m., hora de Venezuela, o cuando el dueño toca "Volver a analizar"): la lista de lo más urgente a lo menos urgente que arman las reglas del dueño, con sus montos (bajar, subir o pausar el presupuesto de una ciudad, podar anuncios, prender otra vez una ciudad, precio, stock, tracking); lo que el dueño ya marcó como hecho o con lo que no estuvo de acuerdo; y lo que escribió la IA de cada producto (diagnóstico, decisiones creativas, mensaje para el editor líder, aprendizaje). Úsala para "cómo van las campañas", "qué hago hoy en Meta", "qué es lo urgente en publicidad".';
     }
 
     public function parameters(): array

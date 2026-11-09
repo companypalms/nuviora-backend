@@ -28,14 +28,14 @@ describe('La lista urgente', function () {
         $poda = fn (array $c) => $c + ['numbers' => ['spend3' => 30, 'purchases3' => 4, 'c' => 5, 'be' => 7, 'source' => null, 'budget' => 20, 'streak' => 0, 'prune' => ['AD 1']]];
         $facts = [
             producto(1, 'FlexiStep', 3, 0, [ciudad('c1', 'Caracas', 'scale', 'Subir $39,60 → $43,56', 'O probar bajar el precio $2,00'), ciudad('c2', 'Maracay', 'hold', 'Mantener')]),
-            producto(2, 'Loli', 1, 60, [ciudad('c3', 'Caracas', 'drop', 'Dejar el producto aquí'), ciudad('c4', 'Valencia', 'decrease', 'Bajar $30,00 → $24,00'),
+            producto(2, 'Loli', 1, 60, [ciudad('c3', 'Caracas', 'pause_city', 'Pausar la ciudad'), ciudad('c4', 'Valencia', 'decrease', 'Bajar $30,00 → $24,00'),
                 $poda(ciudad('c5', 'Maracay', 'hold_prune', 'Mantener y podar'))]),
             producto(3, 'Cervimax', 2, 20, [$poda(ciudad('c6', 'Caracas', 'intervene', 'Intervenir'))], ['Tracking: Meta ve el 70 % de los pedidos reales…']),
         ];
         $list = UrgentList::build($facts);
         expect(array_map(fn ($i) => "{$i['product']} {$i['kind']}", $list))->toBe([
             // dentro del mismo grupo, el producto más urgente (Loli, U1) primero; y en un producto, la alarma de tracking antes de tocar campañas
-            'Loli drop', 'Loli decrease', 'Cervimax tracking', 'Cervimax intervene', 'Loli hold_prune', 'FlexiStep scale', 'FlexiStep price',
+            'Loli pause_city', 'Loli decrease', 'Cervimax tracking', 'Cervimax intervene', 'Loli hold_prune', 'FlexiStep scale', 'FlexiStep price',
         ]);
         expect(collect($list)->pluck('kind'))->not->toContain('hold');
     });

@@ -23,7 +23,7 @@ namespace App\Services\Meta\Queue;
 final class ProposalRules
 {
     /** Las ciudades que no sirven para aprender: se pausan, se dejan o no venden el producto. */
-    private const NO_CITY = ['pause_city', 'drop', 'last_test'];
+    private const NO_CITY = ['pause_city'];
 
     private const CROSS_ORDER = ['transversal' => 0, 'city_sensitive' => 1];
 

@@ -5,10 +5,12 @@ namespace App\Http\Controllers;
 use App\Models\CreativeBatch;
 use App\Models\CreativeBatchPiece;
 use App\Models\MetaAnalysis;
+use App\Models\Setting;
 use App\Models\StoredFile;
 use App\Services\Meta\Analysis\AnalysisSender;
 use App\Services\Meta\Analysis\DayStreak;
 use App\Services\Meta\Analysis\MetaAnalyzer;
+use App\Services\Meta\Decisions\Readers\OpsFacts;
 use App\Services\Meta\Queue\QueueRules;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -92,6 +94,16 @@ class MetaAnalysisController extends Controller
             $marks[$data['key']] = ['status' => $data['status'], 'note' => $data['note'] ?? null, 'by' => Auth::user()?->names, 'at' => now()->toIso8601String()];
         }
         $analysis->forceFill(['marks' => $marks ?: null])->save();
+        // .117: con "No estoy de acuerdo", prender esa ciudad no se vuelve a sugerir (si lo deshace, sí)
+        if (preg_match('/:(relaunch|no_city)$/', $data['key'])) {
+            $dismissed = (array) Setting::get(OpsFacts::DISMISSED, []);
+            if (($data['status'] ?? null) === 'disagree') {
+                $dismissed[$data['key']] = now(config('app.timezone'))->toDateString();
+            } else {
+                unset($dismissed[$data['key']]);
+            }
+            Setting::set(OpsFacts::DISMISSED, $dismissed);
+        }
 
         return response()->json(['marks' => $analysis->marks ?? []]);
     }

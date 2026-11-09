@@ -60,7 +60,7 @@ describe('El modo ejemplo entiende las preguntas de Meta', function () {
 
 describe('Cómo se muestra lo que dicen las reglas', function () {
     it('el color de cada punto sigue el orden de la lista urgente: rojo, naranja, amarillo, verde y gris', function () {
-        expect(array_map(fn ($k) => MetaTool::level($k), ['drop', 'pause_city', 'decrease', 'intervene', 'hold_prune', 'alarm', 'scale', 'price', 'hold', 'wait']))
+        expect(array_map(fn ($k) => MetaTool::level($k), ['not_sold', 'pause_city', 'decrease', 'intervene', 'hold_prune', 'alarm', 'scale', 'price', 'hold', 'wait']))
             ->toBe(['red', 'red', 'orange', 'orange', 'yellow', 'yellow', 'green', 'pending', 'pending', 'pending']);
     });
 

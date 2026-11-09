@@ -91,15 +91,9 @@ describe('Entre C y BE, y en el break-even o encima', function () {
         expect(accion(['spend3' => 36, 'purchases3' => 6, 'intervention' => '2026-10-26', 'closed_since_intervention' => 3, 'decreased_since_intervention' => true])['key'])->toBe('wait');
     });
 
-    it('5 días cerrados: pausar la ciudad y el último test con 1,5×C por día', function () {
+    it('5 días cerrados: pausar la ciudad; se prende otra vez con 3 batches nunca publicados ahí (.117)', function () {
         $a = accion(['spend3' => 36, 'purchases3' => 6, 'intervention' => '2026-10-24', 'closed_since_intervention' => 5, 'decreased_since_intervention' => true]);
-        expect($a['key'])->toBe('pause_city')->and($a['proposal'])->toContain('$6,00 por día durante 3 días');
-    });
-
-    it('el último test: esperar sus 3 días y, si falla, recomendar dejar el producto', function () {
-        expect(accion(['spend3' => 18, 'purchases3' => 2, 'last_test' => ['days' => 1, 'cpa' => 9.0]])['key'])->toBe('wait')
-            ->and(accion(['spend3' => 18, 'purchases3' => 2, 'last_test' => ['days' => 3, 'cpa' => 9.0]])['key'])->toBe('drop')
-            ->and(accion(['spend3' => 18, 'purchases3' => 6, 'last_test' => ['days' => 3, 'cpa' => 3.0]])['key'])->not->toBe('drop');
+        expect($a['key'])->toBe('pause_city')->and($a['proposal'])->toBe('Pausar la ciudad. Se vuelve a prender cuando haya 3 batches que nunca se publicaron ahí.');
     });
 
     it('producto en pausa, sin objetivo o sin gasto suficiente', function () {

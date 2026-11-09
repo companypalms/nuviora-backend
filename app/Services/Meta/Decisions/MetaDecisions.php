@@ -85,6 +85,36 @@ class MetaDecisions
     }
 
     /**
+     * `.117`: por ciudad, la campaña que se volvería a prender: la última que se apagó (si no hay otra prendida ahí y sigue en
+     * Meta). PHP puro.
+     *
+     * @return array<int, string> ciudad => campaña
+     */
+    public static function toRelaunch(array $campaigns, array $history): array
+    {
+        $busy = [];
+        foreach ($campaigns as $c) {
+            if ($c['active'] && $c['city_id'] !== null) {
+                $busy[$c['city_id']] = true;
+            }
+        }
+        $best = [];
+        foreach ($campaigns as $id => $c) {
+            $id = (string) $id;
+            if ($c['active'] || ($c['missing'] ?? false) || $c['city_id'] === null || isset($busy[$c['city_id']])) {
+                continue;
+            }
+            $off = collect($history[$id]['status_events'] ?? [])->last(fn ($e) => $e['from'] === 'ACTIVE' && $e['to'] !== 'ACTIVE');
+            $rank = [(string) ($off['at'] ?? ''), $id];
+            if (!isset($best[$c['city_id']]) || $rank > $best[$c['city_id']]) {
+                $best[$c['city_id']] = $rank;
+            }
+        }
+
+        return array_map(fn ($r) => $r[1], $best);
+    }
+
+    /**
      * Los estados automáticos de los creativos: Winner, Fatigued, Loser, Archived o Testing. Los que puso el dueño a mano
      * no se tocan. Corre cada día a las 06:45 (meta:creative-statuses) y al volver un creativo a "automático".
      *
@@ -388,6 +418,11 @@ class MetaDecisions
         $prices = [];
         $alarms = [];
         $minFor = [];
+        // .117: en cada ciudad sin campañas prendidas, la última que se apagó es la que se vuelve a prender
+        $toRelaunch = self::toRelaunch($f['campaigns'], $history['campaigns'] ?? []);
+        $relaunchOffers = 0;
+        $dismissed = $ops['dismissed'] ?? [];
+        $relaunches = false;
         foreach ($f['campaigns'] as $id => $c) {
             $id = (string) $id;
             $h = $history['campaigns'][$id] ?? ['daily' => [], 'budget_events' => [], 'status_events' => [], 'ad_pauses' => [], 'new_ads' => [], 'mins' => 0.0];
@@ -402,16 +437,19 @@ class MetaDecisions
                 'purchases7' => (float) ($w7['totals']['purchases'] ?? 0)];
             $out['campaigns'][$id]['budget_notes'] = [];
             if (!$c['active']) {
-                // Una ciudad pausada hace poco porque perdía: el último test
-                $paused = collect($h['status_events'])->last(fn ($e) => $e['from'] === 'ACTIVE' && $e['to'] !== 'ACTIVE');
-                if ($paused && $c['target'] && $c['break_even'] && $mode === 'normal' && ($cpa7 === null || $cpa7 >= $c['break_even'])
-                    && strtotime($paused['date']) >= strtotime("{$today} -14 days")) {
-                    $test = $c['target'] * $s['last_test_budget_cpa'];
-                    $out['campaigns'][$id]['action'] = ['key' => 'last_test', 'label' => CampaignRules::ACTIONS['last_test']['label'], 'tone' => 'warning',
-                        'data' => 'Pausada el ' . $paused['date'] . '.', 'reading' => 'La ciudad se pausó por estar en el break-even o encima.',
-                        'proposal' => 'Si quieres, el último test: un batch nuevo con ' . AdRules::money($test) . ' por día durante ' . (int) $s['last_test_days']
-                            . ' días. Si también falla, dejar el producto en esta ciudad.', 'from' => null, 'to' => null];
-                    $actions[$id] = 'last_test';
+                // .117: una campaña apagada espera a tener 3 batches nunca publicados en su ciudad. No cuenta para la urgencia
+                if (($toRelaunch[$c['city_id']] ?? null) === $id) {
+                    $offers = self::offers($f, $out, $id, $ops['bank']['launched'] ?? [], $ops['bank']['ready'] ?? [], $ops['bank']['names'] ?? []);
+                    $relaunchOffers = max($relaunchOffers, count($offers));
+                    $action = $cr->relaunch(['mode' => $mode, 'c' => $c['target'], 'be' => $c['break_even'], 'city_free' => true, 'available' => $city['available'] ?? true,
+                        'dismissed' => isset($dismissed["{$f['product']['id']}:{$id}:relaunch"]), 'offers' => $offers, 'status_events' => $h['status_events'], 'new_ads' => $h['new_ads'],
+                        'daily' => $h['daily'], 'today' => $today]);
+                    if ($action) {
+                        $relaunches = true;
+                        $out['campaigns'][$id]['action'] = $action;
+                        $out['campaigns'][$id]['numbers'] = ['spend3' => 0.0, 'purchases3' => 0.0, 'c' => $c['target'], 'be' => $c['break_even'], 'source' => $c['target_source'] ?? null, 'budget' => $budget,
+                            'streak' => 0, 'prune' => [], 'live' => 0, 'offers' => array_slice($offers, 0, (int) $s['relaunch_batches'])];
+                    }
                 }
                 continue;
             }
@@ -430,19 +468,6 @@ class MetaDecisions
                 $intervention = $events[0] ?? null;
             }
             $closed = $intervention ? max(0, (int) round((strtotime($yesterday) - strtotime($intervention)) / 86400)) : 0;
-            $lastTest = null;
-            $reactivated = collect($h['status_events'])->last(fn ($e) => $e['to'] === 'ACTIVE' && $e['from'] !== 'ACTIVE');
-            if ($reactivated && $c['target'] && $reactivated['budget'] !== null && $reactivated['budget'] <= $c['target'] * $s['last_test_budget_cpa'] * 1.15) {
-                $days = max(0, (int) round((strtotime($yesterday) - strtotime($reactivated['date'])) / 86400));
-                $sum = ['spend' => 0.0, 'purchases' => 0.0];
-                foreach ($h['daily'] as $date => $row) {
-                    if ($date > $reactivated['date'] && $date <= $yesterday) {
-                        $sum['spend'] += $row['spend'];
-                        $sum['purchases'] += $row['purchases'];
-                    }
-                }
-                $lastTest = ['days' => $days, 'cpa' => $sum['purchases'] > 0 ? $sum['spend'] / $sum['purchases'] : null];
-            }
             // .79 (dueño, 2026-11-02): el stock ya no frena la subida ni pide pausar ("al día siguiente ya tenemos productos"):
             // es un aviso, en la alarma del producto y en lo que se propone para la ciudad
             $stockAlert = null;
@@ -493,7 +518,7 @@ class MetaDecisions
                 'new_ads_today' => in_array($today, $h['new_ads'], true),
                 'streak_days' => $streak['days'], 'intervention' => $intervention, 'closed_since_intervention' => $closed,
                 'decreased_since_intervention' => $intervention !== null && collect($h['budget_events'])->contains(fn ($e) => $e['to'] < $e['from'] && $e['date'] >= $intervention),
-                'history_since' => $history['history_since'], 'last_test' => $lastTest, 'prune' => $prune,
+                'history_since' => $history['history_since'], 'prune' => $prune,
                 'bank_ready' => array_column($offers, 'code'),
                 'recent_change' => self::recentChange($h, $f, $id, now()->toDateTimeString(), (float) $s['change_wait_hours']),
             ]);
@@ -613,7 +638,10 @@ class MetaDecisions
             'rests' => array_map(fn ($code, $r) => ['angle' => (string) $code] + $r, array_keys($rested), $rested),
             'next_angle' => $nextAngle,
             'money_at_risk' => round(array_sum(array_map(fn ($id) => (float) ($f['campaigns'][$id]['windows']['3d']['totals']['spend'] ?? 0),
-                array_keys(array_filter($actions, fn ($k) => in_array($k, ['intervene', 'decrease', 'pause_city', 'drop'], true))))), 2),
+                array_keys(array_filter($actions, fn ($k) => in_array($k, ['intervene', 'decrease', 'pause_city'], true))))), 2),
+            // .117: el producto se quedó sin ninguna ciudad prendida y no alcanza para prender una: lo decide el dueño
+            'no_city' => $f['campaigns'] && !$activeCities && !$relaunches && $mode === 'normal' && !isset($dismissed["{$f['product']['id']}:no_city"])
+                ? ['have' => $relaunchOffers, 'need' => (int) $s['relaunch_batches']] : null,
         ];
 
         return $out;

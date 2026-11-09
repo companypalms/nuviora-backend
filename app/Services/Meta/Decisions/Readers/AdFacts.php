@@ -88,6 +88,8 @@ class AdFacts
             $out[(int) $c->product_id]['campaigns'][(string) $c->meta_id] = [
                 'meta_id' => (string) $c->meta_id, 'name' => $c->name, 'city_id' => $c->city_id !== null ? (int) $c->city_id : null, 'city' => $c->city,
                 'active' => $c->effective_status === 'ACTIVE' && $c->missing_since === null,
+                // .117: si ya no está en Meta, no se puede volver a prender
+                'missing' => $c->missing_since !== null,
                 'daily_budget' => isset($meta['daily_budget']) && is_numeric($meta['daily_budget']) ? round((float) $meta['daily_budget'] / 100, 2) : null,
                 'target' => $targets[$key]['target_cpa'], 'break_even' => $targets[$key]['break_even_cpa'], 'target_source' => $targets[$key]['source'],
                 'target_no_cost' => (bool) ($targets[$key]['financial']['no_cost'] ?? false),

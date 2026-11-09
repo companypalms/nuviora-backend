@@ -59,8 +59,7 @@ class DecisionSettings
         'decrease_pct' => [20, 1, 90],           // −20 % si sigue en el BE o encima…
         'decrease_after_days' => [2, 1, 30],     // …2 días cerrados después de intervenir
         'pause_after_days' => [5, 1, 60],        // pausar la ciudad a los 5 días cerrados
-        'last_test_budget_cpa' => [1.5, 0.5, 20], // último test: 1,5×C por día…
-        'last_test_days' => [3, 1, 30],          // …durante 3 días
+        'relaunch_batches' => [3, 1, 10],        // .117: una campaña apagada se prende con 3 batches nunca publicados en esa ciudad
         'startup_min_mult' => [2.5, 1, 10],      // presupuesto de arranque = C × batches nuevos × 2,5 a 3
         'startup_max_mult' => [3, 1, 10],
         'mins_low_pct' => [25, 0, 100],          // los mínimos de los ad sets: menos del 25 % del presupuesto = bajos
