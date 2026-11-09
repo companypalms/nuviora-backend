@@ -9,7 +9,11 @@ namespace App\Services\Meta\Decisions\Rules;
  *   (2026-11-02): cuánto, según qué tan debajo de C está el CPA de 3 días (+10 %, +15 % o +20 %), nunca más del 20 %; el
  *   stock ya no frena la subida ni pide pausar: queda como aviso ("al día siguiente ya tenemos stock"). `.101`
  *   (2026-11-04, 55 pedidos de Termafit esperando stock 6 días): con pedidos esperando stock en la ciudad no se sube ahí;
- * - entre C y BE: mantener, podar y meter creativos;
+ * - entre C y BE: mantener, podar y meter creativos. `.123` (dueño, 2026-11-09: "prioriza siempre el batch nuevo, si con el
+ *   batch nuevo no vuelve a la normalidad entonces sí se le baja el presupuesto. Pero solo un cambio grande a la vez"): un
+ *   cambio y 3 días cerrados para ver si vuelve a C; primero el batch, después devolver la última subida, y así;
+ * - `.123` (dueño: "la subida de presupuesto siempre va primero"; la frecuencia, "solo aviso"): la frecuencia alta ya no
+ *   frena la subida;
  * - en el BE o encima: intervenir (podar y lanzar); 2 días cerrados después, −20 %; 5 días, pausar la ciudad;
  * - `.117` (dueño, 2026-11-09): una campaña apagada espera a tener 3 batches que nunca se publicaron en esa ciudad y se
  *   prende con esos 3 (reemplaza el "último test"); si vuelve a perder y se apaga, se recomienda dejar el producto ahí;
@@ -28,6 +32,7 @@ class CampaignRules
         'hold_prune' => ['label' => 'Mantener y podar', 'tone' => 'info'],
         'intervene' => ['label' => 'Intervenir', 'tone' => 'warning'],
         'decrease' => ['label' => 'Bajar', 'tone' => 'warning'],
+        'step_down' => ['label' => 'Devolver la subida', 'tone' => 'warning'],
         'pause_city' => ['label' => 'Pausar la ciudad', 'tone' => 'error'],
         'relaunch' => ['label' => 'Prender otra vez', 'tone' => 'success'],
         'left_city' => ['label' => 'Dejar el producto aquí', 'tone' => 'warning'],
@@ -45,13 +50,13 @@ class CampaignRules
     public const NO_TARGET = 'Escribe "CPA $X | BE $Y" en el nombre de la campaña o ponlo en Meta Ads › Productos y objetivos (si no tiene costo, registra la compra de inventario).';
 
     /** `.111`: las acciones que son un cambio grande de presupuesto o de estado (esperan entero), y lo que dejan para después. */
-    private const BIG_CHANGES = ['scale' => 'subir el presupuesto', 'decrease' => 'bajar el presupuesto', 'pause_city' => 'pausar la campaña'];
+    private const BIG_CHANGES = ['scale' => 'subir el presupuesto', 'decrease' => 'bajar el presupuesto', 'step_down' => 'devolver la subida', 'pause_city' => 'pausar la campaña'];
 
     /** `.111`: las acciones que meten creativos: en la espera solo se apagan los que pierden. */
     private const FEEDS = ['intervene', 'hold_prune'];
 
     /** Las acciones de una campaña activa que llevan el aviso de stock. */
-    private const WITH_STOCK_ALERT = ['scale', 'hold', 'hold_prune', 'intervene', 'decrease', 'wait'];
+    private const WITH_STOCK_ALERT = ['scale', 'hold', 'hold_prune', 'intervene', 'decrease', 'step_down', 'wait'];
 
     /** `.117`: cuántos días se sigue avisando que se recomienda dejar el producto en una ciudad. */
     private const LEFT_NOTICE_DAYS = 14;
@@ -73,13 +78,15 @@ class CampaignRules
      *                  en banca, listos para lanzar), c_source (manual o name si la C es una referencia), stock_alert (el
      *                  aviso de stock de la ciudad, sin frenar nada), stock_waiting (`.101`: los pedidos esperando stock, si
      *                  pasan el mínimo: no se sube), recent_change (`.111`: el último cambio grande de las últimas 24 horas,
-     *                  de MetaDecisions::recentChange), be_estimated (`.120`: el BE es estimado, la campaña no tiene uno real)
+     *                  de MetaDecisions::recentChange), be_estimated (`.120`: el BE es estimado, la campaña no tiene uno real),
+     *                  band (`.123`: lo último que se hizo desde que se pasó de C, de MetaDecisions::band)
      * @return array{key: string, label: string, tone: string, data: string, reading: string, proposal: ?string, from: ?float, to: ?float}
      */
     public function action(array $in): array
     {
         $out = $this->decide($in);
-        if ($cool = $in['recent_change'] ?? null) {
+        // .123: los días de espera entre C y BE ya cubren las 24 horas
+        if (($cool = $in['recent_change'] ?? null) && empty($out['ladder']['hold'])) {
             $out = $this->cooldown($out, $cool, $in['prune'] ?? [], $in['mode'] ?? 'normal');
         }
         $alert = $in['stock_alert'] ?? null;
@@ -163,7 +170,7 @@ class CampaignRules
                 return $this->out('hold', $data, 'En liquidación: rentable, pero no se escala.', 'Mantener.' . $pruneText);
             }
 
-            return $this->out('hold_prune', $data, 'Rentable pero no escalable: CPA entre C y el break-even.', 'Mantener, podar los caros y meter creativos.' . $pruneText);
+            return $this->band($in, $data, $pruneText);
         }
 
         // Debajo de C: ¿se puede escalar?
@@ -172,7 +179,6 @@ class CampaignRules
             ($in['stock_waiting'] ?? 0) > 0 => 'Va bien, pero hay ' . (int) $in['stock_waiting'] . ' pedidos esperando stock en esta ciudad: no se sube hasta que llegue.',
             $purchases < $this->s['scale_min_purchases'] => 'Va bien, pero con poco volumen: ' . AdRules::num($purchases) . ' compras en 3 días (hacen falta ' . (int) $this->s['scale_min_purchases'] . ').',
             $be && ($in['cpa7'] ?? null) !== null && $in['cpa7'] > $be => 'Los 7 días no acompañan (CPA 7D ' . AdRules::money($in['cpa7']) . ', encima del BE).',
-            ($in['freq3'] ?? null) !== null && $in['freq3'] >= $this->s['saturation_from'] => 'Va bien, pero la campaña está saturada (frecuencia ' . AdRules::num($in['freq3']) . '): primero creativos de arriba del embudo.',
             // .111: con un cambio en las últimas 24 horas, la espera (cooldown) dice hasta cuándo y cuánto subir después
             ($in['recent_change'] ?? null) !== null => null,
             (bool) ($in['increased_24h'] ?? false) => 'Ya se subió el presupuesto en las últimas 24 horas.',
@@ -184,9 +190,61 @@ class CampaignRules
         }
         $pct = self::scalePct($cpa, (float) $c, $this->s);
         $to = $budget ? round($budget * (1 + $pct / 100), 2) : null;
+        // .123 (dueño, 2026-11-09: la frecuencia, "solo aviso"): la frecuencia alta ya no frena la subida
+        $high = ($in['freq3'] ?? null) !== null && $in['freq3'] >= $this->s['saturation_from'];
 
         return $this->out('scale', $data, 'CPA ' . AdRules::num(round(($c - $cpa) / $c * 100)) . ' % debajo de C con ' . AdRules::num($purchases) . ' compras en 3 días.',
-            'Subir ' . AdRules::num($pct) . ' %' . ($to ? ': ' . AdRules::money($budget) . ' → ' . AdRules::money($to) : '') . '. Vigilar CPA y frecuencia.', $budget, $to);
+            'Subir ' . AdRules::num($pct) . ' %' . ($to ? ': ' . AdRules::money($budget) . ' → ' . AdRules::money($to) : '') . '. '
+                . ($high ? 'La frecuencia está alta (' . AdRules::num($in['freq3']) . '): es solo un aviso. Vigilar el CPA.' : 'Vigilar CPA y frecuencia.'), $budget, $to);
+    }
+
+    /**
+     * `.123` (dueño, 2026-11-09: "prioriza siempre el batch nuevo, si con el batch nuevo no vuelve a la normalidad entonces sí
+     * se le baja el presupuesto. Pero solo un cambio grande a la vez. Meter un batch y tocar el presupuesto son dos cambios
+     * grandes"): entre C y BE, un cambio a la vez y `band_wait_days` días cerrados para ver si la campaña vuelve a C. Primero
+     * el batch; si no volvió, devolver la última subida (una de los últimos `band_undo_days` días); si tampoco, o no hay
+     * subida que devolver, otro batch. Bajar no es apagar: si vuelve a C, la regla de subir la sube otra vez. Mientras
+     * espera se siguen apagando los que pierden (y con menos de 2 batches vivos, UrgentList lanza igual).
+     */
+    private function band(array $in, string $data, string $pruneText): array
+    {
+        $reading = 'Rentable pero no escalable: CPA entre C y el break-even.';
+        $budget = $in['budget'] ?? null;
+        $wait = (int) $this->s['band_wait_days'];
+        $days = $wait === 1 ? '1 día cerrado' : "{$wait} días cerrados";
+        $batch = $in['band']['batch'] ?? null;
+        $low = $in['band']['lowered'] ?? null;
+        $undo = $budget ? ($in['band']['undo'] ?? null) : null;
+        $day = fn (string $date) => date('d/m', strtotime($date));
+        // El día en que se vuelve a mirar: cuando ya pasaron los días cerrados
+        $check = fn (string $date) => date('Y-m-d', strtotime($date . ' +' . ($wait + 1) . ' days'));
+        $hold = fn (string $what, string $since, string $next) => $this->out('hold_prune', $data, "{$reading} El " . $day($since) . " {$what}.",
+            "Esperar: se le dan {$days} para ver si vuelve a C. Si el " . $day($check($since)) . " sigue encima, toca {$next}." . $pruneText)
+            + ['ladder' => ['hold' => true, 'what' => $what, 'since' => $since, 'until' => $check($since), 'days' => $wait, 'next' => $next]];
+
+        if ($low && $low['closed'] < $wait) {
+            return $hold('bajaste el presupuesto de ' . AdRules::money($low['from']) . ' a ' . AdRules::money($low['to']), $low['date'], 'otro batch');
+        }
+        if ($batch && !$low) {
+            $name = ($batch['name'] ?? null) ? 'el batch «' . $batch['name'] . '»' : 'un batch nuevo';
+            $back = $undo ? 'la subida del ' . $day($undo['date']) . ': ' . AdRules::money($budget) . ' → ' . AdRules::money($undo['from']) : null;
+            if ($batch['closed'] < $wait) {
+                return $hold("entró {$name}", $batch['date'], $back ? "devolver {$back}" : 'otro batch');
+            }
+            // "Pasaron 3 días cerrados desde que entró el batch «B0118» (09/11)": sirve igual si la campaña nunca estuvo en C
+            $passed = 'Pasaron ' . ($batch['closed'] === 1 ? '1 día cerrado' : "{$batch['closed']} días cerrados") . " desde que entró {$name} (" . $day($batch['date']) . ')';
+            if ($back) {
+                return $this->out('step_down', $data, "{$passed} y sigue entre C y el break-even.",
+                    'Devolver ' . $back . '. Si vuelve a C, se sube otra vez.', $budget, (float) $undo['from'])
+                    + ['ladder' => ['hold' => false, 'what' => "entró {$name}", 'since' => $batch['date'], 'undo' => $undo['date'], 'days' => $wait]];
+            }
+
+            return $this->out('hold_prune', $data, "{$reading} {$passed} y no hay una subida reciente que devolver.",
+                'Mantener, podar los caros y meter otro batch.' . $pruneText);
+        }
+
+        return $this->out('hold_prune', $data, $reading . ($low ? ' El ' . $day($low['date']) . ' bajaste el presupuesto y sigue encima de C.' : ''),
+            'Mantener, podar los caros y meter creativos.' . $pruneText);
     }
 
     /**
@@ -378,7 +436,7 @@ class CampaignRules
             (bool) ($p['stock_all_out'] ?? false) => 5,
             $noTarget => 5,
             (bool) array_intersect($actions, ['intervene', 'decrease', 'pause_city']) || (int) ($p['healthy'] ?? 0) === 0 && $actions => 1,
-            in_array('hold_prune', $actions, true) || (int) ($p['failing'] ?? 0) > 0 => 2,
+            (bool) array_intersect($actions, ['hold_prune', 'step_down']) || (int) ($p['failing'] ?? 0) > 0 => 2,
             in_array('scale', $actions, true) => 3,
             default => 4,
         };
@@ -499,7 +557,7 @@ class CampaignRules
     private function out(string $key, string $data, string $reading, ?string $proposal, ?float $from = null, ?float $to = null): array
     {
         $label = self::ACTIONS[$key]['label'];
-        if ($key === 'scale' || $key === 'decrease') {
+        if (in_array($key, ['scale', 'decrease', 'step_down'], true)) {
             $label .= $from && $to ? ' ' . AdRules::money($from) . ' → ' . AdRules::money($to) : '';
         }
 

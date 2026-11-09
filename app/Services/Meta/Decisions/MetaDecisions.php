@@ -249,13 +249,15 @@ class MetaDecisions
             $notes = [];
             $freq = $w3['metrics']['frequency'] ?? null;
             if ($rules->saturated($freq)) {
-                $notes[] = ['key' => 'saturated', 'label' => 'Saturada', 'text' => 'Frecuencia de 3 días ' . AdRules::num($freq)
-                    . ': el tráfico frío se está agotando. Hacen falta creativos de arriba del embudo.'];
+                // .123 (dueño, 2026-11-09: "solo aviso"): la frecuencia alta ya no frena la subida
+                $notes[] = ['key' => 'saturated', 'label' => 'Frecuencia alta', 'text' => 'Frecuencia de 3 días ' . AdRules::num($freq)
+                    . ': la misma gente está viendo mucho tus anuncios. Es solo un aviso, no frena la subida; conviene tener creativos de arriba del embudo listos.'];
             }
             $withData = array_filter($f['ads'], fn ($a) => $a['campaign_meta_id'] === $id && ($a['windows']['3d']['totals']['impressions'] ?? 0) >= self::MIN_IMPRESSIONS);
             if ($withData && !array_filter($withData, fn ($a) => ($a['windows']['3d']['metrics']['unique_ctr'] ?? 0) >= $s['ctr_weak'])) {
                 $notes[] = ['key' => 'city_ctr_low', 'label' => 'CTR bajo en toda la ciudad', 'text' => 'Todos los anuncios con datos tienen el CTR único debajo de '
-                    . AdRules::num($s['ctr_weak']) . ' %: primero creativos, después presupuesto.'];
+                    // .123 (dueño: "la subida de presupuesto siempre va primero"): es un aviso, ya no dice "primero creativos"
+                    . AdRules::num($s['ctr_weak']) . ' %: hacen falta creativos con mejor gancho. Es solo un aviso.'];
             }
             $out['campaigns'][$id] = ['notes' => $notes, 'cpm_change' => $cpmChange[$id], 'frequency' => $freq, 'city' => $c['city']];
         }
@@ -557,6 +559,8 @@ class MetaDecisions
                 'history_since' => $history['history_since'], 'prune' => $prune,
                 'bank_ready' => array_column($offers, 'code'),
                 'recent_change' => self::recentChange($h, $f, $id, now()->toDateTimeString(), (float) $s['change_wait_hours']),
+                // .123: entre C y BE, lo último que se hizo desde que la campaña se pasó de C
+                'band' => self::band($h, $f, $id, $c['target'] ? (float) $c['target'] : null, $budget !== null ? (float) $budget : null, $today, $yesterday, (int) $s['band_undo_days']),
             ]);
             $out['campaigns'][$id]['action'] = $action;
             // .82: los números de la ciudad, para la frase de cada tarea del análisis ("$10,29 por compra; tu límite es $7,22")
@@ -963,6 +967,48 @@ class MetaDecisions
 
         return ['what' => $what, 'at' => date('Y-m-d H:i:s', strtotime($at)), 'until' => date('Y-m-d H:i:s', strtotime($at) + (int) round($hours * 3600)),
             'hours' => $hours];
+    }
+
+    /**
+     * `.123` (dueño, 2026-11-09: "prioriza siempre el batch nuevo, si con el batch nuevo no vuelve a la normalidad entonces sí
+     * se le baja el presupuesto. Pero solo un cambio grande a la vez"): lo último que se hizo en una campaña desde que su CPA
+     * de 3 días se pasó de C (contando los 3 días de esa primera lectura): el último batch que entró, la última bajada de
+     * presupuesto después de él y la última subida de los últimos $undoDays días que todavía se puede devolver. PHP puro.
+     *
+     * @return array{since: string, batch: ?array{date: string, name: ?string, closed: int}, lowered: ?array{date: string, from: float, to: float, closed: int}, undo: ?array{date: string, from: float, to: float}}
+     */
+    public static function band(array $h, array $f, string $campaignId, ?float $c, ?float $budget, string $today, string $yesterday, int $undoDays): array
+    {
+        $above = $c ? CampaignRules::streak($h['daily'] ?? [], $c, $yesterday) : ['days' => 0, 'start' => null];
+        $since = date('Y-m-d', strtotime(($above['start'] ?? $yesterday) . ' -2 days'));
+        $closed = fn (string $date) => max(0, (int) round((strtotime($yesterday) - strtotime($date)) / 86400));
+        $batch = null;
+        if ($dates = array_filter($h['new_ads'] ?? [], fn ($d) => $d >= $since && $d <= $today)) {
+            $date = max($dates);
+            $name = null;
+            foreach ($f['ads'] ?? [] as $ad) {
+                if ((string) $ad['campaign_meta_id'] === $campaignId && ($ad['created_time'] ?? null) && date('Y-m-d', strtotime((string) $ad['created_time'])) === $date) {
+                    $name = $f['adsets'][$ad['adset_meta_id']]['name'] ?? $name;
+                }
+            }
+            $batch = ['date' => $date, 'name' => $name, 'closed' => $closed($date)];
+        }
+        $events = $h['budget_events'] ?? [];
+        usort($events, fn ($a, $b) => strtotime($a['at'] ?? $a['date']) <=> strtotime($b['at'] ?? $b['date']));
+        $lowered = null;
+        $undo = null;
+        $from = date('Y-m-d', strtotime("{$today} -{$undoDays} days"));
+        foreach ($events as $e) {
+            if ($e['to'] < $e['from'] && $e['date'] >= ($batch['date'] ?? $since)) {
+                $lowered = ['date' => $e['date'], 'from' => (float) $e['from'], 'to' => (float) $e['to'], 'closed' => $closed($e['date'])];
+            }
+            // Una subida que sigue puesta: el presupuesto de hoy está encima de lo que había antes de ella
+            if ($e['to'] > $e['from'] && $e['date'] >= $from && $budget !== null && $e['from'] > 0 && $e['from'] < $budget - 0.005) {
+                $undo = ['date' => $e['date'], 'from' => (float) $e['from'], 'to' => (float) $e['to']];
+            }
+        }
+
+        return ['since' => $since, 'batch' => $batch, 'lowered' => $lowered, 'undo' => $undo];
     }
 
     /** `.111`: las horas desde que se creó el más viejo de unos anuncios (null si alguno no tiene la hora). PHP puro. */

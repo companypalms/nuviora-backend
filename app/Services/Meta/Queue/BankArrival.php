@@ -55,10 +55,13 @@ class BankArrival
             }
             $key = $a['key'] === 'none' && ($a['label'] ?? null) === 'No se vende aquí' ? 'not_sold' : $a['key'];
             $n = $c['numbers'] ?? null;
-            $offer = collect(array_slice($n['offers'] ?? [], 0, UrgentList::need($key, $n, 'normal')))->firstWhere('code', $code);
+            // .123: una ciudad que espera a ver cómo resultó su último cambio (las 24 horas, o los días entre C y BE) no lanza
+            // hoy, salvo que le queden menos de 2 batches vivos: el batch le sale en el análisis del día que le toque
+            $holds = UrgentList::holds($a);
+            $offer = collect(array_slice($n['offers'] ?? [], 0, UrgentList::need($key, $n, 'normal', $holds)))->firstWhere('code', $code);
             if ($offer) {
                 $cities[] = ['city' => $c['city'] ?? null, 'campaign' => $names[(string) $id] ?? null, 'offer' => $offer,
-                    'why' => DemandRules::reason($key, $n['live'] ?? null)];
+                    'why' => DemandRules::reason($holds ? 'hold' : $key, $n['live'] ?? null)];
             }
         }
         if ($cities === []) {

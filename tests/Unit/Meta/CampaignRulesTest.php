@@ -58,18 +58,116 @@ describe('Escalar', function () {
         expect(accion(['budget' => 25.0, 'spend3' => 30.8, 'purchases3' => 11])['to'])->toBe(30.0);
     });
 
-    it('no escala sin volumen, con 7 días malos, saturada, si ya subió hoy o si entraron creativos hoy', function (array $in, string $why) {
+    it('no escala sin volumen, con 7 días malos, si ya subió hoy o si entraron creativos hoy', function (array $in, string $why) {
         $a = accion($in);
         expect($a['key'])->toBe('hold')->and($a['reading'])->toContain($why);
     })->with([
         'Maracay: poco volumen' => [['purchases3' => 6, 'spend3' => 15], 'poco volumen'],
         '7 días encima del BE' => [['cpa7' => 6.0], 'Los 7 días no acompañan'],
-        'saturada' => [['freq3' => 1.7], 'saturada'],
         'ya subió' => [['increased_24h' => true], 'últimas 24 horas'],
         'creativos de hoy' => [['new_ads_today' => true], 'creativos nuevos'],
         'liquidación' => [['mode' => 'liquidation'], 'liquidación'],
         '.101: pedidos esperando stock' => [['stock_waiting' => 55], 'hay 55 pedidos esperando stock en esta ciudad: no se sube hasta que llegue'],
     ]);
+});
+
+describe('.123: la subida primero', function () {
+    // Dueño, 2026-11-09: "la subida de presupuesto siempre va primero antes de meterle batches"; la frecuencia, "solo aviso"
+    it('la frecuencia alta ya no frena la subida: es un aviso en lo que se propone', function () {
+        $a = accion(['freq3' => 1.7]);
+        expect($a['key'])->toBe('scale')->and($a['to'])->toBe(48.0)
+            ->and($a['proposal'])->toBe('Subir 20 %: $40,00 → $48,00. La frecuencia está alta (1,7): es solo un aviso. Vigilar el CPA.')
+            ->and(accion(['freq3' => 1.3])['proposal'])->toBe('Subir 20 %: $40,00 → $48,00. Vigilar CPA y frecuencia.');
+    });
+
+    it('Solo Brillo Caracas el 9/11 (CPA $4,13 con C $8,31, frecuencia 6,3): decía "Mantener: saturada", ahora sube $106 → $127,20', function () {
+        $a = campana()->action(['c' => 8.31, 'be' => 13.76, 'mode' => 'normal', 'budget' => 106.0, 'spend3' => 450.0, 'purchases3' => 109, 'cpa7' => 4.9, 'freq3' => 6.26]);
+        expect($a['key'])->toBe('scale')->and($a['label'])->toBe('Subir $106,00 → $127,20')
+            ->and($a['proposal'])->toContain('La frecuencia está alta (6,3): es solo un aviso.');
+    });
+
+    it('lo demás sigue frenando: los pedidos esperando stock van antes que la frecuencia', function () {
+        expect(accion(['freq3' => 6.26, 'stock_waiting' => 8])['key'])->toBe('hold');
+    });
+});
+
+describe('.123: entre C y BE, un cambio grande a la vez', function () {
+    // Dueño, 2026-11-09: "prioriza siempre el batch nuevo, si con el batch nuevo no vuelve a la normalidad entonces sí se le baja
+    // el presupuesto. Pero solo un cambio grande a la vez. Meter un batch y tocar el presupuesto son dos cambios grandes".
+    // ZenPulse Caracas: C $4,44, BE $7,61, $39,60 por día; la subió el 6/11 ($33,00 → $39,60) y el 9/11 entró B0118.
+    $zen = fn (array $band, array $in = []) => campana()->action(array_merge(['c' => 4.44, 'be' => 7.61, 'mode' => 'normal', 'budget' => 39.60,
+        'spend3' => 117.9, 'purchases3' => 18, 'cpa7' => 4.85, 'freq3' => 1.49, 'band' => $band], $in));
+    $undo = ['date' => '2026-11-06', 'from' => 33.0, 'to' => 39.6];
+    $batch = fn (int $closed) => ['date' => '2026-11-09', 'name' => 'B0118', 'closed' => $closed];
+
+    it('primero el batch nuevo, como siempre', function () use ($zen, $undo) {
+        $a = $zen(['batch' => null, 'lowered' => null, 'undo' => $undo]);
+        expect($a['key'])->toBe('hold_prune')->and($a['proposal'])->toBe('Mantener, podar los caros y meter creativos.')->and($a)->not->toHaveKey('ladder');
+        // un análisis de antes de la .123 (sin "band") sigue igual
+        expect(accion(['spend3' => 30, 'purchases3' => 6])['proposal'])->toBe('Mantener, podar los caros y meter creativos.');
+    });
+
+    it('con el batch adentro, 3 días cerrados sin otro cambio: solo se apagan los que pierden', function () use ($zen, $undo, $batch) {
+        $a = $zen(['batch' => $batch(1), 'lowered' => null, 'undo' => $undo], ['prune' => ['C0457 ZEN']]);
+        expect($a['key'])->toBe('hold_prune')
+            ->and($a['reading'])->toBe('Rentable pero no escalable: CPA entre C y el break-even. El 09/11 entró el batch «B0118».')
+            ->and($a['proposal'])->toBe('Esperar: se le dan 3 días cerrados para ver si vuelve a C. Si el 13/11 sigue encima, toca devolver la subida del 06/11: $39,60 → $33,00. Apagar: C0457 ZEN.')
+            ->and($a['ladder'])->toMatchArray(['hold' => true, 'since' => '2026-11-09', 'until' => '2026-11-13', 'days' => 3]);
+    });
+
+    it('la espera de 24 horas no pisa la de los 3 días', function () use ($zen, $undo, $batch) {
+        $cool = ['what' => 'entró el batch «B0118»', 'at' => '2026-11-09 07:30:00', 'until' => '2026-11-10 07:30:00', 'hours' => 24.0];
+        $a = $zen(['batch' => $batch(0), 'lowered' => null, 'undo' => $undo], ['recent_change' => $cool]);
+        expect($a['proposal'])->toStartWith('Esperar: se le dan 3 días cerrados')->and($a)->not->toHaveKey('cooldown');
+    });
+
+    it('a los 3 días cerrados sigue encima de C: devolver la última subida ($39,60 → $33,00)', function () use ($zen, $undo, $batch) {
+        $a = $zen(['batch' => $batch(3), 'lowered' => null, 'undo' => $undo]);
+        expect($a['key'])->toBe('step_down')->and($a['label'])->toBe('Devolver la subida $39,60 → $33,00')
+            ->and($a['from'])->toBe(39.6)->and($a['to'])->toBe(33.0)
+            ->and($a['reading'])->toBe('Pasaron 3 días cerrados desde que entró el batch «B0118» (09/11) y sigue entre C y el break-even.')
+            ->and($a['proposal'])->toBe('Devolver la subida del 06/11: $39,60 → $33,00. Si vuelve a C, se sube otra vez.');
+    });
+
+    it('sin una subida reciente que devolver: otro batch (lo eligió el dueño)', function () use ($zen, $batch) {
+        $a = $zen(['batch' => $batch(3), 'lowered' => null, 'undo' => null]);
+        expect($a['key'])->toBe('hold_prune')->and($a)->not->toHaveKey('ladder')
+            ->and($a['reading'])->toBe('Rentable pero no escalable: CPA entre C y el break-even. Pasaron 3 días cerrados desde que entró el batch «B0118» (09/11) y no hay una subida reciente que devolver.')
+            ->and($a['proposal'])->toBe('Mantener, podar los caros y meter otro batch.');
+        // mientras espera, lo que sigue es otro batch
+        expect($zen(['batch' => $batch(2), 'lowered' => null, 'undo' => null])['proposal'])->toContain('Si el 13/11 sigue encima, toca otro batch.');
+    });
+
+    it('después de devolver la subida: otros 3 días cerrados y, si sigue igual, otro batch', function () use ($zen) {
+        $low = fn (int $closed) => ['date' => '2026-11-13', 'from' => 39.6, 'to' => 33.0, 'closed' => $closed];
+        $a = $zen(['batch' => null, 'lowered' => $low(1), 'undo' => null], ['budget' => 33.0]);
+        expect($a['key'])->toBe('hold_prune')->and($a['ladder']['hold'])->toBeTrue()
+            ->and($a['reading'])->toEndWith('El 13/11 bajaste el presupuesto de $39,60 a $33,00.')
+            ->and($a['proposal'])->toBe('Esperar: se le dan 3 días cerrados para ver si vuelve a C. Si el 17/11 sigue encima, toca otro batch.');
+        $b = $zen(['batch' => null, 'lowered' => $low(3), 'undo' => null], ['budget' => 33.0]);
+        expect($b)->not->toHaveKey('ladder')->and($b['proposal'])->toBe('Mantener, podar los caros y meter creativos.')
+            ->and($b['reading'])->toEndWith('El 13/11 bajaste el presupuesto y sigue encima de C.');
+    });
+
+    it('devolver la subida también espera las 24 horas de otro cambio, y no es "en el break-even"', function () use ($zen, $undo, $batch) {
+        $cool = ['what' => 'volviste a prender la campaña', 'at' => '2026-11-12 20:00:00', 'until' => '2026-11-13 20:00:00', 'hours' => 24.0];
+        $a = $zen(['batch' => $batch(3), 'lowered' => null, 'undo' => $undo], ['recent_change' => $cool]);
+        expect($a['key'])->toBe('wait')->and($a['cooldown']['held'])->toBe('devolver la subida');
+        $u = campana()->urgency(['mode' => 'normal', 'healthy' => 1, 'cities' => ['step_down', 'scale']]);
+        expect($u['level'])->toBe(2)->and($u['reasons'])->toBe([]);
+    });
+
+    it('en liquidación y en el BE o encima no cambia nada', function () use ($zen, $undo, $batch) {
+        expect($zen(['batch' => $batch(3), 'lowered' => null, 'undo' => $undo], ['mode' => 'liquidation'])['key'])->toBe('hold')
+            ->and($zen(['batch' => $batch(3), 'lowered' => null, 'undo' => $undo], ['spend3' => 150, 'purchases3' => 18])['key'])->toBe('intervene');
+    });
+
+    it('en Reglas se cambian los 3 días y los 14 días', function () use ($zen, $undo, $batch) {
+        expect(DecisionSettings::defaults()['band_wait_days'])->toBe(3.0)->and(DecisionSettings::defaults()['band_undo_days'])->toBe(14.0);
+        $a = campana(['band_wait_days' => 2.0])->action(['c' => 4.44, 'be' => 7.61, 'mode' => 'normal', 'budget' => 39.60, 'spend3' => 117.9, 'purchases3' => 18,
+            'band' => ['batch' => $batch(2), 'lowered' => null, 'undo' => $undo]]);
+        expect($a['key'])->toBe('step_down');
+    });
 });
 
 describe('Entre C y BE, y en el break-even o encima', function () {
@@ -180,8 +278,8 @@ describe('Comprimax en Aragua (2026-11-02)', function () {
         expect($a['key'])->toBe('intervene');
     });
 
-    it('con el límite inflado de antes (C $16,22, BE $26,05) decía mantener', function () {
+    it('con el límite inflado de antes (C $16,22, BE $26,05) no intervenía (decía mantener; desde la .123, sin el freno de la frecuencia, subir)', function () {
         $a = accion(['c' => 16.22, 'be' => 26.05, 'budget' => 30.0, 'spend3' => 90.08, 'purchases3' => 12, 'cpa7' => 8.0, 'freq3' => 2.2]);
-        expect($a['key'])->toBe('hold');
+        expect($a['key'])->toBe('scale');
     });
 });

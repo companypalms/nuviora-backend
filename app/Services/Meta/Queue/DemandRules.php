@@ -54,7 +54,9 @@ final class DemandRules
             $key = $a['key'] === 'none' && ($a['label'] ?? null) === 'No se vende aquí' ? 'not_sold' : $a['key'];
             $n = $c['numbers'] ?? null;
             $offers = $n['offers'] ?? [];
-            $need = UrgentList::need($key, $n, $mode);
+            // .123: entre C y BE, mientras se espera a ver si el último cambio la devolvió a C, no hace falta un batch hoy
+            $holds = !empty($a['ladder']['hold']);
+            $need = UrgentList::need($key, $n, $mode, $holds);
             foreach (array_slice($offers, 0, $need) as $o) {
                 if (($o['how'] ?? 'bank') === 'bank') {
                     $consumed[] = (string) $o['code'];
@@ -64,7 +66,8 @@ final class DemandRules
             // .100: con algo que lanzar (de la banca o de otra ciudad), hoy se lanza eso: no hace falta un batch nuevo para hoy
             $why = match (true) {
                 $mode !== 'normal' || $offers !== [] => null,
-                in_array($key, self::AT_BE, true) || $key === 'hold_prune' || $need > 0 && $live !== null && $live < UrgentList::MIN_LIVE => self::reason($key, $live),
+                in_array($key, self::AT_BE, true) || $key === 'hold_prune' && !$holds || $need > 0 && $live !== null && $live < UrgentList::MIN_LIVE
+                    => self::reason($holds ? 'hold' : $key, $live),
                 default => null,
             };
             if ($why !== null) {

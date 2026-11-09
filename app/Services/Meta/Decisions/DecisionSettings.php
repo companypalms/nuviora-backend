@@ -29,7 +29,7 @@ class DecisionSettings
         'recovered_purchases' => [2, 1, 100],
         'promising_purchases' => [3, 1, 100],   // 3+ compras con CPA ≤ C = prometedor
         'proven_purchases' => [5, 1, 100],      // 5+ compras con CPA ≤ C = PROVEN
-        // Embudo y saturación (frecuencia de los 3 días cerrados)
+        // Embudo y frecuencia alta (frecuencia de los 3 días cerrados). .123: la frecuencia alta es solo un aviso, no frena la subida
         'funnel_middle_from' => [1.3, 1, 5],
         'funnel_bottom_above' => [1.5, 1, 5],
         'saturation_from' => [1.6, 1, 5],
@@ -63,6 +63,10 @@ class DecisionSettings
         'decrease_pct' => [20, 1, 90],           // −20 % si sigue en el BE o encima…
         'decrease_after_days' => [2, 1, 30],     // …2 días cerrados después de intervenir
         'pause_after_days' => [5, 1, 60],        // pausar la ciudad a los 5 días cerrados
+        // .123 (dueño, 2026-11-09): entre C y BE, un cambio grande a la vez: primero el batch nuevo y, si en 3 días cerrados no
+        // volvió a C, devolver la última subida (una de los últimos 14 días); después de cada cambio, otros 3 días cerrados
+        'band_wait_days' => [3, 1, 30],
+        'band_undo_days' => [14, 1, 90],
         'relaunch_batches' => [3, 1, 10],        // .117: una campaña apagada se prende con 3 batches nunca publicados en esa ciudad
         'startup_min_mult' => [2.5, 1, 10],      // presupuesto de arranque = C × batches nuevos × 2,5 a 3
         'startup_max_mult' => [3, 1, 10],

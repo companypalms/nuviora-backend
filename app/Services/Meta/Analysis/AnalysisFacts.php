@@ -33,7 +33,9 @@ final class AnalysisFacts
                     'action' => ['key' => $a['key'], 'label' => $a['label'], 'tone' => $a['tone'], 'data' => $a['data'], 'reading' => $a['reading'],
                         'proposal' => $a['proposal'], 'from' => $a['from'] ?? null, 'to' => $a['to'] ?? null]
                         // .111: la espera de 24 horas después de un cambio grande (hasta cuándo y qué)
-                        + (isset($a['cooldown']) ? ['cooldown' => $a['cooldown']] : []),
+                        + (isset($a['cooldown']) ? ['cooldown' => $a['cooldown']] : [])
+                        // .123: entre C y BE, qué se espera y hasta cuándo
+                        + (isset($a['ladder']) ? ['ladder' => $a['ladder']] : []),
                     'notes' => array_map(fn ($n) => $n['label'] . ': ' . $n['text'], $c['notes'] ?? []),
                     'budget_notes' => $c['budget_notes'] ?? [],
                     'price_option' => $c['price_option']['text'] ?? null,

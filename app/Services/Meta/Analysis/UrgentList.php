@@ -32,6 +32,10 @@ use App\Services\Meta\Queue\ForecastRules;
  *
  * `.89` (dueño, 2026-11-03): lo que llega a la banca durante el día y una ciudad necesita ya, se agrega como misión al
  * análisis de hoy (`launchReady`); un encargo atrasado es una misión para presionar al editor líder (`late`).
+ *
+ * `.123` (dueño, 2026-11-09: "solo un cambio grande a la vez"): entre C y BE, mientras se espera a ver si el último cambio
+ * devolvió la campaña a C, no se lanza otro batch (solo si quedan menos de 2 vivos); y devolver la última subida
+ * (`step_down`) es una misión de "Arreglar".
  */
 final class UrgentList
 {
@@ -39,7 +43,7 @@ final class UrgentList
     public const SEVERITY = [
         'pause_city' => 1, 'not_sold' => 1, 'stock_out' => 1, 'stock_waiting' => 1, 'stop_creatives' => 1,
         'decrease' => 2, 'intervene' => 2, 'tracking' => 2, 'late_urgent' => 2,
-        'hold_prune' => 3, 'few_batches' => 3, 'late_batch' => 3, 'launch_ready' => 3, 'no_city' => 3, 'no_be' => 3,
+        'hold_prune' => 3, 'step_down' => 3, 'few_batches' => 3, 'late_batch' => 3, 'launch_ready' => 3, 'no_city' => 3, 'no_be' => 3,
         'scale' => 4, 'launch_test' => 4, 'relaunch' => 4, 'new_product_late' => 4,
         'alarm' => 5, 'names' => 5, 'cooldown' => 5, 'angle_rest' => 5, 'left_city' => 5,
         'price' => 6,
@@ -48,7 +52,7 @@ final class UrgentList
     /** `.82`: en qué grupo de la pantalla va cada cosa. */
     public const GROUP = [
         'pause_city' => 'frenar', 'not_sold' => 'frenar', 'stop_creatives' => 'frenar', 'decrease' => 'frenar',
-        'intervene' => 'arreglar', 'tracking' => 'arreglar', 'hold_prune' => 'arreglar', 'few_batches' => 'arreglar',
+        'intervene' => 'arreglar', 'tracking' => 'arreglar', 'hold_prune' => 'arreglar', 'step_down' => 'arreglar', 'few_batches' => 'arreglar',
         'late_urgent' => 'arreglar', 'late_batch' => 'arreglar', 'launch_ready' => 'arreglar', 'no_city' => 'arreglar', 'no_be' => 'arreglar',
         'scale' => 'crecer', 'launch_test' => 'crecer', 'relaunch' => 'crecer', 'new_product_late' => 'crecer',
         'stock_out' => 'aviso', 'stock_waiting' => 'aviso', 'alarm' => 'aviso', 'price' => 'aviso', 'names' => 'aviso', 'cooldown' => 'aviso', 'angle_rest' => 'aviso', 'left_city' => 'aviso',
@@ -112,7 +116,8 @@ final class UrgentList
                 $n = $c['numbers'] ?? null;
                 $mode = $p['mode'] ?? 'normal';
                 // .87: los batches que hay que lanzar aquí (mínimo 2 vivos) y cuáles, de la banca de esta ciudad
-                $need = self::need($kind, $n, $mode, isset($a['cooldown']));
+                // .123: tampoco mientras se espera a ver si el último cambio la devolvió a C
+                $need = self::need($kind, $n, $mode, self::holds($a));
                 $launch = array_slice(self::offers($n), 0, $need);
                 if ($need > 0 && !in_array($kind, self::FEEDS, true)) {
                     $items[] = $base + self::few($p['product_id'], $c, $n, $launch, $short);
@@ -136,7 +141,7 @@ final class UrgentList
                 $prune = $n['prune'] ?? [];
                 $items[] = $base + ['key' => "{$p['product_id']}:{$c['campaign_meta_id']}:{$kind}", 'city' => $c['city'], 'kind' => $kind,
                     'label' => $a['label'], 'text' => trim($a['reading'] . ' ' . ($a['proposal'] ?? '')), 'tone' => $a['tone'],
-                    'where' => $short . ($c['city'] ? " · {$c['city']}" : ''), 'title' => $wait ? self::waiting($kind, $n, $a['cooldown'] ?? null) : $mission['title'],
+                    'where' => $short . ($c['city'] ? " · {$c['city']}" : ''), 'title' => $wait ? self::waiting($kind, $n, $a['cooldown'] ?? null, $a['ladder'] ?? null) : $mission['title'],
                     'steps' => $wait ? [] : $mission['steps'], 'batches' => $wait ? [] : $mission['batches'],
                     'why' => self::why($kind, $a, $n),
                     'detail' => array_values(array_filter([...self::numbers($n), $a['reading'], $a['proposal'], ...$c['notes'], ...$c['budget_notes'],
@@ -291,7 +296,7 @@ final class UrgentList
 
         return match (true) {
             $kind === 'scale' && $from && $to => ['cut' => null, 'add' => round($to - $from, 2)],
-            $kind === 'decrease' && $from && $to => ['cut' => round($from - $to, 2), 'add' => null],
+            in_array($kind, ['decrease', 'step_down'], true) && $from && $to => ['cut' => round($from - $to, 2), 'add' => null],
             $kind === 'pause_city' && $budget => ['cut' => round((float) $budget, 2), 'add' => null],
             $kind === 'relaunch' && $to => ['cut' => null, 'add' => round((float) $to, 2)],
             default => null,
@@ -368,6 +373,10 @@ final class UrgentList
                 [$open, $from && $to ? 'Cambia el presupuesto diario de ' . AdRules::money($from) . ' a ' . AdRules::money($to) . "{$pct}." : (string) $a['proposal']]],
             'decrease' => [$to ? 'Baja el presupuesto a ' . AdRules::money($to) . ' por día' : 'Baja el presupuesto',
                 [$open, $from && $to ? 'Cambia el presupuesto diario de ' . AdRules::money($from) . ' a ' . AdRules::money($to) . "{$pct}." : (string) $a['proposal']]],
+            // .123: entre C y BE, con el batch nuevo no volvió a C: se devuelve la última subida
+            'step_down' => [$to ? 'Devuelve la última subida: baja el presupuesto a ' . AdRules::money($to) . ' por día' : 'Devuelve la última subida',
+                [$open, $from && $to ? 'Cambia el presupuesto diario de ' . AdRules::money($from) . ' a ' . AdRules::money($to) . "{$pct}." : (string) $a['proposal'],
+                    'No lances batches hoy: un cambio grande a la vez.']],
             'pause_city' => ['Pausa la campaña', [$open, ...$switchOff]],
             'not_sold' => ['Pausa la campaña: ahí no se vende', [$open, ...$switchOff]],
             // .117: se prende solo con los batches nuevos
@@ -415,6 +424,15 @@ final class UrgentList
         }
 
         return $live === null ? 0 : max(0, self::MIN_LIVE - (int) $live);
+    }
+
+    /**
+     * `.123`: la ciudad espera a ver cómo resultó su último cambio grande: las 24 horas de la `.111` o, entre C y BE, los días
+     * cerrados después de un batch o de devolver una subida. Mientras tanto no se lanza otro batch (salvo menos de 2 vivos).
+     */
+    public static function holds(array $action): bool
+    {
+        return isset($action['cooldown']) || !empty($action['ladder']['hold']);
     }
 
     /** `.87`: lo que puede lanzar la ciudad, en orden; los análisis de antes solo traían el primero de la banca. */
@@ -514,9 +532,14 @@ final class UrgentList
     }
 
     /** `.87`: el aviso de una ciudad que pide creativos y hoy no tiene qué podar ni qué lanzar. */
-    private static function waiting(string $kind, ?array $n, ?array $cool = null): string
+    private static function waiting(string $kind, ?array $n, ?array $cool = null, ?array $ladder = null): string
     {
         $live = $n['live'] ?? null;
+        // .123: entre C y BE, un cambio a la vez: "Espera hasta el 13/11: el 09/11 entró el batch «B0118»…"
+        if (($ladder['hold'] ?? false) && ($live === null || $live >= self::MIN_LIVE)) {
+            return 'Espera hasta el ' . date('d/m', strtotime($ladder['until'])) . ': el ' . date('d/m', strtotime($ladder['since'])) . " {$ladder['what']} y se le dan "
+                . ((int) $ladder['days'] === 1 ? '1 día cerrado' : (int) $ladder['days'] . ' días cerrados') . " para ver si vuelve a tu objetivo. Si no, toca {$ladder['next']}";
+        }
         if ($cool && ($live === null || $live >= self::MIN_LIVE)) {
             return self::cooling($cool) . ': ' . lcfirst(self::cooledBy($cool));
         }
@@ -662,6 +685,9 @@ final class UrgentList
             'scale' => (($a['from'] ?? null) && ($a['to'] ?? null) ? '+' . AdRules::num(round(($a['to'] / $a['from'] - 1) * 100)) . ' % · ' : '')
                 . "{$cpa}; tu objetivo es {$c}",
             'hold_prune' => $be ? "{$cpa}: entre tu objetivo ({$c}) y tu {$limit} ({$be})" : "{$cpa}; tu objetivo es {$c}",
+            // .123: "−17 % · $6,55 por compra: entre tu objetivo ($4,44) y tu límite ($7,61)"
+            'step_down' => (($a['from'] ?? null) && ($a['to'] ?? null) ? '−' . AdRules::num(abs(round(($a['to'] / $a['from'] - 1) * 100))) . ' % · ' : '')
+                . ($be ? "{$cpa}: entre tu objetivo ({$c}) y tu {$limit} ({$be})" : "{$cpa}; tu objetivo es {$c}"),
             default => ($be ? "{$cpa}; tu {$limit} es {$be}" : "{$cpa}; tu objetivo es {$c}") . $days,
         };
     }
