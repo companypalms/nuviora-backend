@@ -144,8 +144,8 @@ final class QueueRules
 
     /**
      * El encargo en texto, para mandárselo al editor (botón "Copiar"). `.63`: es para el editor, así que no lleva nada del
-     * proceso del dueño (ni la prioridad, ni la hipótesis, ni la ciudad de prueba): lo que buscamos, lo que funcionó, lo
-     * que hay que mejorar y las ideas para cada versión.
+     * proceso del dueño (ni la prioridad, ni la ciudad de prueba). `.128`: en una variación, qué variar, la hipótesis y cómo
+     * hacerlo; lo que el encargo traiga escrito a mano, también.
      *
      * @param array $b el encargo como lo arma la pantalla (MetaQueueController::present o EditorWork::present)
      */
@@ -155,7 +155,13 @@ final class QueueRules
         $kind = self::KINDS[$b['kind']] ?? $b['kind'];
         // .99: qué hay que hacer, en una frase
         if (!empty($b['task']['title'])) {
-            $lines[] = 'Qué hay que hacer: ' . $b['task']['title'] . (!empty($b['task']['detail']) ? ". {$b['task']['detail']}" : '');
+            $hypothesis = $b['task']['hypothesis'] ?? null;
+            $lines[] = 'Qué hay que hacer: ' . $b['task']['title'] . (!empty($b['task']['detail']) && $hypothesis === null ? ". {$b['task']['detail']}" : '');
+            // .128: una variación dice la hipótesis y cómo hacerlo
+            if ($hypothesis !== null) {
+                $lines[] = "La hipótesis: {$hypothesis}";
+                $lines[] = "Cómo hacerlo: {$b['task']['detail']}";
+            }
         }
         $lines[] = "Tipo: {$kind}" . ($b['reference'] ? " (referencia: {$b['reference']})" : '');
         if ($b['angle_code']) {
@@ -188,14 +194,16 @@ final class QueueRules
         if (!empty($b['style'])) {
             $lines[] = 'Estilo: ' . (self::STYLES[$b['style']] ?? $b['style']);
         }
-        if ($b['pieces']) {
-            // .81: si las piezas traen qué prueba cada una, se dice pieza por pieza con su hipótesis
-            $planned = array_filter($b['pieces'], fn ($p) => !empty($p['hypothesis']));
-            $lines[] = $planned ? 'Qué hacer en cada pieza:' : 'Ideas para cada versión (tú decides cómo):';
+        // .128 (dueño, 2026-11-09: "el sistema no tiene que recomendarle absolutamente nada en cuanto a qué debe hacer él en cada
+        // variación"): la lista solo sale si alguien escribió qué lleva cada pieza o si las piezas son de tipos distintos
+        $mixed = count(array_unique(array_map(fn ($p) => ($p['test_label'] ?? '') . '|' . ($p['style_label'] ?? ''), $b['pieces']))) > 1;
+        if ($mixed || array_filter($b['pieces'], fn ($p) => self::withoutPrices((string) $p['change']) !== null)) {
+            $lines[] = 'Qué lleva cada pieza:';
             foreach ($b['pieces'] as $i => $p) {
                 $change = self::withoutPrices((string) $p['change']);
                 $hypothesis = self::withoutPrices((string) ($p['hypothesis'] ?? ''));
-                $lines[] = ($i + 1) . '. ' . ($p['code'] ? "{$p['code']} — " : '') . (!empty($p['test_label']) && $planned ? "{$p['test_label']}: " : '') . ($change ?? 'sin detalle')
+                $what = $mixed && !empty($p['test_label']) ? $p['test_label'] . (!empty($p['style_label']) ? " ({$p['style_label']})" : '') : null;
+                $lines[] = ($i + 1) . '. ' . ($p['code'] ? "{$p['code']} — " : '') . (implode(': ', array_filter([$what, $change])) ?: 'sin detalle')
                     . ($p['format'] && $p['format'] !== $b['format'] ? ' (' . mb_strtolower(self::FORMATS[$p['format']] ?? $p['format']) . ')' : '')
                     . ($hypothesis !== null ? " Qué probamos: {$hypothesis}" : '');
             }

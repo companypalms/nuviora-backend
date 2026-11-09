@@ -268,24 +268,22 @@ class QueueProposer
         $hypothesis = $clean($t['hipotesis'] ?? null);
         $batch = CreativeBatch::create([
             'product_id' => $p['product_id'], 'kind' => $p['kind'], 'angle_code' => $angle, 'concept' => mb_substr((string) $clean($t['concepto'] ?? null), 0, 120) ?: null,
-            'hypothesis' => $hypothesis, 'audience' => mb_substr((string) $clean($t['publico'] ?? null), 0, 255) ?: null,
+            'hypothesis' => $hypothesis,
             // .64: el buyer persona de la ficha que eligió la IA (el editor solo ve ese); .65: en el testeo, el del ángulo
             'persona_id' => $p['persona_id'] ?? ProductProfileRules::findByName($p['context']['personas'] ?? [], is_string($t['buyer'] ?? null) ? $t['buyer'] : null)['id'] ?? null,
             'testing_round' => $p['testing']['round'] ?? null,
-            // .63: lo que buscamos y lo que hay que mejorar, para el editor
-            'goal' => $clean($t['objetivo'] ?? null), 'test_idea' => $clean($t['probando'] ?? null), 'improve' => $clean($t['mejorar'] ?? null),
-            'reference_creative_id' => $p['reference_id'], 'learning_city_id' => $p['city_id'], 'format' => $p['format'], 'keep' => $clean($t['conservar'] ?? null),
+            // .128: una línea general de qué se prueba (en una variación, ni eso: sus textos son fijos, BatchTask)
+            'test_idea' => $p['kind'] === 'iteration' ? null : $clean($t['probando'] ?? null),
+            'reference_creative_id' => $p['reference_id'], 'learning_city_id' => $p['city_id'], 'format' => $p['format'],
             'style' => isset(QueueRules::STYLES[$t['estilo'] ?? '']) ? $t['estilo'] : null,
             // .69: la oferta ya no se llena con el precio (el editor no lo ve)
             'offer' => null, 'deliverables' => $clean($t['entregables'] ?? null),
             'urgency' => $p['urgency'], 'source' => 'rules', 'proposed_on' => $today, 'status' => 'proposed', 'status_at' => now(), 'created_by' => $userId,
         ]);
-        // .63: una idea por versión (sugerencias; el editor decide cómo)
-        $texts = array_values(array_slice((array) ($t['ideas'] ?? []), 0, $p['pieces']));
         for ($i = 0; $i < $p['pieces']; $i++) {
             // .81: cada pieza sabe qué prueba (el tipo del encargo); su hipótesis es la del encargo
             // .99: en una iteración, lo que prueba (el hook, un tramo o el formato), para que el encargo lo diga
-            CreativeBatchPiece::create(['creative_batch_id' => $batch->id, 'position' => $i + 1, 'change' => $clean($texts[$i] ?? null), 'test' => $p['piece_test'] ?? $p['kind']]);
+            CreativeBatchPiece::create(['creative_batch_id' => $batch->id, 'position' => $i + 1, 'test' => $p['piece_test'] ?? $p['kind']]);
         }
 
         return $batch;

@@ -20,11 +20,13 @@
   cuántos están atrasados.
 - Debajo, su juego: racha al día, el equipo a tiempo este mes y los ganadores del equipo.
 - "Lo de ahora": lo más urgente, con sus pasos y un solo botón. Primero siempre revisar, después asignar.
-- Cada encargo dice qué hay que hacer, en una frase. Por ejemplo: "Asigna B0101: 3 iteraciones del hook de C0146" (solo
-  cambia el hook), "3 iteraciones de formato de C0146" (el mismo mensaje en otros formatos, por ejemplo UGC y
-  testimonio), "3 iteraciones de C0146" con el detalle debajo ("1 de hook y 2 de formato"), "3 piezas nuevas del ángulo
-  ABCD" (un concepto nuevo de ese ángulo) o "3 piezas nuevas de un ángulo nuevo: ABCD". Debajo dice "Por qué hace
-  falta".
+- Cada encargo dice qué hay que hacer, en una frase. Por ejemplo: "Asigna B0101: 3 variaciones de hook de C0146", "3
+  variaciones de formato de C0146" (el mismo mensaje en otros formatos, por ejemplo UGC y testimonio), "3 variaciones para
+  mejorar el hold rate de C0146", "3 variaciones de call to action de C0146", "3 variaciones de C0146: 1 de hook y 2 de
+  formato", "3 piezas nuevas del ángulo ABCD" (un concepto nuevo de ese ángulo) o "3 piezas nuevas de un ángulo nuevo:
+  ABCD". Debajo dice "Por qué hace falta".
+- En una variación también están "La hipótesis" y "Cómo hacerlo" (ideas generales). El sistema no dicta textos, frases ni
+  speech: eso lo deciden los editores. El editor de video lee lo mismo que tú.
 - Si es la iteración de un ganador, "Ver todo el encargo" dice cuál (el nombre de su anuncio en Meta). Si se hizo en el
   sistema, trae su video para ver y bajar. Si es de antes del sistema, dice su nombre completo y su ángulo para buscarlo
   en el Drive antiguo.
@@ -44,11 +46,10 @@
 
 ## Revisar una entrega
 1. En "Por revisar", toca la entrega (o "Revisar").
-2. Arriba está "Lo que se busca": la hipótesis del encargo (solo la ven el líder y el dueño), qué se está probando, el
-   ángulo, lo que se busca, lo que funcionó y lo que hay que mejorar. "Ver todo el encargo" muestra el resto.
+2. Arriba está "Lo que se busca": qué había que hacer, la hipótesis y el ángulo. "Ver todo el encargo" muestra el resto.
 3. Las piezas: gris = sin mirar, verde = está bien, amarillo = con cambios. Toca una para ir a ella.
-4. En cada pieza: lo que se le pidió al editor; a la izquierda la referencia de la que salió (o el ganador, si es una
-   iteración; si fue idea propia, lo dice) y a la derecha lo que entregó.
+4. En cada pieza: a la izquierda la referencia de la que salió (o el ganador, si es una variación; si fue idea propia, lo
+   dice) y a la derecha lo que entregó. Si el dueño escribió algo para esa pieza, también sale.
 5. "Ver los dos juntos" arranca los dos videos a la vez (la referencia sin sonido) para comparar segundo a segundo.
 6. "Marcar este segundo": pausa donde está el problema y tócalo; la nota queda con "seg. 0:03:".
 7. "Está bien" pasa sola a la pieza siguiente. "Cambiar algo" abre los motivos rápidos (No es lo que se pidió, No cumple
@@ -74,8 +75,8 @@
   Por eso conviene cargar los batches ya hechos: así no se piden encargos de más.
 
 ## Asignar un encargo
-1. Toca "Asignar" (o "Asignar editor"). Arriba de la ventana dice qué hay que hacer (por ejemplo "3 iteraciones de
-   C0146" y "1 de hook y 2 de formato").
+1. Toca "Asignar" (o "Asignar editor"). Arriba de la ventana dice qué hay que hacer (por ejemplo "3 variaciones de
+   C0146: 1 de hook y 2 de formato"), la hipótesis y cómo hacerlo.
 2. Ves a cada editor con lo que tiene (por ejemplo "2 encargos, 1 atrasado"). "Sugerido" es el más libre: menos
    encargos y menos atrasados.
 3. Elige quién lo hace. Puedes elegirte a ti.
@@ -103,7 +104,7 @@ computadora.
     siguiente carpeta, o "Listo".
 - No hace falta ponerle nombre a nada: el sistema le da su número al batch (B0120) y a cada video (C0153), y los nombra
   como se van a llamar en Meta. Tu forma vieja de nombrarlos ("batch 1, creativo 2") ya no hace falta.
-- Si son variaciones de un creativo, en la banca dice "3 iteraciones del hook de [ese creativo]" y, cuando se lancen, el
+- Si son variaciones de un creativo, en la banca dice "3 variaciones de hook de [ese creativo]" y, cuando se lancen, el
   sistema aprende que eran variaciones de ese creativo.
 - No hace falta acordarse de la hipótesis: entra como "Cargado: de antes del sistema".
 - Solo los que nunca se lanzaron.

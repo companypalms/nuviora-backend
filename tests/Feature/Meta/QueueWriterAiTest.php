@@ -30,6 +30,9 @@ describe('Los encargos redactados por la IA', function () use ($respuestaCola) {
             && str_contains($q['instructions'], 'no digas que necesitan respaldo médico')
             && !str_contains($q['instructions'], 'cura una enfermedad')
             && str_contains($q['instructions'], 'No inventes por tu cuenta médicos, estudios, certificaciones, avales ni testimonios')
+            // .128: ni ideas por pieza, ni hooks, ni frases, ni speech
+            && str_contains($q['instructions'], 'Nunca escribas hooks, frases, textos para poner, guiones, speech, escenas o tomas concretas, ni ideas pieza por pieza')
+            && array_keys($q['text']['format']['schema']['properties']['encargos']['items']['properties']) === ['clave', 'hipotesis', 'probando', 'buyer', 'concepto', 'estilo', 'entregables']
             && $q->hasHeader('Authorization', 'Bearer ' . LLAVE_FALSA_COLA)
             && !str_contains(json_encode($q->data()), LLAVE_FALSA_COLA));
     });

@@ -17,10 +17,14 @@
 - Arriba está tu marcador: por entregar, atrasados y tu racha a tiempo.
 - Debajo, tu mes: cuántos te aprobaron a la primera y tus ganadores.
 - Después, el encargo de ahora con sus pasos y un solo botón, "Entregar".
-- El título dice qué hay que hacer, en una frase. Por ejemplo: "Haz y entrega B0100: 3 iteraciones del hook de C0146"
-  (solo cambia el hook: el resto del video igual), "3 iteraciones de formato de C0146" (el mismo mensaje en otros
-  formatos, por ejemplo UGC y testimonio), "3 iteraciones de C0146" con el detalle debajo ("1 de hook y 2 de formato") o
-  "3 piezas nuevas del ángulo ABCD" (un concepto nuevo de ese ángulo). Lo mismo dice cada encargo de "Lo que sigue".
+- El título dice qué hay que hacer, en una frase. Por ejemplo: "Haz y entrega B0100: 3 variaciones de hook de C0146",
+  "3 variaciones de formato de C0146" (el mismo mensaje en otros formatos, por ejemplo UGC y testimonio), "3 variaciones
+  para mejorar el hold rate de C0146", "3 variaciones de call to action de C0146", "3 variaciones de C0146: 1 de hook y 2
+  de formato" o "3 piezas nuevas del ángulo ABCD" (un concepto nuevo de ese ángulo). Lo mismo dice cada encargo de "Lo que
+  sigue".
+- En una variación, debajo del título están "La hipótesis" (por qué se pide) y "Cómo hacerlo" (ideas generales; por
+  ejemplo, buscar hooks ya validados de ese ángulo en la biblioteca de anuncios o en redes sociales y conectarlos a ese
+  creativo). El sistema no te dicta textos, frases ni speech: cómo hacerlo lo decides tú.
 - Orden: primero lo que te devolvieron, después lo atrasado, después por fecha.
 - Si te lo devolvieron, arriba ves lo que pidió quien revisó, con el código de cada pieza.
 - Si al asignarte eligieron una referencia sugerida, la ves en el encargo con su video ("Parte de esta referencia").
@@ -28,8 +32,8 @@
   ganador", con su nombre (el de su anuncio en Meta, por ejemplo "CRE002-FLEX-FAS-BATCH005"). Si el ganador se hizo en
   el sistema, ahí mismo está su video para ver y bajar. Si es de antes del sistema, dice "Su video no está en el sistema:
   búscalo en el Drive antiguo como «CRE002-FLEX-FAS-BATCH005» (ángulo FASP)": búscalo en el Drive antiguo con ese nombre.
-- "Ver todo el encargo" muestra lo que se pide en cada pieza y la ficha del producto: qué es, para qué sirve, cómo
-  funciona, las fotos, los buyer personas y los ángulos.
+- "Ver todo el encargo" muestra la ficha del producto: qué es, para qué sirve, cómo funciona, las fotos, los buyer
+  personas y los ángulos. Si las piezas son distintas entre sí (por ejemplo, 1 de hook y 2 de formato), dice qué lleva cada una.
 - Más abajo: "Lo que sigue", lo que está "Esperando revisión" y los terminados (se pueden ocultar).
 - No hay botón "Empezar": el encargo empieza solo cuando subes el primer archivo.
 - Si no tienes nada: "Estás al día". Cuando te asignen uno, aparece ahí con su plazo.

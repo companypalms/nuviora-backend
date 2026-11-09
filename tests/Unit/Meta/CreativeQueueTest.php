@@ -110,7 +110,7 @@ describe('El texto del encargo para el editor', function () {
             ->toContain('Lo que buscamos: 3 versiones bien distintas, con el mismo hook, que hagan que la gente se quede.')
             ->toContain('Lo que funcionó (no lo cambies): El cuerpo y el cierre')
             ->toContain('Lo que hay que mejorar: La gente se va en el medio.')
-            ->toContain('Ideas para cada versión (tú decides cómo):')
+            ->toContain('Qué lleva cada pieza:')
             ->toContain('Ángulo: FASP (Dolor de tobillo)')
             ->toContain("1. C0457 — Hook 1: la pregunta\n2. C0458 — Hook 2: el dato (imagen)")
             ->toContain('Plazo: sáb 31/10')
@@ -126,6 +126,6 @@ describe('El texto del encargo para el editor', function () {
         $text = QueueRules::brief(['code' => null, 'product' => 'Loli', 'urgency' => null, 'kind' => 'new_angle', 'reference' => null, 'angle_code' => null,
             'angle_name' => null, 'format' => null, 'due_date' => null, 'pieces' => [['code' => null, 'change' => '', 'format' => null]],
             'meta_names' => ['adset' => null, 'ads' => []]]);
-        expect($text)->toBe("ENCARGO (sin aprobar) · Loli\nTipo: Ángulo nuevo\nIdeas para cada versión (tú decides cómo):\n1. sin detalle");
+        expect($text)->toBe("ENCARGO (sin aprobar) · Loli\nTipo: Ángulo nuevo");
     });
 });

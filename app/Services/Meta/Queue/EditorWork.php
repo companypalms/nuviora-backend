@@ -334,6 +334,9 @@ class EditorWork
         $clean = fn (?string $v) => QueueRules::withoutPrices($v);
 
         return self::sorted($batches)->map(function (CreativeBatch $b) use ($angles, $refs, $scripts, $profiles, $who, $clean, $allAngles, $photos, $pieceFiles, $uploads) {
+            $task = self::task($b, $angles["{$b->product_id}:{$b->angle_code}"] ?? null);
+            // .128: en una variación de las reglas, el editor y el líder leen la hipótesis fija (BatchTask), no la de la IA
+            $plain = $b->source === 'rules' && $b->kind === 'iteration';
             $out = [
                 'id' => $b->id, 'code' => $b->code(), 'product_id' => $b->product_id, 'product' => $b->product?->showable_name ?: $b->product?->title,
                 'status' => $b->status, 'status_label' => QueueRules::STATUSES[$b->status] ?? $b->status, 'status_at' => $b->status_at?->toIso8601String(),
@@ -345,7 +348,7 @@ class EditorWork
                 'concept' => $clean($b->concept), 'audience' => $clean($b->audience),
                 // .93: de qué trata el ángulo, para tenerlo a la vista al revisar
                 'angle_about' => $clean(collect($allAngles[$b->product_id] ?? [])->firstWhere('code', $b->angle_code)['hypothesis'] ?? null),
-            ] + self::hypothesisFor($who, $b->hypothesis) + self::product($b, $profiles, $allAngles, $photos) + [
+            ] + ($plain ? ['hypothesis' => $task['hypothesis'] ?? null] : self::hypothesisFor($who, $b->hypothesis)) + self::product($b, $profiles, $allAngles, $photos) + [
                 'reference' => self::referenceName($b->reference), 'reference_thumbnail' => $refs[$b->reference_creative_id]['thumbnail'] ?? null,
                 'reference_texts' => QueueRules::withoutPricesIn($refs[$b->reference_creative_id]['texts'] ?? []),
                 'reference_script' => QueueRules::withoutPricesIn($scripts[$b->reference_creative_id] ?? null),
@@ -361,14 +364,33 @@ class EditorWork
                 'iteration_of' => $b->reference_creative_id ? (self::referenceName($b->reference) ?? 'el ganador') : null,
                 // .95: un batch ya hecho que cargó el líder (de antes del sistema, sin hipótesis)
                 'imported' => $b->source === 'imported',
-                // .99: qué hay que hacer, en una frase ("3 iteraciones del hook de C0146", "3 piezas nuevas del ángulo POSP")
-                'task' => self::task($b, $angles["{$b->product_id}:{$b->angle_code}"] ?? null),
+                // .99: qué hay que hacer, en una frase ("3 variaciones de hook de C0146", "3 piezas nuevas del ángulo POSP")
+                'task' => $task,
                 'meta_names' => QueueRules::metaNames($b->number, $b->angle_code, $b->pieces->pluck('number')->all()),
                 'uploads' => $uploads, // .90: se entrega subiendo el archivo (no con Drive)
             ] + self::fields($b, $who);
+            $out = self::withoutAiTexts($out, $b);
 
             return $out + ['brief' => QueueRules::brief($out)];
         })->values()->all();
+    }
+
+    /**
+     * `.128` (dueño, 2026-11-09: "el sistema no tiene que recomendarle absolutamente nada en cuanto a qué debe hacer él en cada
+     * variación"; "el editor líder tampoco debe ver las recomendaciones"): de un encargo de las reglas no le llega a nadie lo
+     * que redactó la IA, tampoco en los que ya estaban abiertos. En una variación quedan los textos fijos de BatchTask; en las
+     * piezas nuevas, una línea general. Lo que escribe el dueño se ve tal cual.
+     */
+    public static function withoutAiTexts(array $out, CreativeBatch $b): array
+    {
+        if ($b->source !== 'rules') {
+            return $out;
+        }
+        $out = array_replace($out, ['goal' => null, 'keep' => null, 'improve' => null, 'concept' => null, 'audience' => null,
+            'test_idea' => $b->kind === 'iteration' ? null : $out['test_idea']]);
+        $out['pieces'] = array_map(fn (array $p) => array_replace($p, ['change' => null, 'hypothesis' => null]), $out['pieces']);
+
+        return $out;
     }
 
     /**
@@ -390,7 +412,7 @@ class EditorWork
     {
         return BatchTask::of(['kind' => $b->kind, 'angle_code' => $b->angle_code, 'angle_name' => $angleName,
             'iterates' => $b->reference_creative_id ? (self::referenceName($b->reference) ?? 'el ganador') : null,
-            'imported' => $b->source === 'imported', 'testing' => $b->testing_round !== null,
+            'imported' => $b->source === 'imported', 'testing' => $b->testing_round !== null, 'rules' => $b->source === 'rules',
             'pieces' => $b->pieces->map(fn (CreativeBatchPiece $p) => ['test' => $p->test, 'style' => $p->style, 'format' => $p->format])->all()]);
     }
 

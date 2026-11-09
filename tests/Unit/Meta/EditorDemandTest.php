@@ -178,33 +178,76 @@ describe('.99: qué hay que hacer en cada encargo', function () {
             ->and(BatchTask::of($b(['kind' => 'new_angle', 'angle_code' => 'POSP', 'testing' => true]))['title'])->toBe('3 piezas para probar el ángulo POSP')
             ->and(BatchTask::of($b(['kind' => 'top_funnel', 'angle_code' => 'POSP']))['title'])->toBe('3 piezas nuevas para gente que todavía no conoce el problema (ángulo POSP)')
             // una iteración pedida a mano sin decir de qué creativo
-            ->and(BatchTask::of($b(['kind' => 'iteration', 'angle_code' => 'FASP']))['title'])->toBe('3 iteraciones del ángulo FASP')
+            ->and(BatchTask::of($b(['kind' => 'iteration', 'angle_code' => 'FASP']))['title'])->toBe('3 variaciones del ángulo FASP')
             // un batch ya hecho que se cargó: nada que hacer
             ->and(BatchTask::of($b(['imported' => true])))->toBeNull();
     });
 
-    it('las iteraciones dicen de qué creativo y qué se cambia: el hook, el formato o un tramo', function () use ($b, $pieces) {
+    // .128 (dueño, 2026-11-09): textos fijos: qué variar, la hipótesis y cómo hacerlo, con ideas generales
+    $hookHow = 'Busca hooks ya validados de este mismo ángulo, en la biblioteca de anuncios o en redes sociales, y conéctalos a este creativo. Cambia solo los primeros 3 segundos.';
+    $tomas = 'Ideas generales: hacer el video un poco más corto, hacer más dinámicas las tomas, cambiar por completo las tomas del medio o hacer más directo el speech del medio.';
+
+    it('una variación de hook: su hipótesis dice por qué se pide', function () use ($b, $pieces, $hookHow) {
+        $it = fn (string $test) => BatchTask::of($b(['kind' => 'iteration', 'iterates' => 'C0146 POSP', 'pieces' => $pieces(['test' => $test], ['test' => $test], ['test' => $test])]));
+        expect($it('hook'))->toBe(['title' => '3 variaciones de hook de C0146 POSP', 'detail' => $hookHow,
+            'hypothesis' => 'Este creativo tuvo un hook rate bajo. Queremos probar si variando el hook aumentamos su hook rate y su efectividad.'])
+            ->and($it('fatigue')['hypothesis'])->toBe('La gente ya vio mucho este creativo. Queremos probar si variando el hook vuelve a enganchar y recupera su efectividad.')
+            ->and($it('winner_hook')['hypothesis'])->toBe('Este creativo es ganador. Queremos probar si variando el hook aumentamos su efectividad y dura más.');
+    });
+
+    it('hold rate, medio, cierre y call to action: ideas generales, nunca textos', function () use ($b, $pieces, $tomas) {
+        $it = fn (string $test) => BatchTask::of($b(['kind' => 'iteration', 'iterates' => 'C0146 POSP', 'pieces' => $pieces(['test' => $test], ['test' => $test])]));
+        expect($it('after_hook'))->toBe(['title' => '2 variaciones para mejorar el hold rate de C0146 POSP', 'detail' => "{$tomas} El hook queda igual.",
+            'hypothesis' => 'Este creativo tuvo un hold rate que se puede mejorar. Queremos probar si mejorando el hold rate aumentamos su efectividad.'])
+            ->and($it('middle'))->toBe(['title' => '2 variaciones para mejorar el medio del video de C0146 POSP', 'detail' => "{$tomas} El inicio queda igual.",
+                'hypothesis' => 'Este creativo pierde gente en el medio del video. Queremos probar si mejorando esa parte aumentamos su efectividad.'])
+            ->and($it('close'))->toBe(['title' => '2 variaciones del cierre de C0146 POSP', 'detail' => 'Ideas generales: un cierre más corto o llamar a comprar antes. Lo de antes del cierre queda igual.',
+                'hypothesis' => 'Este creativo pierde gente antes del final. Queremos probar si mejorando el cierre aumentamos su efectividad.'])
+            ->and($it('click'))->toBe(['title' => '2 variaciones de call to action de C0146 POSP', 'detail' => 'Busca llamados a la acción ya validados, en la biblioteca de anuncios o en redes sociales. Cambia solo esa parte.',
+                'hypothesis' => 'A este creativo poca gente le hace clic. Queremos probar si variando el call to action aumentamos sus clics y su efectividad.']);
+    });
+
+    it('formato y mezcla de un ganador sano', function () use ($b, $pieces, $hookHow) {
         $it = fn (array $p) => BatchTask::of($b(['kind' => 'iteration', 'iterates' => 'C0146 POSP', 'pieces' => $p]));
-        expect($it($pieces(['test' => 'winner_hook'], ['test' => 'hook'], ['test' => 'fatigue'])))
-            ->toBe(['title' => '3 iteraciones del hook de C0146 POSP', 'detail' => 'Solo cambia el hook (los primeros 3 segundos): el resto del video queda igual.'])
-            ->and($it($pieces(['test' => 'format', 'style' => 'ugc'], ['test' => 'format', 'style' => 'testimonio'])))
-            ->toBe(['title' => '2 iteraciones de formato de C0146 POSP', 'detail' => 'El mismo mensaje en UGC y testimonio.'])
+        expect($it($pieces(['test' => 'format', 'style' => 'ugc'], ['test' => 'format', 'style' => 'testimonio'])))
+            ->toBe(['title' => '2 variaciones de formato de C0146 POSP', 'detail' => 'El mismo mensaje en UGC y testimonio.',
+                'hypothesis' => 'Queremos probar si el mismo mensaje en otro formato aumenta la efectividad de este creativo.'])
             ->and($it($pieces(['test' => 'winner_hook'], ['test' => 'format', 'style' => 'ugc'], ['test' => 'format', 'style' => 'imagen', 'format' => 'image'])))
-            ->toBe(['title' => '3 iteraciones de C0146 POSP', 'detail' => '1 de hook (hook nuevo, el resto igual) y 2 de formato (UGC e imagen).'])
-            ->and($it($pieces(['test' => 'middle'], ['test' => 'middle']))['title'])->toBe('2 iteraciones de C0146 POSP: arreglar el medio del video')
+            ->toBe(['title' => '3 variaciones de C0146 POSP: 1 de hook y 2 de formato',
+                'detail' => 'Para el hook: busca hooks ya validados de este mismo ángulo, en la biblioteca de anuncios o en redes sociales, y conéctalos a este creativo. Cambia solo los primeros 3 segundos. Para el formato: el mismo mensaje en UGC e imagen.',
+                'hypothesis' => 'Este creativo es ganador. Queremos probar si variando el hook y el formato aumentamos su efectividad y dura más.'])
             // la imagen ganadora que pasa a video
-            ->and($it($pieces(['test' => 'format', 'format' => 'video']))['title'])->toBe('1 iteración de formato de C0146 POSP')
-            // .99: un batch ya hecho que son variaciones de un creativo dice qué es (sin estilo: "otro formato")
+            ->and($it($pieces(['test' => 'format', 'format' => 'video']))['title'])->toBe('1 variación de formato de C0146 POSP')
+            // .99: un batch ya hecho que son variaciones de un creativo dice qué es; ya está hecho: sin hipótesis ni cómo hacerlo
             ->and(BatchTask::of($b(['kind' => 'iteration', 'iterates' => 'CRE002-FLEX-BATCH001', 'imported' => true,
                 'pieces' => $pieces(['test' => 'format'], ['test' => 'format'])])))
-            ->toBe(['title' => '2 iteraciones de formato de CRE002-FLEX-BATCH001', 'detail' => 'El mismo mensaje en otro formato.']);
+            ->toBe(['title' => '2 variaciones de formato de CRE002-FLEX-BATCH001', 'detail' => null, 'hypothesis' => null]);
+    });
+
+    it('un encargo viejo de las reglas que no guardó qué variar queda de hook, sin afirmar que el hook rate fue bajo', function () use ($b, $pieces, $hookHow) {
+        $old = $pieces(['test' => 'iteration'], ['test' => 'iteration'], ['test' => null]);
+        expect(BatchTask::of($b(['kind' => 'iteration', 'iterates' => 'CRE005-FEX-FASP-REF005', 'rules' => true, 'pieces' => $old])))
+            ->toBe(['title' => '3 variaciones de hook de CRE005-FEX-FASP-REF005', 'detail' => $hookHow,
+                'hypothesis' => 'Queremos probar si variando el hook aumentamos la efectividad de este creativo.'])
+            // lo que pidió el dueño a mano no se adivina
+            ->and(BatchTask::of($b(['kind' => 'iteration', 'iterates' => 'C0146', 'pieces' => $old])))
+            ->toBe(['title' => '3 variaciones de C0146', 'detail' => 'Variaciones del mismo creativo (qué cambia, en «Ver todo el encargo»).', 'hypothesis' => null]);
     });
 
     it('el texto del encargo empieza por lo que hay que hacer', function () {
         $brief = QueueRules::brief(['code' => 'B0101', 'product' => 'FlexiStep', 'kind' => 'iteration', 'reference' => 'C0146', 'angle_code' => null, 'angle_name' => null,
             'format' => 'video', 'style' => null, 'pieces' => [], 'deliverables' => null, 'due_date' => null, 'editor' => null,
-            'task' => ['title' => '3 iteraciones del hook de C0146', 'detail' => 'Solo cambia el hook.']]);
-        expect($brief)->toContain("ENCARGO B0101 · FlexiStep\nQué hay que hacer: 3 iteraciones del hook de C0146. Solo cambia el hook.\nTipo: Iteración");
+            'task' => ['title' => '3 piezas nuevas', 'detail' => 'Un concepto nuevo.']]);
+        expect($brief)->toContain("ENCARGO B0101 · FlexiStep\nQué hay que hacer: 3 piezas nuevas. Un concepto nuevo.\nTipo: Iteración");
+    });
+
+    it('.128: en una variación, el texto dice la hipótesis y cómo hacerlo, y no lista las piezas iguales', function () {
+        $brief = QueueRules::brief(['code' => 'B0101', 'product' => 'FlexiStep', 'kind' => 'iteration', 'reference' => 'C0146', 'angle_code' => null, 'angle_name' => null,
+            'format' => 'video', 'style' => null, 'deliverables' => null, 'due_date' => null, 'editor' => null,
+            'pieces' => [['code' => 'C0109', 'change' => null, 'format' => null, 'test_label' => 'Arreglar el hook'], ['code' => 'C0110', 'change' => null, 'format' => null, 'test_label' => 'Arreglar el hook']],
+            'task' => ['title' => '2 variaciones de hook de C0146', 'detail' => 'Busca hooks.', 'hypothesis' => 'Queremos probar.']]);
+        expect($brief)->toContain("Qué hay que hacer: 2 variaciones de hook de C0146\nLa hipótesis: Queremos probar.\nCómo hacerlo: Busca hooks.\nTipo: Iteración")
+            ->not->toContain('Qué lleva cada pieza')->not->toContain('sin detalle')->not->toContain('Ideas');
     });
 });
 

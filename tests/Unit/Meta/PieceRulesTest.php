@@ -37,13 +37,12 @@ describe('Qué formatos probar en un ganador sano', function () use ($stat) {
 });
 
 describe('Las piezas de un encargo del análisis', function () {
-    it('un ganador sano: 1 hook nuevo + 2 formatos, cada pieza con qué hacer y su hipótesis', function () {
+    it('un ganador sano: 1 hook nuevo + 2 formatos, cada pieza con su hipótesis y sin decir qué hacer', function () {
         $plan = PieceRules::plan(null, 3, [['style' => 'imagen', 'reason' => 'Nunca se probó en este producto.'], ['style' => 'ugc', 'reason' => 'x']]);
         expect(array_column($plan, 'test'))->toBe(['winner_hook', 'format', 'format'])
             ->and(array_column($plan, 'format'))->toBe(['video', 'image', 'video'])
-            ->and($plan[0]['change'])->toBe('Un hook distinto (los primeros 3 segundos), con el mismo cuerpo.')
+            ->and($plan[0])->not->toHaveKey('change')
             ->and($plan[0]['hypothesis'])->toBe('Probamos si un hook nuevo, con el mismo cuerpo, hace que este ganador dure más.')
-            ->and($plan[1]['change'])->toBe('El mismo mensaje y la misma promesa en imagen.')
             ->and($plan[1]['hypothesis'])->toBe('Probamos si el mismo mensaje en imagen también vende.')
             ->and($plan[1]['reason'])->toBe('Nunca se probó en este producto.')
             ->and($plan[2]['hypothesis'])->toBe('Probamos si el mismo mensaje en formato UGC también vende.');
@@ -56,7 +55,6 @@ describe('Las piezas de un encargo del análisis', function () {
     it('un tramo flojo: 3 variaciones de ese tramo, cada una con su hipótesis', function () {
         $plan = PieceRules::plan('middle', 3);
         expect(array_column($plan, 'test'))->toBe(['middle', 'middle', 'middle'])
-            ->and($plan[1]['change'])->toBe('Variación 2: un medio más corto y con más ritmo, distinto al de las otras piezas.')
             ->and($plan[0]['hypothesis'])->toBe('Probamos si un medio más corto y con más ritmo hace que más gente llegue al final.');
         expect(PieceRules::plan('format', 2)[1])->toMatchArray(['test' => 'format', 'style' => 'imagen', 'format' => 'image'])
             ->and(PieceRules::plan('fatigue', 1)[0]['test'])->toBe('fatigue');
@@ -78,7 +76,7 @@ describe('Lo que lee el editor y lo que se aprende', function () {
                 ['code' => 'C0462', 'change' => 'El mismo mensaje y la misma promesa en imagen.', 'format' => 'image', 'test_label' => 'Otro formato',
                     'hypothesis' => 'Probamos si el mismo mensaje en imagen también vende a $25.'],
             ]]);
-        expect($brief)->toContain("Qué hacer en cada pieza:\n1. C0461 — Hook nuevo en un ganador: Un hook distinto (los primeros 3 segundos), con el mismo cuerpo. (video) Qué probamos: Probamos si un hook nuevo")
+        expect($brief)->toContain("Qué lleva cada pieza:\n1. C0461 — Hook nuevo en un ganador: Un hook distinto (los primeros 3 segundos), con el mismo cuerpo. (video) Qué probamos: Probamos si un hook nuevo")
             ->toContain('2. C0462 — Otro formato: El mismo mensaje y la misma promesa en imagen. (imagen)')
             ->not->toContain('$25');
     });

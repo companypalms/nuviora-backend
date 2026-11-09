@@ -5,7 +5,7 @@ namespace App\Services\Meta\Queue;
 /**
  * `.81` (dueño, 2026-11-02): "el sistema siempre debe saber qué hipótesis se está probando en cada creativo, para que
  * aprendamos de lo que funciona y lo que no". PHP puro:
- * - qué prueba cada pieza de una iteración del análisis, qué hacer y su hipótesis;
+ * - qué prueba cada pieza de una iteración del análisis y su hipótesis (`.128`: ya no se escribe qué hacer en cada una);
  * - un ganador sano: 2 formatos distintos + 1 hook nuevo (el formato lo elige el sistema: primero el que nunca se probó en
  *   ese producto);
  * - el resultado de cada pieza al terminar el test (Ganó, Perdió o Empate), para "Lo que sabemos".
@@ -39,7 +39,7 @@ final class PieceRules
      *
      * @param ?string $fix el primer tramo flojo (AdRules::STAGES), "fatigue", "format" (probar en imagen) o null (ganador sano)
      * @param list<array{style: string, reason: string}> $formats los formatos elegidos (pickFormats), para un ganador sano
-     * @return list<array{test: string, style: ?string, format: string, change: string, hypothesis: string, reason: ?string}>
+     * @return list<array{test: string, style: ?string, format: string, hypothesis: string, reason: ?string}>
      */
     public static function plan(?string $fix, int $pieces, array $formats = [], string $baseFormat = 'video'): array
     {
@@ -51,17 +51,17 @@ final class PieceRules
             }
             // Si no queda ningún formato para probar, más hooks nuevos
             while (count($out) < $pieces) {
-                $out[] = self::piece('winner_hook', null, $baseFormat, null, count($out) + 1);
+                $out[] = self::piece('winner_hook', null, $baseFormat);
             }
 
             return $out;
         }
         if ($fix === 'format') {
-            return array_map(fn ($i) => self::piece('format', 'imagen', 'image', 'En video el CPM sale caro y no compensa.', $i), range(1, $pieces));
+            return array_fill(0, $pieces, self::piece('format', 'imagen', 'image', 'En video el CPM sale caro y no compensa.'));
         }
         $test = isset(self::TESTS[$fix]) ? $fix : 'fatigue';
 
-        return array_map(fn ($i) => self::piece($test, null, $baseFormat, null, $i), range(1, $pieces));
+        return array_fill(0, $pieces, self::piece($test, null, $baseFormat));
     }
 
     /**
@@ -121,26 +121,21 @@ final class PieceRules
         return $test === 'format' && $style !== null ? 'Formato ' . self::formatLabel($style) : (self::TESTS[$test] ?? 'Sin dato');
     }
 
-    private static function piece(string $test, ?string $style, string $format, ?string $reason = null, int $n = 1): array
+    private static function piece(string $test, ?string $style, string $format, ?string $reason = null): array
     {
         $label = self::formatLabel($style);
         $in = $style === 'imagen' ? 'en imagen' : 'en formato ' . ($style === 'ugc' ? 'UGC' : mb_strtolower((string) $label));
-        $variation = $n > 1 ? " (variación {$n})" : '';
-        [$change, $hypothesis] = match ($test) {
-            'winner_hook' => ['Un hook distinto (los primeros 3 segundos), con el mismo cuerpo' . ($n > 1 ? ', distinto también al de la otra pieza de hook' : '') . '.',
-                'Probamos si un hook nuevo, con el mismo cuerpo, hace que este ganador dure más.'],
-            'format' => ['El mismo mensaje y la misma promesa ' . $in . $variation . '.', "Probamos si el mismo mensaje {$in} también vende."],
-            'hook' => ["Variación {$n}: un hook distinto al de las otras piezas.", 'Probamos si un hook más fuerte hace que más gente se quede los primeros 3 segundos.'],
-            'after_hook' => ["Variación {$n}: una forma distinta de hacer más rápido lo que viene después del hook.",
-                'Probamos si, yendo más rápido al problema y a la promesa, más gente se queda hasta los 15 segundos.'],
-            'middle' => ["Variación {$n}: un medio más corto y con más ritmo, distinto al de las otras piezas.",
-                'Probamos si un medio más corto y con más ritmo hace que más gente llegue al final.'],
-            'close' => ["Variación {$n}: un cierre distinto, con el llamado a comprar más claro.", 'Probamos si un cierre más claro hace que más gente termine el video y compre.'],
-            'click' => ["Variación {$n}: una forma distinta de decir la oferta y el llamado a la acción.", 'Probamos si una oferta y un llamado más claros hacen que más gente haga clic.'],
-            default => ["Variación {$n}: un hook y primeras imágenes nuevos, distintos a los de las otras piezas.",
-                'Probamos si con un hook y primeras imágenes nuevos la gente que ya lo vio vuelve a detenerse.'],
+        $hypothesis = match ($test) {
+            'winner_hook' => 'Probamos si un hook nuevo, con el mismo cuerpo, hace que este ganador dure más.',
+            'format' => "Probamos si el mismo mensaje {$in} también vende.",
+            'hook' => 'Probamos si un hook más fuerte hace que más gente se quede los primeros 3 segundos.',
+            'after_hook' => 'Probamos si, yendo más rápido al problema y a la promesa, más gente se queda hasta los 15 segundos.',
+            'middle' => 'Probamos si un medio más corto y con más ritmo hace que más gente llegue al final.',
+            'close' => 'Probamos si un cierre más claro hace que más gente termine el video y compre.',
+            'click' => 'Probamos si una oferta y un llamado más claros hacen que más gente haga clic.',
+            default => 'Probamos si con un hook y primeras imágenes nuevos la gente que ya lo vio vuelve a detenerse.',
         };
 
-        return ['test' => $test, 'style' => $style, 'format' => $format, 'change' => $change, 'hypothesis' => $hypothesis, 'reason' => $reason];
+        return ['test' => $test, 'style' => $style, 'format' => $format, 'hypothesis' => $hypothesis, 'reason' => $reason];
     }
 }

@@ -144,16 +144,16 @@ describe('El encargo sigue a su creativo', function () {
 });
 
 describe('Lo que dice el encargo', function () {
-    it('"3 iteraciones del ganador" (no "de el ganador") cuando no se sabe su nombre', function () {
+    it('"3 variaciones del ganador" (no "de el ganador") cuando no se sabe su nombre', function () {
         $hooks = array_fill(0, 3, ['test' => 'hook', 'style' => null, 'format' => null]);
         $free = array_fill(0, 3, ['test' => null, 'style' => null, 'format' => null]);
 
         expect(BatchTask::of(['kind' => 'iteration', 'angle_code' => null, 'angle_name' => null, 'iterates' => 'el ganador', 'pieces' => $free])['title'])
-            ->toBe('3 iteraciones del ganador')
+            ->toBe('3 variaciones del ganador')
             ->and(BatchTask::of(['kind' => 'iteration', 'angle_code' => null, 'angle_name' => null, 'iterates' => 'el ganador', 'pieces' => $hooks])['title'])
-            ->toBe('3 iteraciones del hook del ganador')
+            ->toBe('3 variaciones de hook del ganador')
             ->and(BatchTask::of(['kind' => 'iteration', 'angle_code' => null, 'angle_name' => null, 'iterates' => 'CRE002-FLEX-FAS-BATCH005', 'pieces' => $free])['title'])
-            ->toBe('3 iteraciones de CRE002-FLEX-FAS-BATCH005');
+            ->toBe('3 variaciones de CRE002-FLEX-FAS-BATCH005');
     });
 });
 

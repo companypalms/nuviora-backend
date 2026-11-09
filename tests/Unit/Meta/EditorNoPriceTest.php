@@ -38,7 +38,7 @@ describe('Lo que ve el editor', function () {
             'persona' => ['name' => 'Hombre con barriga', 'who' => 'Hombre de 35 a 50 años'],
             'goal' => 'Que se note el sudor. Mostrar que vale 30 dólares.', 'offer' => 'Precio $30,00', 'format' => 'video', 'style' => null,
             'pieces' => [['code' => 'C0900', 'change' => 'Abrir con el precio: solo $30', 'format' => null]], 'deliverables' => '3 videos 9:16', 'due_date' => null]);
-        expect($text)->toContain('- Qué es: Chaleco térmico.')->toContain('Lo que buscamos: Que se note el sudor.')->toContain('1. C0900 — sin detalle')
+        expect($text)->toContain('- Qué es: Chaleco térmico.')->toContain('Lo que buscamos: Que se note el sudor.')
             ->not->toContain('30')->not->toContain('Oferta')->not->toContain('Información clave');
     });
 

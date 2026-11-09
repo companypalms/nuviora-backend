@@ -715,7 +715,7 @@ describe('Las entregas con archivo', function () {
         expect($batch)->kind->toBe('iteration')->reference_creative_id->toBe(30)->angle_code->toBe('POSP')
             ->and($batch->pieces->pluck('test')->all())->toBe(['winner_hook', 'winner_hook'])
             ->and(EditorWork::task($batch->load('reference'), 'Posparto'))
-            ->toBe(['title' => '2 iteraciones del hook de CRE002-TERMA-POSP-BATCH001', 'detail' => 'Solo cambia el hook (los primeros 3 segundos): el resto del video queda igual.']);
+            ->toBe(['title' => '2 variaciones de hook de CRE002-TERMA-POSP-BATCH001', 'detail' => null, 'hypothesis' => null]);
 
         // al terminar de subir, cada pieza salió de la iteración de ese creativo
         $files = $batch->pieces->map(function (CreativeBatchPiece $piece) use ($batch) {

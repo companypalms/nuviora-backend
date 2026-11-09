@@ -28,7 +28,7 @@ final class ProposalRules
     private const CROSS_ORDER = ['transversal' => 0, 'city_sensitive' => 1];
 
     /** `.99`: qué prueba cada pieza de una iteración, según lo que hay que cambiar del video del ganador (PieceRules::TESTS). */
-    private const PIECE_TEST = ['hook' => 'winner_hook', 'after_hook' => 'after_hook', 'middle' => 'middle', 'close' => 'close', 'click' => 'click', 'format' => 'format'];
+    private const PIECE_TEST = ['hook' => 'hook', 'after_hook' => 'after_hook', 'middle' => 'middle', 'close' => 'close', 'click' => 'click', 'format' => 'format'];
 
     /**
      * `.88` (dueño, 2026-11-03: "que le aparezca todo lo que tengamos que hacer… sin contar cuántos editores tenemos"): un
@@ -137,7 +137,9 @@ final class ProposalRules
             'city_id' => $city['city_id'], 'city' => $city['city'], 'format' => 'video', 'iterate' => $iterate, 'urgency' => (int) $u['level'],
             // .99: qué prueba cada pieza (una iteración: el hook, un tramo o el formato; lo demás, el tipo del encargo)
             'piece_test' => $kind !== 'iteration' ? $kind
-                : (($ref['type'] ?? null) === 'image' ? 'format' : (self::PIECE_TEST[$winner['iterate_key'] ?? 'hook'] ?? 'iteration')),
+                : (($ref['type'] ?? null) === 'image' ? 'format'
+                    // .128: sin nada flojo es un ganador sano (la hipótesis no dice que el hook rate fue bajo)
+                    : (($winner['iterate_key'] ?? null) === null ? 'winner_hook' : (self::PIECE_TEST[$winner['iterate_key']] ?? 'iteration'))),
             'reason' => $u['label'] . ($u['reasons'] ? ': ' . implode('; ', $u['reasons']) : '') . '.',
         ];
     }

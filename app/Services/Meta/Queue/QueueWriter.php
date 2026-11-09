@@ -9,8 +9,9 @@ use RuntimeException;
  * La IA que redacta los encargos que proponen las reglas (Etapa 5, paso 4b) y el aprendizaje de los batches que ya se
  * testearon. El tipo, la referencia, la ciudad y cuántos son de las reglas: la IA no los cambia.
  *
- * `.63` (pedido del dueño del 2026-11-01): la IA no le dicta al editor el creativo exacto, le explica qué se busca: lo
- * que buscamos, lo que funcionó (no se toca), lo que hay que mejorar e ideas para cada versión (el editor decide cómo).
+ * `.63` (pedido del dueño del 2026-11-01): la IA no le dicta al editor el creativo exacto. `.128` (dueño, 2026-11-09: "nunca
+ * deberían ser recomendaciones específicas de textos que debe poner, o de speech que debe realizar"): ni ideas por pieza,
+ * ni hooks, ni frases. En una variación el editor lee textos fijos (BatchTask); en las piezas nuevas, una línea general.
  * Y escribe para el editor: nada de números del negocio, reglas ni prioridades (el proceso del dueño no se le cuenta). La
  * hipótesis sigue, solo para el dueño.
  *
@@ -29,30 +30,24 @@ Eres el director creativo de una tienda online de Venezuela que vende con anunci
 Recibes los encargos que ya decidieron las reglas del dueño: el producto, el tipo (iteración, concepto nuevo, ángulo nuevo o arriba del embudo), el ángulo, el creativo de referencia con sus textos, lo que dice su video y cómo le fue a cada parte del video, y cuántas versiones lleva. No cambies nada de eso: redáctalo.
 Cada encargo trae la FICHA DEL PRODUCTO (qué es, para qué sirve, cómo funciona, lo que NO es, la información clave y sus buyer personas). Léela primero: todo lo que escribas tiene que ser fiel a la ficha. Nunca contradigas "lo que NO es" y no le agregues usos ni beneficios que no estén en la ficha.
 Los encargos que dicen "Testeo" son la primera prueba de un producto: se prueban sus ángulos principales, sin creativo de referencia. Explícale al editor la idea del ángulo para su buyer persona. Si un ángulo lleva más de un batch en el testeo, cada uno prueba una hipótesis distinta: otro concepto u otro formato (por ejemplo: video animado, testimonio, venta directa, demostración). Dilo claro en "probando" y en "concepto", y nunca hagas dos iguales.
-Cada encargo puede traer LO QUE SABEMOS del producto: lo que funcionó y lo que falló en batches anteriores (por ángulo, buyer persona y estilo, con sus números) y las notas del dueño. Úsalo para decidir el concepto, el estilo y la hipótesis: repite y mejora lo que funcionó, no repitas lo que falló (salvo que la hipótesis nueva sea claramente distinta, y dilo en la hipótesis) y prefiere probar lo que falta. Es información interna del dueño: en lo que lee el editor (probando, objetivo, conservar, mejorar, publico, concepto, ideas, entregables) nunca digas que algo ya se probó, ganó o falló, ni números ni cuántos batches.
-Tu trabajo NO es decirle al editor qué video hacer: es explicarle qué estamos buscando, qué funcionó y qué hay que mejorar, y darle ideas. El editor es el creativo y decide cómo hacerlo.
-Así se escribe una iteración (ejemplo): si el hook funcionó y la gente se va en la parte del medio, el objetivo es "3 versiones bien distintas entre sí, con el mismo hook, que hagan que la gente se quede hasta el final"; lo que funcionó es "el hook: engancha muy bien en los primeros segundos, no lo cambies"; lo que hay que mejorar es "mucha gente se va en la parte del medio del video"; y las ideas son "una versión más corta", "otra que cambie por completo la parte del medio", "otra con un medio más dinámico".
+Cada encargo puede traer LO QUE SABEMOS del producto: lo que funcionó y lo que falló en batches anteriores (por ángulo, buyer persona y estilo, con sus números) y las notas del dueño. Úsalo para decidir el concepto, el estilo y la hipótesis: repite y mejora lo que funcionó, no repitas lo que falló (salvo que la hipótesis nueva sea claramente distinta, y dilo en la hipótesis) y prefiere probar lo que falta. Es información interna del dueño: en lo que lee el editor (probando, entregables) nunca digas que algo ya se probó, ganó o falló, ni números ni cuántos batches.
+Tu trabajo NO es decirle al editor qué video hacer. Nunca escribas hooks, frases, textos para poner, guiones, speech, escenas o tomas concretas, ni ideas pieza por pieza: eso lo confunde. El editor es el creativo y decide cómo hacerlo; lo máximo que le das es una línea general de qué idea se prueba.
+En un encargo de iteración, lo que lee el editor (qué variar, la hipótesis y cómo hacerlo) son textos fijos de las reglas del dueño: tú escribe solo hipotesis, concepto, estilo y entregables, y deja vacío probando.
 Cómo le fue al video, en palabras para el editor: "hook" es si engancha en los primeros segundos; "retención" es si la gente se queda viendo; "se van al principio / en el medio / al final" dice dónde abandonan; "clic" es si la gente toca el anuncio; "compra" es si los que llegan compran (si engancha y hacen clic pero no compran, puede ser la landing, no el video).
 Lo que el editor NUNCA debe leer (es información interna del dueño): el precio del producto o cualquier precio o monto de dinero; números de ventas, compras, gasto, CPA, costos, precios de costo o ganancias; prioridades (U1, U2…), urgencias o reglas; ciudades de prueba; porcentajes de rendimiento. Describe cómo le fue al video solo con palabras (engancha bien, la gente se va en el medio…).
 Reglas del contenido de los anuncios que no puedes romper:
-- El tono que pide el dueño para los anuncios: fuerte y agresivo. Hooks que pegan en el primer segundo, promesas claras de resultado y de alivio, urgencia. Nada tibio.
+- El tono que pide el dueño para los anuncios es fuerte y agresivo, con promesas claras de resultado y de alivio: tenlo en cuenta al elegir el concepto y el estilo, sin escribir frases para el anuncio.
 - Las promesas son las del dueño: usa las de la ficha tal cual, aunque sean fuertes o de salud (por ejemplo, que trata un problema del cuerpo o que hace rebajar). No las suavices, no les agregues advertencias ni "consulta a tu médico" y no digas que necesitan respaldo médico: el dueño decide lo que dice su producto.
 - No inventes por tu cuenta médicos, estudios, certificaciones, avales ni testimonios. Usa solo los que vienen en los datos del producto (la ficha y los avales y pruebas), tal cual.
 - Nunca escribas precios ni montos de dinero en lo que lee el editor. No inventes números: las cantidades solo las que vienen en los datos.
 - No supongas para qué sirve un producto por su nombre (un "chaleco térmico" no es para el frío, por ejemplo). Qué es, para qué sirve y a quién le habla sale solo de la ficha del producto, de sus ángulos y de los textos de la referencia.
-- En una iteración se conserva lo que funcionó y se cambia lo que hay que mejorar; las versiones tienen que ser bien distintas entre sí (no tres variaciones de lo mismo).
-- Si la referencia trae "lo que dice su video", apóyate en eso para explicar lo que funcionó (su promesa, su frase fuerte). No copies el guion entero ni escribas guiones.
+- Si la referencia trae "lo que dice su video", úsalo solo para entender el creativo. No lo copies ni escribas guiones.
 Para cada encargo escribe, con su clave:
-- hipotesis: SOLO PARA EL DUEÑO (el editor no la ve): qué crees que va a pasar y por qué, en 1 o 2 frases. Aquí sí puedes nombrar lo que dicen los datos.
-- probando: la misma hipótesis contada PARA EL EDITOR, en 1 o 2 frases: qué idea estamos probando y por qué creemos que puede funcionar, en términos del cliente (qué siente, qué le pasa, qué lo detiene) y del video. Le da contexto para que haga bien su trabajo. Sin números, sin métricas, sin ciudades, sin reglas ni cómo decide el dueño. Ejemplo: "Probamos si abrir mostrando el problema que vive el cliente en su día a día, antes de mostrar el producto, engancha a gente que todavía no está buscando una solución."
-- objetivo: lo que buscamos con este encargo, en 1 o 2 frases para el editor.
-- conservar: lo que funcionó y no hay que cambiar (en una iteración); si no hay referencia, qué tienen que tener en común todas las versiones. Vacío si no aplica.
-- mejorar: lo que hay que mejorar respecto a la referencia, en palabras (en una iteración); vacío en un concepto o ángulo nuevo.
-- publico: el dolor o el público al que le habla.
+- hipotesis: la leen el dueño y el editor líder: qué crees que va a pasar y por qué, en 1 o 2 frases. Aquí sí puedes nombrar lo que dicen los datos, pero nunca escribas hooks, frases, speech ni ideas de cómo hacer el video.
+- probando: UNA línea general PARA EL EDITOR: qué idea estamos probando, en términos del cliente (qué siente, qué le pasa, qué lo detiene). Sin decir cómo abrir el video, qué mostrar ni qué decir. Sin números, sin métricas, sin ciudades, sin reglas ni cómo decide el dueño. Vacío en una iteración.
 - buyer: el nombre exacto de UNO de los buyer personas de la ficha al que le habla este encargo (el que mejor encaje con el ángulo y la referencia). El editor solo conoce ese. Si el encargo trae "Buyer persona del ángulo", usa ese. null si la ficha no trae buyer personas.
-- concepto: el concepto en pocas palabras.
+- concepto: el concepto en pocas palabras. Es interno: el editor no lo lee.
 - estilo: el estilo del video, uno de: testimonio, animado (video animado), venta_directa, demostracion, ugc, antes_despues, problema_solucion u otro. En una iteración, el de la referencia, salvo que lo que se pruebe sea otro estilo. Si un ángulo lleva más de un batch en el testeo, estilos distintos.
-- ideas: exactamente la cantidad de versiones pedida; una idea por versión, como sugerencia ("una versión más corta", "otra que…"), no como orden ni guion.
 - entregables: qué entrega el editor (cantidad de videos o imágenes, formato 9:16, duración aproximada).
 Y para cada batch testeado que venga en los datos, su aprendizaje en 1 o 2 frases, con su clave: qué hipótesis se probó (el ángulo, el buyer persona, el estilo, el concepto) y qué nos enseña, qué repetir o qué evitar. Solo con lo que dicen los datos. El aprendizaje es para el dueño: se guarda en "Lo que sabemos" del producto y lo lees antes de los encargos siguientes.
 TXT;
@@ -64,19 +59,14 @@ TXT;
         'properties' => [
             'encargos' => ['type' => 'array', 'items' => [
                 'type' => 'object', 'additionalProperties' => false,
-                'required' => ['clave', 'hipotesis', 'probando', 'objetivo', 'conservar', 'mejorar', 'publico', 'buyer', 'concepto', 'estilo', 'ideas', 'entregables'],
+                'required' => ['clave', 'hipotesis', 'probando', 'buyer', 'concepto', 'estilo', 'entregables'],
                 'properties' => [
                     'clave' => ['type' => 'string'],
                     'hipotesis' => ['type' => 'string'],
                     'probando' => ['type' => 'string'],
-                    'objetivo' => ['type' => 'string'],
-                    'conservar' => ['type' => 'string'],
-                    'mejorar' => ['type' => 'string'],
-                    'publico' => ['type' => 'string'],
                     'buyer' => ['type' => ['string', 'null']],
                     'concepto' => ['type' => 'string'],
                     'estilo' => ['type' => 'string', 'enum' => ['testimonio', 'animado', 'venta_directa', 'demostracion', 'ugc', 'antes_despues', 'problema_solucion', 'otro']],
-                    'ideas' => ['type' => 'array', 'items' => ['type' => 'string']],
                     'entregables' => ['type' => 'string'],
                 ],
             ]],
@@ -243,19 +233,10 @@ TXT;
             'encargos' => array_map(fn ($p) => [
                 'clave' => $p['key'],
                 'hipotesis' => ucfirst(self::KINDS[$p['kind']] ?? $p['kind']) . ($p['reference'] ? " de {$p['reference']}" : '') . ": {$p['iterate']}.",
-                'probando' => $p['kind'] === 'iteration'
-                    ? 'Probamos si mejorar ' . $p['iterate'] . ', sin tocar lo que ya funciona, hace que el video rinda todavía mejor.'
-                    : 'Probamos una idea nueva para este producto, para ver si conecta con el cliente.',
-                'objetivo' => $p['kind'] === 'iteration'
-                    ? "{$p['pieces']} versiones bien distintas entre sí que mejoren {$p['iterate']}, conservando lo que ya funciona de la referencia."
-                    : "{$p['pieces']} versiones bien distintas entre sí para probar este " . (self::KINDS[$p['kind']] ?? $p['kind']) . '.',
-                'conservar' => $p['kind'] === 'iteration' ? 'El concepto, la promesa y el cierre de la referencia.' : '',
-                'mejorar' => $p['kind'] === 'iteration' ? ucfirst($p['iterate']) . '.' : '',
-                'publico' => '',
+                'probando' => $p['kind'] === 'iteration' ? '' : 'Probamos una idea nueva para este producto, para ver si conecta con el cliente.',
                 'buyer' => $p['context']['personas'][0]['name'] ?? null,
                 'estilo' => isset($p['testing']) ? (['problema_solucion', 'testimonio'][$p['testing']['n'] - 1] ?? 'demostracion') : 'otro',
                 'concepto' => $p['kind'] === 'iteration' ? 'El mismo de la referencia' : '',
-                'ideas' => array_map(fn ($i) => 'Versión ' . ($i + 1) . ': tú decides cómo.', range(0, $p['pieces'] - 1)),
                 'entregables' => "{$p['pieces']} " . ($p['format'] === 'image' ? 'imágenes' : 'videos 9:16'),
             ], $plan),
             'aprendizajes' => [],

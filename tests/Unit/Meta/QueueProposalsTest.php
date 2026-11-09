@@ -75,6 +75,8 @@ describe('Qué tipo de encargo', function () {
         $winner = ['id' => 7, 'label' => 'C004 GINE', 'iterate' => 'el medio del video', 'iterate_key' => 'middle', 'angle' => 'GINE', 'type' => 'video'];
         $plan = fn (array $w) => ProposalRules::plan([1 => productoCola(1, 'X', 3, '1', ['plan' => ['work' => ['winner' => $w]]])], [1 => ['2026-11-03']])[0];
         expect($plan($winner)['piece_test'])->toBe('middle')
+            // .128: un hook flojo no es lo mismo que un ganador sano
+            ->and($plan(['iterate_key' => 'hook'] + $winner)['piece_test'])->toBe('hook')
             ->and($plan(['iterate_key' => null] + $winner)['piece_test'])->toBe('winner_hook')
             ->and($plan(['type' => 'image'] + $winner)['piece_test'])->toBe('format')
             ->and($plan(['iterate_key' => 'landing'] + $winner)['piece_test'])->toBe('iteration');
@@ -132,9 +134,9 @@ describe('Lo que lee la IA', function () {
     it('sin IA, la plantilla respeta la cantidad de piezas', function () {
         $p = ['key' => 'E1', 'kind' => 'iteration', 'reference' => 'C004 FASP', 'iterate' => 'el hook', 'pieces' => 3, 'format' => 'video'];
         $t = QueueWriter::example([$p], [])['encargos'][0];
-        expect($t['clave'])->toBe('E1')->and($t['ideas'])->toHaveCount(3)->and($t['entregables'])->toBe('3 videos 9:16');
-        // .63: la plantilla también explica el objetivo, sin dictar las piezas
-        expect($t['objetivo'])->toContain('3 versiones bien distintas')->and($t['mejorar'])->not->toBe('')->and($t['probando'])->toStartWith('Probamos');
+        expect($t['clave'])->toBe('E1')->and($t['entregables'])->toBe('3 videos 9:16');
+        // .128: sin ideas por pieza; en una variación, tampoco la línea general (sus textos son fijos)
+        expect($t)->not->toHaveKeys(['ideas', 'objetivo', 'conservar', 'mejorar', 'publico'])->and($t['probando'])->toBe('');
     });
 });
 

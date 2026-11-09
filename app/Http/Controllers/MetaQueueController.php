@@ -147,13 +147,29 @@ class MetaQueueController extends Controller
     {
         $data = $this->validated($request, $batch);
         DB::transaction(function () use ($batch, $data) {
-            $batch->fill(array_diff_key($data, ['pieces' => 1, 'product_id' => 1]))->save();
+            $batch->fill(array_diff_key($data, ['pieces' => 1, 'product_id' => 1]));
+            // .128: lo que el dueño escribe a mano en un encargo de las reglas, el editor lo ve tal cual
+            if ($batch->source === 'rules' && $this->typedByHand($batch, $data)) {
+                $batch->source = 'owner';
+            }
+            $batch->save();
             if (array_key_exists('pieces', $data)) {
                 $this->savePieces($batch, $data['pieces']);
             }
         });
 
         return response()->json(['batch' => $this->presentOne($batch)]);
+    }
+
+    /** ¿Cambió algún texto de los que lee el editor? */
+    private function typedByHand(CreativeBatch $batch, array $data): bool
+    {
+        if (array_intersect(['test_idea', 'goal', 'keep', 'improve', 'concept', 'audience'], array_keys($batch->getDirty()))) {
+            return true;
+        }
+        $before = $batch->pieces()->pluck('change', 'id');
+
+        return collect($data['pieces'] ?? [])->contains(fn ($p) => trim((string) ($p['change'] ?? '')) !== trim((string) ($before[$p['id'] ?? 0] ?? '')));
     }
 
     /**
@@ -372,7 +388,8 @@ class MetaQueueController extends Controller
                     'uploads' => \App\Services\Files\FileStore::on(), // .90
                 ] + EditorWork::fields($b, $who);
 
-                return $out + ['brief' => QueueRules::brief($out)];
+                // .128: "Copiar encargo" dice lo mismo que lee el editor
+                return $out + ['brief' => QueueRules::brief(EditorWork::withoutAiTexts($out, $b))];
             })->all();
     }
 }
