@@ -431,6 +431,42 @@ class AdRules
     }
 
     /**
+     * `.119` (dueño, 2026-11-09: ZenPulse CREATIVO 5 en Caracas era "ganador que falla" y en 3 días gastó $51,87 con el CPA en
+     * $10,37 y el BE en $7,61: "nunca podemos permitirnos perder dinero sin una razón buena justificada"): un ganador que falla
+     * se apaga en esa ciudad si en 3 días gastó 3×C o más sin compras, o con el CPA claramente encima del BE. Si en 3 días no
+     * llegó a 3×C, se mira la semana (como en recentLoser). Sigue siendo un ganador: su clave no cambia y se itera. La única
+     * razón para dejarlo prendido es el tracking: ahí las ventas existen y Meta no las ve. PHP puro.
+     *
+     * @param array $state el veredicto de ese creativo en esa ciudad
+     * @param array|null $recent los totales de los 3 días en esa ciudad (spend, purchases)
+     * @param array|null $week los totales de los 7 días en esa ciudad
+     */
+    public function failingStop(array $state, ?array $recent, ?float $c, ?float $be, ?array $week = null): ?array
+    {
+        if (($state['key'] ?? null) !== 'failing' || !$c || $c <= 0 || in_array('tracking', array_column($state['causes'] ?? [], 'key'), true)) {
+            return null;
+        }
+        $cap = $c * $this->s['evaluation_cap_cpa'];
+        $days = 3;
+        if ($week !== null && (float) ($recent['spend'] ?? 0) < $cap) {
+            [$recent, $days] = [$week, 7];
+        }
+        $spend = (float) ($recent['spend'] ?? 0);
+        $purchases = (float) ($recent['purchases'] ?? 0);
+        $losing = $purchases == 0 || ($be !== null && $this->clearlyAbove($spend / $purchases, $be, $purchases));
+        if ($spend < $cap || !$losing) {
+            return null;
+        }
+        $data = "{$days} días: " . lcfirst($this->spendText($spend, $purchases, $c)) . ($purchases > 0 ? ' · CPA ' . self::money($spend / $purchases) : '')
+            . ' · C ' . self::money($c) . ($be !== null ? ' · BE ' . self::money($be) : '');
+
+        return array_merge($state, ['stop' => true, 'data' => $data,
+            'reading' => "Pierde dinero: en los últimos {$days} días gastó " . self::num($spend / $c) . '×C '
+                . ($purchases == 0 ? 'sin compras' : 'con el CPA ' . self::num(round(($spend / $purchases / $be - 1) * 100)) . ' % encima del break-even') . '. ' . $state['reading'],
+            'proposal' => 'Apagarlo en esta ciudad e iterarlo en un batch nuevo: fue ganador.']);
+    }
+
+    /**
      * `.110` (dueño, 2026-11-06: ZenPulse CREATIVO 7 salió "perdedor en todas las ciudades" y en Distrito Capital vendía: 2
      * compras con CPA $2,47 y C $5,76): un creativo que en una ciudad todavía no gastó 1×C pero ya vende no está "sin datos":
      * va bien por ahora (con menos de 1×C su CPA siempre queda debajo de C) y cuenta entre ciudades. Solo para creativos.
@@ -470,7 +506,7 @@ class AdRules
      */
     private function clearlyAbove(float $cpa, float $be, float $purchases): bool
     {
-        return $cpa >= $be * (1 + $this->s['loser_be_margin_pct'] / 100) || $purchases >= $this->s['loser_be_margin_purchases'];
+        return $cpa >= $be && ($cpa >= $be * (1 + $this->s['loser_be_margin_pct'] / 100) || $purchases >= $this->s['loser_be_margin_purchases']);
     }
 
     private function spendText(float $spend, float $purchases, ?float $c): string

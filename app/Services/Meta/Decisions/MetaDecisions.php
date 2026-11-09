@@ -307,6 +307,7 @@ class MetaDecisions
 
         // Creativos: por ciudad, entre ciudades, embudo y video
         $winners = [];
+        $wasWinner = [];
         $agg = [];
         foreach ($f['creatives'] as $cid => $cr) {
             $agg[$cid] = $this->creativeWindows($cr, $f);
@@ -317,6 +318,7 @@ class MetaDecisions
                 $c = $campaigns[$campaignId] ?? null;
                 $states[$cid][$campaignId] = $this->entity($w, $c, $rules, 'creativo', $this->sumHistory($history['ad'], $agg[$cid]['ads_by_city'][$campaignId] ?? []),
                     $cpmChange[$campaignId] ?? null, $tracking);
+                $good = $states[$cid][$campaignId]['good'] ?? false;
                 // .110: si en esta ciudad ya vende aunque gastó poco, no está "sin datos" (y no lo deja ser "perdedor en todas")
                 $life = $w['max']['totals'] ?? [];
                 if ($early = $rules->sellingEarly($states[$cid][$campaignId], (float) ($life['spend'] ?? 0), (float) ($life['purchases'] ?? 0))) {
@@ -327,6 +329,11 @@ class MetaDecisions
                 if ($recent = $rules->recentLoser($w['3d']['totals'] ?? null, $states[$cid][$campaignId], $c['target'] ?? null, $c['break_even'] ?? null, $w['7d']['totals'] ?? null)) {
                     $states[$cid][$campaignId] = $recent + ['causes' => []];
                 }
+                // .119: un ganador que falla y pierde dinero se apaga en esta ciudad (y se sigue iterando)
+                if ($stop = $rules->failingStop($states[$cid][$campaignId], $w['3d']['totals'] ?? null, $c['target'] ?? null, $c['break_even'] ?? null, $w['7d']['totals'] ?? null)) {
+                    $states[$cid][$campaignId] = $stop;
+                }
+                $wasWinner[$cid] = ($wasWinner[$cid] ?? false) || $good;
                 // .111: si todos sus anuncios en esta ciudad tienen menos de 24 horas, todavía no se apaga
                 if ($young = $rules->young($states[$cid][$campaignId], self::ageHours($f, $agg[$cid]['ads_by_city'][$campaignId] ?? [], $now))) {
                     $states[$cid][$campaignId] = $young + ['causes' => []];
@@ -396,6 +403,8 @@ class MetaDecisions
                     'unique_ctr' => $w['metrics']['unique_ctr'] ?? null, 'frequency' => $w['metrics']['frequency'] ?? null, 'cpm' => $w['metrics']['cpm'] ?? null,
                     'retention' => $w['metrics']['retention'] ?? null, 'avg_watch_time' => $w['metrics']['avg_watch_time'] ?? null, 'length' => $length] : null,
                 'status' => $cr['status'], 'status_source' => $cr['status_source'], 'angle_code' => $cr['angle_code'], 'type' => $cr['type'],
+                // .119: fue ganador, ya no tiene anuncios prendidos y gastó en los últimos 7 días: sigue en la fila de iteraciones
+                'off_winner' => !in_array(true, $activeIn, true) && ($wasWinner[$cid] ?? false) && (float) ($all['7d']['totals']['spend'] ?? 0) > 0,
                 // Paso 3: sus 7 días, para ordenar los creativos en el análisis de la mañana
                 'week' => ['spend' => round((float) ($all['7d']['totals']['spend'] ?? 0), 2), 'purchases' => (float) ($all['7d']['totals']['purchases'] ?? 0),
                     'cpa' => isset($all['7d']['metrics']['cpa']) ? round((float) $all['7d']['metrics']['cpa'], 2) : null],
@@ -497,7 +506,7 @@ class MetaDecisions
             }
             $prune = [];
             foreach ($f['ads'] as $adId => $ad) {
-                if ($ad['campaign_meta_id'] === $id && $ad['active'] && ($out['ads'][$adId]['key'] ?? null) === 'loser') {
+                if ($ad['campaign_meta_id'] === $id && $ad['active'] && (($out['ads'][$adId]['key'] ?? null) === 'loser' || self::stopsHere($ad, $out, $id))) {
                     $prune[] = $ad['name'];
                 }
             }
@@ -662,7 +671,7 @@ class MetaDecisions
             }
             $cr = $ad['creative_id'] !== null ? ($out['creatives'][$ad['creative_id']] ?? null) : null;
             $here = collect($cr['cities'] ?? [])->first(fn ($x) => (string) $x['campaign_meta_id'] === $campaignId);
-            $off = ($cr['verdict']['key'] ?? null) === 'loser' || ($here['key'] ?? null) === 'loser'
+            $off = ($cr['verdict']['key'] ?? null) === 'loser' || ($here['key'] ?? null) === 'loser' || !empty($here['stop'])
                 || $prunes && ($out['ads'][$adId]['key'] ?? null) === 'loser';
             if (!$off) {
                 $sets[(string) $ad['adset_meta_id']] = true;
@@ -670,6 +679,14 @@ class MetaDecisions
         }
 
         return count($sets);
+    }
+
+    /** `.119`: si el creativo de este anuncio es un ganador que pierde dinero en esta ciudad. */
+    private static function stopsHere(array $ad, array $out, string $campaignId): bool
+    {
+        $cr = $ad['creative_id'] !== null ? ($out['creatives'][$ad['creative_id']] ?? null) : null;
+
+        return !empty(collect($cr['cities'] ?? [])->first(fn ($x) => (string) $x['campaign_meta_id'] === $campaignId)['stop']);
     }
 
     /**
@@ -726,16 +743,16 @@ class MetaDecisions
         if ($rules->isFailing($good, $windows['3d'] ?? null, $windows['7d'] ?? null, $c['target'] ?? null, $c['break_even'] ?? null)) {
             $causes = $rules->whatChanged($windows['3d'] ?? null, $windows['prev'] ?? null, $windows['max'] ?? null, $cityCpmChange, $tracking);
 
-            return $rules->failingVerdict($state, $causes) + ['causes' => $causes];
+            return $rules->failingVerdict($state, $causes) + ['causes' => $causes, 'good' => $good];
         }
         // "Perdedor, salvo historia buena": si fue ganador alguna vez no se trata como perdedor sin ver qué cambió
         if ($state['key'] === 'loser' && $good) {
             $causes = $rules->whatChanged($windows['3d'] ?? null, $windows['prev'] ?? null, $windows['max'] ?? null, $cityCpmChange, $tracking);
 
-            return $rules->failingVerdict($state, $causes) + ['causes' => $causes];
+            return $rules->failingVerdict($state, $causes) + ['causes' => $causes, 'good' => $good];
         }
 
-        return $state + ['causes' => []];
+        return $state + ['causes' => [], 'good' => $good];
     }
 
     /** El estado de un creativo en general, a partir de sus ciudades. */

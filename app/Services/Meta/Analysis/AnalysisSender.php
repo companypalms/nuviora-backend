@@ -41,6 +41,9 @@ class AnalysisSender
     /** `.78`: qué creativo de un producto va primero (menos = antes). Los perdedores no se iteran. */
     public const PRIORITY = ['proven' => 0, 'promising' => 0, 'failing' => 1, 'intermediate' => 2];
 
+    /** `.119`: a un ganador ya apagado no se le pide otra iteración si ya se le hizo una en estos días. */
+    private const OFF_AGAIN_DAYS = 14;
+
     public function __construct(private DecisionSettings $settings = new DecisionSettings(), private BatchQueue $queue = new BatchQueue())
     {
     }
@@ -62,6 +65,10 @@ class AnalysisSender
             $id = (int) $c['creative']['id'];
             // Sin fecha que cubrir, o ya hay una iteración de ese creativo en camino
             if ($date === null || CreativeBatch::where('reference_creative_id', $id)->whereIn('status', ['approved', 'production', 'review'])->exists()) {
+                continue;
+            }
+            if (!empty($c['creative']['off_winner'])
+                && CreativeBatch::where('reference_creative_id', $id)->whereNotIn('status', ['proposed', 'discarded'])->where('created_at', '>=', now()->subDays(self::OFF_AGAIN_DAYS))->exists()) {
                 continue;
             }
             $batch = DB::transaction(function () use ($c, $id, $pieces, $today, $date) {
@@ -115,7 +122,7 @@ class AnalysisSender
     {
         $out = [];
         foreach (self::candidates($facts) as $c) {
-            $tier = self::PRIORITY[$c['creative']['verdict_key'] ?? ''] ?? 3;
+            $tier = !empty($c['creative']['off_winner']) ? self::PRIORITY['failing'] : (self::PRIORITY[$c['creative']['verdict_key'] ?? ''] ?? 3);
             if (!isset($out[$c['product_id']]) || $tier < $out[$c['product_id']]['tier']) {
                 $out[$c['product_id']] = $c + ['tier' => $tier];
             }
@@ -137,7 +144,8 @@ class AnalysisSender
             if (($p['mode'] ?? 'normal') !== 'normal' || ($p['urgency']['level'] ?? null) === 5) {
                 continue;
             }
-            foreach ($p['creatives'] ?? [] as $cr) {
+            // .119: después de los prendidos, los ganadores ya apagados
+            foreach ([...($p['creatives'] ?? []), ...($p['off_winners'] ?? [])] as $cr) {
                 if (!empty($cr['call']['editor'])) {
                     $out[] = ['product_id' => (int) $p['product_id'], 'urgency' => $p['urgency']['level'] ?? null, 'creative' => $cr];
                 }

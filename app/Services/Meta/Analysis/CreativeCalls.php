@@ -44,6 +44,9 @@ final class CreativeCalls
         'format' => 'Prueba la misma idea en imagen: en video está saliendo caro mostrarlo.',
     ];
 
+    /** `.119`: un ganador que se apaga por perder dinero, sin que la gente esté cansada: no se le dice al editor que "ya lo vieron mucho". */
+    private const FELL = 'Este creativo vendía y dejó de vender: haz hooks nuevos con otras primeras imágenes, uno distinto en cada pieza, conservando el mismo mensaje.';
+
     /** `.81`: un ganador con todo bien: 1 hook nuevo y el mismo mensaje en otros formatos (cada pieza dice cuál). */
     private const HEALTHY = 'Este creativo funciona en todo: no lo toques. Haz lo que dice cada pieza: un hook nuevo con el mismo cuerpo y el mismo mensaje en otros formatos, para que dure más y aprendamos qué formato vende.';
 
@@ -77,7 +80,8 @@ final class CreativeCalls
         $fix = match (true) {
             $verdict === 'failing' && in_array('fatigue', $causes, true) => 'fatigue',
             isset(self::FIX[$stage]) => $stage,
-            $verdict === 'failing' && !$notVideo => 'fatigue',
+            // .119: si se apaga por perder dinero, se itera aunque la causa no sea del video
+            $verdict === 'failing' && (!$notVideo || self::stops($cr)) => 'fatigue',
             default => null,
         };
         $key = match (true) {
@@ -97,11 +101,13 @@ final class CreativeCalls
             $key === 'scale' => 'Va ganando: no toques el anuncio, sube el presupuesto' . $ask . '.' . self::cityText($scaleCities),
             $winner => 'Va ganando: no lo toques' . $ask . '.' . ($cities ? ' Ojo, lo que dice su ciudad:' . self::cityText($cities) : ''),
             $key === 'stop' => 'Apágalo.' . ($stage && isset(AdRules::STAGES[$stage]) ? ' Para aprender: lo más flojo fue ' . AdRules::STAGES[$stage] . '.' : ''),
-            $key === 'iterate' => $stopText . ($fix === 'fatigue' ? 'Se está cansando: pide hooks nuevos.' : 'Lo flojo es ' . $stageName . ': pide versiones que lo arreglen.'),
+            $key === 'iterate' => $stopText . ($fix === 'fatigue' ? (self::fell($cr) ? 'Fue ganador: pide hooks nuevos.' : 'Se está cansando: pide hooks nuevos.') : 'Lo flojo es ' . $stageName . ': pide versiones que lo arreglen.'),
+            // .119: se apaga y no se puede iterar (su ángulo descansa): "Apágalo en Caracas" ya lo dice todo
+            self::stops($cr) => $stopText,
             // .113: si pierde en una ciudad y en otra todavía se prueba, "Apágalo en Aragua" ya lo dice: solo falta dónde esperar
             default => $stopText . ($stopText !== '' && isset($cr['verdict']['wait']) ? $cr['verdict']['wait'] : ($proposal !== '' ? $proposal : 'Déjalo correr.')),
         };
-        $todo .= $rest !== null ? ' ' . $rest : '';
+        $todo = rtrim($todo) . ($rest !== null ? ' ' . $rest : '');
         $editor = ($winner || $key === 'iterate') && $rest === null ? self::editorText($cr, $winner && $fix === null ? null : $fix) : null;
         $label = match (true) {
             $key === 'stop_city' => 'PARAR EN ' . mb_strtoupper(self::join($stopIn)),
@@ -110,6 +116,28 @@ final class CreativeCalls
         };
 
         return ['key' => $key, 'label' => $label, 'tone' => self::CALLS[$key]['tone'], 'todo' => $todo, 'editor' => $editor, 'fix' => $fix, 'stop_in' => $stopIn];
+    }
+
+    /** `.119`: fue ganador y ya no tiene anuncios prendidos: lo único que queda es iterarlo (solo va al editor líder). */
+    public static function afterOff(array $cr): array
+    {
+        $stage = $cr['video']['iterate'] ?? null;
+        $fix = isset(self::FIX[$stage]) ? $stage : 'fatigue';
+
+        return ['key' => 'iterate', 'label' => self::CALLS['iterate']['label'], 'tone' => self::CALLS['iterate']['tone'], 'todo' => 'Ya está apagado: pide versiones.',
+            'editor' => self::editorText($cr, $fix), 'fix' => $fix, 'stop_in' => []];
+    }
+
+    /** `.119`: si es un ganador que pierde dinero y sigue prendido en alguna ciudad donde hay que apagarlo. */
+    private static function stops(array $cr): bool
+    {
+        return collect($cr['cities'] ?? [])->contains(fn ($c) => !empty($c['stop']) && ($c['active'] ?? true));
+    }
+
+    /** `.119`: se apaga (o ya se apagó) por perder dinero, y no porque la gente esté cansada. */
+    private static function fell(array $cr): bool
+    {
+        return (self::stops($cr) || !empty($cr['off_winner'])) && !in_array('fatigue', array_column($cr['verdict']['causes'] ?? [], 'key'), true);
     }
 
     /** `.71`: qué cambiar, en palabras (null si no hay nada claro que arreglar en el video). */
@@ -123,7 +151,7 @@ final class CreativeCalls
     {
         $out = [];
         foreach ($cr['cities'] ?? [] as $c) {
-            if (($c['key'] ?? $c['verdict'] ?? null) === 'loser' && ($c['active'] ?? true) && ($c['city'] ?? null) !== null) {
+            if ((($c['key'] ?? $c['verdict'] ?? null) === 'loser' || !empty($c['stop'])) && ($c['active'] ?? true) && ($c['city'] ?? null) !== null) {
                 $out[] = (string) $c['city'];
             }
         }
@@ -145,14 +173,14 @@ final class CreativeCalls
             }
         }
         $parts = ['Qué hacer: ' . ($fix === null ? self::HEALTHY : (($cr['verdict']['key'] ?? null) === 'proven' || ($cr['verdict']['key'] ?? null) === 'promising'
-            ? 'Este creativo está vendiendo: conserva todo lo que funciona. ' : '') . self::FIX[$fix])];
+            ? 'Este creativo está vendiendo: conserva todo lo que funciona. ' : '') . ($fix === 'fatigue' && self::fell($cr) ? self::FELL : self::FIX[$fix]))];
         if ($good) {
             $parts[] = 'Está bien (no lo toques): ' . implode(', ', $good) . '.';
         }
         if ($fix !== null && isset($stages[$fix])) {
             $st = $stages[$fix];
             $parts[] = 'Está flojo: ' . $st['label'] . ' (' . self::num((float) $st['value']) . ' %' . ($st['median'] !== null ? '; en tus ganadores, ' . self::num((float) $st['median']) . ' %' : '') . ').';
-        } elseif ($fix === 'fatigue' && ($f = $cr['metrics']['frequency'] ?? null) !== null) {
+        } elseif ($fix === 'fatigue' && !self::fell($cr) && ($f = $cr['metrics']['frequency'] ?? null) !== null) {
             $parts[] = 'Está flojo: la gente ya lo vio mucho (frecuencia ' . self::num((float) $f) . ').';
         }
         if ($n = self::videoNumbers($cr)) {

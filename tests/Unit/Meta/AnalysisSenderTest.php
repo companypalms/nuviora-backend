@@ -57,6 +57,15 @@ describe('Por turnos: uno por producto, el más importante (.78)', function () {
             ->and($one([$cr(1, 'intermediate', 'iterate'), $cr(2, 'intermediate', 'iterate')]))->toBe(1);
     });
 
+    it('.119: un ganador ya apagado va después de los prendidos, al nivel de los que fallan', function () use ($cr) {
+        $off = ['off_winner' => true] + $cr(9, 'intermediate', 'iterate');
+        $one = fn (array $creatives) => AnalysisSender::picks([['product_id' => 1, 'mode' => 'normal', 'urgency' => ['level' => 1], 'creatives' => $creatives, 'off_winners' => [$off]]])[0];
+        expect($one([])['creative']['id'])->toBe(9)->and($one([])['tier'])->toBe(1)
+            ->and($one([$cr(1, 'failing', 'iterate')])['creative']['id'])->toBe(1)
+            ->and($one([$cr(1, 'proven')])['creative']['id'])->toBe(1)
+            ->and($one([$cr(1, 'intermediate', 'iterate')])['creative']['id'])->toBe(9);
+    });
+
     it('un producto sin nada para el editor no tiene turno', function () use ($cr) {
         expect(AnalysisSender::picks([['product_id' => 1, 'mode' => 'normal', 'urgency' => ['level' => 2], 'creatives' => [$cr(1, 'loser', 'stop')]]]))->toBe([]);
     });

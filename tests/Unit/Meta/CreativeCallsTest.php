@@ -26,6 +26,57 @@ $cr = fn (string $verdict, ?string $iterate = null, ?string $proposal = null, ar
 $subir = ['111' => ['city' => 'Caracas', 'key' => 'scale', 'label' => 'Subir', 'proposal' => 'Subir $30,00 → $36,00']];
 $pausar = ['111' => ['city' => 'Caracas', 'key' => 'pause_city', 'label' => 'Pausar la ciudad', 'proposal' => 'Pausar la ciudad.']];
 
+describe('.119: un ganador que pierde dinero se apaga en la ciudad y se itera', function () use ($cr) {
+    $pierde = fn (array $causes = [['key' => 'landing_offer']], ?string $iterate = null, array $extra = []) => $cr('failing', $iterate, 'Apagarlo en esta ciudad e iterarlo en un batch nuevo: fue ganador.', $extra + [
+        'verdict' => ['key' => 'failing', 'proposal' => 'Apagarlo en esta ciudad e iterarlo en un batch nuevo: fue ganador.', 'causes' => $causes],
+        'cities' => [['campaign_meta_id' => '111', 'city' => 'Distrito Capital', 'key' => 'failing', 'stop' => true, 'active' => true]],
+    ]);
+
+    it('sale en "qué apagar" de esa ciudad', function () use ($pierde) {
+        expect(CreativeCalls::stopIn($pierde()))->toBe(['Distrito Capital'])
+            ->and(CreativeCalls::stopIn($pierde([], null, ['cities' => [['campaign_meta_id' => '111', 'city' => 'Distrito Capital', 'key' => 'failing', 'stop' => true, 'active' => false]]])))->toBe([]);
+    });
+
+    it('con un tramo flojo: ITERAR · PARAR EN DISTRITO CAPITAL (CREATIVO 5)', function () use ($pierde) {
+        $c = CreativeCalls::call($pierde([['key' => 'landing_offer']], 'middle'));
+        expect($c['key'])->toBe('iterate')->and($c['label'])->toBe('ITERAR · PARAR EN DISTRITO CAPITAL')->and($c['fix'])->toBe('middle')
+            ->and($c['todo'])->toBe('Apágalo en Distrito Capital (ahí pierde). Lo flojo es el medio: pide versiones que lo arreglen.')
+            ->and($c['editor'])->toStartWith('Qué hacer: El inicio funciona');
+    });
+
+    it('sin un tramo flojo y con la causa en la landing: hooks nuevos, sin decir que la gente ya lo vio (CREATIVO 4)', function () use ($pierde) {
+        $c = CreativeCalls::call($pierde());
+        expect($c['label'])->toBe('ITERAR · PARAR EN DISTRITO CAPITAL')->and($c['fix'])->toBe('fatigue')
+            ->and($c['todo'])->toBe('Apágalo en Distrito Capital (ahí pierde). Fue ganador: pide hooks nuevos.')
+            ->and($c['editor'])->toStartWith('Qué hacer: Este creativo vendía y dejó de vender: haz hooks nuevos')
+            ->not->toContain('ya lo vio mucho');
+    });
+
+    it('si de verdad se cansó, se dice', function () use ($pierde) {
+        $c = CreativeCalls::call($pierde([['key' => 'fatigue']]));
+        expect($c['todo'])->toBe('Apágalo en Distrito Capital (ahí pierde). Se está cansando: pide hooks nuevos.')
+            ->and($c['editor'])->toContain('la gente ya lo vio mucho');
+    });
+
+    it('si su ángulo descansa, se apaga pero no se pide nada', function () use ($pierde) {
+        $c = CreativeCalls::call($pierde([['key' => 'landing_offer']], null, ['rest' => 'No pidas más versiones: el ángulo RODI descansa.']));
+        expect($c['label'])->toBe('MANTENER · PARAR EN DISTRITO CAPITAL')->and($c['editor'])->toBeNull()
+            ->and($c['todo'])->toBe('Apágalo en Distrito Capital (ahí pierde). No pidas más versiones: el ángulo RODI descansa.');
+    });
+
+    it('sin apagar en ninguna ciudad, y con la causa en la landing, sigue como antes', function () use ($cr) {
+        $c = CreativeCalls::call($cr('failing', null, 'Revisar la landing.', ['verdict' => ['key' => 'failing', 'proposal' => 'Revisar la landing.', 'causes' => [['key' => 'landing_offer']]]]));
+        expect($c['key'])->toBe('keep')->and($c['todo'])->toBe('Revisar la landing.')->and($c['editor'])->toBeNull();
+    });
+
+    it('un ganador ya apagado: solo iterarlo, con su tramo flojo o con hooks nuevos', function () use ($cr) {
+        $off = fn (?string $iterate) => $cr('failing', $iterate, null, ['off_winner' => true, 'verdict' => ['key' => 'failing', 'proposal' => null, 'causes' => []], 'cities' => []]);
+        expect(CreativeCalls::afterOff($off(null)))->toMatchArray(['key' => 'iterate', 'label' => 'ITERAR', 'fix' => 'fatigue', 'stop_in' => []])
+            ->and(CreativeCalls::afterOff($off(null))['editor'])->toStartWith('Qué hacer: Este creativo vendía y dejó de vender')
+            ->and(CreativeCalls::afterOff($off('hook'))['fix'])->toBe('hook');
+    });
+});
+
 describe('La decisión de cada creativo', function () use ($cr, $subir, $pausar, $stages) {
     it('ESCALAR: va ganando y la regla de su ciudad dice subir', function () use ($cr, $subir) {
         $c = CreativeCalls::call($cr('proven'), $subir);

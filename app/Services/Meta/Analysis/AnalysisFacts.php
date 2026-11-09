@@ -94,6 +94,10 @@ final class AnalysisFacts
                 // .117: se quedó sin ninguna ciudad prendida
                 'no_city' => $plan['no_city'] ?? null,
                 'cities' => $cities, 'creatives' => $creatives, 'batches' => $batches, 'stop_by_city' => $stopByCity, 'stop_all' => $stopAll,
+                // .119: los ganadores ya apagados siguen en la fila de iteraciones (no salen en la lista del análisis)
+                'off_winners' => array_values(array_map(fn ($cr) => ['id' => $cr['id'], 'label' => $cr['label'], 'verdict_key' => $cr['verdict']['key'], 'off_winner' => true,
+                    'type' => $cr['type'] ?? null, 'video' => $cr['video'] ? ['iterate' => $cr['video']['iterate']] : null, 'call' => CreativeCalls::afterOff($cr)],
+                    array_filter($p['creatives'] ?? [], fn ($cr) => !empty($cr['off_winner']) && empty($cr['rest'])))),
             ];
         }
         usort($out, fn ($a, $b) => [($a['urgency']['level'] ?? 9), -$a['money_at_risk'], $a['product']] <=> [($b['urgency']['level'] ?? 9), -$b['money_at_risk'], $b['product']]);

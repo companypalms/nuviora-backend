@@ -87,6 +87,63 @@ describe('Ganador que empezó a fallar', function () {
     });
 });
 
+describe('.119: un ganador que falla y pierde dinero se apaga en esa ciudad (ZenPulse Caracas: C = 4,44, BE = 7,61)', function () {
+    $falla = ['key' => 'failing', 'label' => 'Ganador que empezó a fallar', 'data' => 'su vida', 'reading' => 'Fue ganador.', 'proposal' => 'Revisar la landing.', 'causes' => [['key' => 'landing_offer']]];
+
+    it('CREATIVO 5: $51,87 en 3 días con el CPA en $10,37: se apaga y sigue siendo ganador', function () use ($falla) {
+        $v = reglas()->failingStop($falla, ['spend' => 51.87, 'purchases' => 5], 4.44, 7.61, ['spend' => 118.61, 'purchases' => 17]);
+        expect($v['key'])->toBe('failing')->and($v['stop'])->toBeTrue()
+            ->and($v['data'])->toBe('3 días: gastó $51,87 (11,7×C) · 5 compras · CPA $10,37 · C $4,44 · BE $7,61')
+            ->and($v['reading'])->toBe('Pierde dinero: en los últimos 3 días gastó 11,7×C con el CPA 36 % encima del break-even. Fue ganador.')
+            ->and($v['proposal'])->toBe('Apagarlo en esta ciudad e iterarlo en un batch nuevo: fue ganador.')
+            ->and($v['causes'])->toBe($falla['causes']);
+    });
+
+    it('CREATIVO 4: 2 compras y el CPA en $13,10: también', function () use ($falla) {
+        expect(reglas()->failingStop($falla, ['spend' => 26.19, 'purchases' => 2], 4.44, 7.61, ['spend' => 45.39, 'purchases' => 9])['stop'])->toBeTrue();
+    });
+
+    it('CREATIVO 8: en 3 días no llegó a 3×C y en 7 días su CPA está debajo del BE: sigue', function () use ($falla) {
+        expect(reglas()->failingStop($falla, ['spend' => 9.22, 'purchases' => 1], 4.44, 7.61, ['spend' => 17.57, 'purchases' => 3]))->toBeNull();
+    });
+
+    it('el que gasta poco se juzga por la semana', function () use ($falla) {
+        $v = reglas()->failingStop($falla, ['spend' => 9.22, 'purchases' => 1], 4.44, 7.61, ['spend' => 20.0, 'purchases' => 2]);
+        expect($v['stop'])->toBeTrue()->and($v['data'])->toStartWith('7 días: gastó $20,00')->and($v['reading'])->toStartWith('Pierde dinero: en los últimos 7 días');
+    });
+
+    it('sin compras también, pero solo desde 3×C', function () use ($falla) {
+        expect(reglas()->failingStop($falla, ['spend' => 14.0, 'purchases' => 0], 4.44, 7.61)['reading'])->toStartWith('Pierde dinero: en los últimos 3 días gastó 3,2×C sin compras.')
+            ->and(reglas()->failingStop($falla, ['spend' => 13.0, 'purchases' => 0], 4.44, 7.61))->toBeNull();
+    });
+
+    it('el margen: 20 % encima del BE, o 20 compras en el BE o encima', function () use ($falla) {
+        expect(reglas()->failingStop($falla, ['spend' => 17.9, 'purchases' => 2], 4.44, 7.61))->toBeNull()          // CPA 8,95: 18 % encima
+            ->and(reglas()->failingStop($falla, ['spend' => 18.3, 'purchases' => 2], 4.44, 7.61)['stop'])->toBeTrue() // CPA 9,15: 20 % encima
+            ->and(reglas()->failingStop($falla, ['spend' => 160.0, 'purchases' => 21], 4.44, 7.61)['stop'])->toBeTrue()
+            ->and(reglas()->failingStop($falla, ['spend' => 150.0, 'purchases' => 21], 4.44, 7.61))->toBeNull();     // debajo del BE
+    });
+
+    it('la única razón para dejarlo prendido es el tracking', function () use ($falla) {
+        $conCausa = fn (string $k) => ['causes' => [['key' => $k]]] + $falla;
+        expect(reglas()->failingStop($conCausa('tracking'), ['spend' => 51.87, 'purchases' => 5], 4.44, 7.61))->toBeNull()
+            ->and(reglas()->failingStop($conCausa('auction'), ['spend' => 51.87, 'purchases' => 5], 4.44, 7.61)['stop'])->toBeTrue()
+            ->and(reglas()->failingStop($conCausa('fatigue'), ['spend' => 51.87, 'purchases' => 5], 4.44, 7.61)['stop'])->toBeTrue();
+    });
+
+    it('solo a los ganadores que fallan, y con su C', function () use ($falla) {
+        expect(reglas()->failingStop(['key' => 'proven'] + $falla, ['spend' => 51.87, 'purchases' => 5], 4.44, 7.61))->toBeNull()
+            ->and(reglas()->failingStop(['key' => 'intermediate'] + $falla, ['spend' => 51.87, 'purchases' => 5], 4.44, 7.61))->toBeNull()
+            ->and(reglas()->failingStop($falla, ['spend' => 51.87, 'purchases' => 5], null, null))->toBeNull()
+            ->and(reglas()->failingStop($falla, ['spend' => 51.87, 'purchases' => 5], 4.44, null))->toBeNull()
+            ->and(reglas()->failingStop($falla, null, 4.44, 7.61))->toBeNull();
+    });
+
+    it('debajo del BE nunca pierde, aunque tenga 20 compras', function () {
+        expect(reglas()->recentLoser(['spend' => 100.0, 'purchases' => 21], ['key' => 'intermediate', 'label' => 'Intermedio'], 4.0, 5.7))->toBeNull();
+    });
+});
+
 describe('.86: el que se cae en los últimos 3 días (C = 4, BE = 5,70)', function () {
     $intermedio = ['key' => 'intermediate', 'label' => 'Intermedio'];
 
