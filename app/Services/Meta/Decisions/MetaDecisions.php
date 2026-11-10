@@ -605,14 +605,15 @@ class MetaDecisions
                     . AdRules::money($cpa3) . ', debajo del BE: no se pausa. Se vuelve a mirar cada día.'];
             }
             // .124: los batches vivos que ya se probaron y siguen con gasto mínimo, los que todavía se prueban y los que se prueban sin mínimo
-            $mins = self::testedMins($f, $out, $id, in_array($action['key'], ['hold_prune', 'intervene'], true), now()->toDateTimeString(), (int) $s['min_spend_days']);
+            // .130: no se quita el del mejor (el de CPA más bajo en 7 días) ni el de los que venden en la C o debajo
+            $mins = self::testedMins($f, $out, $id, in_array($action['key'], ['hold_prune', 'intervene'], true), now()->toDateTimeString(), (int) $s['min_spend_days'], $c['target']);
             // .82: los números de la ciudad, para la frase de cada tarea del análisis ("$10,29 por compra; tu límite es $7,22")
             $out['campaigns'][$id]['numbers'] = ['spend3' => (float) ($w3['totals']['spend'] ?? 0), 'purchases3' => (float) ($w3['totals']['purchases'] ?? 0),
                 'c' => $c['target'], 'be' => $c['break_even'], 'source' => $c['target_source'] ?? null, 'budget' => $budget,
                 'streak' => $streak['days'], 'prune' => $prune,
                 // .87: los batches vivos (contando lo que se apaga hoy) y lo que puede lanzar, en orden
                 'live' => self::live($f, $out, $id, in_array($action['key'], ['hold_prune', 'intervene'], true)), 'offers' => $offers,
-                'mins' => ['off' => $mins['off'], 'keep' => $mins['keep']],
+                'mins' => ['off' => $mins['off'], 'keep' => $mins['keep'], 'stays' => $mins['stays']],
                 // .126: lo que dejó la campaña (compras × BE − gasto) en 3 y en 7 días
                 'gain3' => self::gain((float) ($w3['totals']['spend'] ?? 0), (float) ($w3['totals']['purchases'] ?? 0), $c['break_even']),
                 'gain7' => self::gain((float) ($w7['totals']['spend'] ?? 0), (float) ($w7['totals']['purchases'] ?? 0), $c['break_even'])]
@@ -785,12 +786,28 @@ class MetaDecisions
      * veredicto en esa ciudad (los mismos que pasan un encargo de "En test" a "Testeado") o lleva $days días prendido; los
      * demás todavía se prueban (`keep`) y su mínimo se queda; y los que se prueban sin mínimo (`missing`). PHP puro.
      *
-     * @return array{off: list<array{adset: string, min: float, why: string}>, keep: list<array{adset: string, min: float}>, missing: list<string>}
+     * `.130` (dueño, 2026-11-10: "no se elimina el límite del presupuesto de el mejor batch, ni tampoco de los batch que tienen un
+     * CPA igual o menor al CPA objetivo", "para asegurarnos de no empeorar el rendimiento"): de los que ya se probaron, el mínimo
+     * se queda (`stays`) en el mejor de los batches vivos de la ciudad (el de CPA más bajo en los últimos 7 días; eligió el CPA)
+     * y en los que venden en la C ($target) o debajo en esos 7 días. Se quita (`off`) de los demás: encima de la C o sin compras.
+     *
+     * @return array{off: list<array{adset: string, min: float, why: string, cpa: ?float}>, keep: list<array{adset: string, min: float}>,
+     *     stays: list<array{adset: string, min: float, why: string, cpa: float, best: bool}>, missing: list<string>}
      */
-    public static function testedMins(array $f, array $out, string $campaignId, bool $prunes, string $now, int $days): array
+    public static function testedMins(array $f, array $out, string $campaignId, bool $prunes, string $now, int $days, ?float $target = null): array
     {
-        $res = ['off' => [], 'keep' => [], 'missing' => []];
-        foreach (array_keys(self::liveSets($f, $out, $campaignId, $prunes)) as $setId) {
+        $res = ['off' => [], 'keep' => [], 'stays' => [], 'missing' => []];
+        $live = array_keys(self::liveSets($f, $out, $campaignId, $prunes));
+        // .130: el CPA de 7 días de cada batch vivo (si Meta no trajo los números del ad set, los de sus anuncios) y el más bajo
+        $cpa = [];
+        foreach ($live as $setId) {
+            $set = $f['adsets'][$setId] ?? [];
+            $t = ($set['windows']['max']['totals']['impressions'] ?? 0) > 0 ? ($set['windows']['7d']['totals'] ?? [])
+                : MetaMetrics::sum(array_values(array_filter(array_map(fn ($ad) => (string) $ad['adset_meta_id'] === (string) $setId ? ($ad['windows']['7d']['totals'] ?? null) : null, $f['ads']))));
+            $cpa[$setId] = ($t['purchases'] ?? 0) > 0 ? round((float) $t['spend'] / (float) $t['purchases'], 2) : null;
+        }
+        $best = array_filter($cpa, fn ($v) => $v !== null) ? min(array_filter($cpa, fn ($v) => $v !== null)) : null;
+        foreach ($live as $setId) {
             $set = $f['adsets'][$setId] ?? null;
             // Los análisis y las pruebas de antes no traen el mínimo de cada ad set: ahí no se opina
             if (!$set || !array_key_exists('min_spend', $set)) {
@@ -810,7 +827,15 @@ class MetaDecisions
                     $res['missing'][] = (string) $set['name'];
                 }
             } elseif ($why !== null) {
-                $res['off'][] = ['adset' => (string) $set['name'], 'min' => $min, 'why' => $why];
+                $isBest = $best !== null && $cpa[$setId] === $best;
+                $inC = $target && $cpa[$setId] !== null && $cpa[$setId] <= round($target, 2);
+                if ($isBest || $inC) {
+                    $res['stays'][] = ['adset' => (string) $set['name'], 'min' => $min, 'cpa' => $cpa[$setId], 'best' => $isBest,
+                        'why' => ($isBest && $inC ? 'es el mejor y vende en tu C' : ($isBest ? 'es el mejor de la ciudad' : 'vende en tu C'))
+                            . ': ' . AdRules::money($cpa[$setId]) . ' por compra en 7 días' . ($inC ? ' (tu C es ' . AdRules::money($target) . ')' : '')];
+                } else {
+                    $res['off'][] = ['adset' => (string) $set['name'], 'min' => $min, 'why' => $why, 'cpa' => $cpa[$setId]];
+                }
             } else {
                 $res['keep'][] = ['adset' => (string) $set['name'], 'min' => $min];
             }

@@ -43,6 +43,7 @@ use App\Services\Meta\Upload\UploadRules;
  * procede a eliminar ese gasto mínimo"): cada misión que lanza un batch dice qué gasto mínimo ponerle a su ad set y pide
  * pegar los parámetros de URL en los anuncios nuevos (`copy`: el texto para copiar); y una misión de "Arreglar" por campaña
  * pide quitar el mínimo de los batches que ya se probaron (`min_spend`). No es un cambio grande: no espera las 24 horas.
+ * `.130`: no del mejor (el de CPA más bajo en 7 días) ni de los que venden en la C o debajo.
  *
  * `.125` (dueño, 2026-11-09: "sí debemos establecer un límite para soltar producto"; "nunca podemos permitirnos perder dinero
  * sin una razón buena justificada"): un producto en pausa con una campaña prendida es una misión de apagarla (`product_off`);
@@ -535,11 +536,16 @@ final class UrgentList
     /**
      * `.124` (dueño, 2026-11-09: "cuando un batch ya deja de estar en estatus de testeo, debe quitarse el gasto mínimo del
      * batch… para darle más libertad a Meta"): los batches vivos de una campaña que ya se probaron y siguen con gasto mínimo.
+     * `.130` (dueño, 2026-11-10: "para asegurarnos de no empeorar el rendimiento"): solo los que no son el mejor y no venden en
+     * la C; el mejor y los que venden en la C se quedan con su mínimo, y la misión lo dice.
      */
     private static function minSpend(int $productId, array $c, array $n, string $short): array
     {
         $off = $n['mins']['off'];
         $keep = $n['mins']['keep'] ?? [];
+        $stays = $n['mins']['stays'] ?? [];
+        $cpaOf = fn (array $o) => ($o['cpa'] ?? null) !== null ? AdRules::money($o['cpa']) . ' por compra en 7 días' . (($n['c'] ?? null) ? ', encima de tu C (' . AdRules::money($n['c']) . ')' : '')
+            : 'sin compras en 7 días';
         $count = count($off);
         $total = array_sum(array_column($off, 'min'));
         $same = count(array_unique(array_map(fn ($o) => (string) $o['min'], $off))) === 1;
@@ -547,19 +553,22 @@ final class UrgentList
         $budget = ($n['budget'] ?? null) ? ' de ' . AdRules::money($n['budget']) : '';
 
         return ['key' => "{$productId}:{$c['campaign_meta_id']}:min_spend", 'city' => $c['city'], 'kind' => 'min_spend', 'label' => 'Gasto mínimo', 'tone' => 'info',
-            'text' => 'Quitar el gasto mínimo de ' . CreativeCalls::join(array_column($off, 'adset')) . ': ya se ' . ($count === 1 ? 'probó.' : 'probaron.'),
+            'text' => 'Quitar el gasto mínimo de ' . CreativeCalls::join(array_column($off, 'adset')) . ': ya se ' . ($count === 1 ? 'probó y no vende en tu C.' : 'probaron y no venden en tu C.'),
             'where' => $short . ($c['city'] ? " · {$c['city']}" : ''),
-            'title' => $count === 1 ? "Quita el gasto mínimo de {$off[0]['adset']}: ya se probó" : "Quita el gasto mínimo de {$count} batches que ya se probaron",
+            'title' => $count === 1 ? "Quita el gasto mínimo de {$off[0]['adset']}: ya se probó y no vende en tu C" : "Quita el gasto mínimo de {$count} batches que ya se probaron y no venden en tu C",
             'steps' => array_values(array_filter([
                 self::open($c['campaign'] ?? null, $short, $c['city']),
                 ($count === 1 ? 'Edita el conjunto de anuncios ' : 'Edita cada uno de estos conjuntos de anuncios: ') . $names . '.',
                 'En «Presupuesto y calendario» › «Límites de gasto del conjunto de anuncios», borra el mínimo diario' . ($same ? ' (' . AdRules::money($off[0]['min']) . ')' : '') . ' y publica.',
+                $stays ? 'Deja el mínimo de ' . CreativeCalls::join(array_map(fn ($o) => self::q($o['adset']), $stays)) . ': '
+                    . (count($stays) === 1 ? ($stays[0]['best'] ? 'es el mejor de la ciudad.' : 'vende en tu C.') : 'el mejor y los que venden en tu C no se tocan.') : null,
                 $keep ? 'No toques el de ' . CreativeCalls::join(array_map(fn ($o) => self::q($o['adset']), $keep)) . ': todavía se ' . (count($keep) === 1 ? 'prueba.' : 'prueban.') : null,
             ])),
             'batches' => [],
-            'why' => AdRules::money($total) . "{$budget} por día " . ($count === 1 ? 'está amarrado a un batch que ya se probó' : 'están amarrados a batches que ya se probaron'),
-            'detail' => [...array_map(fn ($o) => "{$o['adset']}: mínimo " . AdRules::money($o['min']) . " por día · {$o['why']}.", $off),
-                'Tu regla: el gasto mínimo es solo mientras el batch se prueba. Sin él, Meta pasa esa plata a los que más venden.',
+            'why' => AdRules::money($total) . "{$budget} por día " . ($count === 1 ? 'está amarrado a un batch que ya se probó y no vende en tu C' : 'están amarrados a batches que ya se probaron y no venden en tu C'),
+            'detail' => [...array_map(fn ($o) => "{$o['adset']}: mínimo " . AdRules::money($o['min']) . " por día · {$o['why']} · " . $cpaOf($o) . '.', $off),
+                ...array_map(fn ($o) => "Se queda: {$o['adset']} · {$o['why']}.", $stays),
+                'Tu regla: el gasto mínimo es solo mientras el batch se prueba, y no se quita del mejor (el de CPA más bajo en 7 días) ni de los que venden en tu C o debajo, para no empeorar el rendimiento. Sin él, Meta pasa esa plata a los que más venden.',
                 'No es un cambio grande: no hace falta esperar 24 horas.'],
             'money' => null];
     }
