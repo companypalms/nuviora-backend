@@ -76,6 +76,8 @@ try {
     Schedule::command('finance:cpa')->dailyAt('00:15')->withoutOverlapping();
     // Etapa 5, paso 2a: los estados automáticos de los creativos, con días cerrados y el CPA del día ya calculado
     Schedule::command('meta:creative-statuses')->dailyAt('00:20')->withoutOverlapping();
+    // .131: el historial de cambios con su hipótesis, antes del análisis
+    Schedule::command('meta:changes')->dailyAt('00:25')->withoutOverlapping(30);
     // Etapa 5, paso 3a: el análisis de campañas del día, después del CPA y de los estados
     Schedule::command('meta:analyze')->dailyAt('00:30')->withoutOverlapping(30);
     // .48b: los reportes del negocio del asistente (los días de las revisiones del calendario), con el CPA y Meta al día.

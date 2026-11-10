@@ -611,6 +611,9 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::put('/analysis/{analysis}/marks', [\App\Http\Controllers\MetaAnalysisController::class, 'mark']);
         Route::post('/new-product-mission/{mission}/done', [\App\Http\Controllers\MetaAnalysisController::class, 'missionDone'])->whereNumber('mission'); // .118
         Route::get('/analysis/videos', [\App\Http\Controllers\MetaAnalysisController::class, 'videos']); // .102
+        // .131: el historial de cambios con su hipótesis
+        Route::get('/changes', [\App\Http\Controllers\MetaChangesController::class, 'index']);
+        Route::put('/changes/{change}/note', [\App\Http\Controllers\MetaChangesController::class, 'note'])->whereNumber('change');
         // Etapa 5, paso 4a: la cola de producción y la banca
         Route::get('/queue', [\App\Http\Controllers\MetaQueueController::class, 'index']);
         Route::get('/queue/options', [\App\Http\Controllers\MetaQueueController::class, 'options']);
