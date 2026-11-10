@@ -61,7 +61,7 @@ final class UrgentList
         'decrease' => 2, 'intervene' => 2, 'tracking' => 2, 'late_urgent' => 2, 'drop_product' => 2,
         'hold_prune' => 3, 'step_down' => 3, 'few_batches' => 3, 'min_spend' => 3, 'late_batch' => 3, 'launch_ready' => 3, 'no_city' => 3, 'no_be' => 3,
         'scale' => 4, 'launch_test' => 4, 'relaunch' => 4, 'new_product_late' => 4,
-        'alarm' => 5, 'names' => 5, 'cooldown' => 5, 'angle_rest' => 5, 'left_city' => 5, 'stale' => 5,
+        'alarm' => 5, 'names' => 5, 'cooldown' => 5, 'angle_rest' => 5, 'left_city' => 5, 'stale' => 5, 'lesson' => 5,
         'price' => 6,
     ];
 
@@ -71,7 +71,7 @@ final class UrgentList
         'intervene' => 'arreglar', 'tracking' => 'arreglar', 'hold_prune' => 'arreglar', 'step_down' => 'arreglar', 'few_batches' => 'arreglar', 'min_spend' => 'arreglar',
         'late_urgent' => 'arreglar', 'late_batch' => 'arreglar', 'launch_ready' => 'arreglar', 'no_city' => 'arreglar', 'no_be' => 'arreglar',
         'scale' => 'crecer', 'launch_test' => 'crecer', 'relaunch' => 'crecer', 'new_product_late' => 'crecer',
-        'stock_out' => 'aviso', 'stock_waiting' => 'aviso', 'alarm' => 'aviso', 'price' => 'aviso', 'names' => 'aviso', 'cooldown' => 'aviso', 'angle_rest' => 'aviso', 'left_city' => 'aviso', 'stale' => 'aviso',
+        'stock_out' => 'aviso', 'stock_waiting' => 'aviso', 'alarm' => 'aviso', 'price' => 'aviso', 'names' => 'aviso', 'cooldown' => 'aviso', 'angle_rest' => 'aviso', 'left_city' => 'aviso', 'stale' => 'aviso', 'lesson' => 'aviso',
     ];
 
     /** Cuántos nombres de creativos caben en la línea del porqué. */

@@ -42,8 +42,16 @@ class ProductMemories
             ->whereHas('batch', fn ($q) => $q->where('product_id', $productId))->orderByDesc('result_at')->orderByDesc('id')->get()
             ->map(fn ($p) => ['code' => $p->code(), 'test' => $p->test ?? $p->batch?->kind, 'style' => $p->style, 'outcome' => (string) $p->result])->values()->all();
 
+        // .132: los cambios en Meta del producto y si se cumplió su hipótesis (el historial de la .131)
+        try {
+            $changes = \App\Services\Meta\Changes\MetaChanges::forProduct($productId);
+        } catch (\Throwable $e) {
+            report($e);
+            $changes = [];
+        }
+
         return ProductMemoryRules::facts($rows, array_column(TestingPhase::angles($productId), 'code'),
-            array_column(ProductProfiles::get($productId)['personas'], 'name'), $notes, $pieces);
+            array_column(ProductProfiles::get($productId)['personas'], 'name'), $notes, $pieces, $changes);
     }
 
     /** Lo que sabemos para la IA que escribe los encargos (vacío si todavía no hay nada). */
@@ -117,7 +125,7 @@ class ProductMemories
             // El resumen se escribió con otros datos (hay batches testeados o notas nuevas desde entonces)
             'stale' => $row !== null && $row->facts_hash !== ProductMemoryRules::hash($f),
             'tested' => $f['tested'], 'totals' => $f['totals'], 'groups' => $f['groups'], 'untested' => $f['untested'],
-            'piece_groups' => $f['piece_groups'],
+            'piece_groups' => $f['piece_groups'], 'changes' => ProductMemoryRules::changeLines($f),
             'batches' => $f['batches'], 'notes' => $notes,
         ];
     }

@@ -174,6 +174,26 @@ describe('.131: el historial de cambios', function () {
         $this->getJson('/api/meta/changes?kind=otra')->assertStatus(422);
     });
 
+    it('.132: lo medido, para el análisis de la mañana y para "Lo que sabemos"', function () {
+        $svc = app(MetaChanges::class);
+        $svc->refresh();
+        $l = $svc->lessons();
+
+        expect(array_keys($l['campaigns']['111']))->toBe(['new_batch', 'ads_off', 'raise'])
+            ->and($l['campaigns']['111']['raise'])->toMatchArray(['streak' => 0, 'city' => 'Distrito Capital', 'product_id' => 5])
+            ->and($l['campaigns']['111']['raise']['last']['what'])->toBe('De $30,00 a $36,00 por día (+20 %)')
+            ->and($l['products'][5]['raise'])->toBe(['met' => 1, 'not_met' => 0])
+            ->and(MetaChanges::forProduct(5))->toBe([
+                'kinds' => [['kind' => 'raise', 'label' => 'Subir el presupuesto', 'met' => 1, 'not_met' => 0], ['kind' => 'ads_off', 'label' => 'Apagar anuncios', 'met' => 1, 'not_met' => 0],
+                    ['kind' => 'new_batch', 'label' => 'Batch nuevo', 'met' => 1, 'not_met' => 0]],
+                'metrics' => [['key' => 'hook_rate', 'label' => 'Hook rate', 'better' => 1, 'total' => 1]]]);
+
+        // en la pantalla, el batch muestra su métrica (no una tabla de antes y después)
+        Sanctum::actingAs($this->admin);
+        expect($this->getJson('/api/meta/changes?kind=new_batch')->assertOk()->json('changes.0'))->toMatchArray(['after' => null,
+            'metric' => ['key' => 'hook_rate', 'mine' => 30, 'original' => 20]]);
+    });
+
     it('solo el Admin', function () {
         $seller = User::forceCreate(['names' => 'Vendedora', 'email' => 'v@test', 'password' => 'x', 'role_id' => Role::forceCreate(['description' => 'Vendedor'])->id]);
         Sanctum::actingAs($seller);

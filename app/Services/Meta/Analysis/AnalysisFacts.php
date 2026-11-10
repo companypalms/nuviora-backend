@@ -157,6 +157,13 @@ final class AnalysisFacts
                 foreach (array_merge($c['notes'], $c['budget_notes'], array_filter([$c['price_option']])) as $n) {
                     $lines[] = "  · {$n}";
                 }
+                // .132: lo que pasó la última vez que se hizo cada cambio en esta ciudad (el historial de cambios)
+                foreach ($c['lessons'] ?? [] as $l) {
+                    $lines[] = "  · historial: {$l}";
+                }
+            }
+            if (!empty($p['changes'])) {
+                $lines[] = "Tus cambios en Meta (60 días): {$p['changes']}";
             }
             foreach ($p['stop_by_city'] ?? [] as $city => $labels) {
                 $lines[] = "Apagar hoy en {$city} (ahí pierden): " . implode(', ', $labels);

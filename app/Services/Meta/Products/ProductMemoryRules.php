@@ -30,8 +30,9 @@ final class ProductMemoryRules
      * @param list<string> $personas los buyer personas de la ficha
      * @param list<array{kind: string, text: string}> $notes las notas del dueño
      * @param list<array{code: ?string, test: ?string, style: ?string, outcome: string}> $pieces `.81`: las piezas con resultado
+     * @param array{kinds?: list<array>, metrics?: list<array>} $changes `.132`: los cambios en Meta (MetaChanges::forProduct)
      */
-    public static function facts(array $batches, array $angles, array $personas, array $notes, array $pieces = []): array
+    public static function facts(array $batches, array $angles, array $personas, array $notes, array $pieces = [], array $changes = []): array
     {
         $groups = [];
         foreach (array_keys(self::DIMENSIONS) as $dim) {
@@ -53,7 +54,27 @@ final class ProductMemoryRules
             'pieces' => $pieces,
             'batches' => $batches,
             'notes' => array_values($notes),
+            'changes' => ['kinds' => $changes['kinds'] ?? [], 'metrics' => $changes['metrics'] ?? []],
         ];
+    }
+
+    /**
+     * `.132` (dueño, 2026-11-10: "así el sistema de IA puede aprender automáticamente de lo que funciona y no funciona"): los
+     * cambios en Meta del producto, en frases: cuántas veces se cumplió cada tipo y cuántas variaciones mejoraron lo que buscaban.
+     *
+     * @return list<string>
+     */
+    public static function changeLines(array $f): array
+    {
+        $lines = [];
+        foreach ($f['changes']['kinds'] ?? [] as $k) {
+            $lines[] = "{$k['label']}: se cumplió {$k['met']} de " . ($k['met'] + $k['not_met']);
+        }
+        foreach ($f['changes']['metrics'] ?? [] as $m) {
+            $lines[] = "Variaciones que buscaban subir el {$m['label']}: lo subieron {$m['better']} de {$m['total']}";
+        }
+
+        return $lines;
     }
 
     /**
@@ -145,6 +166,13 @@ final class ProductMemoryRules
             $lines[] = '';
             $lines[] = "FALTA PROBAR: {$untested}";
         }
+        if ($changes = self::changeLines($f)) {
+            $lines[] = '';
+            $lines[] = 'CAMBIOS EN META (si se cumplió la hipótesis de cada cambio):';
+            foreach ($changes as $c) {
+                $lines[] = "- {$c}";
+            }
+        }
         if ($f['notes'] !== []) {
             $lines[] = '';
             $lines[] = 'NOTAS DEL DUEÑO (lo que él sabe; vale tanto como los datos):';
@@ -159,7 +187,7 @@ final class ProductMemoryRules
     /** Lo que sabemos, para la IA que escribe los encargos: el resumen, los números y las notas del dueño. */
     public static function forWriter(array $f, ?array $summary): string
     {
-        if ($f['tested'] === 0 && $f['notes'] === []) {
+        if ($f['tested'] === 0 && $f['notes'] === [] && self::changeLines($f) === []) {
             return '';
         }
         $lines = [];
@@ -180,6 +208,10 @@ final class ProductMemoryRules
         }
         foreach ($f['notes'] as $n) {
             $lines[] = '  · Nota del dueño (' . mb_strtolower(ProductNote::KINDS[$n['kind']] ?? $n['kind']) . '): ' . trim($n['text']);
+        }
+        // .132: lo que enseñan los cambios en Meta (cuántas variaciones mejoraron lo que buscaban)
+        foreach (self::changeLines($f) as $c) {
+            $lines[] = "  · Cambios en Meta, {$c}";
         }
 
         return implode("\n", $lines);
@@ -225,7 +257,10 @@ final class ProductMemoryRules
     /** La huella de los hechos: si cambia, el resumen se vuelve a escribir. */
     public static function hash(array $f): string
     {
-        return hash('sha256', json_encode([$f['batches'], $f['notes'], $f['untested'], $f['pieces'] ?? []], JSON_UNESCAPED_UNICODE));
+        // .132: los cambios en Meta cuentan solo si hay (así no se reescriben los resúmenes que no tienen)
+        $changes = array_filter($f['changes'] ?? []) ? [$f['changes']] : [];
+
+        return hash('sha256', json_encode([$f['batches'], $f['notes'], $f['untested'], $f['pieces'] ?? [], ...$changes], JSON_UNESCAPED_UNICODE));
     }
 
     private static function untestedText(array $u): string

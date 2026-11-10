@@ -3,6 +3,8 @@
 namespace App\Services\Meta\Analysis;
 
 use App\Models\MetaAnalysis;
+use App\Services\Meta\Changes\ChangeLessons;
+use App\Services\Meta\Changes\MetaChanges;
 use App\Services\Meta\Decisions\MetaDecisions;
 use App\Services\Meta\Products\NewProductMissions;
 use App\Services\Meta\Queue\QueueProposer;
@@ -42,11 +44,17 @@ class MetaAnalyzer
         // .56: lo que dicen los videos de los ganadores (transcritos en la .55)
         $facts = AnalysisFacts::withScripts($facts, \App\Services\Meta\Videos\Scripts::forCreatives(
             array_merge([], ...array_map(fn ($p) => array_column($p['creatives'], 'id'), $facts))));
+        // .132: lo que pasó con los cambios de antes (el historial de la .131), para la IA y para cada misión
+        $lessons = self::lessons($date);
+        $facts = ChangeLessons::intoFacts($facts, $lessons);
         // .89: los encargos atrasados, para presionar al editor líder
         $late = \App\Services\Meta\Queue\LateBatches::find($decisions, $date, (int) (new \App\Services\Meta\Decisions\DecisionSettings())->get()['corrections_days']);
         // .89: y los testeos listos para lanzar (todos sus batches en la banca)
         $urgent = UrgentList::build($facts, $late, \App\Services\Meta\Queue\LateBatches::leader(), \App\Services\Meta\Queue\TestingLaunch::ready(),
             \App\Services\Meta\NameCheck::find()); // .89: y lo que no se puede reconocer por su nombre
+        // .132: "la última vez" en cada misión, y el aviso si el mismo cambio no se cumplió 3 veces seguidas en una ciudad
+        $urgent = ChangeLessons::missions($urgent, $facts, $lessons);
+        array_push($urgent, ...ChangeLessons::notices($lessons, array_column($facts, 'product', 'product_id'), $date));
         // .118: si va tarde con el producto nuevo, es una misión de hoy
         if ($behind = $this->missionLate($date)) {
             $urgent[] = $behind;
@@ -123,6 +131,21 @@ class MetaAnalyzer
             app(\App\Services\Meta\Products\ProductMemories::class)->refreshChanged();
         } catch (\Throwable $e) {
             report($e);
+        }
+    }
+
+    /** `.132`: el historial de cambios al día y lo medido. Si algo falla, el análisis sale igual (sin historial). */
+    private static function lessons(string $date): array
+    {
+        try {
+            $changes = app(MetaChanges::class);
+            $changes->refreshIfStale();
+
+            return $changes->lessons($date);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return ['campaigns' => [], 'products' => []];
         }
     }
 

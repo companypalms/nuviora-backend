@@ -117,8 +117,11 @@ class MetaChanges
                 'mission' => $this->mission($analyses, $ch, (int) $camp->product_id, $camp->city)];
             if ($ch['kind'] === 'new_batch') {
                 $code = $adsetInfo[$ch['adset']]['batch'] ?? null;
-                $b = ChangeRules::batch($code ? ($batches["{$camp->product_id}:{$code}"] ?? null) : null, (string) $ch['detail']['adset'], $camp->city, $ch['date'], $today);
-                $fields += ['hypothesis' => $b['hypothesis'], 'criterion' => $b['criterion'], 'before' => null, 'after' => null, 'result' => $b['result'], 'result_text' => $b['text']];
+                $bd = $code ? ($batches["{$camp->product_id}:{$code}"] ?? null) : null;
+                $b = ChangeRules::batch($bd, (string) $ch['detail']['adset'], $camp->city, $ch['date'], $today);
+                // .132: lo que quería mejorar, para "Lo que sabemos" (cuántas variaciones lo mejoraron)
+                $fields += ['hypothesis' => $b['hypothesis'], 'criterion' => $b['criterion'], 'before' => null, 'after' => ($bd['metric'] ?? null) ? ['metric' => $bd['metric']] : null,
+                    'result' => $b['result'], 'result_text' => $b['text']];
             } else {
                 $d = $daily[$ch['campaign']] ?? [];
                 $before = ChangeRules::numbers($d, ChangeRules::addDays($ch['date'], -ChangeRules::DAYS), ChangeRules::addDays($ch['date'], -1), $be);
@@ -168,8 +171,8 @@ class MetaChanges
                 'product_id' => $c->product_id, 'product' => $c->product ? ($c->product->showable_name ?: $c->product->title) : null, 'city' => $c->city, 'campaign' => $names[$c->campaign_meta_id] ?? null,
                 'what' => ChangeRules::what($c->kind, $c->detail ?? []), 'mission' => $c->mission,
                 'hypothesis' => $c->hypothesis, 'criterion' => $c->criterion, 'c' => $c->target_c, 'be' => $c->target_be,
-                'before' => $c->before, 'after' => $c->after, 'result' => $c->result, 'result_label' => ChangeRules::RESULTS[$c->result] ?? $c->result,
-                'result_text' => $c->result_text, 'note' => $c->note,
+                'before' => $c->before, 'after' => $c->kind === 'new_batch' ? null : $c->after, 'result' => $c->result, 'result_label' => ChangeRules::RESULTS[$c->result] ?? $c->result,
+                'result_text' => $c->result_text, 'note' => $c->note, 'metric' => $c->kind === 'new_batch' ? ($c->after['metric'] ?? null) : null,
             ])->values()->all(),
             'products' => MetaChange::query()->join('products as p', 'p.id', '=', 'meta_changes.product_id')->distinct()
                 ->get(['p.id', 'p.title', 'p.showable_name'])->map(fn ($p) => ['id' => (int) $p->id, 'name' => $p->showable_name ?: $p->title])->sortBy('name')->values()->all(),
@@ -177,6 +180,51 @@ class MetaChanges
             'kinds' => ChangeRules::KINDS, 'results' => ChangeRules::RESULTS,
             'refreshed_at' => Cache::get(self::CACHE_KEY),
         ];
+    }
+
+    /** `.132`: lo medido de los últimos 60 días (se cumplió o no), para el análisis de la mañana (ChangeLessons::build). */
+    public function lessons(?string $today = null): array
+    {
+        $today ??= now(config('app.timezone'))->toDateString();
+        $rows = MetaChange::whereIn('result', ['met', 'not_met'])->where('date', '>=', ChangeRules::addDays($today, -ChangeLessons::DAYS))
+            ->orderByDesc('changed_at')->orderByDesc('id')->get()
+            ->map(fn (MetaChange $c) => ['kind' => $c->kind, 'campaign' => $c->campaign_meta_id, 'city' => $c->city, 'product_id' => (int) $c->product_id,
+                'date' => $c->date->toDateString(), 'what' => ChangeRules::what($c->kind, $c->detail ?? []), 'result' => $c->result, 'result_text' => $c->result_text])
+            ->all();
+
+        return ChangeLessons::build($rows);
+    }
+
+    /**
+     * `.132`: para "Lo que sabemos" de un producto: cuántas veces se cumplió cada tipo de cambio y, de sus batches nuevos que
+     * buscaban mejorar algo frente al original (hook rate, hold rate o CTR único), cuántos lo mejoraron.
+     *
+     * @return array{kinds: list<array{kind: string, label: string, met: int, not_met: int}>, metrics: list<array{key: string, label: string, better: int, total: int}>}
+     */
+    public static function forProduct(int $productId): array
+    {
+        $rows = MetaChange::where('product_id', $productId)->whereIn('result', ['met', 'not_met'])->get(['kind', 'result', 'after']);
+        $kinds = [];
+        foreach (ChangeRules::KINDS as $k => $label) {
+            $rs = $rows->where('kind', $k);
+            if ($rs->isNotEmpty()) {
+                $kinds[] = ['kind' => $k, 'label' => $label, 'met' => $rs->where('result', 'met')->count(), 'not_met' => $rs->where('result', 'not_met')->count()];
+            }
+        }
+        $metrics = [];
+        foreach ($rows->where('kind', 'new_batch') as $r) {
+            $m = $r->after['metric'] ?? null;
+            if (!$m || ($m['mine'] ?? null) === null || ($m['original'] ?? null) === null) {
+                continue;
+            }
+            $metrics[$m['key']] ??= ['key' => $m['key'], 'label' => ChangeRules::METRIC_LABELS[$m['key']] ?? $m['key'], 'better' => 0, 'total' => 0];
+            $metrics[$m['key']]['total']++;
+            if ($m['mine'] > $m['original']) {
+                $metrics[$m['key']]['better']++;
+            }
+        }
+
+        return ['kinds' => $kinds, 'metrics' => array_values($metrics)];
     }
 
     /** La última versión del análisis de cada día desde $since: su C y BE por campaña, sus misiones y lo que marcó el dueño. */
