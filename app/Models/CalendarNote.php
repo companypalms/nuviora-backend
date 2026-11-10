@@ -8,12 +8,14 @@ use Illuminate\Database\Eloquent\Model;
 /** Una nota del calendario del dueño (Etapa 3): una tarea o un pago, de un día o repetido. Se archiva, no se borra. */
 class CalendarNote extends Model
 {
-    protected $fillable = ['title', 'details', 'date', 'time', 'kind', 'repeat', 'repeat_until', 'source', 'created_by', 'updated_by',
-        'archived_at', 'archived_by'];
+    protected $fillable = ['title', 'details', 'date', 'time', 'kind', 'repeat', 'repeat_until', 'repeat_days', 'repeat_every', 'source',
+        'created_by', 'updated_by', 'archived_at', 'archived_by'];
 
     protected $casts = [
         'date' => 'date:Y-m-d',
         'repeat_until' => 'date:Y-m-d',
+        'repeat_days' => 'array', // .129
+        'repeat_every' => 'integer',
         'archived_at' => 'datetime',
     ];
 
@@ -38,6 +40,8 @@ class CalendarNote extends Model
             'kind' => $this->kind,
             'repeat' => $this->repeat,
             'repeat_until' => $this->repeat_until?->toDateString(),
+            'repeat_days' => $this->repeat_days ? array_map('intval', $this->repeat_days) : null,
+            'repeat_every' => $this->repeat_every,
         ];
     }
 

@@ -17,7 +17,8 @@ use App\Services\Calendar\Rules\Schedule;
 /** Anotar algo en el calendario del dueño (Calendar::createNote, con "La anotó tu asistente"). */
 class CalendarNoteTool extends ChangeTool
 {
-    private const REPEATS = ['no' => 'none', 'semanal' => 'weekly', 'mensual' => 'monthly', 'quincenal' => 'twice_monthly'];
+    private const REPEATS = ['no' => 'none', 'diario' => 'daily', 'semanal' => 'weekly', 'cada_n_dias' => 'every_days', 'mensual' => 'monthly',
+        'quincenal' => 'twice_monthly'];
 
     public function __construct(private Calendar $calendar, private CalendarSettings $settings)
     {
@@ -43,14 +44,18 @@ class CalendarNoteTool extends ChangeTool
                 // .108: la hora de las notas es la del dueño ("Tu hora" del calendario), no la del negocio
                 'hora' => ['type' => ['string', 'null'], 'description' => $this->hourHint()],
                 'tipo' => ['type' => 'string', 'enum' => ['tarea', 'pago'], 'description' => 'Un pago que cae domingo se adelanta al sábado; una tarea pasa al lunes.'],
-                'repetir' => ['type' => 'string', 'enum' => array_keys(self::REPEATS), 'description' => 'no, semanal, mensual o quincenal (el 15 y el último de cada mes).'],
+                // .129: todos los días, algunos días de la semana o cada cierto número de días
+                'repetir' => ['type' => 'string', 'enum' => array_keys(self::REPEATS), 'description' => 'no; diario (todos los días, de lunes a sábado); semanal (los días de "dias_semana", cada "cada" semanas); cada_n_dias (cada "cada" días); mensual; quincenal (el 15 y el último de cada mes).'],
+                'dias_semana' => ['type' => ['array', 'null'], 'items' => ['type' => 'string', 'enum' => array_values(Schedule::WEEKDAYS)],
+                    'description' => 'Solo con semanal: los días ("los martes y jueves" → ["martes", "jueves"]); null = el día de la semana de la fecha.'],
+                'cada' => ['type' => ['integer', 'null'], 'description' => 'Con semanal: cada cuántas semanas (1 a 4; null = cada semana). Con cada_n_dias: cada cuántos días (2 a 60). Si no, null.'],
                 'hasta' => ['type' => ['string', 'null'], 'description' => 'AAAA-MM-DD: hasta cuándo se repite, o null (sin fin).'],
                 'detalles' => ['type' => ['string', 'null'], 'description' => 'Lo demás que haya que saber, o null.'],
                 // .107 "Tu día": el orden del día va por prioridad y la más corta primero
                 'prioridad' => ['type' => ['string', 'null'], 'enum' => ['alta', 'normal', 'baja', null], 'description' => 'alta si el dueño dice que es urgente o importante, baja si puede esperar; null = normal.'],
                 'minutos' => ['type' => ['integer', 'null'], 'description' => 'Cuánto le toma, si lo dice ("30 min"), de 1 a 240; null = 15.'],
             ],
-            'required' => ['titulo', 'fecha', 'hora', 'tipo', 'repetir', 'hasta', 'detalles', 'prioridad', 'minutos'],
+            'required' => ['titulo', 'fecha', 'hora', 'tipo', 'repetir', 'dias_semana', 'cada', 'hasta', 'detalles', 'prioridad', 'minutos'],
             'additionalProperties' => false,
         ];
     }
@@ -86,6 +91,9 @@ class CalendarNoteTool extends ChangeTool
             'kind' => ($args['tipo'] ?? 'tarea') === 'pago' ? 'payment' : 'task',
             'repeat' => self::REPEATS[$args['repetir'] ?? 'no'] ?? 'none',
             'repeat_until' => $args['hasta'] ?? null,
+            'repeat_days' => is_array($args['dias_semana'] ?? null)
+                ? array_values(array_filter(array_map(fn ($d) => array_search($d, Schedule::WEEKDAYS, true), $args['dias_semana']))) : null,
+            'repeat_every' => $args['cada'] ?? null,
         ]);
         $plan = ['priority' => ($args['prioridad'] ?? null) ?: DayPlan::NOTE_DEFAULT['priority'], 'minutes' => ($args['minutos'] ?? null) ?: DayPlan::NOTE_DEFAULT['minutes']];
         if ($problems = NoteRules::problems($note) + DayPlan::problems($plan['priority'], $plan['minutes'])) {
@@ -103,7 +111,7 @@ class CalendarNoteTool extends ChangeTool
                 Proposal::line('Qué', $note['title']),
                 Proposal::line('Tipo', NoteRules::KINDS[$note['kind']]),
                 Proposal::line('Cuándo', Schedule::dayName($note['date']) . ($note['time'] ? " a las {$note['time']}" : '')),
-                Proposal::line('Se repite', $note['repeat'] === 'none' ? null : Schedule::REPEATS[$note['repeat']] . ($note['repeat_until'] ? ', hasta el ' . Schedule::dayName($note['repeat_until']) : '')),
+                Proposal::line('Se repite', $note['repeat'] === 'none' ? null : Schedule::label(NoteRules::pattern($note))),
                 Proposal::line('Detalles', $note['details']),
                 Proposal::line('Prioridad', DayPlan::PRIORITIES[$plan['priority']] . ' · ' . DayPlan::minutesLabel((int) $plan['minutes'])),
             ]),

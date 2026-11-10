@@ -100,3 +100,24 @@ describe('Estado y textos', function () {
         expect(Schedule::label(['repeat' => 'twice_monthly', 'start' => '2026-11-01']))->toBe('El 15 y el último de cada mes');
     });
 });
+
+describe('.129: más formas de repetir', function () use ($dates) {
+    it('todos los días es de lunes a sábado; algunos días de la semana, cada 1 a 4 semanas; cada cierto número de días', function () use ($dates) {
+        expect($dates(['repeat' => 'daily', 'start' => '2026-11-10', 'until' => '2026-11-16', 'type' => 'task'], '2026-11-01', '2026-11-30'))
+            ->toBe(['2026-11-10', '2026-11-11', '2026-11-12', '2026-11-13', '2026-11-14', '2026-11-16'])
+            ->and($dates(['repeat' => 'weekly', 'start' => '2026-11-09', 'days' => [1], 'every' => 2, 'type' => 'task'], '2026-11-01', '2026-12-10'))
+            ->toBe(['2026-11-09', '2026-11-23', '2026-12-07'])
+            ->and($dates(['repeat' => 'every_days', 'start' => '2026-11-10', 'every' => 4, 'type' => 'payment'], '2026-11-01', '2026-11-30'))
+            // el domingo 22 le tocaba: el pago se adelanta al sábado
+            ->toBe(['2026-11-10', '2026-11-14', '2026-11-18', '2026-11-21 (2026-11-22)', '2026-11-26', '2026-11-30']);
+    });
+
+    it('se lee en una frase', function () {
+        $start = ['start' => '2026-11-10', 'type' => 'task'];
+        expect(Schedule::label(['repeat' => 'daily'] + $start))->toBe('De lunes a sábado')
+            ->and(Schedule::label(['repeat' => 'weekly', 'days' => [4, 2]] + $start))->toBe('Cada semana, los martes y jueves')
+            ->and(Schedule::label(['repeat' => 'weekly', 'days' => [1, 3, 6], 'every' => 2] + $start))->toBe('Cada 2 semanas, los lunes, miércoles y sábados')
+            ->and(Schedule::label(['repeat' => 'weekly'] + $start))->toBe('Cada semana, los martes')
+            ->and(Schedule::label(['repeat' => 'every_days', 'every' => 3, 'until' => '2026-11-20'] + $start))->toBe('Cada 3 días, desde el 10/11/2026, hasta el 20/11/2026');
+    });
+});

@@ -43,6 +43,7 @@ beforeEach(function () {
         $t->timestamps();
     });
     (require database_path('migrations/2026_10_29_300000_create_calendar_tables.php'))->up();
+    (require database_path('migrations/2026_11_10_100000_add_repeat_days_to_calendar_notes.php'))->up();
     (require database_path('migrations/2026_11_06_100000_create_calendar_item_plans_table.php'))->up();
     (require database_path('migrations/2026_11_06_200000_create_calendar_timers_and_days_tables.php'))->up();
 

@@ -704,7 +704,8 @@ class Calendar
                     'repeat_label' => Schedule::label($pattern),
                     'help' => null,
                     'base_text' => NoteRules::text($fields),
-                    'accumulates' => true,
+                    // .129 (dueño: "no se acumula"): la de todos los días es como las tareas de todos los días: la de hoy reemplaza a la de ayer
+                    'accumulates' => $fields['repeat'] !== 'daily',
                     'auto' => false,
                     'auto_done' => false,
                     'auto_note' => null,

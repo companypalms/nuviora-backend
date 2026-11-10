@@ -14,7 +14,7 @@ describe('Notas del calendario', function () use ($note) {
             'repeat' => 'none', 'repeat_until' => '2026-12-01']);
         expect($n)->toBe([
             'title' => 'Llamar al banco', 'details' => null, 'date' => '2026-11-05', 'time' => null,
-            'kind' => 'task', 'repeat' => 'none', 'repeat_until' => null,
+            'kind' => 'task', 'repeat' => 'none', 'repeat_until' => null, 'repeat_days' => null, 'repeat_every' => null,
         ]);
     });
 
@@ -29,7 +29,7 @@ describe('Notas del calendario', function () use ($note) {
         expect(NoteRules::problems($note(['date' => '2026-02-30'])))->toBe(['date' => 'Elige la fecha.']);
         expect(NoteRules::problems($note(['time' => '25:00'])))->toBe(['time' => 'La hora no es válida.']);
         expect(NoteRules::problems($note(['kind' => 'otro'])))->toBe(['kind' => 'Elige si es una tarea o un pago.']);
-        expect(NoteRules::problems($note(['repeat' => 'daily'])))->toBe(['repeat' => 'Elige si se repite.']);
+        expect(NoteRules::problems($note(['repeat' => 'last_workday'])))->toBe(['repeat' => 'Elige si se repite.']);
         expect(NoteRules::problems($note(['repeat_until' => '2026-11-01'])))
             ->toBe(['repeat_until' => '"Hasta" no puede ser antes de la fecha de la nota.']);
     });
@@ -37,5 +37,22 @@ describe('Notas del calendario', function () use ($note) {
     it('se lee en una frase', function () use ($note) {
         expect(NoteRules::text($note()))->toBe('Pago: Pagar el alquiler.');
         expect(NoteRules::text($note(['kind' => 'task', 'title' => 'Llamar al banco', 'time' => '10:00'])))->toBe('Tarea: Llamar al banco, a las 10:00.');
+    });
+});
+
+describe('.129: los días de la semana y cada cuánto', function () use ($note) {
+    it('limpia los días marcados y pone cada cuánto solo donde va', function () use ($note) {
+        expect($note(['repeat' => 'weekly', 'repeat_days' => ['4', 2, 2, 9]]))->toMatchArray(['repeat_days' => [2, 4], 'repeat_every' => 1])
+            ->and($note(['repeat' => 'weekly']))->toMatchArray(['repeat_days' => null, 'repeat_every' => 1])
+            ->and($note(['repeat' => 'every_days', 'repeat_every' => '3']))->toMatchArray(['repeat_days' => null, 'repeat_every' => 3])
+            ->and($note(['repeat' => 'monthly', 'repeat_days' => [1], 'repeat_every' => 2]))->toMatchArray(['repeat_days' => null, 'repeat_every' => null]);
+    });
+
+    it('avisa lo que falta', function () use ($note) {
+        expect(NoteRules::problems($note(['repeat' => 'daily'])))->toBe([])
+            ->and(NoteRules::problems($note(['repeat' => 'weekly', 'repeat_days' => []])))->toBe(['repeat_days' => 'Marca al menos un día de la semana.'])
+            ->and(NoteRules::problems($note(['repeat' => 'weekly', 'repeat_days' => [2], 'repeat_every' => 5])))->toBe(['repeat_every' => 'Elige cada cuántas semanas: de 1 a 4.'])
+            ->and(NoteRules::problems($note(['repeat' => 'every_days'])))->toBe(['repeat_every' => 'Escribe cada cuántos días: de 2 a 60.'])
+            ->and(NoteRules::problems($note(['repeat' => 'every_days', 'repeat_every' => 61])))->toHaveKey('repeat_every');
     });
 });

@@ -3,6 +3,7 @@
 namespace App\Services\Calendar\Rules;
 
 use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 
 /**
  * Las fechas del calendario del dueño (Etapa 3): en qué días aparece cada cosa. PHP puro, para probarlo sin la aplicación.
@@ -15,15 +16,21 @@ use Carbon\CarbonImmutable;
  * - Las tareas de todos los días van de lunes a sábado (el domingo no aparecen) y no se acumulan: la de hoy reemplaza a
  *   la de ayer. Lo demás (lo semanal, lo mensual, los pagos y las notas) sí queda atrasado hasta que se haga.
  *
+ * `.129` (dueño, 2026-11-10: "más opciones de cuándo quiero que se repita: si todos los días, si dos días a la semana, si en
+ * un rango de fechas"): todos los días (de lunes a sábado, y no se acumula, como las tareas de todos los días), los días de
+ * la semana que marque cada 1 a 4 semanas (el domingo que marca él se queda el domingo), y cada 2 a 60 días.
+ *
  * Cada aparición tiene dos fechas: "due" es el día que le toca de verdad (con esa se tilda, así no cambia si cambia la
  * regla del domingo) y "date" es el día en que se muestra.
  */
 final class Schedule
 {
-    /** Cómo se repite una cosa. "daily" y "last_workday" son de los recordatorios del sistema; el dueño elige las primeras. */
+    /** Cómo puede repetir el dueño una nota. "last_workday" es solo de los recordatorios del sistema. */
     public const REPEATS = [
         'none' => 'Solo ese día',
-        'weekly' => 'Cada semana',
+        'daily' => 'Todos los días (de lunes a sábado)',
+        'weekly' => 'Algunos días de la semana',
+        'every_days' => 'Cada cierto número de días',
         'monthly' => 'Cada mes',
         'twice_monthly' => 'El 15 y el último de cada mes',
     ];
@@ -38,8 +45,9 @@ final class Schedule
     /**
      * Las apariciones de un patrón que se muestran entre dos días (incluidos), ya corridas por la regla del domingo.
      *
-     * @param array{repeat: string, start: string, until?: ?string, type: string, weekday?: ?int, day?: ?int} $pattern
+     * @param array{repeat: string, start: string, until?: ?string, type: string, weekday?: ?int, day?: ?int, days?: ?list<int>, every?: ?int} $pattern
      *        start: desde qué día existe (y, si no se dice otra cosa, de él salen el día de la semana y el del mes).
+     *        days: `.129`, los días de la semana que marcó el dueño (1 = lunes … 7 = domingo); every: cada cuántas semanas o días.
      * @return list<array{date: string, due: string, moved: bool}>
      */
     public static function dates(array $pattern, CarbonImmutable $from, CarbonImmutable $to): array
@@ -61,8 +69,10 @@ final class Schedule
         }
 
         $out = [];
+        // .129: el domingo que marcó el dueño entre los días de la semana se queda el domingo: lo eligió él
+        $keepSunday = $repeat === 'weekly' && !empty($pattern['days']);
         foreach (self::dueDates($repeat, $pattern, $start, $lo, $hi) as $due) {
-            $date = self::shift($due, $repeat, $pattern['type']);
+            $date = $keepSunday ? $due : self::shift($due, $repeat, $pattern['type']);
             if ($date->gte($from) && $date->lte($to)) {
                 $out[] = ['date' => $date->toDateString(), 'due' => $due->toDateString(), 'moved' => !$date->eq($due)];
             }
@@ -136,7 +146,8 @@ final class Schedule
         $start = CarbonImmutable::parse($pattern['start']);
         $label = match ($pattern['repeat']) {
             'none' => 'Solo el ' . $start->format('d/m/Y'),
-            'weekly' => 'Cada semana, los ' . self::plural(self::WEEKDAYS[$pattern['weekday'] ?? $start->dayOfWeekIso]),
+            'weekly' => self::weeklyLabel(($pattern['days'] ?? null) ?: [(int) ($pattern['weekday'] ?? $start->dayOfWeekIso)], (int) ($pattern['every'] ?? 1)),
+            'every_days' => 'Cada ' . max(2, (int) ($pattern['every'] ?? 2)) . ' días, desde el ' . $start->format('d/m/Y'),
             'monthly' => self::monthlyLabel((int) ($pattern['day'] ?? $start->day)),
             'twice_monthly' => 'El 15 y el último de cada mes',
             'daily' => 'De lunes a sábado',
@@ -178,9 +189,23 @@ final class Schedule
                 }
                 break;
             case 'weekly':
-                $weekday = (int) ($pattern['weekday'] ?? $start->dayOfWeekIso);
-                for ($d = $lo->addDays(($weekday - $lo->dayOfWeekIso + 7) % 7); $d->lte($hi); $d = $d->addWeek()) {
-                    $days[] = $d;
+                // .129: los días que marcó el dueño (en las de antes, el de la fecha de inicio), cada 1 a 4 semanas desde la de inicio
+                $weekdays = ($pattern['days'] ?? null) ?: [(int) ($pattern['weekday'] ?? $start->dayOfWeekIso)];
+                $every = max(1, (int) ($pattern['every'] ?? 1));
+                $week0 = $start->startOfWeek(CarbonInterface::MONDAY);
+                for ($d = $lo; $d->lte($hi); $d = $d->addDay()) {
+                    $week = intdiv((int) round(abs($week0->diffInDays($d->startOfWeek(CarbonInterface::MONDAY)))), 7);
+                    if (in_array($d->dayOfWeekIso, $weekdays, true) && $week % $every === 0) {
+                        $days[] = $d;
+                    }
+                }
+                break;
+            case 'every_days':
+                $every = max(2, (int) ($pattern['every'] ?? 2));
+                for ($d = $lo; $d->lte($hi); $d = $d->addDay()) {
+                    if ((int) round(abs($start->diffInDays($d))) % $every === 0) {
+                        $days[] = $d;
+                    }
                 }
                 break;
             case 'daily':
@@ -217,6 +242,16 @@ final class Schedule
             'last_workday' => [$last->isSunday() ? $last->subDay() : $last],
             default => [],
         };
+    }
+
+    /** "Cada semana, los jueves", "Cada semana, los martes y jueves", "Cada 2 semanas, los lunes". */
+    private static function weeklyLabel(array $weekdays, int $every): string
+    {
+        sort($weekdays);
+        $names = array_map(fn ($d) => self::plural(self::WEEKDAYS[(int) $d]), $weekdays);
+        $list = count($names) > 1 ? implode(', ', array_slice($names, 0, -1)) . ' y ' . end($names) : $names[0];
+
+        return ($every > 1 ? "Cada {$every} semanas" : 'Cada semana') . ", los {$list}";
     }
 
     private static function monthlyLabel(int $day): string
