@@ -272,14 +272,29 @@ describe('Las entregas con archivo', function () {
             ->and($a->path)->toStartWith('creativos/p5/B0110-POSP/C0457-POSP-v1-');
 
         $delivery = (new EditorWork())->deliver(CreativeBatch::find(1), User::find(10),
-            ($this->data)([['id' => 21, 'file_id' => $a->id, 'hook' => 'Así quedé'], ['id' => 22, 'file_id' => $b->id, 'hook' => 'Mira esto']]));
+            ($this->data)([['id' => 21, 'file_id' => $a->id, 'style' => 'ugc'], ['id' => 22, 'file_id' => $b->id, 'style' => 'testimonio']]));
 
-        expect($delivery->pieces[0])->toMatchArray(['piece_id' => 21, 'file_id' => $a->id, 'link' => null])
+        expect($delivery->pieces[0])->toMatchArray(['piece_id' => 21, 'file_id' => $a->id, 'link' => null, 'style' => 'ugc'])
             ->and(CreativeBatchPiece::find(21)->file_id)->toBe($a->id)
+            // .133: el formato que eligió el editor queda en la pieza; el hook ya no se escribe
+            ->and(CreativeBatchPiece::find(22)->style)->toBe('testimonio')
+            ->and(CreativeBatchPiece::find(22)->hook)->toBeNull()
             ->and(CreativeBatch::find(1)->status)->toBe('review');
         $fields = EditorWork::fields(CreativeBatch::with('deliveries')->find(1), ['id' => 1, 'role' => 'Admin']);
         expect($fields['deliveries'][0]['pieces'][0]['file'])->toMatchArray(['name' => 'C0457 POSP.mp4', 'type' => 'video'])
             ->and($fields['deliveries'][0]['pieces'][0]['file']['url'])->toContain('/api/files/local/' . $a->id);
+    });
+
+    it('.133: sin el formato de cada pieza no se entrega (el hook ya no se pide)', function () {
+        $a = ($this->upload)(21);
+        $b = ($this->upload)(22, 'otro video');
+
+        expect(fn () => (new EditorWork())->deliver(CreativeBatch::find(1), User::find(10),
+            ($this->data)([['id' => 21, 'file_id' => $a->id, 'style' => 'ugc'], ['id' => 22, 'file_id' => $b->id, 'style' => 'cualquiera']])))
+            ->toThrow(ValidationException::class, 'C0458: elige su formato (testimonio, UGC, venta directa…).')
+            ->and(\App\Services\Meta\Queue\EditorRules::deliveryStyles())
+            ->toMatchArray(['imagen' => 'Imagen', 'ugc' => 'UGC', 'animado' => 'Animación con IA', 'venta_directa' => 'Venta directa', 'otro' => 'Otro'])
+            ->and(CreativeBatch::find(1)->status)->not->toBe('review');
     });
 
     it('.102: los videos de un batch para la misión de lanzar: su nombre de Meta, ver y bajar; los de Drive, con su enlace', function () {
@@ -314,13 +329,13 @@ describe('Las entregas con archivo', function () {
     it('en una corrección, la pieza que no se volvió a subir sigue con su archivo', function () {
         $a = ($this->upload)(21);
         $b = ($this->upload)(22);
-        (new EditorWork())->deliver(CreativeBatch::find(1), User::find(10), ($this->data)([['id' => 21, 'file_id' => $a->id, 'hook' => 'h'], ['id' => 22, 'file_id' => $b->id, 'hook' => 'h']]));
+        (new EditorWork())->deliver(CreativeBatch::find(1), User::find(10), ($this->data)([['id' => 21, 'file_id' => $a->id, 'style' => 'ugc'], ['id' => 22, 'file_id' => $b->id, 'style' => 'ugc']]));
         DB::table('creative_batch_deliveries')->update(['review' => 'returned']);
         DB::table('creative_batches')->update(['status' => 'production']);
 
         $c = ($this->upload)(22, 'video corregido');
         expect($c->version)->toBe(2)->and($c->path)->toContain('-v2-');
-        $v2 = (new EditorWork())->deliver(CreativeBatch::find(1), User::find(10), ($this->data)([['id' => 21, 'hook' => 'h'], ['id' => 22, 'file_id' => $c->id, 'hook' => 'h']]));
+        $v2 = (new EditorWork())->deliver(CreativeBatch::find(1), User::find(10), ($this->data)([['id' => 21, 'style' => 'ugc'], ['id' => 22, 'file_id' => $c->id, 'style' => 'ugc']]));
 
         expect(array_column($v2->pieces, 'file_id'))->toBe([$a->id, $c->id]);
     });
@@ -328,7 +343,7 @@ describe('Las entregas con archivo', function () {
     it('sin archivo no se entrega, y el archivo de otra pieza no sirve', function () {
         $a = ($this->upload)(21);
         expect(fn () => (new EditorWork())->deliver(CreativeBatch::find(1), User::find(10),
-            ($this->data)([['id' => 21, 'file_id' => $a->id, 'hook' => 'h'], ['id' => 22, 'file_id' => $a->id, 'hook' => 'h']])))
+            ($this->data)([['id' => 21, 'file_id' => $a->id, 'style' => 'ugc'], ['id' => 22, 'file_id' => $a->id, 'style' => 'ugc']])))
             ->toThrow(ValidationException::class, 'C0458: sube el video o la imagen de esta pieza.');
     });
 
@@ -356,7 +371,7 @@ describe('Las entregas con archivo', function () {
     it('apagado, se entrega con el enlace de Drive como siempre', function () {
         config(['files.driver' => 'off']);
         $link = 'https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz012345/view';
-        $d = (new EditorWork())->deliver(CreativeBatch::find(1), User::find(10), ($this->data)([['id' => 21, 'link' => $link, 'hook' => 'h'], ['id' => 22, 'link' => $link, 'hook' => 'h']]));
+        $d = (new EditorWork())->deliver(CreativeBatch::find(1), User::find(10), ($this->data)([['id' => 21, 'link' => $link, 'style' => 'ugc'], ['id' => 22, 'link' => $link, 'style' => 'ugc']]));
 
         expect($d->pieces[0])->toMatchArray(['link' => $link, 'file_id' => null]);
     });
@@ -467,13 +482,13 @@ describe('Las entregas con archivo', function () {
         $b = ($this->upload)(22);
         $base = ['concept' => 'C', 'angle' => 'A'];
         expect(fn () => (new EditorWork())->deliver(CreativeBatch::find(1), User::find(10), $base + ['pieces' => [
-            ['id' => 21, 'file_id' => $a->id, 'hook' => 'h', 'source' => 'reference', 'reference_id' => $ref->id],
-            ['id' => 22, 'file_id' => $b->id, 'hook' => 'h']]]))
+            ['id' => 21, 'file_id' => $a->id, 'style' => 'ugc', 'source' => 'reference', 'reference_id' => $ref->id],
+            ['id' => 22, 'file_id' => $b->id, 'style' => 'ugc']]]))
             ->toThrow(ValidationException::class, 'C0458: di de dónde salió (una referencia de la biblioteca o idea propia).');
 
         (new EditorWork())->deliver(CreativeBatch::find(1), User::find(10), $base + ['pieces' => [
-            ['id' => 21, 'file_id' => $a->id, 'hook' => 'h', 'source' => 'reference', 'reference_id' => $ref->id],
-            ['id' => 22, 'file_id' => $b->id, 'hook' => 'h', 'source' => 'own']]]);
+            ['id' => 21, 'file_id' => $a->id, 'style' => 'ugc', 'source' => 'reference', 'reference_id' => $ref->id],
+            ['id' => 22, 'file_id' => $b->id, 'style' => 'ugc', 'source' => 'own']]]);
         DB::table('creative_batch_pieces')->where('id', 21)->update(['result' => 'Ganó']);
 
         $editor = ReferenceLibrary::list(['id' => 10, 'role' => 'Editor de video'])[0];
@@ -496,7 +511,7 @@ describe('Las entregas con archivo', function () {
         $a = ($this->upload)(21);
         $b = ($this->upload)(22);
         expect(fn () => (new EditorWork())->deliver(CreativeBatch::find(1), User::find(10), ['concept' => 'C', 'angle' => 'A', 'pieces' => [
-            ['id' => 21, 'file_id' => $a->id, 'hook' => 'h', 'source' => 'iteration'], ['id' => 22, 'file_id' => $b->id, 'hook' => 'h', 'source' => 'own']]]))
+            ['id' => 21, 'file_id' => $a->id, 'style' => 'ugc', 'source' => 'iteration'], ['id' => 22, 'file_id' => $b->id, 'style' => 'ugc', 'source' => 'own']]]))
             ->toThrow(ValidationException::class, 'este encargo no es la iteración de un ganador');
     });
 
@@ -507,8 +522,8 @@ describe('Las entregas con archivo', function () {
         $b = ($this->upload)(22);
 
         (new EditorWork())->deliver(CreativeBatch::find(1), User::find(10), ['concept' => 'C', 'angle' => 'A', 'pieces' => [
-            ['id' => 21, 'file_id' => $a->id, 'hook' => 'h', 'source' => 'reference', 'reference_id' => $ref->id],
-            ['id' => 22, 'file_id' => $b->id, 'hook' => 'h']]]);
+            ['id' => 21, 'file_id' => $a->id, 'style' => 'ugc', 'source' => 'reference', 'reference_id' => $ref->id],
+            ['id' => 22, 'file_id' => $b->id, 'style' => 'ugc']]]);
 
         expect(CreativeBatchPiece::find(21))->source->toBe('iteration')->source_reference_id->toBeNull()
             ->and(CreativeBatchPiece::find(22))->source->toBe('iteration');

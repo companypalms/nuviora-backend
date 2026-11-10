@@ -25,6 +25,22 @@ final class EditorRules
     /** Lo que se puede hacer con un encargo: asignar, empezar, entregar y revisar. */
     public const ACTIONS = ['assign', 'start', 'deliver', 'review'];
 
+    /**
+     * `.133`: los formatos que el editor elige al entregar cada pieza (en vez de escribir el hook), en el orden del dueño, más
+     * "Otro". Son los mismos estilos de "Lo que sabemos" (QueueRules::STYLES) más la imagen.
+     *
+     * @return array<string, string>
+     */
+    public static function deliveryStyles(): array
+    {
+        $out = [];
+        foreach (PieceRules::FORMAT_ORDER as $s) {
+            $out[$s] = (string) PieceRules::formatLabel($s);
+        }
+
+        return $out + ['otro' => QueueRules::STYLES['otro']];
+    }
+
     /** Lo que se puede reasignar: lo que todavía no se entregó. */
     private const ASSIGNABLE = ['approved', 'production'];
 

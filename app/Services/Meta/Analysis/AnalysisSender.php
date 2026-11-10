@@ -8,6 +8,7 @@ use App\Models\MetaAnalysis;
 use App\Models\MetaCreative;
 use App\Services\Meta\Decisions\DecisionSettings;
 use App\Services\Meta\Queue\BatchQueue;
+use App\Services\Meta\Queue\IterationRules;
 use App\Services\Meta\Queue\PieceFacts;
 use App\Services\Meta\Queue\PieceRules;
 use Illuminate\Support\Facades\DB;
@@ -53,31 +54,48 @@ class AnalysisSender
      * la fecha más cercana de las que le faltan. Lo demás lo piden las reglas (QueueProposer).
      *
      * @param array<int, list<string>> $quotas producto => las fechas de los encargos que le faltan (Y-m-d)
-     * @return array{sent: list<string>, used: array<int, array<int, string>>} used: producto => [id del encargo => fecha]
+     * `.133`: los creativos que hoy no se iteran (skipped), para que las reglas (ProposalRules) tampoco los iteren.
+     *
+     * @return array{sent: list<string>, used: array<int, array<int, string>>, skipped: list<int>} used: producto => [id del encargo => fecha]
      */
     public function fill(MetaAnalysis $analysis, array $quotas): array
     {
         $today = now(config('app.timezone'))->toDateString();
         $pieces = max(1, (int) $this->settings->get()['batch_pieces']);
-        $out = ['sent' => [], 'used' => []];
-        foreach (self::picks($analysis->facts ?? []) as $c) {
+        $out = ['sent' => [], 'used' => [], 'skipped' => []];
+        $picks = self::picks($analysis->facts ?? []);
+        $state = IterationRules::state(array_map(fn ($c) => (int) $c['creative']['id'], $picks));
+        foreach ($picks as $c) {
             $date = $quotas[$c['product_id']][0] ?? null;
             $id = (int) $c['creative']['id'];
-            // Sin fecha que cubrir, o ya hay una iteración de ese creativo en camino
-            if ($date === null || CreativeBatch::where('reference_creative_id', $id)->whereIn('status', ['approved', 'production', 'review'])->exists()) {
+            if ($date === null) {
+                continue;
+            }
+            // .133: una variación a la vez: si la anterior de ese creativo todavía no tiene resultado, hoy no se le pide otra
+            if (in_array($id, $state['busy'], true)) {
+                $out['skipped'][] = $id;
                 continue;
             }
             if (!empty($c['creative']['off_winner'])
                 && CreativeBatch::where('reference_creative_id', $id)->whereNotIn('status', ['proposed', 'discarded'])->where('created_at', '>=', now()->subDays(self::OFF_AGAIN_DAYS))->exists()) {
+                $out['skipped'][] = $id;
                 continue;
             }
-            $batch = DB::transaction(function () use ($c, $id, $pieces, $today, $date) {
+            $batch = DB::transaction(function () use ($c, $id, $pieces, $today, $date, $state) {
                 $batch = CreativeBatch::where('reference_creative_id', $id)->where('status', 'proposed')->orderByDesc('id')->first()
-                    ?? $this->create($c, $pieces, $today);
+                    ?? $this->create($c, $pieces, $today, $state['prev'][$id] ?? []);
+                if ($batch === null) {
+                    return null;
+                }
                 $batch->forceFill(['due_date' => $date])->save();
 
                 return $this->queue->approve($batch, null);
             });
+            // .133: ya se le probó todo lo que se le puede variar ahora (hook y formato): va un concepto nuevo
+            if ($batch === null) {
+                $out['skipped'][] = $id;
+                continue;
+            }
             $out['sent'][] = (string) $batch->code();
             $out['used'][$c['product_id']][$batch->id] = $date;
         }
@@ -212,8 +230,11 @@ class AnalysisSender
     /**
      * Una iteración nueva de ese creativo, con las indicaciones del análisis (queda propuesta; enseguida se aprueba).
      * `.81`: cada pieza con qué prueba, qué hacer y su hipótesis; un ganador sano, 2 formatos + 1 hook (PieceRules).
+     * `.133`: sin repetir el tipo de la variación anterior de ese creativo ($prev); null si ya no queda qué variarle.
+     *
+     * @param list<string> $prev los tipos de la variación anterior (IterationRules::state)
      */
-    private function create(array $c, int $pieces, string $today): CreativeBatch
+    private function create(array $c, int $pieces, string $today, array $prev = []): ?CreativeBatch
     {
         $cr = $c['creative'];
         $creative = MetaCreative::find((int) $cr['id'], ['id', 'product_id', 'angle_code', 'type']);
@@ -229,6 +250,15 @@ class AnalysisSender
                 PieceFacts::exclude($productId, (int) $cr['id']));
         }
         $plan = PieceRules::plan($healthy ? null : ($fix ?? 'fatigue'), $pieces, $formats, $base);
+        if ($prev !== []) {
+            $stats ??= PieceFacts::formatStats();
+            $plan = IterationRules::avoidRepeat($plan, $prev, PieceRules::pickFormats($pieces, $stats[$productId] ?? [], PieceFacts::others($stats, $productId),
+                PieceFacts::exclude($productId, (int) $cr['id'])), $base);
+            if ($plan === null) {
+                return null;
+            }
+            $formats = array_values(array_filter(array_map(fn ($p) => $p['test'] === 'format' && $p['style'] ? ['style' => $p['style'], 'reason' => (string) $p['reason']] : null, $plan)));
+        }
         $kinds = array_unique(array_column($plan, 'format'));
         $batch = CreativeBatch::create(self::brief($call, $cr['video']['iterate'] ?? null, $pieces,
             array_map(fn ($f) => (string) PieceRules::formatLabel($f['style']), array_slice($formats, 0, $pieces - 1))) + [

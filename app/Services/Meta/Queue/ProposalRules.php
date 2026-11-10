@@ -39,10 +39,12 @@ final class ProposalRules
      * @param array<int, list<string>> $quotas producto => las fechas (Y-m-d) de los encargos que le faltan
      * @param list<list<array>> $testing .65: los batches que faltan de los productos en testeo, por producto (ya armados)
      * @param array<int, int> $done los que ya se pidieron hoy de ese producto (para variar el tipo: el primero, el segundo…)
+     * @param array{skip?: list<int>, prev?: array<int, list<string>>} $iterations `.133`: los creativos que hoy no se iteran
+     *        (su variación anterior no tiene resultado o ya se le probó todo) y los tipos de la última variación de cada uno
      * @return list<array{product_id: int, product: string, kind: string, angle_code: ?string, reference_id: ?int, reference: ?string,
      *     reference_type: ?string, city_id: ?int, city: ?string, format: string, iterate: ?string, urgency: ?int, reason: string, due: string}>
      */
-    public static function plan(array $decisions, array $quotas, array $testing = [], array $done = []): array
+    public static function plan(array $decisions, array $quotas, array $testing = [], array $done = [], array $iterations = []): array
     {
         $products = [];
         foreach ($decisions as $pid => $d) {
@@ -57,9 +59,9 @@ final class ProposalRules
         usort($products, fn ($a, $b) => [$a['level'], -$a['risk'], $a['d']['product']['name']] <=> [$b['level'], -$b['risk'], $b['d']['product']['name']]);
 
         $out = [];
-        $add = function (array $p) use (&$out) {
+        $add = function (array $p) use (&$out, $iterations) {
             foreach ($p['dates'] as $n => $date) {
-                $out[] = self::one($p['d'], $p['done'] + $n, $p['city']) + ['due' => $date];
+                $out[] = self::one($p['d'], $p['done'] + $n, $p['city'], $iterations) + ['due' => $date];
             }
         };
         array_map($add, array_filter($products, fn ($p) => $p['level'] <= 2));
@@ -94,9 +96,22 @@ final class ProposalRules
         return $sequence[min($n, count($sequence) - 1)];
     }
 
-    private static function one(array $d, int $n, array $city): array
+    private static function one(array $d, int $n, array $city, array $iterations = []): array
     {
         $work = $d['plan']['work'] ?? [];
+        // .133 (dueño: "me parece raro que el sistema pida dos veces que haga iteraciones de hook de un mismo creativo"): un
+        // creativo con una variación sin resultado no se itera; la siguiente no repite el tipo de la anterior
+        $test = null;
+        if ($w = $work['winner'] ?? null) {
+            $natural = ($w['type'] ?? null) === 'image' ? 'format'
+                : (($w['iterate_key'] ?? null) === null ? 'winner_hook' : (self::PIECE_TEST[$w['iterate_key']] ?? 'iteration'));
+            $test = in_array((int) $w['id'], $iterations['skip'] ?? [], true) ? null : IterationRules::nextTest($natural, $iterations['prev'][(int) $w['id']] ?? []);
+            if ($test === null) {
+                $work['winner'] = null;
+            } elseif ($test !== $natural) {
+                $work['winner']['iterate'] = $test === 'format' ? 'el formato: el mismo mensaje en otro formato' : 'el hook (los primeros segundos)';
+            }
+        }
         // .65: un ángulo que perdió en un testeo no recibe más encargos; un ángulo nuevo es primero uno de la ficha sin probar
         // .116: tampoco uno en descanso; y lo que eligió el dueño va primero
         $pa = ($d['profile_angles'] ?? []) + ['order' => [], 'lost' => [], 'used' => [], 'chosen' => null];
@@ -136,10 +151,8 @@ final class ProposalRules
             'reference_id' => $ref['id'] ?? null, 'reference' => $ref['label'] ?? null, 'reference_type' => $ref['type'] ?? null,
             'city_id' => $city['city_id'], 'city' => $city['city'], 'format' => 'video', 'iterate' => $iterate, 'urgency' => (int) $u['level'],
             // .99: qué prueba cada pieza (una iteración: el hook, un tramo o el formato; lo demás, el tipo del encargo)
-            'piece_test' => $kind !== 'iteration' ? $kind
-                : (($ref['type'] ?? null) === 'image' ? 'format'
-                    // .128: sin nada flojo es un ganador sano (la hipótesis no dice que el hook rate fue bajo)
-                    : (($winner['iterate_key'] ?? null) === null ? 'winner_hook' : (self::PIECE_TEST[$winner['iterate_key']] ?? 'iteration'))),
+            // .128: sin nada flojo es un ganador sano (la hipótesis no dice que el hook rate fue bajo); .133: sin repetir el tipo
+            'piece_test' => $kind !== 'iteration' ? $kind : $test,
             'reason' => $u['label'] . ($u['reasons'] ? ': ' . implode('; ', $u['reasons']) : '') . '.',
         ];
     }

@@ -121,7 +121,7 @@ final class PieceRules
         return $test === 'format' && $style !== null ? 'Formato ' . self::formatLabel($style) : (self::TESTS[$test] ?? 'Sin dato');
     }
 
-    private static function piece(string $test, ?string $style, string $format, ?string $reason = null): array
+    public static function piece(string $test, ?string $style, string $format, ?string $reason = null): array
     {
         $label = self::formatLabel($style);
         $in = $style === 'imagen' ? 'en imagen' : 'en formato ' . ($style === 'ugc' ? 'UGC' : mb_strtolower((string) $label));

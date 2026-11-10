@@ -169,6 +169,9 @@ describe('.119: un ganador ya apagado sigue en la fila de iteraciones', function
             $t->date('due_date')->nullable();
             $t->timestamps();
         });
+        // .133: lo que probó cada variación anterior (para no repetir el tipo)
+        Schema::dropIfExists('creative_batch_pieces');
+        Schema::create('creative_batch_pieces', fn ($t) => [$t->id(), $t->unsignedBigInteger('creative_batch_id'), $t->unsignedInteger('position')->nullable(), $t->string('test')->nullable()]);
         $row = fn (int $number, string $status, int $ago) => DB::table('creative_batches')->insert(['number' => $number, 'status' => $status, 'reference_creative_id' => 5,
             'created_at' => now()->subDays($ago), 'updated_at' => now()->subDays($ago)]);
         $settings = Mockery::mock(DecisionSettings::class);
@@ -188,5 +191,11 @@ describe('.119: un ganador ya apagado sigue en la fila de iteraciones', function
         expect($sent(['off_winner' => true]))->toBe([])
             // …pero a uno prendido se le sigue pidiendo como siempre
             ->and($sent([]))->toBe(['B0201']);
+
+        // .133: una variación de ese creativo sin resultado (en la banca, en test…) no deja pedir otra, y las reglas lo saben
+        DB::table('creative_batches')->where('number', 201)->update(['status' => 'bank']);
+        $r = (new AnalysisSender($settings, $queue))->fill(new MetaAnalysis(['facts' => [['product_id' => 1149, 'mode' => 'normal', 'urgency' => ['level' => 2], 'creatives' => [],
+            'off_winners' => [['id' => 5, 'label' => 'CREATIVO 5', 'verdict_key' => 'failing', 'call' => ['key' => 'iterate', 'editor' => 'Haz hooks nuevos.']]]]]]), [1149 => ['2026-11-11']]);
+        expect($r['sent'])->toBe([])->and($r['skipped'])->toBe([5]);
     });
 });

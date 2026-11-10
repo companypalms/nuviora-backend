@@ -25,6 +25,9 @@
 - En una variación, debajo del título están "La hipótesis" (por qué se pide) y "Cómo hacerlo" (ideas generales; por
   ejemplo, buscar hooks ya validados de ese ángulo en la biblioteca de anuncios o en redes sociales y conectarlos a ese
   creativo). El sistema no te dicta textos, frases ni speech: cómo hacerlo lo decides tú.
+- De un mismo creativo se pide una variación a la vez: mientras la anterior no tenga resultado (en producción, en la
+  banca o en test), no se pide otra. Y la siguiente prueba otra cosa: si la anterior fue de hook, la siguiente es de
+  formato (y al revés). Si ves dos encargos con el mismo título, son dos encargos distintos: mira su código (B0…).
 - Orden: primero lo que te devolvieron, después lo atrasado, después por fecha.
 - Si te lo devolvieron, arriba ves lo que pidió quien revisó, con el código de cada pieza.
 - Si al asignarte eligieron una referencia sugerida, la ves en el encargo con su video ("Parte de esta referencia").
@@ -45,7 +48,8 @@
    iteración (variación) de un ganador, no eliges nada: ya dice "Iteración (variación) de C0146 ABCD" y no se cambia.
 4. Si la referencia no está, toca "¿No está en la biblioteca? Súbela".
 5. Antes de entregar puedes tocar "Comparar con REF…" para ver tu pieza al lado de la referencia.
-6. Escribe el hook de cada pieza: lo primero que se dice o se lee.
+6. Elige el formato de cada pieza (obligatorio): Testimonio, UGC, Venta directa, Animación con IA, Entrevista, Demostración,
+   Antes y después, Problema–solución, Imagen u Otro. El hook ya no se escribe.
 7. Arriba dice cuántas piezas están listas ("N de M listas"). Cuando estén todas, entrega.
 - En una corrección, sube solo las piezas que cambiaste.
 - Videos: mp4, mov o webm, hasta 1 GB. También imágenes.

@@ -31,7 +31,7 @@ final class QueueRules
 
     /** .66: el estilo del encargo (para aprender qué formato funciona en cada producto). */
     public const STYLES = [
-        'testimonio' => 'Testimonio', 'animado' => 'Video animado', 'venta_directa' => 'Venta directa', 'demostracion' => 'Demostración',
+        'testimonio' => 'Testimonio', 'animado' => 'Animación con IA', 'venta_directa' => 'Venta directa', 'demostracion' => 'Demostración',
         'ugc' => 'UGC', 'antes_despues' => 'Antes y después', 'problema_solucion' => 'Problema–solución',
         'entrevista' => 'Entrevista', // .81 (dueño, 2026-11-02)
         'otro' => 'Otro',

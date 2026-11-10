@@ -236,8 +236,10 @@ class EditorWork
                 } elseif (!$files && EditorRules::driveFileId($g['link'] ?? null) === null) {
                     $errors["pieces.{$i}.link"] = "{$name}: " . EditorRules::linkProblem($g['link'] ?? null);
                 }
-                if (trim((string) ($g['hook'] ?? '')) === '') {
-                    $errors["pieces.{$i}.hook"] = "{$name}: escribe el hook (o el texto principal, si es una imagen).";
+                // .133 (dueño, 2026-11-10: "no quiero que le pida a nadie escribir el hook del video, toma mucho tiempo"; "debe
+                // elegir el concepto o formato… si es un testimonio, venta directa, UGC, animación con IA"): el formato, de la lista
+                if (!isset(EditorRules::deliveryStyles()[(string) ($g['style'] ?? '')])) {
+                    $errors["pieces.{$i}.style"] = "{$name}: elige su formato (testimonio, UGC, venta directa…).";
                 }
                 $source = $sourceOf($p);
                 if (!isset(ReferenceLibrary::SOURCES[(string) $source])) {
@@ -254,13 +256,14 @@ class EditorWork
 
             $rows = $pieces->map(fn (CreativeBatchPiece $p) => ['piece_id' => $p->id, 'code' => $p->code(),
                 'link' => $files ? null : trim($given[$p->id]['link']), 'file_id' => $files ? $fileOf($p) : null,
-                'hook' => trim($given[$p->id]['hook']), 'source' => $sourceOf($p), 'reference_id' => $refOf($p)])->values()->all();
+                'style' => (string) $given[$p->id]['style'], 'source' => $sourceOf($p), 'reference_id' => $refOf($p)])->values()->all();
             $delivery = CreativeBatchDelivery::create([
                 'creative_batch_id' => $batch->id, 'version' => (int) $batch->deliveries()->max('version') + 1, 'editor_id' => $actor->id,
                 'concept' => trim($data['concept']), 'angle' => trim($data['angle']), 'notes' => trim((string) ($data['notes'] ?? '')) ?: null, 'pieces' => $rows,
             ]);
             foreach ($pieces as $i => $p) {
-                $p->forceFill(['link' => $rows[$i]['link'], 'file_id' => $rows[$i]['file_id'], 'hook' => $rows[$i]['hook'],
+                // .133: el formato que eligió el editor (el de verdad: así "Lo que sabemos" aprende qué formato funciona)
+                $p->forceFill(['link' => $rows[$i]['link'], 'file_id' => $rows[$i]['file_id'], 'style' => $rows[$i]['style'],
                     'source' => $rows[$i]['source'], 'source_reference_id' => $rows[$i]['reference_id']])->save();
             }
             $now = now();
@@ -356,7 +359,7 @@ class EditorWork
                 'offer' => $clean($b->offer), 'deliverables' => $clean($b->deliverables), 'due_date' => $b->due_date?->toDateString(),
                 // .81: qué prueba cada pieza y su hipótesis (por qué ese formato y el resultado son del dueño)
                 'pieces' => $b->pieces->map(fn (CreativeBatchPiece $p) => ['id' => $p->id, 'code' => $p->code(), 'change' => $clean($p->change), 'format' => $p->format,
-                    'link' => $p->link, 'file' => $pieceFiles[$p->file_id] ?? null, 'hook' => $p->hook, 'test_label' => PieceRules::TESTS[$p->test] ?? null,
+                    'link' => $p->link, 'file' => $pieceFiles[$p->file_id] ?? null, 'hook' => $p->hook, 'style' => $p->style, 'test_label' => PieceRules::TESTS[$p->test] ?? null,
                     'style_label' => PieceRules::formatLabel($p->style), 'hypothesis' => $clean($p->hypothesis),
                     // .92: de dónde salió (para partir de lo mismo en una corrección)
                     'source' => $p->source, 'reference_id' => $p->source_reference_id])->values()->all(),
@@ -469,7 +472,8 @@ class EditorWork
                 'id' => $d->id, 'version' => $d->label(), 'editor' => $d->editor ? self::name($d->editor) : null, 'delivered_at' => $d->created_at?->toIso8601String(),
                 'concept' => $d->concept, 'angle' => $d->angle, 'notes' => $d->notes,
                 'pieces' => array_map(fn ($p) => $p + ['file' => $files[$p['file_id'] ?? 0] ?? null, 'reference' => $refs[$p['reference_id'] ?? 0] ?? null,
-                    'source_label' => ReferenceLibrary::SOURCES[$p['source'] ?? ''] ?? null], (array) $d->pieces),
+                    'source_label' => ReferenceLibrary::SOURCES[$p['source'] ?? ''] ?? null,
+                    'style_label' => PieceRules::formatLabel($p['style'] ?? null)], (array) $d->pieces), // .133: el formato que eligió
                 'review' => $d->review, 'review_label' => self::REVIEWS[$d->review] ?? $d->review, 'reviewed_by' => $d->reviewer ? self::name($d->reviewer) : null,
                 'reviewed_at' => $d->reviewed_at?->toIso8601String(), 'comment' => $d->comment,
             ])->values()->all(),

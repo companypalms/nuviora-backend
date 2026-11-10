@@ -59,6 +59,8 @@ class EditorQueueController extends Controller
             'corrections_days' => (int) (new \App\Services\Meta\Decisions\DecisionSettings())->get()['corrections_days'],
             // .90: se entrega subiendo cada archivo al sistema (apagado: con el enlace de Drive)
             'uploads' => FileStore::on(),
+            // .133: los formatos para elegir al entregar
+            'styles' => \App\Services\Meta\Queue\EditorRules::deliveryStyles(),
             // .94: los números del juego (racha, a la primera, ganadores; para el líder, también los del equipo)
             'game' => \App\Services\Meta\Queue\EditorGame::for($who, now(config('app.timezone'))->toDateString(),
                 (int) (new \App\Services\Meta\Decisions\DecisionSettings())->get()['corrections_days']),
@@ -94,6 +96,7 @@ class EditorQueueController extends Controller
             'pieces.*.source' => 'nullable|string|in:reference,own,iteration', // .92
             'pieces.*.reference_id' => 'nullable|integer',
             'pieces.*.hook' => 'nullable|string|max:300',
+            'pieces.*.style' => 'nullable|string|max:30', // .133: el formato de cada pieza (EditorWork lo revisa)
         ], [
             'concept.required' => 'Escribe el concepto del batch.',
             'angle.required' => 'Escribe el ángulo que usaste.',

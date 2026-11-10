@@ -64,7 +64,7 @@ describe('Los números de lo que sabemos', function () use ($b) {
     it('sin IA, el resumen sale de los números', function () use ($batches) {
         $s = ProductMemoryRules::example(ProductMemoryRules::facts($batches(), ['GINE', 'ABDO', 'FAJA'], [], []));
         expect($s['works'])->toContain('Estilo Testimonio: ganó 2 de 2 batches.')->toContain('Ángulo GINE · Ginecomastia: ganó 1 de 2 batches (perdió 1).')
-            ->and($s['fails'])->toBe(['Estilo Video animado: ganó 0 de 1 batch (perdió 1).'])
+            ->and($s['fails'])->toBe(['Estilo Animación con IA: ganó 0 de 1 batch (perdió 1).'])
             ->and($s['untested'][0])->toStartWith('ángulos FAJA; estilos demostración, ugc');
     });
 

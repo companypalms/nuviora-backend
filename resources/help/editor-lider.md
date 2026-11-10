@@ -27,6 +27,9 @@
   ABCD". Debajo dice "Por qué hace falta".
 - En una variación también están "La hipótesis" y "Cómo hacerlo" (ideas generales). El sistema no dicta textos, frases ni
   speech: eso lo deciden los editores. El editor de video lee lo mismo que tú.
+- De un mismo creativo se pide una variación a la vez: mientras la anterior no tenga resultado (en producción, en la
+  banca o en test), no se pide otra. Y la siguiente prueba otra cosa: si la anterior fue de hook, la siguiente es de
+  formato (y al revés). Si ves dos encargos con el mismo título, son dos encargos distintos: mira su código (B0…).
 - Si es la iteración de un ganador, "Ver todo el encargo" dice cuál (el nombre de su anuncio en Meta). Si se hizo en el
   sistema, trae su video para ver y bajar. Si es de antes del sistema, dice su nombre completo y su ángulo para buscarlo
   en el Drive antiguo.
@@ -97,7 +100,7 @@ computadora.
    Meta, deja "No" y anótalo en "¿De qué trata?".
 6. Elige el ángulo de la ficha del producto (si elegiste un creativo, ya viene el suyo). Si no te acuerdas, deja "No sé".
 7. Toca la zona punteada y elige todos los videos de la carpeta a la vez (o arrástralos). Cada video es un creativo, en
-   el orden de sus nombres. Quita con la papelera el que no sea de ese batch. El hook es opcional.
+   el orden de sus nombres. Quita con la papelera el que no sea de ese batch.
 8. Elige quién lo hizo (ya dice tú) y, si quieres, de qué trata.
 9. Toca "Cargar a la banca" y no cierres la ventana mientras sube ("Subiendo 2 de 3").
 10. Al terminar dice "B0120 está en la banca", con sus creativos y su nombre en Meta. "Cargar otro batch" para la

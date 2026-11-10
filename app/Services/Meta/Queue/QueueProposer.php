@@ -120,7 +120,11 @@ class QueueProposer
         $later = $now->copy()->addDays((int) $s['reserve_due_days'])->toDateString();
         $testing = array_map(fn ($items) => array_map(fn ($i) => $i + ['due' => $later], $items),
             TestingPhase::candidates(array_values(array_diff(array_intersect($testingIds, $complete), $stopped)), $decisions));
-        $plan = ProposalRules::plan($normal, array_filter($quotas), $testing, $done);
+        // .133: un creativo con una variación sin resultado (o que hoy no se itera) tampoco lo iteran las reglas
+        $winners = array_filter(array_map(fn ($d) => (int) ($d['plan']['work']['winner']['id'] ?? 0), $normal));
+        $iterations = IterationRules::state(array_values($winners));
+        $plan = ProposalRules::plan($normal, array_filter($quotas), $testing, $done,
+            ['skip' => array_values(array_unique([...$iterations['busy'], ...($sent['skipped'] ?? [])])), 'prev' => $iterations['prev']]);
         // .116: sin ángulos disponibles no se pide nada: la IA se lo propone al dueño (solo a él) en su calendario
         $noAngle = array_unique(array_column(array_filter($plan, fn ($p) => $p['needs_angle'] ?? false), 'product_id'));
         $plan = array_values(array_filter($plan, fn ($p) => !($p['needs_angle'] ?? false)));
@@ -280,10 +284,19 @@ class QueueProposer
             'offer' => null, 'deliverables' => $clean($t['entregables'] ?? null),
             'urgency' => $p['urgency'], 'source' => 'rules', 'proposed_on' => $today, 'status' => 'proposed', 'status_at' => now(), 'created_by' => $userId,
         ]);
+        // .133: una variación de formato dice en qué formatos (los que no se probaron, como en la del análisis)
+        $formats = [];
+        if (($p['piece_test'] ?? null) === 'format' && $p['reference_id']) {
+            $stats = PieceFacts::formatStats();
+            $formats = PieceRules::pickFormats($p['pieces'], $stats[$p['product_id']] ?? [], PieceFacts::others($stats, $p['product_id']),
+                PieceFacts::exclude($p['product_id'], (int) $p['reference_id']));
+        }
         for ($i = 0; $i < $p['pieces']; $i++) {
             // .81: cada pieza sabe qué prueba (el tipo del encargo); su hipótesis es la del encargo
             // .99: en una iteración, lo que prueba (el hook, un tramo o el formato), para que el encargo lo diga
-            CreativeBatchPiece::create(['creative_batch_id' => $batch->id, 'position' => $i + 1, 'test' => $p['piece_test'] ?? $p['kind']]);
+            $f = $formats ? $formats[$i % count($formats)] : null;
+            CreativeBatchPiece::create(['creative_batch_id' => $batch->id, 'position' => $i + 1, 'test' => $p['piece_test'] ?? $p['kind']]
+                + ($f ? ['style' => $f['style'], 'format' => $f['style'] === 'imagen' ? 'image' : 'video', 'reason' => $f['reason']] : []));
         }
 
         return $batch;
