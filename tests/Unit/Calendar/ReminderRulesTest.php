@@ -148,6 +148,11 @@ describe('Pagos de la semana', function () use ($on, $dates) {
         expect($o['details'])->toBe('Del lunes 26/10 al domingo 1/11: 3 agencias: 1 pagada y 2 por pagar ($80,50).');
         expect($o['lines'][2])->toBe(['label' => 'Norte', 'value' => '—', 'note' => 'Pendiente de archivo']);
         expect($o['auto_done'])->toBeFalse();
+        // .135: sin archivo, lo que calcula el sistema por sus carreras, dicho así, y entra en el total
+        $facts['closures']['2026-10-26'][2] = ['amount' => 45.0, 'estimated' => true] + $facts['closures']['2026-10-26'][2];
+        $o = ReminderRules::occurrence('agencies_pay', '2026-11-04', '2026-11-04', $facts);
+        expect($o['details'])->toBe('Del lunes 26/10 al domingo 1/11: 3 agencias: 1 pagada y 2 por pagar ($125,50).');
+        expect($o['lines'][2])->toBe(['label' => 'Norte', 'value' => '$45,00', 'note' => 'Pendiente de archivo · calculado por el sistema']);
         $allPaid = ['closures' => ['2026-10-26' => [$closure('Centro', 'Pagado', 120.0, true)]]];
         $done = ReminderRules::occurrence('agencies_pay', '2026-11-04', '2026-11-05', $allPaid);
         expect($done['auto_done'])->toBeTrue();

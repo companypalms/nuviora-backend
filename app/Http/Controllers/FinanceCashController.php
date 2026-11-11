@@ -6,7 +6,6 @@ use App\Models\AccountPayable;
 use App\Models\AgencyWeeklyClosure;
 use App\Models\CashMovement;
 use App\Models\CompanyAccount;
-use App\Models\Earning;
 use App\Models\User;
 use App\Services\Finance\AgencyCash;
 use App\Services\Finance\OtherPayments;
@@ -301,8 +300,7 @@ class FinanceCashController extends Controller
                         'status' => $c->status,
                         'status_label' => AgencyWeeklyClosure::STATUS_LABEL[$c->status] ?? $c->status,
                         // §104: mientras no se apruebe, el monto provisional es lo que el sistema calcula de sus carreras
-                        'provisional' => round((float) ($c->expected_total ?? Earning::where('user_id', $agency->id)->where('role_type', 'agencia')
-                            ->whereBetween('earning_date', [$c->period_start->toDateString(), $c->period_end->toDateString()])->sum('amount_usd')), 2),
+                        'provisional' => $c->provisionalTotal(),
                         'approved' => $c->final_approved_total,
                         'paid_at' => $c->paid_at?->toDateString(),
                         'payment_amount' => $c->payment_amount,

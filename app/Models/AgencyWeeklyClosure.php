@@ -107,6 +107,16 @@ class AgencyWeeklyClosure extends Model
             : "{$from->day} {$month($from)} – {$to->day} {$month($to)}";
     }
 
+    /**
+     * §104: el monto provisional mientras no se apruebe: lo que el sistema calculó del archivo o, si la agencia todavía no
+     * lo sube, lo que ganó por sus carreras esa semana. Finanzas › Agencias y la misión "Pagar a las agencias" (.135).
+     */
+    public function provisionalTotal(): float
+    {
+        return round((float) ($this->expected_total ?? Earning::where('user_id', $this->agency_id)->where('role_type', 'agencia')
+            ->whereBetween('earning_date', [$this->period_start->toDateString(), $this->period_end->toDateString()])->sum('amount_usd')), 2);
+    }
+
     /** §21 y §22: el momento del aviso, en la semana siguiente (por defecto, el miércoles a las 8:00). */
     public function reminderAt(AgencyClosureSetting $setting): Carbon
     {

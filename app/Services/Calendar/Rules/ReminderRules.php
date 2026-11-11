@@ -239,7 +239,8 @@ final class ReminderRules
                 $out['lines'] = array_map(fn (array $r) => [
                     'label' => $r['agency'],
                     'value' => $r['amount'] !== null ? self::money($r['amount']) : '—',
-                    'note' => $r['status_label'],
+                    // .135: sin archivo, el monto es lo que calcula el sistema por sus carreras
+                    'note' => $r['status_label'] . (!empty($r['estimated']) && !$r['paid'] ? ' · calculado por el sistema' : ''),
                 ], $rows);
                 // Un miércoles que todavía no llega no se da por hecho aunque no haya cierres abiertos
                 if ($due <= $today && ($rows === [] || $paid === count($rows))) {

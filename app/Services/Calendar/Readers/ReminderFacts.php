@@ -76,8 +76,11 @@ class ReminderFacts
                         'agency' => PersonName::of($c->agency?->names, $c->agency?->surnames),
                         'status' => $c->status,
                         'status_label' => AgencyWeeklyClosure::STATUS_LABEL[$c->status] ?? $c->status,
-                        // Lo aprobado; si todavía no se aprobó, lo que cobra la agencia o, si no, lo que calculó el sistema
-                        'amount' => $c->final_approved_total ?? $c->reported_total ?? $c->expected_total,
+                        // Lo aprobado; si todavía no se aprobó, lo que cobra la agencia o, si no, lo que calculó el sistema.
+                        // .135 (dueño, 2026-11-11: "por qué no aparece cuánto le tengo que pagar a cada agencia?"): sin
+                        // archivo, lo que ganó por sus carreras esa semana (el provisional de Finanzas › Agencias)
+                        'amount' => $c->final_approved_total ?? $c->reported_total ?? $c->provisionalTotal(),
+                        'estimated' => $c->final_approved_total === null && $c->reported_total === null && $c->expected_total === null,
                         'paid' => $c->status === AgencyWeeklyClosure::PAID,
                     ])
                     ->values()
