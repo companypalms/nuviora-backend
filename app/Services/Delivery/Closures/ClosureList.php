@@ -48,6 +48,10 @@ class ClosureList
             'expected_total' => $c->expected_total,
             'reported_total' => $c->reported_total,
             'difference' => $c->expected_total !== null && $c->reported_total !== null ? round($c->reported_total - $c->expected_total, 2) : null,
+            // .136: si cobra de más, de menos o cuadra (con la tolerancia de la agencia) y, sin archivo, lo que calcula el
+            // sistema por sus carreras (el provisional de Finanzas › Agencias)
+            'gap_verdict' => ClosureGap::verdict($c->expected_total, $c->reported_total, $setting),
+            'provisional' => $c->expected_total === null && $c->reported_total === null ? $c->provisionalTotal() : null,
             'final_approved_total' => $c->final_approved_total,
             'manual_total' => $c->manual_total,
             'manual_reason' => $c->manual_reason,

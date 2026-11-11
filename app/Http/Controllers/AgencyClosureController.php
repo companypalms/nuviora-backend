@@ -10,6 +10,7 @@ use App\Models\AgencyTrip;
 use App\Models\AgencyWeeklyClosure;
 use App\Models\DeliveryAuditLog;
 use App\Models\User;
+use App\Services\Delivery\Closures\ClosureGap;
 use App\Services\Delivery\Closures\ClosureList;
 use App\Services\Delivery\Closures\ClosureMatcher;
 use App\Services\Delivery\Closures\ClosureProcessor;
@@ -32,11 +33,15 @@ class AgencyClosureController extends Controller
     /** §31: la lista de cierres con su resultado. */
     public function index(Request $request, ClosureList $list)
     {
+        $closures = $list->list(
+            $request->filled('agency_id') ? (int) $request->input('agency_id') : null,
+            $request->filled('status') ? (string) $request->input('status') : null,
+        );
+
         return response()->json([
-            'closures' => $list->list(
-                $request->filled('agency_id') ? (int) $request->input('agency_id') : null,
-                $request->filled('status') ? (string) $request->input('status') : null,
-            ),
+            'closures' => $closures,
+            // .136: el marcador de la semana más reciente (lo que calcula el sistema, lo que cobran y la diferencia)
+            'week' => ClosureGap::week($closures),
             'agencies' => $this->agencies(),
             'statuses' => AgencyWeeklyClosure::STATUS_LABEL,
         ]);
@@ -101,6 +106,11 @@ class AgencyClosureController extends Controller
                     'reported' => round($open->sum(fn (AgencyClosureRow $r) => (float) $r->reported_cost), 2),
                     'total' => round($rows->sum(fn (AgencyClosureRow $r) => (float) ($r->discrepancy?->status === 'open' ? $r->reported_cost : $r->approved_cost)), 2),
                 ],
+                // .136: de dónde sale la diferencia entre lo que cobra la agencia y lo que calcula el sistema
+                'gap' => ClosureGap::parts(
+                    $rows->map(fn (AgencyClosureRow $r) => ['kind' => $r->discrepancy?->kind, 'reported' => $r->reported_cost, 'expected' => $r->expected_cost])->all(),
+                    (int) ($closure->summary['trips_without_row'] ?? 0),
+                ),
             ],
             'rows' => $rows->map(fn (AgencyClosureRow $r) => $this->presentRow($r)),
             'files' => $closure->files()->with('uploader:id,names')->get()->map(fn (AgencyClosureFile $f) => [
