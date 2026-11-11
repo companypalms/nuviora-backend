@@ -68,6 +68,7 @@ describe('Escalar', function () {
         'creativos de hoy' => [['new_ads_today' => true], 'creativos nuevos'],
         'liquidación' => [['mode' => 'liquidation'], 'liquidación'],
         '.101: pedidos esperando stock' => [['stock_waiting' => 55], 'hay 55 pedidos esperando stock en esta ciudad: no se sube hasta que llegue'],
+        '.137: la ciudad sin stock' => [['stock_out' => true], 'no hay stock en esta ciudad: no se sube hasta que llegue'],
     ]);
 });
 

@@ -4,6 +4,8 @@ namespace App\Services\Meta\Decisions\Readers;
 
 use App\Constants\OrderStatus;
 use App\Models\CreativeBatch;
+use App\Models\InventoryPurchase;
+use App\Models\InventoryTransfer;
 use App\Models\Setting;
 use App\Models\Status;
 use App\Services\Finance\FinancialCpa;
@@ -21,6 +23,7 @@ use Illuminate\Support\Facades\DB;
  *   mínimos de gasto de sus ad sets;
  * - de cada producto: el stock en cada ciudad (y por talla), cuánto vende por día, si se vende en esa ciudad, su precio,
  *   si el precio cambió hace poco y la versión del CPA de finanzas (para el precio mínimo).
+ * - `.137`: lo que viene en camino a cada ciudad (traslados y compras por recibir) y la fase del producto (En testeo o no).
  */
 class OpsFacts
 {
@@ -153,6 +156,9 @@ class OpsFacts
         // .116: las iteraciones ya testeadas de cada creativo, para no seguir iterando lo que ya perdió
         // .117: las misiones que el dueño descartó con "No estoy de acuerdo": no se vuelven a sugerir
         $dismissed = (array) Setting::get(self::DISMISSED, []);
+        // .137: lo que viene en camino a cada ciudad y si el producto está En testeo (se testea sin mercancía, .89)
+        $incoming = $this->incoming($productIds, $warehouses);
+        $phases = DB::table('product_profiles')->whereIn('product_id', $productIds)->pluck('phase', 'product_id');
         $iterations = CreativeBatch::whereIn('product_id', $productIds)->where('status', 'tested')->where('kind', 'iteration')->whereNotNull('reference_creative_id')->whereNotNull('tested_at')
             ->get(['id', 'product_id', 'number', 'status', 'reference_creative_id', 'result', 'tested_at'])->groupBy('product_id');
 
@@ -170,11 +176,12 @@ class OpsFacts
                     'days_of_stock' => $perDay > 0 ? round(($row['total'] ?? 0) / $perDay, 1) : null,
                     'sizes_out' => array_values(array_map(fn ($v) => $v['title'], array_filter($row['variants'] ?? [], fn ($v) => $v['available'] <= 0))),
                     'waiting' => $waiting["{$pid}|{$cid}"] ?? null,
+                    'incoming' => $incoming["{$pid}|{$cid}"] ?? null,
                     'version' => $versions["{$pid}|{$cid}"] ?? null,
                 ];
             }
             $out[$pid] = ['price' => isset($prices[$pid]) ? (float) $prices[$pid] : null, 'price_change' => $this->priceChange($pid),
-                'cities' => $cities, 'version' => $versions["{$pid}|"] ?? null,
+                'cities' => $cities, 'version' => $versions["{$pid}|"] ?? null, 'phase' => (string) ($phases[$pid] ?? 'iterate'),
                 // .116: los ángulos de la ficha, lo que decidió el dueño y las iteraciones de cada creativo
                 'angles' => TestingPhase::profileAngles((int) $pid),
                 'dismissed' => $dismissed,
@@ -186,6 +193,50 @@ class OpsFacts
                     'launched' => ($launched[$pid] ?? collect())->map(fn ($b) => QueueRules::batchCode((int) $b->number))->values()->all(),
                     'names' => ($bank[$pid] ?? collect())->mapWithKeys(fn ($b) => [QueueRules::batchCode((int) $b->number) => \App\Services\Meta\Naming::batch((int) $b->number,
                         $b->angle_code, ($pieces[$b->id] ?? collect())->pluck('number')->all())])->all()]];
+        }
+
+        return $out;
+    }
+
+    /**
+     * `.137`: lo que viene en camino a cada ciudad, por producto: los traslados en tránsito hacia sus agencias y las compras
+     * al proveedor por recibir (con la fecha más próxima). Como en StockStatus.
+     *
+     * @param array<int, int[]> $warehouses ciudad => almacenes de sus agencias
+     * @return array<string, array{transit: int, purchase: int, at: ?string}> por "producto|ciudad"
+     */
+    private function incoming(array $productIds, array $warehouses): array
+    {
+        $citiesOf = [];
+        foreach ($warehouses as $cid => $ids) {
+            foreach ($ids as $w) {
+                $citiesOf[$w][] = $cid;
+            }
+        }
+        if ($citiesOf === []) {
+            return [];
+        }
+        $out = [];
+        $add = function (int $pid, int $w, int $qty, string $kind, ?string $at = null) use (&$out, $citiesOf) {
+            foreach ($qty > 0 ? $citiesOf[$w] ?? [] : [] as $cid) {
+                $key = "{$pid}|{$cid}";
+                $out[$key] ??= ['transit' => 0, 'purchase' => 0, 'at' => null];
+                $out[$key][$kind] += $qty;
+                if ($at && ($out[$key]['at'] === null || $at < $out[$key]['at'])) {
+                    $out[$key]['at'] = $at;
+                }
+            }
+        };
+        $transit = DB::table('inventory_transfer_lines as l')->join('inventory_transfers as t', 't.id', '=', 'l.transfer_id')
+            ->where('t.status', InventoryTransfer::IN_TRANSIT)->whereIn('l.product_id', $productIds)->whereIn('t.to_warehouse_id', array_keys($citiesOf))
+            ->groupBy('t.to_warehouse_id', 'l.product_id')->selectRaw('t.to_warehouse_id w, l.product_id p, SUM(l.quantity) q')->get();
+        foreach ($transit as $r) {
+            $add((int) $r->p, (int) $r->w, (int) $r->q, 'transit');
+        }
+        $pending = InventoryPurchase::where('status', InventoryPurchase::PENDING)->whereIn('product_id', $productIds)->whereIn('warehouse_id', array_keys($citiesOf))
+            ->get(['product_id', 'warehouse_id', 'quantity', 'expected_at']);
+        foreach ($pending as $p) {
+            $add((int) $p->product_id, (int) $p->warehouse_id, (int) $p->quantity, 'purchase', $p->expected_at?->format('Y-m-d'));
         }
 
         return $out;

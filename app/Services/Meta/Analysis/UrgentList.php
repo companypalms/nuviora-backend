@@ -52,6 +52,10 @@ use App\Services\Meta\Upload\UploadRules;
  *
  * `.126` (dueño, 2026-11-09: "pesa más ganar en dólares, la ganancia siempre va a pesar más"): cada misión de una ciudad dice
  * lo que dejó en 3 días (compras de Meta × BE − gasto), y las de subir salen ordenadas: primero la que más deja.
+ *
+ * `.137` (dueño, 2026-11-11: "que el sistema me avise cuando una campaña en una ciudad está activa pero la ciudad no tiene
+ * stock. Debe salir en mis análisis de Meta todos los días hasta que lo solucione"): una misión de frenar pérdidas por cada
+ * una (`stock_out`), con las dos salidas: mandar stock o pausar la campaña.
  */
 final class UrgentList
 {
@@ -71,7 +75,7 @@ final class UrgentList
         'intervene' => 'arreglar', 'tracking' => 'arreglar', 'hold_prune' => 'arreglar', 'step_down' => 'arreglar', 'few_batches' => 'arreglar', 'min_spend' => 'arreglar',
         'late_urgent' => 'arreglar', 'late_batch' => 'arreglar', 'launch_ready' => 'arreglar', 'no_city' => 'arreglar', 'no_be' => 'arreglar',
         'scale' => 'crecer', 'launch_test' => 'crecer', 'relaunch' => 'crecer', 'new_product_late' => 'crecer',
-        'stock_out' => 'aviso', 'stock_waiting' => 'aviso', 'alarm' => 'aviso', 'price' => 'aviso', 'names' => 'aviso', 'cooldown' => 'aviso', 'angle_rest' => 'aviso', 'left_city' => 'aviso', 'stale' => 'aviso', 'lesson' => 'aviso',
+        'stock_out' => 'frenar', 'stock_waiting' => 'aviso', 'alarm' => 'aviso', 'price' => 'aviso', 'names' => 'aviso', 'cooldown' => 'aviso', 'angle_rest' => 'aviso', 'left_city' => 'aviso', 'stale' => 'aviso', 'lesson' => 'aviso',
     ];
 
     /** Cuántos nombres de creativos caben en la línea del porqué. */
@@ -176,9 +180,11 @@ final class UrgentList
                 }
             }
             foreach ($p['alarms'] as $t) {
+                if (str_contains($t, 'sigue activa')) {
+                    continue; // .137: ya es su misión (stock_out)
+                }
                 $kind = match (true) {
                     str_starts_with($t, 'Tracking') => 'tracking',
-                    str_contains($t, 'sigue activa') => 'stock_out',
                     str_contains($t, 'esperando stock') => 'stock_waiting',
                     default => 'alarm',
                 };
@@ -190,6 +196,10 @@ final class UrgentList
                     'steps' => $kind === 'tracking' ? ['Abre el Administrador de eventos de Meta.', 'Revisa que el píxel y la API de conversiones estén recibiendo las compras.'] : [],
                     'why' => match ($kind) { 'tracking' => self::firstSentence(preg_replace('/^Tracking:\s*/u', '', $t)), 'stock_waiting' => $waiting[1] ?? null, default => null },
                     'detail' => in_array($kind, ['tracking', 'stock_waiting'], true) ? [$t] : []];
+            }
+            // .137: campañas prendidas en una ciudad sin unidades
+            foreach ($p['stock_out'] ?? [] as $o) {
+                $items[] = $base + self::stockOut((int) $p['product_id'], $o, array_column($p['cities'], 'campaign', 'campaign_meta_id')[$o['campaign_meta_id']] ?? null, $short);
             }
             // .125: el producto entero lleva 14 días sin dejar dinero: lo decide el dueño
             if ($p['drop'] ?? null) {
@@ -657,6 +667,44 @@ final class UrgentList
             'tone' => 'warning', 'text' => "{$text}.", 'where' => 'Meta',
             'title' => "{$text}: estas misiones pueden estar hechas con números viejos. Revisa la conexión en Meta Ads › Configuración y vuelve a analizar",
             'steps' => [], 'why' => null, 'detail' => [], 'money' => null, 'severity' => self::SEVERITY['stale'], 'group' => self::GROUP['stale']];
+    }
+
+    /**
+     * `.137`: la campaña sigue prendida y su ciudad no tiene unidades: mandar stock o pausarla (en liquidación no se repone:
+     * solo pausarla). Cada análisis lo vuelve a mirar, así que sale cada día hasta que la ciudad tenga stock o la campaña esté
+     * apagada. No dice cuánto presupuesto mueve: se resuelve igual mandando stock.
+     *
+     * @param array{campaign_meta_id: string, city: ?string, budget: ?float, spend3: float, liquidation: bool,
+     *     waiting: ?array{orders: int, since: string, spent: float}, incoming: ?array{transit: int, purchase: int, at: ?string}} $o
+     */
+    public static function stockOut(int $productId, array $o, ?string $campaign, string $short): array
+    {
+        $pause = 'en Ads Manager, pausa la campaña' . ($campaign ? ' ' . self::q($campaign) : '') . '.';
+        $title = $o['liquidation'] ? 'Se acabó el stock y la campaña sigue prendida: pausa la campaña' : 'Sin stock y la campaña sigue prendida: manda stock o pausa la campaña';
+        $steps = $o['liquidation'] ? [ucfirst($pause)]
+            : ['Si el stock llega pronto: mándalo a la agencia de ' . ($o['city'] ?? 'esa ciudad') . ' y regístralo en Inventario.', "Si no: {$pause}"];
+        $w = $o['waiting'];
+        $in = $o['incoming'];
+        $coming = $in ? array_filter([$in['transit'] > 0 ? "{$in['transit']} en traslado" : null, $in['purchase'] > 0 ? "{$in['purchase']} por recibir del proveedor"
+            . ($in['at'] ? ' (llegan el ' . date('d/m', strtotime($in['at'])) . ')' : '') : null]) : [];
+        $why = implode('; ', array_filter([
+            $o['budget'] ? 'Gasta ' . AdRules::money($o['budget']) . ' por día' : ($o['spend3'] > 0 ? 'Gastó ' . AdRules::money($o['spend3']) . ' en 3 días' : 'Sigue prendida'),
+            match (true) {
+                $o['liquidation'] => 'en liquidación no se repone',
+                $w !== null => ($w['orders'] === 1 ? '1 pedido espera' : "{$w['orders']} pedidos esperan") . ' stock desde el ' . date('d/m', strtotime($w['since'])),
+                default => 'los pedidos que entren se quedan esperando stock',
+            },
+            $coming && !$o['liquidation'] ? 'vienen ' . ($in['transit'] + $in['purchase']) . ' unidades' : null,
+        ]));
+
+        return ['key' => "{$productId}:{$o['campaign_meta_id']}:stock_out", 'city' => $o['city'], 'kind' => 'stock_out', 'label' => 'Sin stock', 'tone' => 'error',
+            'text' => "{$title}.", 'where' => $short . ($o['city'] ? " · {$o['city']}" : ''), 'title' => $title, 'steps' => $steps, 'batches' => [], 'copy' => null,
+            'why' => $why, 'detail' => array_values(array_filter([
+                $w ? ($w['orders'] === 1 ? '1 pedido espera' : "{$w['orders']} pedidos esperan") . ' stock aquí desde el ' . date('d/m', strtotime($w['since']))
+                    . ': la campaña gastó ' . AdRules::money($w['spent']) . ' desde entonces.' : null,
+                $coming ? 'Viene en camino: ' . CreativeCalls::join(array_values($coming)) . '.' : null,
+                'Sale cada día hasta que la ciudad tenga stock o la campaña esté apagada.',
+            ])), 'money' => null];
     }
 
     /** `.117`: el producto se quedó sin ninguna ciudad prendida y no alcanzan los batches para prender una. */

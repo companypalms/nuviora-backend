@@ -106,6 +106,8 @@ final class AnalysisFacts
                 'no_city' => $plan['no_city'] ?? null,
                 // .125: el producto entero lleva 14 días sin dejar dinero: lo decide el dueño
                 'drop' => $plan['drop'] ?? null,
+                // .137: las campañas prendidas en una ciudad sin unidades
+                'stock_out' => $plan['stock_out'] ?? [],
                 // .126: lo que dejó el producto en 3 y en 7 días
                 'gain' => $plan['gain'] ?? null,
                 'cities' => $cities, 'creatives' => $creatives, 'batches' => $batches, 'stop_by_city' => $stopByCity, 'stop_all' => $stopAll,

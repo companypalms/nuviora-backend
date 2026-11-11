@@ -474,6 +474,10 @@ class MetaDecisions
         $relaunchOffers = 0;
         $dismissed = $ops['dismissed'] ?? [];
         $relaunches = false;
+        // .137: las campañas prendidas en una ciudad sin unidades (misión de cada día). Un producto En testeo sin mercancía en
+        // ninguna ciudad se testea así a propósito (.89: "siempre se testea sin ni siquiera pedir la mercancía"): ahí, solo el aviso
+        $stockOut = [];
+        $noGoods = ($ops['phase'] ?? null) === 'testing' && !array_filter($ops['cities'] ?? [], fn ($x) => ($x['stock'] ?? 0) > 0);
         foreach ($f['campaigns'] as $id => $c) {
             $id = (string) $id;
             $h = $history['campaigns'][$id] ?? ['daily' => [], 'budget_events' => [], 'status_events' => [], 'ad_pauses' => [], 'new_ads' => [], 'mins' => 0.0];
@@ -532,10 +536,26 @@ class MetaDecisions
             // .79 (dueño, 2026-11-02): el stock ya no frena la subida ni pide pausar ("al día siguiente ya tenemos productos"):
             // es un aviso, en la alarma del producto y en lo que se propone para la ciudad
             $stockAlert = null;
+            // .101 (dueño, 2026-11-04: 55 pedidos de Termafit esperando stock en Distrito Capital y la campaña gastando): los
+            // pedidos que esperan stock, con lo gastado desde el más viejo; y no se sube el presupuesto ahí hasta que llegue
+            $waiting = $city['waiting'] ?? null;
+            $spent = $waiting ? array_sum(array_column(array_filter($h['daily'], fn ($d) => $d >= $waiting['since'], ARRAY_FILTER_USE_KEY), 'spend')) : 0.0;
+            $noStock = false;
             if ($city) {
                 $low = $city['days_of_stock'] === null ? $city['stock'] <= 0 : $city['days_of_stock'] < $s['stock_warn_days'];
                 $stockNote = 'quedan ' . $city['stock'] . ' unidades' . ($city['days_of_stock'] !== null ? ' (≈' . AdRules::num($city['days_of_stock']) . ' días de ventas)' : '');
-                if ($city['stock'] <= 0) {
+                if ($city['stock'] <= 0 && !$noGoods) {
+                    // .137 (dueño, 2026-11-11: "que me avise cuando una campaña en una ciudad está activa pero la ciudad no tiene
+                    // stock. Debe salir en mis análisis de Meta todos los días hasta que lo solucione de alguna manera, o apagando la
+                    // campaña o añadiendo stock"): una misión de frenar pérdidas, y no se sube ahí hasta que llegue
+                    $noStock = true;
+                    $liquidation = $mode === 'liquidation';
+                    $stockAlert = $liquidation ? 'se acabó el stock en esta ciudad: pausa la campaña' : 'sin stock en esta ciudad: manda stock o pausa la campaña';
+                    $alarms[] = 'Sin stock en ' . ($c['city'] ?? 'una ciudad') . ' y la campaña sigue activa: ' . ($liquidation ? 'pausa la campaña.' : 'manda stock o pausa la campaña.');
+                    $stockOut[] = ['campaign_meta_id' => $id, 'city' => $c['city'] ?? null, 'budget' => $budget !== null ? (float) $budget : null,
+                        'spend3' => (float) ($w3['totals']['spend'] ?? 0), 'liquidation' => $liquidation,
+                        'waiting' => $waiting ? $waiting + ['spent' => round($spent, 2)] : null, 'incoming' => $city['incoming'] ?? null];
+                } elseif ($city['stock'] <= 0) {
                     $stockAlert = 'sin stock en esta ciudad: pide al proveedor (no hace falta pausar)';
                     $alarms[] = 'Sin stock en ' . ($c['city'] ?? 'una ciudad') . ': pide al proveedor.';
                 } elseif ($low) {
@@ -546,13 +566,9 @@ class MetaDecisions
                     $alarms[] = 'Sin stock en ' . ($c['city'] ?? 'una ciudad') . ' de: ' . implode(', ', $city['sizes_out']) . '.';
                 }
             }
-            // .101 (dueño, 2026-11-04: 55 pedidos de Termafit esperando stock en Distrito Capital y la campaña gastando): los
-            // pedidos que esperan stock, con lo gastado desde el más viejo; y no se sube el presupuesto ahí hasta que llegue
-            $waiting = $city['waiting'] ?? null;
-            $stockWaiting = 0;
-            if ($waiting && $waiting['orders'] >= $s['stock_waiting_min']) {
-                $stockWaiting = $waiting['orders'];
-                $spent = array_sum(array_column(array_filter($h['daily'], fn ($d) => $d >= $waiting['since'], ARRAY_FILTER_USE_KEY), 'spend'));
+            $stockWaiting = $waiting && $waiting['orders'] >= $s['stock_waiting_min'] ? $waiting['orders'] : 0;
+            // .137: sin stock, los pedidos que esperan van dentro de su misión (no salen dos veces)
+            if ($stockWaiting > 0 && !$noStock) {
                 $alarms[] = "{$waiting['orders']} pedidos esperando stock en " . ($c['city'] ?? 'una ciudad') . ' desde el ' . date('d/m', strtotime($waiting['since']))
                     . ': la campaña gastó ' . AdRules::money($spent) . ' desde entonces. Manda stock; mientras tanto no se sube el presupuesto ahí.';
             }
@@ -581,7 +597,7 @@ class MetaDecisions
             $action = $cr->action([
                 'c' => $c['target'], 'be' => $c['break_even'], 'be_estimated' => (bool) ($c['break_even_estimated'] ?? false), 'mode' => $mode, 'budget' => $budget,
                 'spend3' => $w3['totals']['spend'] ?? 0, 'purchases3' => $w3['totals']['purchases'] ?? 0, 'cpa7' => $cpa7, 'freq3' => $w3['metrics']['frequency'] ?? null,
-                'stock_alert' => $stockAlert, 'stock_waiting' => $stockWaiting, 'c_source' => $c['target_source'] ?? null,
+                'stock_alert' => $stockAlert, 'stock_waiting' => $stockWaiting, 'stock_out' => $noStock, 'c_source' => $c['target_source'] ?? null,
                 'increased_24h' => collect($h['budget_events'])->contains(fn ($e) => $e['to'] > $e['from'] && strtotime($e['at']) >= strtotime('-24 hours')),
                 'budget_changed_today' => collect($h['budget_events'])->contains(fn ($e) => $e['date'] === $today),
                 'new_ads_today' => in_array($today, $h['new_ads'], true),
@@ -726,6 +742,8 @@ class MetaDecisions
             'price' => $prices,
             'price_watch' => $cr->priceWatch($ops['price_change'] ?? null, $mainCampaign !== null ? ($minFor[$mainCampaign] ?? null) : null),
             'alarms' => array_values(array_unique($alarms)),
+            // .137: las campañas prendidas en una ciudad sin unidades: una misión por cada una
+            'stock_out' => $stockOut,
             // Paso 4b: lo mismo que el trabajo siguiente, en datos, para proponer los encargos
             'work' => ['winner' => $winner, 'main_angle' => $mainAngle, 'rested' => $restedCodes, 'rest_batches' => $restN, 'saturated' => $saturated],
             // .116: los ángulos en descanso y cuál sigue, para el aviso del análisis

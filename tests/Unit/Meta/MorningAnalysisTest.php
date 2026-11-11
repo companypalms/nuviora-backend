@@ -49,9 +49,11 @@ describe('La lista urgente', function () {
         expect(array_column($list, 'product'))->toBe(['C', 'B', 'A']);
     });
 
-    it('las alarmas de stock y "no se vende aquí" son de lo más urgente; las claves no cambian entre versiones', function () {
+    it('sin stock con la campaña prendida y "no se vende aquí" son de lo más urgente; las claves no cambian entre versiones', function () {
+        // .137: la alarma de texto ("sigue activa") ya es su misión: no sale dos veces
         $facts = [producto(1, 'Solo Brillo', 4, 0, [ciudad('m', 'Maracay', 'none', 'No se vende aquí'), ciudad('x', 'Caracas', 'none', 'Nada')],
-            ['Sin stock en Caracas y la campaña sigue activa.', 'Sin stock en Caracas de: S, M.'])];
+            ['Sin stock en Caracas y la campaña sigue activa: manda stock o pausa la campaña.', 'Sin stock en Caracas de: S, M.'])
+            + ['stock_out' => [['campaign_meta_id' => 'x', 'city' => 'Caracas', 'budget' => 20.0, 'spend3' => 45.0, 'liquidation' => false, 'waiting' => null, 'incoming' => null]]]];
         $list = UrgentList::build($facts);
         expect(array_column($list, 'kind'))->toBe(['stock_out', 'not_sold', 'alarm'])
             ->and(UrgentList::build($facts)[1]['key'])->toBe($list[1]['key']);
@@ -326,5 +328,47 @@ describe('La tarea del calendario', function () {
         $o = ReminderRules::occurrence('meta_analysis', '2026-11-02', '2026-11-02', ['meta_analysis_days' => ['2026-11-02' => '7:12']]);
         expect($o['auto_done'])->toBeTrue()->and($o['auto_note'])->toBe('Lo abriste a las 7:12.')->and($o['link'])->toBe('/meta-ads/analisis');
         expect(ReminderRules::occurrence('meta_analysis', '2026-11-03', '2026-11-03', [])['auto_done'])->toBeFalse();
+    });
+});
+
+// .137 (dueño, 2026-11-11): "que el sistema me avise cuando una campaña en una ciudad está activa pero la ciudad no tiene stock.
+// Debe salir en mis análisis de Meta todos los días hasta que lo solucione de alguna manera, o apagando la campaña o añadiendo stock"
+describe('.137: sin stock y la campaña sigue prendida', function () {
+    $sinStock = fn (array $o = []) => $o + ['campaign_meta_id' => 'c9', 'city' => 'Distrito Capital', 'budget' => 30.0, 'spend3' => 88.5, 'liquidation' => false,
+        'waiting' => null, 'incoming' => null];
+
+    it('es una misión de frenar pérdidas, con las dos salidas y la campaña por su nombre', function () use ($sinStock) {
+        $p = producto(1177, 'Termafit Chaleco Térmico', 4, 0, [ciudad('c9', 'Distrito Capital', 'hold', 'Mantener')]) + ['stock_out' => [$sinStock()]];
+        $p['cities'][0]['campaign'] = 'TERMAFIT | CCS | CBO | 03/11/2026';
+        $m = UrgentList::build([$p])[0];
+
+        expect($m)->toMatchArray(['key' => '1177:c9:stock_out', 'kind' => 'stock_out', 'group' => 'frenar', 'severity' => 1, 'tone' => 'error', 'money' => null,
+            'where' => UrgentList::short('Termafit Chaleco Térmico') . ' · Distrito Capital',
+            'title' => 'Sin stock y la campaña sigue prendida: manda stock o pausa la campaña',
+            'steps' => ['Si el stock llega pronto: mándalo a la agencia de Distrito Capital y regístralo en Inventario.',
+                'Si no: en Ads Manager, pausa la campaña «TERMAFIT | CCS | CBO | 03/11/2026».'],
+            'why' => 'Gasta $30,00 por día; los pedidos que entren se quedan esperando stock',
+            'detail' => ['Sale cada día hasta que la ciudad tenga stock o la campaña esté apagada.']])
+            // cuenta para la racha: es una misión, no un aviso
+            ->and(UrgentList::tally([$m], []))->toBe(['tasks' => 1, 'resolved' => 0]);
+    });
+
+    it('con pedidos esperando y stock en camino: lo dice en el porqué', function () use ($sinStock) {
+        $m = UrgentList::stockOut(1177, $sinStock(['waiting' => ['orders' => 12, 'since' => '2026-11-05', 'spent' => 180.0],
+            'incoming' => ['transit' => 20, 'purchase' => 50, 'at' => '2026-11-13']]), null, 'Termafit');
+
+        expect($m['why'])->toBe('Gasta $30,00 por día; 12 pedidos esperan stock desde el 05/11; vienen 70 unidades')
+            ->and($m['steps'][1])->toBe('Si no: en Ads Manager, pausa la campaña.')
+            ->and($m['detail'])->toBe(['12 pedidos esperan stock aquí desde el 05/11: la campaña gastó $180,00 desde entonces.',
+                'Viene en camino: 20 en traslado y 50 por recibir del proveedor (llegan el 13/11).',
+                'Sale cada día hasta que la ciudad tenga stock o la campaña esté apagada.']);
+    });
+
+    it('en liquidación no se repone: solo pausarla', function () use ($sinStock) {
+        $m = UrgentList::stockOut(9, $sinStock(['liquidation' => true, 'budget' => null]), 'LOLI | CCS', 'Loli');
+
+        expect($m['title'])->toBe('Se acabó el stock y la campaña sigue prendida: pausa la campaña')
+            ->and($m['steps'])->toBe(['En Ads Manager, pausa la campaña «LOLI | CCS».'])
+            ->and($m['why'])->toBe('Gastó $88,50 en 3 días; en liquidación no se repone');
     });
 });

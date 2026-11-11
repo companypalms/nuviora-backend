@@ -8,7 +8,8 @@ namespace App\Services\Meta\Decisions\Rules;
  * - escalar con CPA 3D ≤ C, 10+ compras en 3D, 7D coherente y sin saturar; como mucho un aumento por día. `.79`
  *   (2026-11-02): cuánto, según qué tan debajo de C está el CPA de 3 días (+10 %, +15 % o +20 %), nunca más del 20 %; el
  *   stock ya no frena la subida ni pide pausar: queda como aviso ("al día siguiente ya tenemos stock"). `.101`
- *   (2026-11-04, 55 pedidos de Termafit esperando stock 6 días): con pedidos esperando stock en la ciudad no se sube ahí;
+ *   (2026-11-04, 55 pedidos de Termafit esperando stock 6 días): con pedidos esperando stock en la ciudad no se sube ahí.
+ *   `.137` (dueño, 2026-11-11): con la campaña prendida y la ciudad sin unidades, tampoco ("no se sube hasta que llegue");
  * - entre C y BE: mantener, podar y meter creativos. `.123` (dueño, 2026-11-09: "prioriza siempre el batch nuevo, si con el
  *   batch nuevo no vuelve a la normalidad entonces sí se le baja el presupuesto. Pero solo un cambio grande a la vez"): un
  *   cambio y 3 días cerrados para ver si vuelve a C; primero el batch, después devolver la última subida, y así;
@@ -80,7 +81,7 @@ class CampaignRules
      *                  perdedores), new_batches, bank_ready (los B####
      *                  en banca, listos para lanzar), c_source (manual o name si la C es una referencia), stock_alert (el
      *                  aviso de stock de la ciudad, sin frenar nada), stock_waiting (`.101`: los pedidos esperando stock, si
-     *                  pasan el mínimo: no se sube), recent_change (`.111`: el último cambio grande de las últimas 24 horas,
+     *                  pasan el mínimo: no se sube), stock_out (`.137`: la ciudad no tiene unidades: no se sube), recent_change (`.111`: el último cambio grande de las últimas 24 horas,
      *                  de MetaDecisions::recentChange), be_estimated (`.120`: el BE es estimado, la campaña no tiene uno real),
      *                  band (`.123`: lo último que se hizo desde que se pasó de C, de MetaDecisions::band), chronic (`.125`: lo
      *                  gastado, vendido e intentado en los últimos 14 días, de MetaDecisions::chronic), no_batch (`.125`: en el
@@ -199,6 +200,7 @@ class CampaignRules
         // Debajo de C: ¿se puede escalar?
         $block = match (true) {
             $mode === 'liquidation' => 'En liquidación: no se escala.',
+            (bool) ($in['stock_out'] ?? false) => 'Va bien, pero no hay stock en esta ciudad: no se sube hasta que llegue.',
             ($in['stock_waiting'] ?? 0) > 0 => 'Va bien, pero hay ' . (int) $in['stock_waiting'] . ' pedidos esperando stock en esta ciudad: no se sube hasta que llegue.',
             $purchases < $this->s['scale_min_purchases'] => 'Va bien, pero con poco volumen: ' . AdRules::num($purchases) . ' compras en 3 días (hacen falta ' . (int) $this->s['scale_min_purchases'] . ').',
             $be && ($in['cpa7'] ?? null) !== null && $in['cpa7'] > $be => 'Los 7 días no acompañan (CPA 7D ' . AdRules::money($in['cpa7']) . ', encima del BE).',

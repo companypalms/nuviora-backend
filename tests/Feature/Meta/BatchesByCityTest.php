@@ -55,7 +55,7 @@ function flexiMeta(): array
     return $f;
 }
 
-function decisionesFlexi(?array $meta = null, array $carabobo = [], array $daily = []): array
+function decisionesFlexi(?array $meta = null, array $carabobo = [], array $daily = [], array $aragua = [], array $product = []): array
 {
     $facts = Mockery::mock(AdFacts::class);
     $facts->allows('load')->andReturn([5 => $meta ?? flexiMeta()]);
@@ -67,7 +67,7 @@ function decisionesFlexi(?array $meta = null, array $carabobo = [], array $daily
     $ops = Mockery::mock(OpsFacts::class);
     $ops->allows('campaigns')->andReturn(['history_since' => null, 'today' => now()->toDateString(), 'yesterday' => now()->subDay()->toDateString(),
         'campaigns' => [ARAGUA => $empty, CARABOBO => ['daily' => $daily] + $empty]]);
-    $ops->allows('products')->andReturn([5 => ['price' => 30.0, 'price_change' => null, 'cities' => [3 => $city, 7 => $carabobo + $city], 'version' => null,
+    $ops->allows('products')->andReturn([5 => $product + ['price' => 30.0, 'price_change' => null, 'cities' => [3 => $aragua + $city, 7 => $carabobo + $city], 'version' => null,
         'bank' => ['codes' => ['B0103'], 'ready' => ['B0103'], 'launched' => ['B0102']]]]);
 
     return (new MetaDecisions($facts, $settings, $ops))->compute([5])[5];
@@ -181,5 +181,69 @@ describe('.101: pedidos esperando stock (dueño, 2026-11-04)', function () {
         $d = decisionesFlexi($meta(), ['waiting' => ['orders' => 4, 'since' => '2026-10-29']], $daily);
         expect($d['campaigns'][CARABOBO]['action']['key'])->toBe('scale')
             ->and(implode(' ', $d['plan']['alarms']))->not->toContain('esperando stock');
+    });
+});
+
+// .137 (dueño, 2026-11-11): "que el sistema me avise cuando una campaña en una ciudad está activa pero la ciudad no tiene stock.
+// Debe salir en mis análisis de Meta todos los días hasta que lo solucione de alguna manera, o apagando la campaña o añadiendo stock"
+describe('.137: campaña prendida en una ciudad sin stock', function () {
+    // Carabobo va para subir: 12 compras en 3 días con CPA $2,50 (C $5,36)
+    $meta = function (string $mode = 'normal'): array {
+        $f = flexiMeta();
+        $f['campaigns'][CARABOBO]['windows'] = ventanaMeta(30, 12);
+        $f['product']['mode'] = $mode;
+
+        return $f;
+    };
+    $daily = ['2026-10-28' => ['spend' => 20.0, 'purchases' => 3], '2026-10-29' => ['spend' => 29.49, 'purchases' => 8], '2026-10-30' => ['spend' => 25.68, 'purchases' => 2]];
+    $sinStock = ['stock' => 0, 'days_of_stock' => 0.0];
+
+    it('una misión de cada día, y no se sube ahí hasta que llegue', function () use ($meta, $daily, $sinStock) {
+        $d = decisionesFlexi($meta(), $sinStock, $daily);
+        $a = $d['campaigns'][CARABOBO]['action'];
+
+        expect($a['key'])->toBe('hold')
+            ->and($a['reading'])->toBe('Va bien, pero no hay stock en esta ciudad: no se sube hasta que llegue.')
+            ->and($a['proposal'])->toBe('Mantener. Ojo: sin stock en esta ciudad: manda stock o pausa la campaña.')
+            ->and($d['plan']['alarms'])->toContain('Sin stock en Carabobo y la campaña sigue activa: manda stock o pausa la campaña.')
+            ->and($d['plan']['stock_out'])->toBe([['campaign_meta_id' => CARABOBO, 'city' => 'Carabobo', 'budget' => 25.0, 'spend3' => 30.0, 'liquidation' => false,
+                'waiting' => null, 'incoming' => null]])
+            // Aragua tiene stock: nada
+            ->and(array_column($d['plan']['stock_out'], 'city'))->not->toContain('Aragua');
+    });
+
+    it('los pedidos que esperan stock van dentro de la misión (no salen dos veces), con lo gastado desde entonces', function () use ($meta, $daily, $sinStock) {
+        $d = decisionesFlexi($meta(), $sinStock + ['waiting' => ['orders' => 55, 'since' => '2026-10-29'], 'incoming' => ['transit' => 0, 'purchase' => 40, 'at' => '2026-11-13']], $daily);
+
+        expect($d['plan']['stock_out'][0]['waiting'])->toBe(['orders' => 55, 'since' => '2026-10-29', 'spent' => 55.17])
+            ->and($d['plan']['stock_out'][0]['incoming'])->toBe(['transit' => 0, 'purchase' => 40, 'at' => '2026-11-13'])
+            ->and(implode(' ', $d['plan']['alarms']))->not->toContain('esperando stock');
+    });
+
+    it('con stock no hay misión, y sigue subiendo (la .79)', function () use ($meta, $daily) {
+        $d = decisionesFlexi($meta(), ['stock' => 3, 'days_of_stock' => 0.6], $daily);
+
+        expect($d['plan']['stock_out'])->toBe([])
+            ->and($d['campaigns'][CARABOBO]['action']['key'])->toBe('scale');
+    });
+
+    it('en liquidación: solo pausarla', function () use ($meta, $daily, $sinStock) {
+        $d = decisionesFlexi($meta('liquidation'), $sinStock, $daily);
+
+        expect($d['plan']['stock_out'][0]['liquidation'])->toBeTrue()
+            ->and($d['plan']['alarms'])->toContain('Sin stock en Carabobo y la campaña sigue activa: pausa la campaña.');
+    });
+
+    it('En testeo y sin mercancía en ninguna ciudad se testea así a propósito (.89): solo el aviso de siempre', function () use ($meta, $daily, $sinStock) {
+        $d = decisionesFlexi($meta(), $sinStock, $daily, $sinStock, ['phase' => 'testing']);
+
+        expect($d['plan']['stock_out'])->toBe([])
+            ->and($d['plan']['alarms'])->toContain('Sin stock en Carabobo: pide al proveedor.');
+    });
+
+    it('En testeo pero con stock en otra ciudad: sí es misión', function () use ($meta, $daily, $sinStock) {
+        $d = decisionesFlexi($meta(), $sinStock, $daily, [], ['phase' => 'testing']);
+
+        expect(array_column($d['plan']['stock_out'], 'city'))->toBe(['Carabobo']);
     });
 });
