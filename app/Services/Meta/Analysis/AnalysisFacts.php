@@ -106,6 +106,9 @@ final class AnalysisFacts
                 'no_city' => $plan['no_city'] ?? null,
                 // .125: el producto entero lleva 14 días sin dejar dinero: lo decide el dueño
                 'drop' => $plan['drop'] ?? null,
+                // .139: Bueno, Regular o Malo por su efectividad; si es Malo, la misión de liquidarlo o abandonarlo
+                'worth' => isset($p['product']['worth']) ? array_intersect_key($p['product']['worth'], array_flip(['level', 'label', 'early', 'effectiveness', 'orders', 'rescued', 'why'])) : null,
+                'worth_bad' => $plan['worth_bad'] ?? null,
                 // .137: las campañas prendidas en una ciudad sin unidades
                 'stock_out' => $plan['stock_out'] ?? [],
                 // .126: lo que dejó el producto en 3 y en 7 días
@@ -149,6 +152,10 @@ final class AnalysisFacts
         foreach ($facts as $p) {
             $u = $p['urgency'];
             $lines[] = "== PRODUCTO: {$p['product']}" . ($p['mode'] !== 'normal' ? " (modo {$p['mode']})" : '');
+            // .139: la etiqueta del producto por su efectividad (si vale la pena seguir haciéndole creativos)
+            if ($p['worth'] ?? null) {
+                $lines[] = "Etiqueta del producto: {$p['worth']['label']} · {$p['worth']['why']}";
+            }
             if ($u) {
                 $lines[] = "Urgencia: {$u['label']} · batches a pedir: {$u['batches']}" . (($u['bank'] ?? []) ? ' (ya hay en la banca: ' . implode(', ', $u['bank']) . ')' : '')
                     . ($u['reasons'] ? ' · ' . implode('; ', $u['reasons']) : '');

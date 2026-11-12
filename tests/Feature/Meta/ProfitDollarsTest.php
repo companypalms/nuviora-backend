@@ -75,6 +75,7 @@ function ganaDecide(): array
     $city = ['available' => true, 'stock' => 300, 'units_per_day' => 10.0, 'days_of_stock' => 30.0, 'sizes_out' => [], 'version' => null];
     $p = ['price' => 25.0, 'price_change' => null, 'version' => null, 'cities' => [1 => $city, 3 => $city, 7 => $city], 'bank' => ['codes' => [], 'ready' => [], 'launched' => []]];
     $ops = Mockery::mock(OpsFacts::class);
+    $ops->allows('worth')->andReturn([]);
     $ops->allows('campaigns')->andReturn(['history_since' => '2026-10-01', 'today' => now()->toDateString(), 'yesterday' => now()->subDay()->toDateString(),
         'campaigns' => [GANA_ZEN_CCS => $empty, GANA_ZEN_MCAY => $empty, GANA_CERVI => $empty]]);
     $ops->allows('products')->andReturn([1149 => $p, 1147 => $p]);

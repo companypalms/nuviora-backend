@@ -8,8 +8,11 @@ use App\Models\ProductAdSetting;
 use App\Services\Meta\AngleProposer;
 use App\Services\Meta\AngleStats;
 use App\Services\Meta\MetaCreativeLinker;
+use App\Services\Meta\Decisions\DecisionSettings;
+use App\Services\Meta\Decisions\Rules\AdRules;
 use App\Services\Meta\MetaVisibility;
 use App\Services\Meta\Products\ProductModes;
+use App\Services\Meta\Products\ProductWorthBoard;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -106,16 +109,23 @@ class MetaAnglesController extends Controller
         $settings = ProductAdSetting::with('updater:id,names')->get()->keyBy('product_id');
         $products = AngleStats::products();
         $tasks = ProductModes::tasksMany(array_column($products, 'id'));
+        // .139: Bueno, Regular o Malo por su efectividad (del último análisis)
+        $worth = ProductWorthBoard::all();
+        $rules = (new DecisionSettings())->get();
 
         return response()->json([
             'modes' => ProductAdSetting::MODES,
             'labels' => ProductModes::LABELS,
             'help' => ProductModes::HELP,
-            'products' => collect($products)->map(function ($p) use ($settings, $tasks) {
+            'worth_help' => 'Bueno desde ' . AdRules::num($rules['worth_good_pct']) . ' % de efectividad; Malo debajo de ' . AdRules::num($rules['worth_bad_pct'])
+                . ' % (con ' . (int) $rules['worth_early_orders'] . ' a ' . ((int) $rules['worth_full_orders'] - 1) . ' pedidos, solo debajo de ' . AdRules::num($rules['worth_early_bad_pct'])
+                . ' %), salvo que deje ' . AdRules::money($rules['worth_rescue_gain']) . ' o más en 4 semanas. Cuentan los pedidos que ya tuvieron tiempo de entregarse,'
+                . ' sin los que esperaron stock. Un Malo no recibe encargos nuevos hasta que decidas; un Regular va después de los Buenos.',
+            'products' => collect($products)->map(function ($p) use ($settings, $tasks, $worth) {
                 $s = $settings->get($p['id']); // sin fila, el producto está en modo normal
 
                 return $p + ['mode' => $s->mode ?? 'normal', 'note' => $s?->note, 'proof' => $s?->proof, 'updated_by' => $s?->updater?->names,
-                    'updated_at' => $s?->updated_at?->toIso8601String(), 'tasks' => $tasks[$p['id']] ?? []];
+                    'updated_at' => $s?->updated_at?->toIso8601String(), 'tasks' => $tasks[$p['id']] ?? [], 'worth' => $worth[$p['id']] ?? null];
             })->values(),
         ]);
     }

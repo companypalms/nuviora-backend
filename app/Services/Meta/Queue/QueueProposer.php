@@ -91,6 +91,8 @@ class QueueProposer
         unset($d);
         // .65: el testeo, solo de los productos en modo normal (no en pausa, abandonados ni en liquidación)
         $stopped = ProductAdSetting::where('mode', '!=', 'normal')->pluck('product_id')->map(fn ($v) => (int) $v)->all();
+        // .139: ni el de un producto que salió Malo por su efectividad, mientras el dueño decide
+        $stopped = array_merge($stopped, array_keys(array_filter($decisions, fn ($d) => (bool) ($d['product']['worth']['stop'] ?? false))));
         // .88: lo que necesita cada producto y para cuándo; lo que ya viene en camino cuenta (se adelanta su fecha)
         $demand = DemandPlanner::plan($decisions, $testingIds, $s, $today);
         $reasons = [];

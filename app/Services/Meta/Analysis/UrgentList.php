@@ -6,6 +6,7 @@ use App\Services\Meta\CampaignNameTargets;
 use App\Services\Meta\Decisions\Rules\AdRules;
 use App\Services\Meta\Products\AngleRest;
 use App\Services\Meta\Decisions\Rules\CampaignRules;
+use App\Services\Meta\Decisions\Rules\ProductWorth;
 use App\Services\Meta\Queue\ForecastRules;
 use App\Services\Meta\Upload\UploadRules;
 
@@ -62,7 +63,7 @@ final class UrgentList
     /** Qué tan urgente es cada cosa (menos es más urgente). */
     public const SEVERITY = [
         'pause_city' => 1, 'not_sold' => 1, 'product_off' => 1, 'stock_out' => 1, 'stock_waiting' => 1, 'stop_creatives' => 1,
-        'decrease' => 2, 'intervene' => 2, 'tracking' => 2, 'late_urgent' => 2, 'drop_product' => 2,
+        'decrease' => 2, 'intervene' => 2, 'tracking' => 2, 'late_urgent' => 2, 'drop_product' => 2, 'worth_bad' => 2,
         'hold_prune' => 3, 'step_down' => 3, 'few_batches' => 3, 'min_spend' => 3, 'late_batch' => 3, 'launch_ready' => 3, 'no_city' => 3, 'no_be' => 3,
         'scale' => 4, 'launch_test' => 4, 'relaunch' => 4, 'new_product_late' => 4,
         'alarm' => 5, 'names' => 5, 'cooldown' => 5, 'angle_rest' => 5, 'left_city' => 5, 'stale' => 5, 'lesson' => 5,
@@ -71,7 +72,7 @@ final class UrgentList
 
     /** `.82`: en qué grupo de la pantalla va cada cosa. */
     public const GROUP = [
-        'pause_city' => 'frenar', 'not_sold' => 'frenar', 'product_off' => 'frenar', 'drop_product' => 'frenar', 'stop_creatives' => 'frenar', 'decrease' => 'frenar',
+        'pause_city' => 'frenar', 'not_sold' => 'frenar', 'product_off' => 'frenar', 'drop_product' => 'frenar', 'worth_bad' => 'frenar', 'stop_creatives' => 'frenar', 'decrease' => 'frenar',
         'intervene' => 'arreglar', 'tracking' => 'arreglar', 'hold_prune' => 'arreglar', 'step_down' => 'arreglar', 'few_batches' => 'arreglar', 'min_spend' => 'arreglar',
         'late_urgent' => 'arreglar', 'late_batch' => 'arreglar', 'launch_ready' => 'arreglar', 'no_city' => 'arreglar', 'no_be' => 'arreglar',
         'scale' => 'crecer', 'launch_test' => 'crecer', 'relaunch' => 'crecer', 'new_product_late' => 'crecer',
@@ -200,6 +201,10 @@ final class UrgentList
             // .137: campañas prendidas en una ciudad sin unidades
             foreach ($p['stock_out'] ?? [] as $o) {
                 $items[] = $base + self::stockOut((int) $p['product_id'], $o, array_column($p['cities'], 'campaign', 'campaign_meta_id')[$o['campaign_meta_id']] ?? null, $short);
+            }
+            // .139: el producto salió Malo por su efectividad: sus encargos nuevos esperan a que el dueño decida
+            if ($p['worth_bad'] ?? null) {
+                $items[] = $base + self::worthBad((int) $p['product_id'], $short, $p['worth_bad']);
             }
             // .125: el producto entero lleva 14 días sin dejar dinero: lo decide el dueño
             if ($p['drop'] ?? null) {
@@ -647,6 +652,34 @@ final class UrgentList
             'detail' => [...array_map(fn ($c) => ($c['city'] ?? 'Sin ciudad') . ': gastó ' . AdRules::money($c['spend']) . ' · ' . AdRules::num($c['purchases']) . ' compras'
                 . ($c['purchases'] > 0 ? ' · ' . AdRules::money($c['spend'] / $c['purchases']) . ' por compra' : '') . ' · BE ' . AdRules::money($c['be']) . '.', $d['cities']),
                 'Lo que dejó = compras de Meta × tu BE − gasto. El sistema no pausa nada solo: lo decides tú.'],
+            'money' => null];
+    }
+
+    /**
+     * `.139` (dueño, 2026-11-12: "si un producto tiene una efectividad muy baja, pues probablemente valga la pena ponerlo en
+     * liquidación si tiene stock para terminar de venderlo, pero ya no vale la pena seguir ofreciéndolo y seguir lanzándole
+     * creativos"): el producto salió Malo. Mientras decide no se piden encargos nuevos de él; con "No estoy de acuerdo", siguen
+     * normal 14 días.
+     */
+    private static function worthBad(int $productId, string $short, array $w): array
+    {
+        $testing = ($w['phase'] ?? null) === 'testing';
+        $why = $w['why'] . ' Tu línea: ' . AdRules::num($w['line']) . ' %' . ($w['early'] ? ' (con pocos pedidos, solo cuando está claramente mal)' : '') . '.';
+        $steps = $w['stock'] > 0
+            ? ["Si quieres terminar de vender lo que queda ({$w['stock']} unidades en sus ciudades): dile a tu asistente «pon {$short} en liquidación».",
+                "Si no vale la pena ni eso: dile a tu asistente «abandona {$short}». Después te sale la misión de apagar sus campañas."]
+            : ["No le quedan unidades en sus ciudades: dile a tu asistente «abandona {$short}». Después te sale la misión de apagar sus campañas."];
+        $steps[] = 'Si quieres darle otra oportunidad: toca «No estoy de acuerdo» y sus encargos siguen normal ' . ProductWorth::DISMISS_DAYS . ' días.';
+
+        return ['key' => "{$productId}:worth_bad", 'city' => null, 'kind' => 'worth_bad', 'label' => 'No vale la pena', 'tone' => 'error', 'text' => $why, 'where' => $short,
+            'title' => "{$short}" . ($testing ? ' (en testeo)' : '') . ' no vale la pena: efectividad ' . AdRules::num($w['effectiveness']) . " % en sus últimos {$w['orders']} pedidos",
+            'steps' => $steps,
+            'why' => $why,
+            'detail' => [...array_map(fn ($c) => ($c['city'] ?? 'Sin ciudad') . ': ' . $c['delivered'] . ' de ' . $c['orders'] . ' entregados ('
+                . AdRules::num($c['orders'] > 0 ? round(100 * $c['delivered'] / $c['orders'], 1) : 0) . ' %).', $w['cities'] ?? []),
+                'Efectividad = pedidos entregados ÷ pedidos que entraron' . (($w['since'] ?? null) ? ' desde el ' . date('d/m', strtotime($w['since'])) : '')
+                . ', ya con tiempo de entregarse' . ($w['left_out'] > 0 ? "; no cuentan {$w['left_out']} que esperaron stock." : '.'),
+                'Mientras decides, no se piden batches nuevos de este producto; lo que los editores ya están haciendo sigue.'],
             'money' => null];
     }
 

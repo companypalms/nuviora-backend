@@ -57,6 +57,7 @@ function pacienciaDecide(array $nuevo, string $type = 'video'): array
     $settings = Mockery::mock(DecisionSettings::class);
     $settings->allows('get')->andReturn(DecisionSettings::defaults());
     $ops = Mockery::mock(OpsFacts::class);
+    $ops->allows('worth')->andReturn([]);
     $ops->allows('campaigns')->andReturn(['history_since' => '2026-10-01', 'today' => now()->toDateString(), 'yesterday' => now()->subDay()->toDateString(),
         'campaigns' => [PACIENCIA_CCS => ['daily' => [], 'budget_events' => [], 'status_events' => [], 'ad_pauses' => [], 'new_ads' => [], 'mins' => 0.0]]]);
     $ops->allows('products')->andReturn([1149 => ['price' => 25.0, 'price_change' => null, 'version' => null, 'bank' => ['codes' => [], 'ready' => [], 'launched' => []],

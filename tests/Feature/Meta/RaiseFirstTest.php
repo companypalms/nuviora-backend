@@ -88,6 +88,7 @@ function subidaDecide(array $zen3d, array $budget = [], float $zenBudget = 39.6,
     $settings->allows('get')->andReturn(DecisionSettings::defaults());
     $city = ['available' => true, 'stock' => 300, 'units_per_day' => 10.0, 'days_of_stock' => 30.0, 'sizes_out' => [], 'version' => null];
     $ops = Mockery::mock(OpsFacts::class);
+    $ops->allows('worth')->andReturn([]);
     $ops->allows('campaigns')->andReturn(['history_since' => '2026-10-01', 'today' => $today, 'yesterday' => now()->subDay()->toDateString(), 'campaigns' => [
         SUBIDA_ZEN => $newAds === null ? subidaHistorial($today, $budget) : subidaHistorial($today, $budget, $newAds),
         SUBIDA_BRILLO => ['daily' => [], 'budget_events' => [], 'status_events' => [], 'ad_pauses' => [], 'new_ads' => ['2026-10-21'], 'mins' => 6.0]]]);

@@ -8,6 +8,7 @@ use App\Services\Meta\Decisions\Readers\AdFacts;
 use App\Services\Meta\Decisions\Readers\OpsFacts;
 use App\Services\Meta\Decisions\Rules\AdRules;
 use App\Services\Meta\Decisions\Rules\CampaignRules;
+use App\Services\Meta\Decisions\Rules\ProductWorth;
 use App\Services\Meta\MetaMetrics;
 use App\Services\Meta\Products\AngleRest;
 use App\Services\Meta\Queue\QueueRules;
@@ -75,11 +76,13 @@ class MetaDecisions
         }
         $history = $ops->campaigns($campaignIds);
         $products = $ops->products(array_keys($facts), array_values(array_unique($cityIds)));
+        // .139: la muestra con la que se juzga cada producto (Bueno, Regular o Malo)
+        $worth = $ops->worth(array_keys($facts), $s);
         $out = [];
         foreach ($facts as $pid => $f) {
             $f = self::estimateBe($f, (float) $s['be_estimate_mult']);
             $out[$pid] = $this->product($f, $rules, $s);
-            $out[$pid] = $this->plan($f, $out[$pid], $history, $products[$pid] ?? null, new CampaignRules($s), $s);
+            $out[$pid] = $this->plan($f, $out[$pid], $history, $products[$pid] ?? null, new CampaignRules($s), $s, $worth[$pid] ?? null);
         }
 
         return $out;
@@ -460,7 +463,7 @@ class MetaDecisions
      * Paso 2b: qué hacer con cada campaña (con montos), el precio, la urgencia del producto, el trabajo siguiente y las
      * alarmas de tracking y stock.
      */
-    private function plan(array $f, array $out, array $history, ?array $ops, CampaignRules $cr, array $s): array
+    private function plan(array $f, array $out, array $history, ?array $ops, CampaignRules $cr, array $s, ?array $sample = null): array
     {
         $mode = $f['product']['mode'];
         $today = $history['today'];
@@ -735,6 +738,16 @@ class MetaDecisions
             array_unshift($alarms, 'Tracking: Meta ve el ' . AdRules::num($tracking) . ' % de los pedidos reales de los últimos 3 días. Revisar el píxel o la API de conversiones.');
         }
         $mainCampaign = collect($activeCities)->sortByDesc(fn ($c) => $c['windows']['7d']['totals']['spend'] ?? 0)->keys()->first();
+        // .139: la etiqueta del producto. Un Malo frena sus encargos nuevos; la misión sale si gastó en Meta en 14 días (los
+        // productos viejos sin campañas solo llevan la etiqueta)
+        $worth = ProductWorth::verdict($sample, self::periodMoney($f, $history['campaigns'] ?? [], $yesterday, 28)['gain'], $s)
+            + ['since' => $sample['since'] ?? null, 'left_out' => (int) ($sample['left_out'] ?? 0), 'cities' => $sample['cities'] ?? []];
+        $worth['stop'] = ProductWorth::stops($worth, $mode, $dismissed, (int) $f['product']['id'], $today);
+        $out['product']['worth'] = $worth;
+        $worthBad = $worth['stop'] && self::periodMoney($f, $history['campaigns'] ?? [], $yesterday, 14)['spend'] > 0
+            ? $worth + ['phase' => (string) ($ops['phase'] ?? 'iterate'), 'stock' => (int) array_sum(array_column($ops['cities'] ?? [], 'stock')),
+                'line' => (float) $s[$worth['early'] ? 'worth_early_bad_pct' : 'worth_bad_pct']]
+            : null;
         $out['plan'] = [
             'urgency' => $urgency,
             'next_work' => $cr->nextWork(['mode' => $mode, 'winner' => $winner, 'saturated' => $saturated, 'main_angle' => $mainAngle,
@@ -759,7 +772,9 @@ class MetaDecisions
             // .125 (dueño, 2026-11-09: "sí debemos establecer un límite para soltar producto, dependiendo de su CPA y si hicimos
             // cambios y no mejoró"): el producto entero lleva 14 días sin dejar dinero, con batches nuevos en ese tiempo. Lo decide
             // él; si dice que no, no se le vuelve a preguntar en esos días
-            'drop' => $mode === 'normal' && $activeCities && (($dismissed["{$f['product']['id']}:drop_product"] ?? '') < date('Y-m-d', strtotime("{$today} -" . (int) $s['chronic_days'] . ' days')))
+            // .139: si el producto ya salió Malo, esa misión lo dice (no salen las dos)
+            'worth_bad' => $worthBad,
+            'drop' => !$worthBad && $mode === 'normal' && $activeCities && (($dismissed["{$f['product']['id']}:drop_product"] ?? '') < date('Y-m-d', strtotime("{$today} -" . (int) $s['chronic_days'] . ' days')))
                 ? self::dropProduct($f, $history['campaigns'] ?? [], $yesterday, (int) $s['chronic_days'], (float) $s['chronic_min_cpa'], (int) $s['drop_min_batches']) : null,
         ];
 
@@ -1214,6 +1229,29 @@ class MetaDecisions
         }
 
         return $out;
+    }
+
+    /**
+     * `.139`: lo que gastó el producto entero en sus últimos $days días cerrados y lo que dejó (compras × BE − gasto, la suma de
+     * sus campañas con BE; null si ninguna lo tiene). PHP puro.
+     *
+     * @return array{spend: float, gain: ?float}
+     */
+    public static function periodMoney(array $f, array $histories, string $yesterday, int $days): array
+    {
+        $from = date('Y-m-d', strtotime("{$yesterday} -" . ($days - 1) . ' days'));
+        $spend = 0.0;
+        $gain = null;
+        foreach ($f['campaigns'] as $id => $c) {
+            $window = array_filter($histories[(string) $id]['daily'] ?? [], fn ($d) => $d >= $from && $d <= $yesterday, ARRAY_FILTER_USE_KEY);
+            $s = (float) array_sum(array_column($window, 'spend'));
+            $spend += $s;
+            if ($c['break_even'] ?? null) {
+                $gain = ($gain ?? 0) + self::gain($s, (float) array_sum(array_column($window, 'purchases')), (float) $c['break_even']);
+            }
+        }
+
+        return ['spend' => round($spend, 2), 'gain' => $gain === null ? null : round($gain, 2)];
     }
 
     /**

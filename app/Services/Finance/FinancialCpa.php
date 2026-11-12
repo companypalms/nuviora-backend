@@ -480,6 +480,22 @@ class FinancialCpa
         }
         $ids = DB::table('order_financials')->whereBetween('created_date', [$from->toDateString(), $to->toDateString()])
             ->whereNotNull('order_id')->distinct()->pluck('order_id')->all();
+
+        return self::stockoutOrderIds($ids, $sinStock);
+    }
+
+    /**
+     * `.110`, para cualquier lista de pedidos (`.139`: la etiqueta del producto tampoco cuenta los que esperaron stock): los
+     * que estuvieron más de sinStockHours() horas en "Sin Stock", sumando todas las veces.
+     *
+     * @param list<int> $ids order_id
+     * @return list<int> order_id
+     */
+    public static function stockoutOrderIds(array $ids, int $sinStock): array
+    {
+        if ($sinStock === 0 || $ids === []) {
+            return [];
+        }
         $changes = [];
         foreach (array_chunk($ids, 1000) as $chunk) {
             $hit = DB::table('order_tracking_comprehensive_logs')->whereIn('order_id', $chunk)->where('to_status_id', $sinStock)->distinct()->pluck('order_id')->all();

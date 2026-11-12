@@ -14,6 +14,7 @@ use App\Services\Meta\Analysis\MetaAnalyzer;
 use App\Services\Meta\Decisions\Readers\OpsFacts;
 use App\Services\Meta\Products\NewProductMissions;
 use App\Services\Meta\Products\NewProductRules;
+use App\Services\Meta\Products\ProductWorthBoard;
 use App\Services\Meta\Queue\QueueRules;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -104,8 +105,8 @@ class MetaAnalysisController extends Controller
         }
         $analysis->forceFill(['marks' => $marks ?: null])->save();
         // .117: con "No estoy de acuerdo", prender esa ciudad no se vuelve a sugerir (si lo deshace, sí). .125: y "decide si
-        // sueltas el producto" no se vuelve a preguntar en 14 días
-        if (preg_match('/:(relaunch|no_city|drop_product)$/', $data['key'])) {
+        // sueltas el producto" no se vuelve a preguntar en 14 días. .139: y un producto Malo sigue con sus encargos 14 días
+        if (preg_match('/:(relaunch|no_city|drop_product|worth_bad)$/', $data['key'])) {
             $dismissed = (array) Setting::get(OpsFacts::DISMISSED, []);
             if (($data['status'] ?? null) === 'disagree') {
                 $dismissed[$data['key']] = now(config('app.timezone'))->toDateString();
@@ -113,6 +114,10 @@ class MetaAnalysisController extends Controller
                 unset($dismissed[$data['key']]);
             }
             Setting::set(OpsFacts::DISMISSED, $dismissed);
+            // .139: la página de productos y los editores lo ven ya, sin esperar al próximo análisis
+            if (preg_match('/^(\d+):worth_bad$/', $data['key'], $m)) {
+                ProductWorthBoard::brake((int) $m[1], ($data['status'] ?? null) !== 'disagree');
+            }
         }
 
         return response()->json(['marks' => $analysis->marks ?? []]);

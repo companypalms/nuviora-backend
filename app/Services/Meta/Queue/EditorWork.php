@@ -11,7 +11,9 @@ use App\Models\StoredFile;
 use App\Models\User;
 use App\Services\Files\FileStore;
 use App\Services\Files\Uploads;
+use App\Services\Meta\Decisions\Rules\ProductWorth;
 use App\Services\Meta\Products\ProductModes;
+use App\Services\Meta\Products\ProductWorthBoard;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -335,8 +337,10 @@ class EditorWork
 
         // .69: el editor no ve precios ni montos en ningún texto (la ficha, la oferta, lo que escribió la IA, la referencia)
         $clean = fn (?string $v) => QueueRules::withoutPrices($v);
+        // .139: lo de los productos Regulares va después de lo de los Buenos (a igual fecha); el líder ve por qué, sin números
+        $ranks = ProductWorthBoard::ranks();
 
-        return self::sorted($batches)->map(function (CreativeBatch $b) use ($angles, $refs, $scripts, $profiles, $who, $clean, $allAngles, $photos, $pieceFiles, $uploads) {
+        return self::sorted($batches, $ranks)->map(function (CreativeBatch $b) use ($angles, $refs, $scripts, $profiles, $who, $clean, $allAngles, $photos, $pieceFiles, $uploads, $ranks) {
             $task = self::task($b, $angles["{$b->product_id}:{$b->angle_code}"] ?? null);
             // .128: en una variación de las reglas, el editor y el líder leen la hipótesis fija (BatchTask), no la de la IA
             $plain = $b->source === 'rules' && $b->kind === 'iteration';
@@ -345,6 +349,9 @@ class EditorWork
                 'status' => $b->status, 'status_label' => QueueRules::STATUSES[$b->status] ?? $b->status, 'status_at' => $b->status_at?->toIso8601String(),
                 'position' => $b->position, 'kind' => $b->kind, 'kind_label' => QueueRules::KINDS[$b->kind] ?? $b->kind,
                 'angle_code' => $b->angle_code, 'angle_name' => $angles["{$b->product_id}:{$b->angle_code}"] ?? null,
+                'product_rank' => $ranks[$b->product_id] ?? ProductWorth::rank(null),
+                'product_note' => $who['role'] === EditorRules::LEADER && ($ranks[$b->product_id] ?? null) === ProductWorth::rank('regular')
+                    ? 'Va después: producto regular' : null,
                 // .63: lo que buscamos, lo que funcionó y lo que hay que mejorar; nada del proceso del dueño (ni la hipótesis, ni
                 // la prioridad, ni la ciudad de prueba): el editor ve solo lo que necesita para hacer su trabajo
                 'test_idea' => $clean($b->test_idea), 'goal' => $clean($b->goal), 'keep' => $clean($b->keep), 'improve' => $clean($b->improve),
@@ -544,10 +551,16 @@ class EditorWork
             'pending_by' => $b->deliveries->firstWhere('review', 'pending')?->editor_id])->all();
     }
 
-    /** En el orden de la cola: por estado, después la posición. */
-    public static function sorted(Collection $batches): Collection
+    /**
+     * En el orden de la cola: por estado, después la posición. `.139`: con las etiquetas de los productos ($ranks), lo de los
+     * Buenos antes que lo de los Regulares en el mismo estado.
+     *
+     * @param array<int, int> $ranks producto => ProductWorth::rank
+     */
+    public static function sorted(Collection $batches, array $ranks = []): Collection
     {
-        return $batches->sortBy(fn ($b) => [array_search($b->status, array_keys(QueueRules::STATUSES), true), $b->position ?? PHP_INT_MAX, $b->id])->values();
+        return $batches->sortBy(fn ($b) => [array_search($b->status, array_keys(QueueRules::STATUSES), true), $ranks[$b->product_id] ?? ProductWorth::rank(null),
+            $b->position ?? PHP_INT_MAX, $b->id])->values();
     }
 
     /** La miniatura y hasta dos textos del creativo de referencia, del anuncio más nuevo que lo usa. */

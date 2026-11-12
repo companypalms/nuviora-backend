@@ -159,6 +159,7 @@ describe('Los ángulos en descanso, con Meta', function () {
         $settings->allows('get')->andReturn(DecisionSettings::defaults());
         $empty = ['daily' => [], 'budget_events' => [], 'status_events' => [], 'ad_pauses' => [], 'new_ads' => [], 'mins' => 0.0];
         $ops = Mockery::mock(OpsFacts::class);
+        $ops->allows('worth')->andReturn([]);
         $ops->allows('campaigns')->andReturn(['history_since' => null, 'today' => now()->toDateString(), 'yesterday' => now()->subDay()->toDateString(), 'campaigns' => ['900' => $empty]]);
         $ops->allows('products')->andReturn([5 => $opsExtra + ['price' => 30.0, 'price_change' => null, 'cities' => [3 => ['available' => true, 'stock' => 100, 'units_per_day' => 5.0, 'days_of_stock' => 20.0, 'sizes_out' => [], 'version' => null]], 'version' => null,
             'bank' => ['codes' => [], 'ready' => [], 'launched' => []]]]);

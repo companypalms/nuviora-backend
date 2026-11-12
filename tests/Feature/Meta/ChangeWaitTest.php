@@ -178,6 +178,7 @@ describe('.111: un anuncio nuevo no se apaga antes de 24 horas', function () {
         $settings = Mockery::mock(DecisionSettings::class);
         $settings->allows('get')->andReturn(DecisionSettings::defaults());
         $ops = Mockery::mock(OpsFacts::class);
+        $ops->allows('worth')->andReturn([]);
         $ops->allows('campaigns')->andReturn(['history_since' => '2026-10-01', 'today' => '2026-11-06', 'yesterday' => '2026-11-05',
             'campaigns' => [ESPERA_CBOBO => ['daily' => [], 'budget_events' => [], 'status_events' => [], 'ad_pauses' => [], 'new_ads' => ['2026-11-05'], 'mins' => 0.0]]]);
         $ops->allows('products')->andReturn([1149 => ['price' => 25.0, 'price_change' => null, 'version' => null, 'bank' => ['codes' => [], 'ready' => [], 'launched' => []],

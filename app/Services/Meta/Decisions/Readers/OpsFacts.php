@@ -199,6 +199,46 @@ class OpsFacts
     }
 
     /**
+     * `.139`: la muestra con la que se juzga cada producto (ProductWorth). Sus pedidos maduros (como el C: hasta hace
+     * maturity_lag + 1 días), sin cambios ni devoluciones y sin los que esperaron stock (los que están en "Sin Stock" o
+     * estuvieron más de 12 horas: "no se pueden tomar en cuenta los tiempos que han estado sin stock"). Los de los últimos
+     * worth_min_days días; si son menos de worth_full_orders, los más nuevos hasta juntarlos, como mucho de worth_max_days días.
+     *
+     * @param int[] $productIds
+     * @return array<int, array{orders: int, delivered: int, since: ?string, to: string, left_out: int, cities: list<array{city: ?string, orders: int, delivered: int}>}>
+     */
+    public function worth(array $productIds, array $s): array
+    {
+        $productIds = array_values(array_unique(array_map('intval', $productIds)));
+        if (!$productIds) {
+            return [];
+        }
+        [$from, $to] = FinancialCpa::window(now(config('app.timezone')), (int) $s['worth_max_days']);
+        $recent = $to->copy()->subDays(max(1, (int) $s['worth_min_days']) - 1)->toDateString();
+        $sinStock = (int) Status::where('description', OrderStatus::SIN_STOCK)->value('id');
+        $rows = DB::table('order_financials')->where('kind', 'normal')->whereIn('product_id', $productIds)
+            ->whereBetween('created_date', [$from->toDateString(), $to->toDateString()])
+            ->orderByDesc('created_date')->orderByDesc('order_id')->get(['order_id', 'product_id', 'city_id', 'created_date', 'outcome', 'status_id']);
+        $long = array_flip(FinancialCpa::stockoutOrderIds($rows->pluck('order_id')->map(fn ($v) => (int) $v)->all(), $sinStock));
+        $names = DB::table('cities')->pluck('name', 'id');
+        $out = [];
+        foreach ($rows->groupBy('product_id') as $pid => $all) {
+            $ok = $all->filter(fn ($r) => (int) $r->status_id !== $sinStock && !isset($long[(int) $r->order_id]))->values();
+            $sample = $ok->filter(fn ($r) => substr((string) $r->created_date, 0, 10) >= $recent);
+            if ($sample->count() < (int) $s['worth_full_orders']) {
+                $sample = $ok->take((int) $s['worth_full_orders']);
+            }
+            $out[(int) $pid] = ['orders' => $sample->count(), 'delivered' => $sample->where('outcome', 'delivered')->count(),
+                'since' => $sample->isEmpty() ? null : substr((string) $sample->last()->created_date, 0, 10), 'to' => $to->toDateString(),
+                'left_out' => $all->count() - $ok->count(),
+                'cities' => $sample->groupBy(fn ($r) => (int) $r->city_id)->map(fn ($rs, $cid) => ['city' => $names[$cid] ?? null, 'orders' => $rs->count(),
+                    'delivered' => $rs->where('outcome', 'delivered')->count()])->sortByDesc('orders')->values()->all()];
+        }
+
+        return $out;
+    }
+
+    /**
      * `.137`: lo que viene en camino a cada ciudad, por producto: los traslados en tránsito hacia sus agencias y las compras
      * al proveedor por recibir (con la fecha más próxima). Como en StockStatus.
      *

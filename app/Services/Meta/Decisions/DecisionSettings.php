@@ -112,6 +112,18 @@ class DecisionSettings
         // .116: con 3 batches perdidos seguidos un ángulo (o un creativo, con sus iteraciones) descansa 14 días
         'angle_rest_batches' => [3, 1, 20],
         'angle_rest_days' => [14, 1, 365],
+        // .139 (dueño, 2026-11-12: "los recursos son finitos… determinar si un producto es bueno, regular… o malo y no vale la
+        // pena seguir renovando creativos"): la etiqueta de cada producto por su efectividad, con sus pedidos maduros sin los
+        // que esperaron stock. Eligió Bueno desde 55 % y Malo debajo de 45 % (Solo Brillo no cuenta: es la excepción)
+        'worth_good_pct' => [55, 1, 100],
+        'worth_bad_pct' => [45, 1, 100],
+        // "En dos tiempos": con 30 pedidos solo se dice Malo si está claramente mal (debajo de 40 %); con 50, las líneas de arriba
+        'worth_early_orders' => [30, 10, 200],
+        'worth_early_bad_pct' => [40, 1, 100],
+        'worth_full_orders' => [50, 10, 500],
+        'worth_min_days' => [7, 1, 30],          // los productos grandes juntan 50 pedidos en un día: al menos los últimos 7
+        'worth_max_days' => [60, 14, 120],
+        'worth_rescue_gain' => [500, 0, 100000], // efectividad mala con $500+ de ganancia en 4 semanas: Regular, no Malo
         // Paso 6a — las landings: con menos no se opina
         'landing_min_clicks' => [100, 1, 100000],   // de la visita
         'landing_min_visits' => [300, 1, 1000000],  // de la compra

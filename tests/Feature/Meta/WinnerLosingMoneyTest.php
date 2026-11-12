@@ -79,6 +79,7 @@ function zenCaracasDecision(array $off = [], array $noSpend = [], bool $history 
     $empty = ['daily' => [], 'budget_events' => [], 'status_events' => [], 'ad_pauses' => [], 'new_ads' => [], 'mins' => 0.0];
     $city = ['available' => true, 'stock' => 100, 'units_per_day' => 5.0, 'days_of_stock' => 20.0, 'sizes_out' => [], 'version' => null];
     $ops = Mockery::mock(OpsFacts::class);
+    $ops->allows('worth')->andReturn([]);
     $ops->allows('campaigns')->andReturn(['history_since' => null, 'today' => now()->toDateString(), 'yesterday' => now()->subDay()->toDateString(), 'campaigns' => [ZEN_CARACAS => $empty]]);
     $ops->allows('products')->andReturn([1149 => ['price' => 25.0, 'price_change' => null, 'cities' => [1 => $city], 'version' => null, 'bank' => ['codes' => [], 'ready' => [], 'launched' => []]]]);
 

@@ -73,6 +73,8 @@ class EditorForecast
     private function consumption(float $fallback, string $today): array
     {
         $paused = DB::table('product_ad_settings')->where('mode', '!=', 'normal')->pluck('product_id')->map(fn ($v) => (int) $v)->all();
+        // .139: un producto Malo por su efectividad tampoco pide creativos mientras el dueño decide
+        $paused = array_merge($paused, \App\Services\Meta\Products\ProductWorthBoard::stoppedIds());
         $testing = DB::table('product_profiles')->where('phase', 'testing')->pluck('product_id')->map(fn ($v) => (int) $v)->all();
         $ids = array_values(array_diff(array_map('intval', MetaAnalyzer::products()), $paused, $testing));
         if ($ids === []) {

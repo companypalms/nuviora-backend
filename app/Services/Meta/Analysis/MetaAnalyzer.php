@@ -7,6 +7,7 @@ use App\Services\Meta\Changes\ChangeLessons;
 use App\Services\Meta\Changes\MetaChanges;
 use App\Services\Meta\Decisions\MetaDecisions;
 use App\Services\Meta\Products\NewProductMissions;
+use App\Services\Meta\Products\ProductWorthBoard;
 use App\Services\Meta\Queue\QueueProposer;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -40,6 +41,12 @@ class MetaAnalyzer
         $date ??= now(config('app.timezone'))->toDateString();
         $productIds = self::products();
         $decisions = ($this->decisions ?? new MetaDecisions())->compute($productIds);
+        // .139: la etiqueta de cada producto (Bueno, Regular o Malo), para las listas de los editores y la página de productos
+        try {
+            ProductWorthBoard::save($decisions, (new \App\Services\Meta\Decisions\DecisionSettings())->get());
+        } catch (\Throwable $e) {
+            report($e);
+        }
         $facts = AnalysisFacts::build($decisions, self::names($decisions));
         // .56: lo que dicen los videos de los ganadores (transcritos en la .55)
         $facts = AnalysisFacts::withScripts($facts, \App\Services\Meta\Videos\Scripts::forCreatives(

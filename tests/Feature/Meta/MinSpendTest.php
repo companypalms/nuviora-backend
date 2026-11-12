@@ -69,6 +69,7 @@ function minimoDecide(?array $sets = null, array $campaign3d = [256.0, 80]): arr
     $settings = Mockery::mock(DecisionSettings::class);
     $settings->allows('get')->andReturn(DecisionSettings::defaults());
     $ops = Mockery::mock(OpsFacts::class);
+    $ops->allows('worth')->andReturn([]);
     $ops->allows('campaigns')->andReturn(['history_since' => '2026-10-01', 'today' => now()->toDateString(), 'yesterday' => now()->subDay()->toDateString(),
         'campaigns' => [MINIMO_CCS => ['daily' => [], 'budget_events' => [], 'status_events' => [], 'ad_pauses' => [], 'new_ads' => ['2026-11-08'], 'mins' => 30.0]]]);
     $ops->allows('products')->andReturn([1146 => ['price' => 25.0, 'price_change' => null, 'version' => null, 'bank' => ['codes' => [], 'ready' => [], 'launched' => []],

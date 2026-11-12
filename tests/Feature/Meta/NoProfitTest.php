@@ -96,6 +96,7 @@ function singanarDecide(array $aragua3d, array $o = []): array
         $good[$d] = ['spend' => 40.0, 'purchases' => 10.0];
     }
     $ops = Mockery::mock(OpsFacts::class);
+    $ops->allows('worth')->andReturn([]);
     $ops->allows('campaigns')->andReturn(['history_since' => '2026-10-01', 'today' => $today, 'yesterday' => now()->subDay()->toDateString(), 'campaigns' => [
         SINGANAR_ARAGUA => $o['history'] ?? singanarHistorial($today, $o['budget'] ?? []),
         SINGANAR_CCS => ['daily' => array_filter($o['ccs_daily'] ?? $good, fn ($d) => $d < $today, ARRAY_FILTER_USE_KEY), 'budget_events' => [], 'status_events' => [], 'ad_pauses' => [], 'new_ads' => [], 'mins' => 0.0]]]);
