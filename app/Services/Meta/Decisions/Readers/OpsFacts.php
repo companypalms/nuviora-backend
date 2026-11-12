@@ -159,6 +159,10 @@ class OpsFacts
         // .137: lo que viene en camino a cada ciudad y si el producto está En testeo (se testea sin mercancía, .89)
         $incoming = $this->incoming($productIds, $warehouses);
         $phases = DB::table('product_profiles')->whereIn('product_id', $productIds)->pluck('phase', 'product_id');
+        // .140: un cambio de precio de las últimas 2 semanas o que todavía se mide (Historial de cambios): no se recomienda otro
+        $priceMeasuring = DB::table('meta_changes')->where('kind', 'price')->whereIn('product_id', $productIds)
+            ->where(fn ($q) => $q->where('result', 'measuring')->orWhere('date', '>=', now($tz)->subDays(14)->toDateString()))
+            ->pluck('product_id')->map(fn ($v) => (int) $v)->all();
         $iterations = CreativeBatch::whereIn('product_id', $productIds)->where('status', 'tested')->where('kind', 'iteration')->whereNotNull('reference_creative_id')->whereNotNull('tested_at')
             ->get(['id', 'product_id', 'number', 'status', 'reference_creative_id', 'result', 'tested_at'])->groupBy('product_id');
 
@@ -182,6 +186,7 @@ class OpsFacts
             }
             $out[$pid] = ['price' => isset($prices[$pid]) ? (float) $prices[$pid] : null, 'price_change' => $this->priceChange($pid),
                 'cities' => $cities, 'version' => $versions["{$pid}|"] ?? null, 'phase' => (string) ($phases[$pid] ?? 'iterate'),
+                'price_measuring' => in_array((int) $pid, $priceMeasuring, true),
                 // .116: los ángulos de la ficha, lo que decidió el dueño y las iteraciones de cada creativo
                 'angles' => TestingPhase::profileAngles((int) $pid),
                 'dismissed' => $dismissed,

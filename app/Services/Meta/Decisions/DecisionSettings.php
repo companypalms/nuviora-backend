@@ -86,7 +86,14 @@ class DecisionSettings
         // .124 (dueño, 2026-11-09): el gasto mínimo de un batch es solo mientras se prueba: se pide quitarlo cuando ya tiene
         // veredicto en esa ciudad o, si no, a los 7 días de prendido
         'min_spend_days' => [7, 1, 60],
-        'price_step' => [2, 0.1, 100],           // probar bajar el precio de a $2
+        // .140 (dueño, 2026-11-12): bajar el precio de un producto Bueno solo con el CPA real de 14 días 40 % o más debajo del
+        // C ("solo cuando el espacio es muy claro"); un escalón de hasta 10 %; el C nuevo, al menos 25 % encima del CPA real.
+        // Después se mide 7 días antes contra 7 después con la ganancia en dólares (reemplaza "probar bajar de a $2")
+        'price_room_pct' => [40, 5, 90],
+        'price_step_max_pct' => [10, 1, 50],
+        'price_cushion' => [1.25, 1, 3],
+        'price_min_purchases' => [20, 1, 1000],  // compras de Meta en esos 14 días
+        'price_watch_days' => [7, 3, 30],
         'stock_warn_days' => [3, 1, 90],         // .79: avisar "poco stock" con menos de 3 días de ventas (el stock ya no frena la subida)
         // .101: con 5+ pedidos esperando stock (de los últimos 14 días) en una ciudad: aviso con lo gastado y no se sube ahí
         'stock_waiting_min' => [5, 1, 1000],

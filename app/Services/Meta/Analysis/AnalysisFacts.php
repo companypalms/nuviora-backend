@@ -109,6 +109,8 @@ final class AnalysisFacts
                 // .139: Bueno, Regular o Malo por su efectividad; si es Malo, la misión de liquidarlo o abandonarlo
                 'worth' => isset($p['product']['worth']) ? array_intersect_key($p['product']['worth'], array_flip(['level', 'label', 'early', 'effectiveness', 'orders', 'rescued', 'why'])) : null,
                 'worth_bad' => $plan['worth_bad'] ?? null,
+                // .140: bajar el precio un escalón (producto Bueno con mucho espacio debajo de su C)
+                'price_down' => $plan['price_down'] ?? null,
                 // .137: las campañas prendidas en una ciudad sin unidades
                 'stock_out' => $plan['stock_out'] ?? [],
                 // .126: lo que dejó el producto en 3 y en 7 días

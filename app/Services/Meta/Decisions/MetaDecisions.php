@@ -8,6 +8,7 @@ use App\Services\Meta\Decisions\Readers\AdFacts;
 use App\Services\Meta\Decisions\Readers\OpsFacts;
 use App\Services\Meta\Decisions\Rules\AdRules;
 use App\Services\Meta\Decisions\Rules\CampaignRules;
+use App\Services\Meta\Decisions\Rules\PriceRules;
 use App\Services\Meta\Decisions\Rules\ProductWorth;
 use App\Services\Meta\MetaMetrics;
 use App\Services\Meta\Products\AngleRest;
@@ -641,19 +642,14 @@ class MetaDecisions
             $out['campaigns'][$id]['budget_notes'] = $cr->budgetNotes($budget, (float) $h['mins'], $newBatches, $c['target'], $mins['missing']);
             $actions[$id] = $action['key'];
 
-            // El precio: el mínimo con el CPA de 7 días; se ofrece junto al escalado
+            // El precio mínimo con el CPA de 7 días, para vigilar un precio que cambió. .140: la opción de bajarlo de a $2 junto al
+            // escalado se reemplazó por la recomendación del producto entero (PriceRules, abajo)
             $version = $city['version'] ?? null;
             if (!$version || (float) $version->purchases <= 0 || (int) $version->orders_delivered <= 0) {
                 $version = $ops['version'] ?? null;
             }
             if ($version && ($ops['price'] ?? null) && $cpa7) {
-                $min = CampaignRules::minPrice($version->toArray(), (float) $ops['price'], (float) $cpa7);
-                $minFor[$id] = $min;
-                $option = $cr->priceOption((float) $ops['price'], $min, $action['key'] === 'scale' && $cpa7 <= $c['target']);
-                if ($option) {
-                    $out['campaigns'][$id]['price_option'] = $option;
-                    $prices[] = ($c['city'] ?? '') . ': ' . $option['text'];
-                }
+                $minFor[$id] = CampaignRules::minPrice($version->toArray(), (float) $ops['price'], (float) $cpa7);
             }
         }
 
@@ -744,11 +740,24 @@ class MetaDecisions
             + ['since' => $sample['since'] ?? null, 'left_out' => (int) ($sample['left_out'] ?? 0), 'cities' => $sample['cities'] ?? []];
         $worth['stop'] = ProductWorth::stops($worth, $mode, $dismissed, (int) $f['product']['id'], $today);
         $out['product']['worth'] = $worth;
-        $worthBad = $worth['stop'] && self::periodMoney($f, $history['campaigns'] ?? [], $yesterday, 14)['spend'] > 0
+        $m14 = self::periodMoney($f, $history['campaigns'] ?? [], $yesterday, 14);
+        $worthBad = $worth['stop'] && $m14['spend'] > 0
             ? $worth + ['phase' => (string) ($ops['phase'] ?? 'iterate'), 'stock' => (int) array_sum(array_column($ops['cities'] ?? [], 'stock')),
                 'line' => (float) $s[$worth['early'] ? 'worth_early_bad_pct' : 'worth_bad_pct']]
             : null;
+        // .140: un producto Bueno con mucho espacio debajo de su C: bajar el precio un escalón para vender más
+        $version = $ops['version'] ?? null;
+        $priceDown = PriceRules::suggest(['price' => $ops['price'] ?? null, 'version' => $version instanceof \Illuminate\Database\Eloquent\Model ? $version->toArray() : $version,
+            'cpa' => $m14['purchases'] > 0 ? $m14['spend'] / $m14['purchases'] : null, 'purchases' => $m14['purchases'], 'worth' => $worth['level'], 'mode' => $mode,
+            'phase' => (string) ($ops['phase'] ?? 'iterate'), 'recent' => ($ops['price_change'] ?? null) !== null || (bool) ($ops['price_measuring'] ?? false),
+            'dismissed' => ($dismissed["{$f['product']['id']}:price_down"] ?? '') >= date('Y-m-d', strtotime("{$today} -" . ProductWorth::DISMISS_DAYS . ' days'))], $s);
+        if ($priceDown) {
+            $priceDown += ['effectiveness' => $worth['effectiveness'], 'orders' => $worth['orders']];
+            $prices[] = 'Baja el precio de ' . AdRules::money($priceDown['from']) . ' a ' . AdRules::money($priceDown['to']) . ': tu CPA real de 14 días ('
+                . AdRules::money($priceDown['cpa']) . ') está ' . $priceDown['room'] . ' % debajo de tu C (' . AdRules::money($priceDown['c']) . ').';
+        }
         $out['plan'] = [
+            'price_down' => $priceDown,
             'urgency' => $urgency,
             'next_work' => $cr->nextWork(['mode' => $mode, 'winner' => $winner, 'saturated' => $saturated, 'main_angle' => $mainAngle,
                 'rested' => $restedCodes, 'rest_batches' => $restN, 'bank' => $bank, 'needed' => $urgency['needed']], $urgency['batches']),
@@ -1232,26 +1241,28 @@ class MetaDecisions
     }
 
     /**
-     * `.139`: lo que gastó el producto entero en sus últimos $days días cerrados y lo que dejó (compras × BE − gasto, la suma de
-     * sus campañas con BE; null si ninguna lo tiene). PHP puro.
+     * `.139`: lo que gastó el producto entero en sus últimos $days días cerrados, sus compras (`.140`: para su CPA real) y lo que
+     * dejó (compras × BE − gasto, la suma de sus campañas con BE; null si ninguna lo tiene). PHP puro.
      *
-     * @return array{spend: float, gain: ?float}
+     * @return array{spend: float, purchases: float, gain: ?float}
      */
     public static function periodMoney(array $f, array $histories, string $yesterday, int $days): array
     {
         $from = date('Y-m-d', strtotime("{$yesterday} -" . ($days - 1) . ' days'));
-        $spend = 0.0;
+        $spend = $purchases = 0.0;
         $gain = null;
         foreach ($f['campaigns'] as $id => $c) {
             $window = array_filter($histories[(string) $id]['daily'] ?? [], fn ($d) => $d >= $from && $d <= $yesterday, ARRAY_FILTER_USE_KEY);
             $s = (float) array_sum(array_column($window, 'spend'));
+            $p = (float) array_sum(array_column($window, 'purchases'));
             $spend += $s;
+            $purchases += $p;
             if ($c['break_even'] ?? null) {
-                $gain = ($gain ?? 0) + self::gain($s, (float) array_sum(array_column($window, 'purchases')), (float) $c['break_even']);
+                $gain = ($gain ?? 0) + self::gain($s, $p, (float) $c['break_even']);
             }
         }
 
-        return ['spend' => round($spend, 2), 'gain' => $gain === null ? null : round($gain, 2)];
+        return ['spend' => round($spend, 2), 'purchases' => $purchases, 'gain' => $gain === null ? null : round($gain, 2)];
     }
 
     /**

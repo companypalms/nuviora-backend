@@ -65,7 +65,7 @@ final class UrgentList
         'pause_city' => 1, 'not_sold' => 1, 'product_off' => 1, 'stock_out' => 1, 'stock_waiting' => 1, 'stop_creatives' => 1,
         'decrease' => 2, 'intervene' => 2, 'tracking' => 2, 'late_urgent' => 2, 'drop_product' => 2, 'worth_bad' => 2,
         'hold_prune' => 3, 'step_down' => 3, 'few_batches' => 3, 'min_spend' => 3, 'late_batch' => 3, 'launch_ready' => 3, 'no_city' => 3, 'no_be' => 3,
-        'scale' => 4, 'launch_test' => 4, 'relaunch' => 4, 'new_product_late' => 4,
+        'scale' => 4, 'launch_test' => 4, 'relaunch' => 4, 'new_product_late' => 4, 'price_down' => 4,
         'alarm' => 5, 'names' => 5, 'cooldown' => 5, 'angle_rest' => 5, 'left_city' => 5, 'stale' => 5, 'lesson' => 5,
         'price' => 6,
     ];
@@ -75,7 +75,7 @@ final class UrgentList
         'pause_city' => 'frenar', 'not_sold' => 'frenar', 'product_off' => 'frenar', 'drop_product' => 'frenar', 'worth_bad' => 'frenar', 'stop_creatives' => 'frenar', 'decrease' => 'frenar',
         'intervene' => 'arreglar', 'tracking' => 'arreglar', 'hold_prune' => 'arreglar', 'step_down' => 'arreglar', 'few_batches' => 'arreglar', 'min_spend' => 'arreglar',
         'late_urgent' => 'arreglar', 'late_batch' => 'arreglar', 'launch_ready' => 'arreglar', 'no_city' => 'arreglar', 'no_be' => 'arreglar',
-        'scale' => 'crecer', 'launch_test' => 'crecer', 'relaunch' => 'crecer', 'new_product_late' => 'crecer',
+        'scale' => 'crecer', 'launch_test' => 'crecer', 'relaunch' => 'crecer', 'new_product_late' => 'crecer', 'price_down' => 'crecer',
         'stock_out' => 'frenar', 'stock_waiting' => 'aviso', 'alarm' => 'aviso', 'price' => 'aviso', 'names' => 'aviso', 'cooldown' => 'aviso', 'angle_rest' => 'aviso', 'left_city' => 'aviso', 'stale' => 'aviso', 'lesson' => 'aviso',
     ];
 
@@ -174,11 +174,6 @@ final class UrgentList
                     'detail' => array_values(array_filter([...self::numbers($n), $a['reading'], $a['proposal'], ...$c['notes'], ...$c['budget_notes'],
                         count($prune) > self::NAMES_IN_STEP ? 'Todos los anuncios a apagar: ' . CreativeCalls::join($prune) . '.' : null, self::liveLine($n)])),
                     'money' => self::money($kind, $a, $n)] + ($wait ? ['group' => 'aviso'] : []);
-                if ($c['price_option']) {
-                    $items[] = $base + ['key' => "{$p['product_id']}:{$c['campaign_meta_id']}:price", 'city' => $c['city'], 'kind' => 'price',
-                        'label' => 'Precio', 'text' => $c['price_option'], 'tone' => 'info',
-                        'where' => $short . ($c['city'] ? " · {$c['city']}" : ''), 'title' => $c['price_option'], 'steps' => [], 'why' => null, 'detail' => []];
-                }
             }
             foreach ($p['alarms'] as $t) {
                 if (str_contains($t, 'sigue activa')) {
@@ -205,6 +200,10 @@ final class UrgentList
             // .139: el producto salió Malo por su efectividad: sus encargos nuevos esperan a que el dueño decida
             if ($p['worth_bad'] ?? null) {
                 $items[] = $base + self::worthBad((int) $p['product_id'], $short, $p['worth_bad']);
+            }
+            // .140: un producto Bueno con mucho espacio debajo de su C: bajar el precio un escalón
+            if ($p['price_down'] ?? null) {
+                $items[] = $base + self::priceDown((int) $p['product_id'], $p['product'], $short, $p['price_down']);
             }
             // .125: el producto entero lleva 14 días sin dejar dinero: lo decide el dueño
             if ($p['drop'] ?? null) {
@@ -680,6 +679,30 @@ final class UrgentList
                 'Efectividad = pedidos entregados ÷ pedidos que entraron' . (($w['since'] ?? null) ? ' desde el ' . date('d/m', strtotime($w['since'])) : '')
                 . ', ya con tiempo de entregarse' . ($w['left_out'] > 0 ? "; no cuentan {$w['left_out']} que esperaron stock." : '.'),
                 'Mientras decides, no se piden batches nuevos de este producto; lo que los editores ya están haciendo sigue.'],
+            'money' => null];
+    }
+
+    /**
+     * `.140` (dueño, 2026-11-12: "si vemos que el CPA de Facebook objetivo es muy alto debido a que el porcentaje de efectividad
+     * de ese producto es bueno… podemos bajarle un poco el precio al producto para tratar de ganar más volumen sin sacrificar
+     * ni CPA ni rentabilidad"): un escalón, y el Historial de cambios dice en 7 días (ya entregados) si se gana más dinero.
+     */
+    private static function priceDown(int $productId, string $name, string $short, array $p): array
+    {
+        $to = AdRules::money($p['to']);
+        $why = 'Tu CPA real de 14 días es ' . AdRules::money($p['cpa']) . ' y tu C es ' . AdRules::money($p['c']) . ": sobra {$p['room']} %. Con {$to} el C queda en ~"
+            . AdRules::money($p['c_new']) . ", todavía {$p['room_new']} % encima de tu CPA.";
+
+        return ['key' => "{$productId}:price_down", 'city' => null, 'kind' => 'price_down', 'label' => 'Bajar el precio', 'tone' => 'success', 'text' => $why, 'where' => $short,
+            'title' => "Baja el precio de {$short} de " . AdRules::money($p['from']) . " a {$to}: se entrega bien y te sobra espacio en Meta",
+            'steps' => ["En Shopify, cambia el precio de «{$name}» a {$to}.", "Si la landing o algún anuncio muestran el precio, cámbialo también ahí a {$to}.",
+                'Nada más: el sistema lo anota solo en el Historial de cambios y te dice si con el precio nuevo ganas más dólares por día.',
+                'Si no quieres bajarlo: toca «No estoy de acuerdo» y no te lo vuelvo a proponer en ' . ProductWorth::DISMISS_DAYS . ' días.'],
+            'why' => $why,
+            'detail' => array_values(array_filter([($p['effectiveness'] ?? null) !== null ? 'Efectividad ' . AdRules::num($p['effectiveness']) . " % en sus últimos {$p['orders']} pedidos: es un producto Bueno." : null,
+                'Cada venta deja un poco menos, pero la idea es vender más y ganar más en total.',
+                'Se compara 7 días antes con 7 días después, cuando esos pedidos ya se entregaron: si no ganas más dólares por día, el Historial te dice que vuelvas a '
+                . AdRules::money($p['from']) . '.'])),
             'money' => null];
     }
 

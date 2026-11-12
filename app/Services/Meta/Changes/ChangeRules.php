@@ -25,6 +25,8 @@ final class ChangeRules
         'ads_off' => 'Apagar anuncios',
         'new_batch' => 'Batch nuevo',
         'min_off' => 'Quitar el gasto mínimo',
+        // .140: del producto entero (no de una campaña); lo mide PriceChangeRules
+        'price' => 'Cambiar el precio',
     ];
 
     /** Los cambios grandes (`.111`): cortan la medición de los demás de esa campaña. */
@@ -36,7 +38,7 @@ final class ChangeRules
     public const MISSIONS = [
         'raise' => ['scale'], 'lower' => ['decrease', 'step_down'], 'pause' => ['pause_city'], 'resume' => ['relaunch'],
         'ads_off' => ['stop_creatives', 'hold_prune', 'intervene'], 'new_batch' => ['few_batches', 'launch_ready', 'launch_test', 'relaunch', 'intervene'],
-        'min_off' => ['min_spend'],
+        'min_off' => ['min_spend'], 'price' => ['price_down'],
     ];
 
     /** Los días cerrados que se miran antes y después. */
@@ -369,6 +371,7 @@ final class ChangeRules
             'ads_off' => 'Apagaste ' . CreativeCalls::join([...$detail['ads'] ?? [], ...array_map(fn ($s) => "el batch {$s}", $detail['adsets'] ?? [])]),
             'new_batch' => "Lanzaste {$detail['adset']}",
             'min_off' => "Quitaste el mínimo de {$m($detail['min'])} de {$detail['adset']}",
+            'price' => "El precio, de {$m($detail['from'])} a {$m($detail['to'])}",
             default => '',
         };
     }
@@ -405,7 +408,7 @@ final class ChangeRules
         return (new \DateTimeImmutable($date))->modify(($n >= 0 ? '+' : '') . "{$n} days")->format('Y-m-d');
     }
 
-    private static function diffDays(string $from, string $to): int
+    public static function diffDays(string $from, string $to): int
     {
         return (int) (new \DateTimeImmutable($from))->diff(new \DateTimeImmutable($to))->format('%r%a');
     }

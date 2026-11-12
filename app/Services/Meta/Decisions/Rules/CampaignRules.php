@@ -385,23 +385,6 @@ class CampaignRules
         return round($price - ($r - $rMin), 2);
     }
 
-    /**
-     * La opción de bajar el precio, para ofrecerla junto al escalado (nunca las dos el mismo día; elige el dueño).
-     *
-     * @return array{text: string, price: float, to: float, min: float}|null
-     */
-    public function priceOption(?float $price, ?float $min, bool $eligible): ?array
-    {
-        if (!$eligible || !$price || $min === null || $price - $min < $this->s['price_step']) {
-            return null;
-        }
-        $to = round($price - $this->s['price_step'], 2);
-
-        return ['price' => $price, 'to' => $to, 'min' => $min,
-            'text' => 'O probar bajar el precio ' . AdRules::money($this->s['price_step']) . ': ' . AdRules::money($price) . ' → ' . AdRules::money($to)
-                . ' (con el CPA de hoy, tu utilidad aguanta hasta ' . AdRules::money($min) . '). Nunca el mismo día que el presupuesto; eliges tú.'];
-    }
-
     /** Después de cambiar el precio: si quedó debajo del mínimo con el CPA de hoy, volver. */
     public function priceWatch(?array $change, ?float $min): ?string
     {

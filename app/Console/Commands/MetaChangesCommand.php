@@ -18,6 +18,9 @@ class MetaChangesCommand extends Command
     public function handle(MetaChanges $changes): int
     {
         $r = $changes->refresh();
+        // .140: y los cambios de precio de cada producto
+        $p = $changes->refreshPrices();
+        $this->info("Precios: {$p['found']} cambios, {$p['saved']} guardados.");
         $this->info("Cambios vistos: {$r['found']} · guardados o medidos de nuevo: {$r['saved']}");
 
         return self::SUCCESS;

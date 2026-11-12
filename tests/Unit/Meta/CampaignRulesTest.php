@@ -274,12 +274,7 @@ describe('Precio', function () {
             ->and(CampaignRules::minPrice(['orders_delivered' => 0] + $flexi, 23.14, 3.96))->toBeNull();
     });
 
-    it('se ofrece de a $2 junto al escalado, nunca debajo del mínimo', function () {
-        $o = campana()->priceOption(23.14, 18.26, true);
-        expect($o['to'])->toBe(21.14)->and($o['text'])->toContain('$23,14 → $21,14')->toContain('$18,26');
-        expect(campana()->priceOption(23.14, 18.26, false))->toBeNull()
-            ->and(campana()->priceOption(23.14, 22.0, true))->toBeNull();
-    });
+    // .140: "probar bajar de a $2 junto al escalado" se reemplazó por la recomendación del producto entero (PriceRulesTest)
 
     it('después de bajar: vigilar, y volver si quedó debajo del mínimo', function () {
         expect(campana()->priceWatch(['from' => 23.14, 'to' => 21.14], 18.26))->toContain('vigilar')->not->toContain('volver')

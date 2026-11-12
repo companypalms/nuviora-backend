@@ -26,13 +26,14 @@ final class ChangeLessons
     public const OF_MISSION = [
         'scale' => 'raise', 'decrease' => 'lower', 'step_down' => 'lower', 'pause_city' => 'pause', 'relaunch' => 'resume',
         'stop_creatives' => 'ads_off', 'hold_prune' => 'ads_off', 'min_spend' => 'min_off', 'few_batches' => 'new_batch', 'launch_ready' => 'new_batch',
+        'price_down' => 'price',
     ];
 
     public const VERBS = ['raise' => 'subiste el presupuesto', 'lower' => 'bajaste el presupuesto', 'pause' => 'pausaste la campaña', 'resume' => 'la prendiste otra vez',
-        'ads_off' => 'apagaste anuncios', 'min_off' => 'quitaste un gasto mínimo', 'new_batch' => 'lanzaste un batch'];
+        'ads_off' => 'apagaste anuncios', 'min_off' => 'quitaste un gasto mínimo', 'new_batch' => 'lanzaste un batch', 'price' => 'cambiaste el precio'];
 
     public const NOUNS = ['raise' => 'subidas de presupuesto', 'lower' => 'bajadas de presupuesto', 'resume' => 'veces que la prendiste otra vez',
-        'ads_off' => 'veces que apagaste anuncios', 'min_off' => 'veces que quitaste un gasto mínimo', 'new_batch' => 'batches nuevos'];
+        'ads_off' => 'veces que apagaste anuncios', 'min_off' => 'veces que quitaste un gasto mínimo', 'new_batch' => 'batches nuevos', 'price' => 'cambios de precio'];
 
     /**
      * Lo medido, por campaña y tipo (la última vez y cuántas seguidas no se cumplieron) y por producto (cuántas se cumplieron).
@@ -46,7 +47,8 @@ final class ChangeLessons
         $out = ['campaigns' => [], 'products' => []];
         foreach ($rows as $r) {
             $k = $r['kind'];
-            $c = &$out['campaigns'][$r['campaign']][$k];
+            // .140: un cambio de precio es del producto entero: va con la clave "p" + el producto
+            $c = &$out['campaigns'][$r['campaign'] ?? self::productKey((int) $r['product_id'])][$k];
             if ($c === null) {
                 $c = ['last' => $r, 'streak' => 0, 'open' => true, 'city' => $r['city'], 'product_id' => (int) $r['product_id']];
             }
@@ -71,6 +73,12 @@ final class ChangeLessons
     }
 
     /** "La última vez (04/11): de $30,00 a $36,00 por día (+20 %). Se cumplió: …". */
+    /** `.140`: la clave de los cambios del producto entero (el precio), en lugar de una campaña. */
+    public static function productKey(int $productId): string
+    {
+        return "p{$productId}";
+    }
+
     public static function line(array $last): string
     {
         return 'La última vez (' . ChangeRules::short($last['date']) . '): ' . self::lower($last['what']) . '. ' . ($last['result_text'] ?? ChangeRules::RESULTS[$last['result']]);
@@ -101,7 +109,8 @@ final class ChangeLessons
                 continue;
             }
             $parts = explode(':', (string) ($item['key'] ?? ''));
-            $campaign = isset($parts[1], $lessons['campaigns'][$parts[1]]) ? $parts[1] : ($campaignOf[($item['product_id'] ?? '') . '|' . ($item['city'] ?? '')] ?? null);
+            $campaign = $kind === 'price' ? self::productKey((int) ($item['product_id'] ?? 0))
+                : (isset($parts[1], $lessons['campaigns'][$parts[1]]) ? $parts[1] : ($campaignOf[($item['product_id'] ?? '') . '|' . ($item['city'] ?? '')] ?? null));
             $l = $campaign !== null ? ($lessons['campaigns'][$campaign][$kind] ?? null) : null;
             if ($l === null) {
                 continue;

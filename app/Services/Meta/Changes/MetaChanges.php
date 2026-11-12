@@ -2,9 +2,13 @@
 
 namespace App\Services\Meta\Changes;
 
+use App\Constants\OrderStatus;
 use App\Models\CreativeBatch;
 use App\Models\MetaAnalysis;
 use App\Models\MetaChange;
+use App\Models\Status;
+use App\Services\Finance\FinancialCpa;
+use App\Services\Meta\Decisions\DecisionSettings;
 use App\Services\Meta\MetaMetrics;
 use App\Services\Meta\Queue\EditorWork;
 use Illuminate\Support\Carbon;
@@ -19,6 +23,7 @@ use Illuminate\Support\Facades\DB;
  * - la C y el BE de ese día (los del análisis), la hipótesis, los números de antes y de después, y si se cumplió.
  * Se arma a las 00:25 (antes del análisis) y al abrir la pantalla si pasaron 30 minutos. Un cambio ya medido se vuelve a
  * medir 14 días (Meta corrige sus números unos días); después queda fijo. La nota del dueño nunca se toca.
+ * `.140`: también los cambios de precio de cada producto, desde sus pedidos (PriceChangeRules): no son de una campaña.
  */
 class MetaChanges
 {
@@ -40,6 +45,12 @@ class MetaChanges
         if (!$force && $at && now()->diffInMinutes(Carbon::parse($at)) < self::STALE_MINUTES) {
             return null;
         }
+        // .140: los cambios de precio aparte: si algo falla ahí, lo de Meta igual se arma
+        try {
+            $this->refreshPrices();
+        } catch (\Throwable $e) {
+            report($e);
+        }
         try {
             $this->refresh();
 
@@ -49,6 +60,118 @@ class MetaChanges
 
             return $e->getMessage();
         }
+    }
+
+    /**
+     * `.140`: los cambios de precio de los productos con campañas (de sus pedidos), su hipótesis y si se ganó más dinero: los
+     * días de antes contra los de después (price_watch_days), con los pedidos ya entregados. Un cambio medido queda fijo
+     * pasados 14 días.
+     *
+     * @return array{found: int, saved: int}
+     */
+    public function refreshPrices(?string $today = null): array
+    {
+        $tz = config('app.timezone');
+        $today ??= now($tz)->toDateString();
+        $days = (int) (new DecisionSettings())->get()['price_watch_days'];
+        $since = ChangeRules::addDays($today, -self::SCAN_DAYS);
+        $products = DB::table('meta_campaigns')->whereNotNull('product_id')->distinct()->pluck('product_id')->map(fn ($v) => (int) $v)->all();
+        if ($products === []) {
+            return ['found' => 0, 'saved' => 0];
+        }
+        // El precio más repetido de cada día, sin los upsells (las promociones de un día no lo mueven)
+        $modal = [];
+        foreach (DB::table('order_products as op')->join('orders as o', 'o.id', '=', 'op.order_id')->whereIn('op.product_id', $products)
+            ->where(fn ($q) => $q->whereNull('op.is_upsell')->orWhere('op.is_upsell', false))->where('op.price', '>', 0)
+            ->where('o.created_at', '>=', Carbon::parse($since, $tz)->startOfDay())
+            ->selectRaw('op.product_id pid, DATE(o.created_at) d, ROUND(op.price, 2) p, COUNT(*) n')->groupBy('pid', 'd', 'p')->get()->groupBy(fn ($r) => "{$r->pid}|{$r->d}") as $key => $rows) {
+            if ($rows->sum('n') >= PriceChangeRules::MIN_ORDERS_DAY) {
+                [$pid, $d] = explode('|', $key);
+                $modal[(int) $pid][substr($d, 0, 10)] = (float) $rows->sortByDesc('n')->first()->p;
+            }
+        }
+        $found = [];
+        foreach ($modal as $pid => $byDay) {
+            foreach (PriceChangeRules::detect($byDay) as $ch) {
+                $found[] = $ch + ['product_id' => $pid, 'fingerprint' => "price:{$pid}:{$ch['date']}"];
+            }
+        }
+        if ($found === []) {
+            return ['found' => 0, 'saved' => 0];
+        }
+        $matureTo = FinancialCpa::window(now($tz))[1]->toDateString();
+        $versions = app(FinancialCpa::class)->latest();
+        $analyses = $this->analyses(ChangeRules::addDays(min(array_column($found, 'date')), -1));
+        $existing = MetaChange::whereIn('fingerprint', array_column($found, 'fingerprint'))->get()->keyBy('fingerprint');
+        $saved = 0;
+        foreach ($found as $ch) {
+            $row = $existing[$ch['fingerprint']] ?? null;
+            if ($row && $row->result !== 'measuring' && $row->date->toDateString() < ChangeRules::addDays($today, -self::SETTLE_DAYS)) {
+                continue; // ya quedó fijo
+            }
+            $from = ChangeRules::addDays($ch['date'], -$days);
+            $to = ChangeRules::addDays($ch['date'], $days - 1);
+            [$orders, $meta] = $this->priceDays($ch['product_id'], $from, $to);
+            $before = PriceChangeRules::numbers($orders, $meta, $from, ChangeRules::addDays($ch['date'], -1));
+            $lastAfter = min($to, ChangeRules::addDays($today, -1));
+            $after = $lastAfter >= $ch['date'] ? PriceChangeRules::numbers($orders, $meta, $ch['date'], $lastAfter) : null;
+            $h = PriceChangeRules::hypothesis($ch['from'], $ch['to'], $before, $days);
+            $r = PriceChangeRules::measure($ch['from'], $ch['to'], $ch['date'], $before, $after, $matureTo, $today, $days, $this->bigChanges($ch['product_id'], $from, $to));
+            $v = $versions["{$ch['product_id']}|"] ?? null;
+            MetaChange::updateOrCreate(['fingerprint' => $ch['fingerprint']], ['kind' => 'price', 'product_id' => $ch['product_id'], 'campaign_meta_id' => null,
+                'adset_meta_id' => null, 'city' => null, 'date' => $ch['date'], 'changed_at' => "{$ch['date']} 00:00:00", 'detail' => ['from' => $ch['from'], 'to' => $ch['to']],
+                'mission' => $this->mission($analyses, ['date' => $ch['date'], 'kind' => 'price', 'campaign' => ''], $ch['product_id'], null),
+                'target_c' => $v?->target, 'target_be' => $v?->break_even, 'hypothesis' => $h['hypothesis'], 'criterion' => $h['criterion'],
+                'before' => $before, 'after' => $after, 'result' => $r['result'], 'result_text' => $r['text'],
+                'measured_at' => $r['result'] === 'measuring' ? null : ($row?->measured_at ?? now())]);
+            $saved++;
+        }
+
+        return ['found' => count($found), 'saved' => $saved];
+    }
+
+    /**
+     * `.140`: los pedidos de un producto por el día en que entraron (sin cambios ni devoluciones, ni los que esperaron stock)
+     * y lo de Meta por día.
+     *
+     * @return array{0: array<string, array{created: int, delivered: int, revenue: float, variable: float}>, 1: array<string, array{spend: float, purchases: float}>}
+     */
+    private function priceDays(int $productId, string $from, string $to): array
+    {
+        $sinStock = (int) Status::where('description', OrderStatus::SIN_STOCK)->value('id');
+        $rows = DB::table('order_financials')->where('kind', 'normal')->where('product_id', $productId)->whereBetween('created_date', [$from, $to])
+            ->get(['order_id', 'created_date', 'outcome', 'status_id', 'revenue_main', 'revenue_upsell', 'revenue_refunded', 'cogs_main', 'cogs_upsell',
+                'logistics_cost', 'delivery_cost', 'commission_deliverer', 'commission_seller', 'commission_upsell', 'commission_leader', 'commission_other']);
+        $long = array_flip(FinancialCpa::stockoutOrderIds($rows->pluck('order_id')->map(fn ($v) => (int) $v)->all(), $sinStock));
+        $orders = [];
+        foreach ($rows as $r) {
+            if ((int) $r->status_id === $sinStock || isset($long[(int) $r->order_id])) {
+                continue;
+            }
+            $d = substr((string) $r->created_date, 0, 10);
+            $orders[$d] ??= ['created' => 0, 'delivered' => 0, 'revenue' => 0.0, 'variable' => 0.0];
+            $orders[$d]['created']++;
+            $orders[$d]['delivered'] += $r->outcome === 'delivered' ? 1 : 0;
+            $orders[$d]['revenue'] += (float) $r->revenue_main + (float) $r->revenue_upsell - (float) $r->revenue_refunded;
+            $orders[$d]['variable'] += (float) $r->cogs_main + (float) $r->cogs_upsell + (float) $r->logistics_cost + (float) $r->delivery_cost
+                + (float) $r->commission_deliverer + (float) $r->commission_seller + (float) $r->commission_upsell + (float) $r->commission_leader + (float) $r->commission_other;
+        }
+        $meta = [];
+        foreach (DB::table('meta_insights_daily as d')->join('meta_campaigns as c', 'c.meta_id', '=', 'd.campaign_meta_id')->where('d.level', 'campaign')
+            ->where('c.product_id', $productId)->whereBetween('d.date', [$from, $to])->groupBy('d.date')
+            ->selectRaw('d.date, SUM(d.spend) s, SUM(d.purchases) p')->get() as $r) {
+            $meta[substr((string) $r->date, 0, 10)] = ['spend' => (float) $r->s, 'purchases' => (float) ($r->p ?? 0)];
+        }
+
+        return [$orders, $meta];
+    }
+
+    /** `.140`: los otros cambios grandes de un producto en esos días ("subiste el presupuesto en Caracas (10/11)"). @return list<string> */
+    private function bigChanges(int $productId, string $from, string $to): array
+    {
+        return MetaChange::where('product_id', $productId)->whereIn('kind', ChangeRules::BIG)->whereBetween('date', [$from, $to])->orderBy('date')->get(['kind', 'city', 'date'])
+            ->map(fn (MetaChange $c) => ChangeLessons::VERBS[$c->kind] . ($c->city ? " en {$c->city}" : '') . ' (' . ChangeRules::short($c->date->toDateString()) . ')')
+            ->unique()->values()->all();
     }
 
     /** @return array{found: int, saved: int} */

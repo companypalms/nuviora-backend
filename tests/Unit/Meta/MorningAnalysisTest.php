@@ -34,8 +34,9 @@ describe('La lista urgente', function () {
         ];
         $list = UrgentList::build($facts);
         expect(array_map(fn ($i) => "{$i['product']} {$i['kind']}", $list))->toBe([
-            // dentro del mismo grupo, el producto más urgente (Loli, U1) primero; y en un producto, la alarma de tracking antes de tocar campañas
-            'Loli pause_city', 'Loli decrease', 'Cervimax tracking', 'Cervimax intervene', 'Loli hold_prune', 'FlexiStep scale', 'FlexiStep price',
+            // dentro del mismo grupo, el producto más urgente (Loli, U1) primero; y en un producto, la alarma de tracking antes de tocar campañas.
+            // .140: el "prueba bajar $2" junto a la subida ya no sale (lo reemplaza "Baja el precio", del producto entero)
+            'Loli pause_city', 'Loli decrease', 'Cervimax tracking', 'Cervimax intervene', 'Loli hold_prune', 'FlexiStep scale',
         ]);
         expect(collect($list)->pluck('kind'))->not->toContain('hold');
     });
