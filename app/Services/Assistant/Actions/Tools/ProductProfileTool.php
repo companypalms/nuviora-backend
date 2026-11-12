@@ -372,12 +372,8 @@ class ProductProfileTool extends ChangeTool
         $pid = (int) $payload['product_id'];
         $created = false;
         DB::transaction(function () use ($payload, &$pid, &$created, $context) {
-            // .89: el producto nuevo (si un pedido ya lo creó con ese número de Shopify, se usa ese: nunca uno repetido)
             if ($c = $payload['create'] ?? null) {
-                $existing = (int) $c['shopify_id'] > 0 ? Product::where('product_id', (int) $c['shopify_id'])->orderBy('id')->value('id') : null;
-                $pid = (int) ($existing ?? Product::create(['product_id' => (int) $c['shopify_id'], 'title' => $c['title'], 'name' => $c['name'],
-                    'showable_name' => $c['name'], 'price' => (float) $c['price']])->id);
-                $created = $existing === null;
+                [$pid, $created] = self::newProduct($c);
             }
             if ($s = $payload['shopify'] ?? null) {
                 Product::whereKey($pid)->update(['product_id' => (int) $s['id']]);
@@ -407,6 +403,25 @@ class ProductProfileTool extends ChangeTool
             . ($testing ? ' El testeo empieza: sus batches le llegan ya al editor líder.' : '')
             . (($payload['create'] ?? null) && (int) $payload['create']['shopify_id'] === 0 ? ' Cuando esté en tu tienda, pásame el link de Shopify.' : ''),
             ['label' => 'Ver la ficha', 'to' => '/admin/integraciones?seccion=meta&tab=profile&producto=' . $pid]);
+    }
+
+    /**
+     * `.89`: el producto nuevo (si un pedido ya lo creó con ese número de Shopify, se usa ese: nunca uno repetido). `.138`: sin
+     * link, sin número (null): el 0 no se puede repetir y el segundo producto sin link fallaba.
+     *
+     * @param array{name: string, title: string, price: float|int, shopify_id: int} $c
+     * @return array{0: int, 1: bool} el producto y si se creó
+     */
+    public static function newProduct(array $c): array
+    {
+        $shopifyId = (int) $c['shopify_id'] > 0 ? (int) $c['shopify_id'] : null;
+        $existing = $shopifyId !== null ? Product::where('product_id', $shopifyId)->orderBy('id')->value('id') : null;
+        if ($existing !== null) {
+            return [(int) $existing, false];
+        }
+
+        return [(int) Product::create(['product_id' => $shopifyId, 'title' => $c['title'], 'name' => $c['name'], 'showable_name' => $c['name'],
+            'price' => (float) $c['price']])->id, true];
     }
 
     private static function join(array $parts): string
