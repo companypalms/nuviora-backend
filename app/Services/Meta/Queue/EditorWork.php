@@ -171,7 +171,7 @@ class EditorWork
                 $p->forceFill(['file_id' => $f->id, 'hook' => trim((string) ($given[$p->id]['hook'] ?? '')) ?: null,
                     'format' => str_starts_with((string) $f->mime, 'image/') ? 'image' : 'video',
                     // .99: variaciones de un creativo: cada pieza salió de la iteración de ese creativo
-                    'source' => $batch->reference_creative_id ? 'iteration' : $p->source])->save();
+                    'source' => $batch->iteratesId() ? 'iteration' : $p->source])->save();
             }
             $batch->forceFill(['status' => 'bank', 'status_at' => now(), 'status_by' => $actor->id])->save();
 
@@ -223,7 +223,8 @@ class EditorWork
             // .92: de dónde salió cada pieza (lo nuevo, o lo de su entrega anterior)
             // .98 (dueño: "que el sistema lo haga automáticamente"): en el encargo de iterar un ganador, cada pieza sale de ese
             // ganador; queda fija, no la elige el editor
-            $sourceOf = fn (CreativeBatchPiece $p) => $batch->reference_creative_id ? 'iteration' : (($given->get($p->id)['source'] ?? null) ?: $p->source);
+            // .141: solo en una iteración (en un concepto nuevo, su creativo es la referencia y el editor dice de dónde salió)
+            $sourceOf = fn (CreativeBatchPiece $p) => $batch->iteratesId() ? 'iteration' : (($given->get($p->id)['source'] ?? null) ?: $p->source);
             $refOf = fn (CreativeBatchPiece $p) => $sourceOf($p) === 'reference' ? ((int) ($given->get($p->id)['reference_id'] ?? 0) ?: (int) $p->source_reference_id) : null;
             $refs = \App\Models\CreativeReference::whereIn('id', $pieces->map($refOf)->filter()->values())->get()->keyBy('id');
             $errors = [];
@@ -248,7 +249,7 @@ class EditorWork
                     $errors["pieces.{$i}.source"] = "{$name}: di de dónde salió (una referencia de la biblioteca o idea propia).";
                 } elseif ($source === 'reference' && !$refs->has($refOf($p))) {
                     $errors["pieces.{$i}.source"] = "{$name}: elige la referencia de la que salió (o «Idea propia»).";
-                } elseif ($source === 'iteration' && !$batch->reference_creative_id) {
+                } elseif ($source === 'iteration' && !$batch->iteratesId()) {
                     $errors["pieces.{$i}.source"] = "{$name}: este encargo no es la iteración de un ganador: elige una referencia o «Idea propia».";
                 }
             }
@@ -371,7 +372,7 @@ class EditorWork
                     // .92: de dónde salió (para partir de lo mismo en una corrección)
                     'source' => $p->source, 'reference_id' => $p->source_reference_id])->values()->all(),
                 // .92: si es la iteración de un ganador, "Iteración de …" ya viene elegida en cada pieza
-                'iteration_of' => $b->reference_creative_id ? (self::referenceName($b->reference) ?? 'el ganador') : null,
+                'iteration_of' => $b->iteratesId() ? (self::referenceName($b->reference) ?? 'el ganador') : null,
                 // .95: un batch ya hecho que cargó el líder (de antes del sistema, sin hipótesis)
                 'imported' => $b->source === 'imported',
                 // .99: qué hay que hacer, en una frase ("3 variaciones de hook de C0146", "3 piezas nuevas del ángulo POSP")
@@ -421,7 +422,8 @@ class EditorWork
     public static function task(CreativeBatch $b, ?string $angleName): ?array
     {
         return BatchTask::of(['kind' => $b->kind, 'angle_code' => $b->angle_code, 'angle_name' => $angleName,
-            'iterates' => $b->reference_creative_id ? (self::referenceName($b->reference) ?? 'el ganador') : null,
+            // .141: un concepto nuevo con su referencia son "3 piezas nuevas del ángulo …", no "3 variaciones de hook de …"
+            'iterates' => $b->iteratesId() ? (self::referenceName($b->reference) ?? 'el ganador') : null,
             'imported' => $b->source === 'imported', 'testing' => $b->testing_round !== null, 'rules' => $b->source === 'rules',
             'pieces' => $b->pieces->map(fn (CreativeBatchPiece $p) => ['test' => $p->test, 'style' => $p->style, 'format' => $p->format])->all()]);
     }
@@ -511,7 +513,8 @@ class EditorWork
      * (el creativo C0457 es la pieza 457), y si no, su miniatura, sus textos y lo que dice su video. Solo mientras el
      * encargo se hace o se revisa (después no hace falta y no se gasta en buscarlo). `.104` (dueño, 2026-11-05: "con el
      * nombre del anuncio y el ángulo es suficiente… lo busque en nuestro drive antiguo"): si su video no está en el
-     * sistema, video_note dice su nombre completo y su ángulo para buscarlo ahí. Nada se pide a Meta.
+     * sistema, video_note dice su nombre completo y su ángulo para buscarlo ahí. Nada se pide a Meta. `.141`: en un concepto
+     * nuevo es el video de su referencia (lo que ya funciona en ese ángulo), para verlo; no se varía.
      *
      * @return array{code: ?string, angle: ?string, file: ?array, video_note: ?string, thumbnail: ?string, texts: list<string>, script: ?array}|null
      */

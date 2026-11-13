@@ -77,12 +77,12 @@ class AnalysisSender
                 continue;
             }
             if (!empty($c['creative']['off_winner'])
-                && CreativeBatch::where('reference_creative_id', $id)->whereNotIn('status', ['proposed', 'discarded'])->where('created_at', '>=', now()->subDays(self::OFF_AGAIN_DAYS))->exists()) {
+                && CreativeBatch::where('kind', 'iteration')->where('reference_creative_id', $id)->whereNotIn('status', ['proposed', 'discarded'])->where('created_at', '>=', now()->subDays(self::OFF_AGAIN_DAYS))->exists()) {
                 $out['skipped'][] = $id;
                 continue;
             }
             $batch = DB::transaction(function () use ($c, $id, $pieces, $today, $date, $state) {
-                $batch = CreativeBatch::where('reference_creative_id', $id)->where('status', 'proposed')->orderByDesc('id')->first()
+                $batch = CreativeBatch::where('kind', 'iteration')->where('reference_creative_id', $id)->where('status', 'proposed')->orderByDesc('id')->first()
                     ?? $this->create($c, $pieces, $today, $state['prev'][$id] ?? []);
                 if ($batch === null) {
                     return null;

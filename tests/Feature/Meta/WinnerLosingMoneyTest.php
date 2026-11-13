@@ -166,6 +166,7 @@ describe('.119: un ganador ya apagado sigue en la fila de iteraciones', function
             $t->id();
             $t->unsignedInteger('number')->nullable();
             $t->string('status');
+            $t->string('kind', 16)->default('iteration');
             $t->unsignedBigInteger('reference_creative_id')->nullable();
             $t->date('due_date')->nullable();
             $t->timestamps();

@@ -102,7 +102,8 @@ final class IterationRules
             return $out;
         }
         $busy = [];
-        foreach (CreativeBatch::with('pieces:id,creative_batch_id,test')->whereIn('reference_creative_id', $ids)->whereNotIn('status', ['proposed', 'discarded'])
+        // .141: un concepto nuevo que lo tiene de referencia no es una variación suya
+        foreach (CreativeBatch::with('pieces:id,creative_batch_id,test')->where('kind', 'iteration')->whereIn('reference_creative_id', $ids)->whereNotIn('status', ['proposed', 'discarded'])
             ->orderByDesc('id')->get(['id', 'reference_creative_id', 'status']) as $b) {
             $id = (int) $b->reference_creative_id;
             if (in_array($b->status, self::BUSY, true)) {

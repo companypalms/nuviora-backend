@@ -77,6 +77,16 @@ class CreativeBatch extends Model
         return $this->hasMany(CreativeBatchDelivery::class)->orderByDesc('version');
     }
 
+    /**
+     * `.141` (el editor: "este es el que está pidiendo, revisa pues es el mismo no?"): el creativo que este encargo varía.
+     * Solo en una iteración; en un concepto nuevo (o un ángulo nuevo, o arriba del embudo) el creativo es la referencia (lo
+     * que ya funciona en ese ángulo), no lo que se varía.
+     */
+    public function iteratesId(): ?int
+    {
+        return $this->kind === 'iteration' && $this->reference_creative_id ? (int) $this->reference_creative_id : null;
+    }
+
     /** "B0123", o null si todavía no se aprobó. */
     public function code(): ?string
     {

@@ -428,7 +428,7 @@ class MetaChanges
                 $key = ChangeRules::PIECE_METRIC[$test] ?? null;
                 $out["{$productId}:{$b->code()}"] = ['code' => (string) $b->code(), 'status' => $b->status, 'verdicts' => array_values($b->result['verdicts'] ?? []),
                     'hypothesis' => $fixed ? ($task['hypothesis'] ?? null) : ($b->hypothesis ?: ($task['hypothesis'] ?? null)),
-                    'metric' => $key && $b->reference_creative_id ? ['key' => $key, 'adsets' => array_keys(array_filter($adsetInfo, fn ($s) => $s['batch'] === $b->code()
+                    'metric' => $key && $b->iteratesId() ? ['key' => $key, 'adsets' => array_keys(array_filter($adsetInfo, fn ($s) => $s['batch'] === $b->code()
                         && (int) $campaigns[$s['campaign']]->product_id === $productId)), 'reference' => (int) $b->reference_creative_id] : null];
             }
         }

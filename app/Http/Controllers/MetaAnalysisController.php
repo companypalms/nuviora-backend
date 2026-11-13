@@ -159,7 +159,8 @@ class MetaAnalysisController extends Controller
             return [];
         }
         $out = [];
-        foreach (CreativeBatch::with('editor:id,names,surnames')->whereIn('reference_creative_id', $ids)
+        // .141: solo sus iteraciones (un concepto nuevo que lo tiene de referencia no es "la variación que se pidió")
+        foreach (CreativeBatch::with('editor:id,names,surnames')->where('kind', 'iteration')->whereIn('reference_creative_id', $ids)
             ->whereIn('status', [...AnalysisSender::OPEN, 'testing'])->orderBy('id')->get() as $b) {
             $out[(int) $b->reference_creative_id] = ['code' => $b->code(), 'status' => $b->status,
                 'status_label' => QueueRules::STATUSES[$b->status] ?? $b->status,
