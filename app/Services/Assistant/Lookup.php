@@ -5,6 +5,7 @@ namespace App\Services\Assistant;
 use App\Models\City;
 use App\Models\Product;
 use App\Models\Shop;
+use App\Models\Supplier;
 use App\Models\User;
 use App\Services\Assistant\Tools\ToolProblem;
 use App\Services\Metrics\Period;
@@ -123,6 +124,12 @@ class Lookup
     {
         return $this->one('producto', $name, fn () => Product::orderBy('title')->get(['id', 'title', 'showable_name'])
             ->mapWithKeys(fn ($p) => [$p->id => $p->showable_name ?: $p->title])->all());
+    }
+
+    /** `.142`: los proveedores, también los inactivos (sus compras viejas siguen contando). @throws ToolProblem si no hay ninguno o hay varios */
+    public function supplierId(?string $name): ?int
+    {
+        return $this->one('proveedor', $name, fn () => Supplier::orderBy('name')->pluck('name', 'id')->all());
     }
 
     /** Las agencias, también las desactivadas (sus fechas viejas siguen contando). @throws ToolProblem si no hay ninguna o hay varias */

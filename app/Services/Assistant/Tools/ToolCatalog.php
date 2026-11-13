@@ -32,6 +32,7 @@ class ToolCatalog
         StockTool::class,
         LowStockTool::class,
         IncomingTool::class,
+        PurchasesTool::class, // .142: las compras ya hechas (proveedor y costo)
         ReplenishmentTool::class,
         CommissionsTool::class,
         ClosuresTool::class,

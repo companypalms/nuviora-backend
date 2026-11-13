@@ -98,6 +98,10 @@ class ExampleModel implements AssistantModel
         if ($has('reabastec')) {
             return ['name' => 'reabastecimiento', 'arguments' => []];
         }
+        // .142: "¿a qué precio compré el Releev la última vez?", "¿a qué proveedor le compré…?"
+        if ($has('ultima compra', 'precio compre', 'proveedor', 'le compre', 'compre el', 'compre la')) {
+            return ['name' => 'compras', 'arguments' => ['producto' => $name, 'proveedor' => null]];
+        }
         if ($has('en camino', 'por recibir', 'compras')) {
             return ['name' => 'en_camino', 'arguments' => []];
         }
