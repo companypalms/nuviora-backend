@@ -478,6 +478,11 @@ class MetaDecisions
         $relaunchOffers = 0;
         $dismissed = $ops['dismissed'] ?? [];
         $relaunches = false;
+        // .139: la etiqueta del producto. Un Malo frena sus encargos nuevos; la misión sale si gastó en Meta en 14 días (los
+        // productos viejos sin campañas solo llevan la etiqueta). `.145`: se calcula antes de las campañas, que la usan
+        $worth = ProductWorth::verdict($sample, self::periodMoney($f, $history['campaigns'] ?? [], $yesterday, 28)['gain'], $s)
+            + ['since' => $sample['since'] ?? null, 'left_out' => (int) ($sample['left_out'] ?? 0), 'cities' => $sample['cities'] ?? []];
+        $worth['stop'] = ProductWorth::stops($worth, $mode, $dismissed, (int) $f['product']['id'], $today);
         // .137: las campañas prendidas en una ciudad sin unidades (misión de cada día). Un producto En testeo sin mercancía en
         // ninguna ciudad se testea así a propósito (.89: "siempre se testea sin ni siquiera pedir la mercancía"): ahí, solo el aviso
         $stockOut = [];
@@ -616,6 +621,8 @@ class MetaDecisions
                 'raise' => CampaignRules::raiseCheck($h['daily'], $h['budget_events'], $budget !== null ? (float) $budget : null,
                     $c['break_even'] ? (float) $c['break_even'] : null, $yesterday, (int) $s['raise_wait_days'], (float) $s['raise_drop_pct']),
                 'chronic' => $chronic, 'no_batch' => $noBatch,
+                // .145: el producto es Malo (y no dijiste "No estoy de acuerdo"): sus campañas frenan el gasto
+                'worth_bad' => $worth['stop'] ? ['effectiveness' => $worth['effectiveness'], 'orders' => $worth['orders']] : null,
             ]);
             $out['campaigns'][$id]['action'] = $action;
             // .125 (dueño: "puede ser que la campaña se esté comenzando a recuperar e igual me la mande a apagar"): 14 días sin
@@ -737,11 +744,6 @@ class MetaDecisions
             array_unshift($alarms, 'Tracking: Meta ve el ' . AdRules::num($tracking) . ' % de los pedidos reales de los últimos 3 días. Revisar el píxel o la API de conversiones.');
         }
         $mainCampaign = collect($activeCities)->sortByDesc(fn ($c) => $c['windows']['7d']['totals']['spend'] ?? 0)->keys()->first();
-        // .139: la etiqueta del producto. Un Malo frena sus encargos nuevos; la misión sale si gastó en Meta en 14 días (los
-        // productos viejos sin campañas solo llevan la etiqueta)
-        $worth = ProductWorth::verdict($sample, self::periodMoney($f, $history['campaigns'] ?? [], $yesterday, 28)['gain'], $s)
-            + ['since' => $sample['since'] ?? null, 'left_out' => (int) ($sample['left_out'] ?? 0), 'cities' => $sample['cities'] ?? []];
-        $worth['stop'] = ProductWorth::stops($worth, $mode, $dismissed, (int) $f['product']['id'], $today);
         $out['product']['worth'] = $worth;
         $m14 = self::periodMoney($f, $history['campaigns'] ?? [], $yesterday, 14);
         $worthBad = $worth['stop'] && $m14['spend'] > 0

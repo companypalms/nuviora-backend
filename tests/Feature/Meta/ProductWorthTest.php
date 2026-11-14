@@ -180,8 +180,19 @@ describe('.139: un producto Malo', function () {
                     'Si quieres darle otra oportunidad: toca «No estoy de acuerdo» y sus encargos siguen normal 14 días.']])
             ->and($m['detail'])->toBe(['Aragua: 10 de 30 entregados (33,3 %).',
                 'Efectividad = pedidos entregados ÷ pedidos que entraron desde el 20/10, ya con tiempo de entregarse; no cuentan 6 que esperaron stock.',
-                'Mientras decides, no se piden batches nuevos de este producto; lo que los editores ya están haciendo sigue.'])
+                'Mientras decides, no se piden batches nuevos de este producto (lo que los editores ya están haciendo sigue) y sus ciudades frenan el gasto: la que pierde se pausa, la que está entre C y BE baja 20 % y ninguna sube.'])
             ->and(DemandPlanner::plan([9 => $d], [], DecisionSettings::defaults(), now()->toDateString()))->toBe([]);
+    });
+
+    it('.145: su ciudad que pierde ($10 por compra, encima del BE de $7,49) se pausa de una vez, en "Frenar pérdidas"', function () {
+        $d = valeDecide(valeMuestra(30, 10));
+        $m = collect(UrgentList::build(AnalysisFacts::build([9 => $d], ['campaigns' => [VALE_CAMPANA => 'LEGUP | MCAY | CBO']])))->firstWhere('kind', 'pause_city');
+
+        expect($d['campaigns'][VALE_CAMPANA]['action']['key'])->toBe('pause_city')
+            ->and($m)->toMatchArray(['group' => 'frenar', 'title' => 'Pausa la campaña: el producto es Malo y aquí pierde'])
+            // con "No estoy de acuerdo", las reglas de siempre (aquí también pausa, pero por sus 14 días sin dejar dinero, .125)
+            ->and(valeDecide(valeMuestra(30, 10), dismissed: ['9:worth_bad' => now()->subDays(3)->toDateString()])['campaigns'][VALE_CAMPANA]['action'])
+            ->not->toHaveKey('worth')->toHaveKey('chronic');
     });
 
     it('con $500 o más en 4 semanas queda Regular: ni misión ni freno', function () {

@@ -426,7 +426,12 @@ final class UrgentList
                 [$open, $from && $to ? 'Cambia el presupuesto diario de ' . AdRules::money($from) . ' a ' . AdRules::money($to) . "{$pct}." : (string) $a['proposal'],
                     'No lances batches hoy: un cambio grande a la vez.']],
             // .125: si es por los 14 días sin dejar dinero, lo dice
-            'pause_city' => [($a['chronic'] ?? null) ? "Pausa la campaña: {$a['chronic']['days']} días sin dejar dinero" : 'Pausa la campaña', [$open, ...$switchOff]],
+            'pause_city' => [match (true) {
+                ($a['chronic'] ?? null) !== null => "Pausa la campaña: {$a['chronic']['days']} días sin dejar dinero",
+                // .145: el producto es Malo y aquí pierde
+                ($a['worth'] ?? null) !== null => 'Pausa la campaña: el producto es Malo y aquí pierde',
+                default => 'Pausa la campaña',
+            }, [$open, ...$switchOff]],
             'not_sold' => ['Pausa la campaña: ahí no se vende', [$open, ...$switchOff]],
             // .125: el producto está en pausa o abandonado y la campaña sigue gastando
             'product_off' => ['Pausa la campaña: el producto está en pausa', [$open, ...$switchOff]],
@@ -682,7 +687,7 @@ final class UrgentList
                 . AdRules::num($c['orders'] > 0 ? round(100 * $c['delivered'] / $c['orders'], 1) : 0) . ' %).', $w['cities'] ?? []),
                 'Efectividad = pedidos entregados ÷ pedidos que entraron' . (($w['since'] ?? null) ? ' desde el ' . date('d/m', strtotime($w['since'])) : '')
                 . ', ya con tiempo de entregarse' . ($w['left_out'] > 0 ? "; no cuentan {$w['left_out']} que esperaron stock." : '.'),
-                'Mientras decides, no se piden batches nuevos de este producto; lo que los editores ya están haciendo sigue.'],
+                'Mientras decides, no se piden batches nuevos de este producto (lo que los editores ya están haciendo sigue) y sus ciudades frenan el gasto: la que pierde se pausa, la que está entre C y BE baja 20 % y ninguna sube.'],
             'money' => null];
     }
 

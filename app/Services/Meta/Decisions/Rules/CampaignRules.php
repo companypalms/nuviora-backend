@@ -136,6 +136,11 @@ class CampaignRules
         if ($spend < $c * $this->s['no_data_cpa']) {
             return $this->out('wait', $data, 'En 3 días gastó menos de ' . AdRules::num($this->s['no_data_cpa']) . '×C: todavía no alcanza para decidir.', null);
         }
+        // .145 (dueño, 2026-11-14: "sí, hazla"; ZenPulse quemaba $55 por día, el 64 % de su gasto, y era Malo desde el
+        // 10/11): mientras el producto sea Malo no llegan batches nuevos (la .139 los frena), así que no se espera a uno
+        if ($bad = $in['worth_bad'] ?? null) {
+            return $this->worthBad($in, $bad, $data, $cpa, (float) $c, $be ? (float) $be : null, $budget, $spend);
+        }
         // .144 (dueño, 2026-11-14: aprobó "una subida a la vez con 3 días de espera, y 'Devuelve la subida' si la ganancia
         // cayó 10 % o más"; de 11 subidas de la IA con 7 días, 7 bajaron la ganancia por día): la última subida se revisa a
         // los días cerrados; si la ganancia por día cayó, lo primero es devolverla (un cambio grande a la vez)
@@ -330,6 +335,34 @@ class CampaignRules
         }
 
         return ['status' => $fell ? 'fell' : 'held', 'before' => $before !== null ? round($before, 2) : null, 'after' => $after !== null ? round($after, 2) : null] + $base;
+    }
+
+    /**
+     * `.145`: un producto Malo frena su gasto en cada ciudad. En el break-even o encima, pausar la ciudad de una vez (sin los 2
+     * y 5 días de siempre); entre C y BE, bajar el presupuesto (`decrease_pct`), una vez cada `raise_wait_days` días
+     * cerrados (`.144`); debajo de C, mantener: nunca se sube. Con "No estoy de acuerdo" en la misión del producto, vuelve a
+     * las reglas de siempre por 14 días (ProductWorth::stops).
+     */
+    private function worthBad(array $in, array $w, string $data, ?float $cpa, float $c, ?float $be, ?float $budget, float $spend): array
+    {
+        $why = 'Producto Malo (efectividad ' . AdRules::num($w['effectiveness']) . " % en sus últimos {$w['orders']} pedidos): no van a llegar batches nuevos.";
+        $losing = $be && (($cpa !== null && $cpa >= $be) || ($cpa === null && $spend >= $c * $this->s['loser_spend_cpa']));
+        if ($losing) {
+            return $this->out('pause_city', $data, "{$why} Aquí está en el break-even o encima.",
+                'Pausar la ciudad. Si decides seguir con el producto, marca «No estoy de acuerdo» en su misión.', $budget, null) + ['worth' => $w];
+        }
+        if ($cpa === null || $cpa > $c) {
+            if (($in['raise']['status'] ?? null) === 'waiting') {
+                return $this->out('hold', $data, "{$why} " . self::raiseWaiting($in['raise']), 'Mantener.') + ['worth' => $w];
+            }
+            $to = $budget ? round($budget * (1 - $this->s['decrease_pct'] / 100), 2) : null;
+
+            return $this->out('decrease', $data, "{$why} Aquí está entre C y el break-even.",
+                'Bajar ' . AdRules::num($this->s['decrease_pct']) . ' %' . ($to ? ': ' . AdRules::money($budget) . ' → ' . AdRules::money($to) : '') . '.', $budget, $to)
+                + ['worth' => $w];
+        }
+
+        return $this->out('hold', $data, "{$why} Aquí todavía paga (debajo de C), pero no se sube.", 'Mantener.') + ['worth' => $w];
     }
 
     /** `.144`: "Devolver la subida": la ganancia por día cayó después de subir. */

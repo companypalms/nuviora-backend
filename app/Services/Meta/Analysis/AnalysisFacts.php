@@ -39,7 +39,9 @@ final class AnalysisFacts
                         // .125: los 14 días sin dejar dinero (lo gastado, lo vendido y lo que se intentó)
                         + (isset($a['chronic']) ? ['chronic' => $a['chronic']] : [])
                         // .144: la subida que no aguantó (cuánto dejaba antes y cuánto ahora)
-                        + (isset($a['raise']) ? ['raise' => $a['raise']] : []),
+                        + (isset($a['raise']) ? ['raise' => $a['raise']] : [])
+                        // .145: el producto es Malo (su efectividad y sus pedidos)
+                        + (isset($a['worth']) ? ['worth' => $a['worth']] : []),
                     'notes' => array_map(fn ($n) => $n['label'] . ': ' . $n['text'], $c['notes'] ?? []),
                     'budget_notes' => $c['budget_notes'] ?? [],
                     'price_option' => $c['price_option']['text'] ?? null,

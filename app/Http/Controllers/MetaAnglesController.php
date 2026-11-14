@@ -120,7 +120,7 @@ class MetaAnglesController extends Controller
             'worth_help' => 'Bueno desde ' . AdRules::num($rules['worth_good_pct']) . ' % de efectividad; Malo debajo de ' . AdRules::num($rules['worth_bad_pct'])
                 . ' % (con ' . (int) $rules['worth_early_orders'] . ' a ' . ((int) $rules['worth_full_orders'] - 1) . ' pedidos, solo debajo de ' . AdRules::num($rules['worth_early_bad_pct'])
                 . ' %), salvo que deje ' . AdRules::money($rules['worth_rescue_gain']) . ' o más en 4 semanas. Cuentan los pedidos que ya tuvieron tiempo de entregarse,'
-                . ' sin los que esperaron stock. Un Malo no recibe encargos nuevos hasta que decidas; un Regular va después de los Buenos.',
+                . ' sin los que esperaron stock. Un Malo no recibe encargos nuevos hasta que decidas, y sus ciudades frenan el gasto (la que pierde se pausa, la que está entre C y BE baja, ninguna sube); un Regular va después de los Buenos.',
             'products' => collect($products)->map(function ($p) use ($settings, $tasks, $worth) {
                 $s = $settings->get($p['id']); // sin fila, el producto está en modo normal
 
