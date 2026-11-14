@@ -37,7 +37,9 @@ final class AnalysisFacts
                         // .123: entre C y BE, qué se espera y hasta cuándo
                         + (isset($a['ladder']) ? ['ladder' => $a['ladder']] : [])
                         // .125: los 14 días sin dejar dinero (lo gastado, lo vendido y lo que se intentó)
-                        + (isset($a['chronic']) ? ['chronic' => $a['chronic']] : []),
+                        + (isset($a['chronic']) ? ['chronic' => $a['chronic']] : [])
+                        // .144: la subida que no aguantó (cuánto dejaba antes y cuánto ahora)
+                        + (isset($a['raise']) ? ['raise' => $a['raise']] : []),
                     'notes' => array_map(fn ($n) => $n['label'] . ': ' . $n['text'], $c['notes'] ?? []),
                     'budget_notes' => $c['budget_notes'] ?? [],
                     'price_option' => $c['price_option']['text'] ?? null,

@@ -612,6 +612,9 @@ class MetaDecisions
                 'recent_change' => self::recentChange($h, $f, $id, now()->toDateTimeString(), (float) $s['change_wait_hours']),
                 // .123: entre C y BE, lo último que se hizo desde que la campaña se pasó de C
                 'band' => self::band($h, $f, $id, $c['target'] ? (float) $c['target'] : null, $budget !== null ? (float) $budget : null, $today, $yesterday, (int) $s['band_undo_days']),
+                // .144: la última subida (o bajada): si todavía se espera, si aguantó o si hay que devolverla
+                'raise' => CampaignRules::raiseCheck($h['daily'], $h['budget_events'], $budget !== null ? (float) $budget : null,
+                    $c['break_even'] ? (float) $c['break_even'] : null, $yesterday, (int) $s['raise_wait_days'], (float) $s['raise_drop_pct']),
                 'chronic' => $chronic, 'no_batch' => $noBatch,
             ]);
             $out['campaigns'][$id]['action'] = $action;

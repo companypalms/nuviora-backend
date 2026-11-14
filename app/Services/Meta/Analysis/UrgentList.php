@@ -63,7 +63,7 @@ final class UrgentList
     /** Qué tan urgente es cada cosa (menos es más urgente). */
     public const SEVERITY = [
         'pause_city' => 1, 'not_sold' => 1, 'product_off' => 1, 'stock_out' => 1, 'stock_waiting' => 1, 'stop_creatives' => 1,
-        'decrease' => 2, 'intervene' => 2, 'tracking' => 2, 'late_urgent' => 2, 'drop_product' => 2, 'worth_bad' => 2,
+        'decrease' => 2, 'undo_raise' => 2, 'intervene' => 2, 'tracking' => 2, 'late_urgent' => 2, 'drop_product' => 2, 'worth_bad' => 2,
         'hold_prune' => 3, 'step_down' => 3, 'few_batches' => 3, 'min_spend' => 3, 'late_batch' => 3, 'launch_ready' => 3, 'no_city' => 3, 'no_be' => 3,
         'scale' => 4, 'launch_test' => 4, 'relaunch' => 4, 'new_product_late' => 4, 'price_down' => 4,
         'alarm' => 5, 'names' => 5, 'cooldown' => 5, 'angle_rest' => 5, 'left_city' => 5, 'stale' => 5, 'lesson' => 5,
@@ -72,7 +72,7 @@ final class UrgentList
 
     /** `.82`: en qué grupo de la pantalla va cada cosa. */
     public const GROUP = [
-        'pause_city' => 'frenar', 'not_sold' => 'frenar', 'product_off' => 'frenar', 'drop_product' => 'frenar', 'worth_bad' => 'frenar', 'stop_creatives' => 'frenar', 'decrease' => 'frenar',
+        'pause_city' => 'frenar', 'not_sold' => 'frenar', 'product_off' => 'frenar', 'drop_product' => 'frenar', 'worth_bad' => 'frenar', 'stop_creatives' => 'frenar', 'decrease' => 'frenar', 'undo_raise' => 'frenar',
         'intervene' => 'arreglar', 'tracking' => 'arreglar', 'hold_prune' => 'arreglar', 'step_down' => 'arreglar', 'few_batches' => 'arreglar', 'min_spend' => 'arreglar',
         'late_urgent' => 'arreglar', 'late_batch' => 'arreglar', 'launch_ready' => 'arreglar', 'no_city' => 'arreglar', 'no_be' => 'arreglar',
         'scale' => 'crecer', 'launch_test' => 'crecer', 'relaunch' => 'crecer', 'new_product_late' => 'crecer', 'price_down' => 'crecer',
@@ -340,7 +340,7 @@ final class UrgentList
 
         return match (true) {
             $kind === 'scale' && $from && $to => ['cut' => null, 'add' => round($to - $from, 2)],
-            in_array($kind, ['decrease', 'step_down'], true) && $from && $to => ['cut' => round($from - $to, 2), 'add' => null],
+            in_array($kind, ['decrease', 'step_down', 'undo_raise'], true) && $from && $to => ['cut' => round($from - $to, 2), 'add' => null],
             in_array($kind, ['pause_city', 'product_off'], true) && $budget => ['cut' => round((float) $budget, 2), 'add' => null],
             $kind === 'relaunch' && $to => ['cut' => null, 'add' => round((float) $to, 2)],
             default => null,
@@ -419,6 +419,10 @@ final class UrgentList
                 [$open, $from && $to ? 'Cambia el presupuesto diario de ' . AdRules::money($from) . ' a ' . AdRules::money($to) . "{$pct}." : (string) $a['proposal']]],
             // .123: entre C y BE, con el batch nuevo no volvió a C: se devuelve la última subida
             'step_down' => [$to ? 'Devuelve la última subida: baja el presupuesto a ' . AdRules::money($to) . ' por día' : 'Devuelve la última subida',
+                [$open, $from && $to ? 'Cambia el presupuesto diario de ' . AdRules::money($from) . ' a ' . AdRules::money($to) . "{$pct}." : (string) $a['proposal'],
+                    'No lances batches hoy: un cambio grande a la vez.']],
+            // .144: la subida no aguantó: se devuelve
+            'undo_raise' => [$to ? 'Devuelve la subida: baja el presupuesto a ' . AdRules::money($to) . ' por día' : 'Devuelve la subida',
                 [$open, $from && $to ? 'Cambia el presupuesto diario de ' . AdRules::money($from) . ' a ' . AdRules::money($to) . "{$pct}." : (string) $a['proposal'],
                     'No lances batches hoy: un cambio grande a la vez.']],
             // .125: si es por los 14 días sin dejar dinero, lo dice
@@ -958,6 +962,9 @@ final class UrgentList
             'scale' => (($a['from'] ?? null) && ($a['to'] ?? null) ? '+' . AdRules::num(round(($a['to'] / $a['from'] - 1) * 100)) . ' % · ' : '')
                 . "{$cpa}; tu objetivo es {$c}" . (($n['gain3'] ?? 0) > 0 ? ' · deja unos ' . AdRules::money($n['gain3'] / 3) . ' por día' : ''),
             'hold_prune' => $be ? "{$cpa}: entre tu objetivo ({$c}) y tu {$limit} ({$be})" : "{$cpa}; tu objetivo es {$c}",
+            // .144: "−17 % · después de subir, deja $8,60 por día (antes $31,50)"
+            'undo_raise' => (($a['from'] ?? null) && ($a['to'] ?? null) ? '−' . AdRules::num(abs(round(($a['to'] / $a['from'] - 1) * 100))) . ' % · ' : '')
+                . (($r = $a['raise'] ?? null) ? 'después de subir, deja ' . AdRules::money($r['after']) . ' por día (antes ' . AdRules::money($r['before']) . ')' : "{$cpa}; tu objetivo es {$c}"),
             // .123: "−17 % · $6,55 por compra: entre tu objetivo ($4,44) y tu límite ($7,61)"
             'step_down' => (($a['from'] ?? null) && ($a['to'] ?? null) ? '−' . AdRules::num(abs(round(($a['to'] / $a['from'] - 1) * 100))) . ' % · ' : '')
                 . ($be ? "{$cpa}: entre tu objetivo ({$c}) y tu {$limit} ({$be})" : "{$cpa}; tu objetivo es {$c}"),

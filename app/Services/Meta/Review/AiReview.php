@@ -22,7 +22,7 @@ final class AiReview
     public const OFF_SPEND = 1.0;
 
     /** Las misiones que piden frenar: tenían razón si, sin hacerles caso, se siguió perdiendo plata. */
-    public const BRAKES = ['decrease', 'step_down', 'pause_city', 'not_sold', 'product_off', 'stop_creatives', 'stock_out'];
+    public const BRAKES = ['decrease', 'step_down', 'undo_raise', 'pause_city', 'not_sold', 'product_off', 'stop_creatives', 'stock_out'];
 
     public static function perDay(float $value, int $days): ?float
     {

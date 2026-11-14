@@ -36,7 +36,7 @@ final class ChangeRules
 
     /** Las misiones del análisis (UrgentList) que piden cada cambio. */
     public const MISSIONS = [
-        'raise' => ['scale'], 'lower' => ['decrease', 'step_down'], 'pause' => ['pause_city'], 'resume' => ['relaunch'],
+        'raise' => ['scale'], 'lower' => ['decrease', 'step_down', 'undo_raise'], 'pause' => ['pause_city'], 'resume' => ['relaunch'],
         'ads_off' => ['stop_creatives', 'hold_prune', 'intervene'], 'new_batch' => ['few_batches', 'launch_ready', 'launch_test', 'relaunch', 'intervene'],
         'min_off' => ['min_spend'], 'price' => ['price_down'],
     ];

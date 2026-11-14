@@ -143,47 +143,41 @@ describe('.123: lo último que se hizo desde que la campaña se pasó de C (PHP 
 });
 
 describe('.123: ZenPulse Caracas, entre C y BE', function () {
-    it('el 10/11 (B0118 entró ayer): espera hasta el 13/11, no lanza B0120 y no le pide un batch al líder para hoy', function () {
+    it('el 10/11 (B0118 entró ayer): .144: la subida del 6/11 no aguantó ($28,27 → $4,36 por día): se devuelve en cuanto pasen las 24 horas del batch', function () {
+        // antes de la .144 se esperaba al batch hasta el 13/11 y recién ahí se devolvía la subida: 3 días más perdiendo
         $this->travelTo(\Carbon\CarbonImmutable::parse('2026-11-10 00:30:00'));
         $d = subidaDecide([123.9, 18]);
         $a = $d[1149]['campaigns'][SUBIDA_ZEN]['action'];
 
-        expect($a['key'])->toBe('hold_prune')
-            ->and($a['reading'])->toBe('Rentable pero no escalable: CPA entre C y el break-even. El 09/11 entró el batch «B0118».')
-            ->and($a['proposal'])->toBe('Esperar: se le dan 3 días cerrados para ver si vuelve a C. Si el 13/11 sigue encima, toca devolver la subida del 06/11: $39,60 → $33,00.')
-            ->and($a)->not->toHaveKey('cooldown')
-            ->and($d[1149]['campaigns'][SUBIDA_ZEN]['numbers']['offers'][0]['code'])->toBe('B0120');
-
-        $m = subidaMisiones($d, 1149);
-        expect(array_column($m, 'kind'))->toBe(['hold_prune'])
-            ->and($m[0]['group'])->toBe('aviso')->and($m[0]['steps'])->toBe([])->and($m[0]['batches'])->toBe([])
-            ->and($m[0]['title'])->toBe('Espera hasta el 13/11: el 09/11 entró el batch «B0118» y se le dan 3 días cerrados para ver si vuelve a tu objetivo. Si no, toca devolver la subida del 06/11: $39,60 → $33,00');
+        expect($a['key'])->toBe('wait')->and($a['cooldown']['held'])->toBe('devolver la subida')
+            ->and($a['reading'])->toStartWith('El 06/11 subiste el presupuesto de $33,00 a $39,60 y lo que deja bajó: $28,27 por día antes de subir, $4,36 en los últimos 3 días cerrados.')
+            ->and($a['proposal'])->toContain('Después: devolver la subida: $39,60 → $33,00.');
         expect(DemandRules::today($d[1149]))->toMatchArray(['today' => 0, 'cities' => [], 'consumed' => []]);
     });
 
-    it('el 13/11 sigue encima de C: la misión es devolver la última subida, sin lanzar nada', function () {
+    it('el 13/11 sigue encima de C: la misión es devolver la última subida, sin lanzar nada (.144: en Frenar pérdidas)', function () {
         $this->travelTo(\Carbon\CarbonImmutable::parse('2026-11-13 00:30:00'));
         $d = subidaDecide([118.6, 19]);
         $a = $d[1149]['campaigns'][SUBIDA_ZEN]['action'];
 
-        expect($a['key'])->toBe('step_down')->and($a['label'])->toBe('Devolver la subida $39,60 → $33,00')
-            ->and($a['reading'])->toBe('Pasaron 3 días cerrados desde que entró el batch «B0118» (09/11) y sigue entre C y el break-even.');
+        expect($a['key'])->toBe('undo_raise')->and($a['label'])->toBe('Devolver la subida $39,60 → $33,00')
+            ->and($a['reading'])->toBe('El 06/11 subiste el presupuesto de $33,00 a $39,60 y lo que deja bajó: $28,27 por día antes de subir, $8,66 en los últimos 3 días cerrados.');
 
         $m = subidaMisiones($d, 1149);
-        expect(array_column($m, 'kind'))->toBe(['step_down'])
-            ->and($m[0])->toMatchArray(['group' => 'arreglar', 'where' => 'ZenPulse · Distrito Capital', 'title' => 'Devuelve la última subida: baja el presupuesto a $33,00 por día',
-                'why' => '−17 % · $6,24 por compra: entre tu objetivo ($4,44) y tu límite ($7,61)', 'money' => ['cut' => 6.6, 'add' => null], 'batches' => []])
+        expect(array_column($m, 'kind'))->toBe(['undo_raise'])
+            ->and($m[0])->toMatchArray(['group' => 'frenar', 'where' => 'ZenPulse · Distrito Capital', 'title' => 'Devuelve la subida: baja el presupuesto a $33,00 por día',
+                'why' => '−17 % · después de subir, deja $8,66 por día (antes $28,27)', 'money' => ['cut' => 6.6, 'add' => null], 'batches' => []])
             ->and($m[0]['steps'])->toBe(['Abre la campaña «ZENPULSE | CCS | CBO | 27/10/2026».', 'Cambia el presupuesto diario de $39,60 a $33,00 (−17 %).',
                 'No lances batches hoy: un cambio grande a la vez.']);
         expect(DemandRules::today($d[1149])['today'])->toBe(0);
         expect(UrgentList::tally($m, []))->toBe(['tasks' => 1, 'resolved' => 0]);
     });
 
-    it('si el 13/11 ya volvió a C, no se devuelve nada: se sube otra vez', function () {
+    it('.144: aunque el 13/11 el CPA de 3 días vuelva a C, si lo que deja por día sigue debajo de antes de subir, primero se devuelve la subida', function () {
         $this->travelTo(\Carbon\CarbonImmutable::parse('2026-11-13 00:30:00'));
         $a = subidaDecide([84.0, 20])[1149]['campaigns'][SUBIDA_ZEN]['action'];
 
-        expect($a['key'])->toBe('scale');
+        expect($a['key'])->toBe('undo_raise');
     });
 
     it('devuelta la subida el 13/11: otros 3 días cerrados y, si el 17/11 sigue igual, otro batch (B0120)', function () {

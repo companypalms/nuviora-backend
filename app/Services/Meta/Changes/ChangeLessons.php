@@ -24,7 +24,7 @@ final class ChangeLessons
 
     /** El cambio que pide cada misión del análisis (UrgentList). */
     public const OF_MISSION = [
-        'scale' => 'raise', 'decrease' => 'lower', 'step_down' => 'lower', 'pause_city' => 'pause', 'relaunch' => 'resume',
+        'scale' => 'raise', 'decrease' => 'lower', 'step_down' => 'lower', 'undo_raise' => 'lower', 'pause_city' => 'pause', 'relaunch' => 'resume',
         'stop_creatives' => 'ads_off', 'hold_prune' => 'ads_off', 'min_spend' => 'min_off', 'few_batches' => 'new_batch', 'launch_ready' => 'new_batch',
         'price_down' => 'price',
     ];

@@ -70,6 +70,9 @@ class DecisionSettings
         // volvió a C, devolver la última subida (una de los últimos 14 días); después de cada cambio, otros 3 días cerrados
         'band_wait_days' => [3, 1, 30],
         'band_undo_days' => [14, 1, 90],
+        // .144 (dueño, 2026-11-14): una subida a la vez; a los días cerrados se revisa, y si lo que deja por día cayó, se devuelve
+        'raise_wait_days' => [3, 1, 14],
+        'raise_drop_pct' => [10, 0, 100],
         // .125 (dueño, 2026-11-09: "sí debemos establecer un límite… dependiendo de su CPA y si hicimos cambios y no mejoró"; "puede
         // ser que la campaña se esté comenzando a recuperar"): una campaña que en 14 días vendió en el BE o encima (con 10×C
         // gastado) y en los últimos 3 días también, se pausa; el producto entero así, con 2 batches o más lanzados, es una misión

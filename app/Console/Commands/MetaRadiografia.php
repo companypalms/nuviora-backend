@@ -36,7 +36,7 @@ class MetaRadiografia extends Command
     private const SECTIONS = ['negocio', 'semanas', 'productos', 'ciudades', 'mismos', 'quemado', 'ganadores', 'escalado', 'cambios', 'misiones'];
 
     /** Las misiones de una campaña (su clave es producto:campaña:tipo) y lo que se ve en Meta cuando se hacen (`.131`). */
-    private const CAMPAIGN_KINDS = ['scale', 'decrease', 'step_down', 'pause_city', 'not_sold', 'product_off', 'relaunch', 'hold_prune',
+    private const CAMPAIGN_KINDS = ['scale', 'decrease', 'step_down', 'undo_raise', 'pause_city', 'not_sold', 'product_off', 'relaunch', 'hold_prune',
         'intervene', 'few_batches', 'min_spend', 'stock_out'];
 
     private array $periods = [];

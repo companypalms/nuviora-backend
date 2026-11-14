@@ -37,6 +37,7 @@ class CampaignRules
         'intervene' => ['label' => 'Intervenir', 'tone' => 'warning'],
         'decrease' => ['label' => 'Bajar', 'tone' => 'warning'],
         'step_down' => ['label' => 'Devolver la subida', 'tone' => 'warning'],
+        'undo_raise' => ['label' => 'Devolver la subida', 'tone' => 'error'],
         'pause_city' => ['label' => 'Pausar la ciudad', 'tone' => 'error'],
         'relaunch' => ['label' => 'Prender otra vez', 'tone' => 'success'],
         'left_city' => ['label' => 'Dejar el producto aquí', 'tone' => 'warning'],
@@ -54,7 +55,11 @@ class CampaignRules
     public const NO_TARGET = 'Escribe "CPA $X | BE $Y" en el nombre de la campaña o ponlo en Meta Ads › Productos y objetivos (si no tiene costo, registra la compra de inventario).';
 
     /** `.111`: las acciones que son un cambio grande de presupuesto o de estado (esperan entero), y lo que dejan para después. */
-    private const BIG_CHANGES = ['scale' => 'subir el presupuesto', 'decrease' => 'bajar el presupuesto', 'step_down' => 'devolver la subida', 'pause_city' => 'pausar la campaña'];
+    private const BIG_CHANGES = ['scale' => 'subir el presupuesto', 'decrease' => 'bajar el presupuesto', 'step_down' => 'devolver la subida', 'undo_raise' => 'devolver la subida',
+        'pause_city' => 'pausar la campaña'];
+
+    /** `.144`: hasta cuántos días después de la revisión se sigue pidiendo devolver una subida que no aguantó. */
+    private const UNDO_DAYS = 7;
 
     /** `.111`: las acciones que meten creativos: en la espera solo se apagan los que pierden. */
     private const FEEDS = ['intervene', 'hold_prune'];
@@ -131,6 +136,12 @@ class CampaignRules
         if ($spend < $c * $this->s['no_data_cpa']) {
             return $this->out('wait', $data, 'En 3 días gastó menos de ' . AdRules::num($this->s['no_data_cpa']) . '×C: todavía no alcanza para decidir.', null);
         }
+        // .144 (dueño, 2026-11-14: aprobó "una subida a la vez con 3 días de espera, y 'Devuelve la subida' si la ganancia
+        // cayó 10 % o más"; de 11 subidas de la IA con 7 días, 7 bajaron la ganancia por día): la última subida se revisa a
+        // los días cerrados; si la ganancia por día cayó, lo primero es devolverla (un cambio grande a la vez)
+        if (($raise = $in['raise'] ?? null) && $raise['status'] === 'fell' && $budget) {
+            return $this->undoRaise($raise, $data, (float) $budget);
+        }
 
         // En el break-even o encima
         if ($be && (($cpa !== null && $cpa >= $be) || ($cpa === null && $spend >= $c * $this->s['loser_spend_cpa']))) {
@@ -204,6 +215,8 @@ class CampaignRules
             ($in['stock_waiting'] ?? 0) > 0 => 'Va bien, pero hay ' . (int) $in['stock_waiting'] . ' pedidos esperando stock en esta ciudad: no se sube hasta que llegue.',
             $purchases < $this->s['scale_min_purchases'] => 'Va bien, pero con poco volumen: ' . AdRules::num($purchases) . ' compras en 3 días (hacen falta ' . (int) $this->s['scale_min_purchases'] . ').',
             $be && ($in['cpa7'] ?? null) !== null && $in['cpa7'] > $be => 'Los 7 días no acompañan (CPA 7D ' . AdRules::money($in['cpa7']) . ', encima del BE).',
+            // .144: una subida a la vez: la siguiente, cuando la anterior ya se revisó
+            ($in['raise']['status'] ?? null) === 'waiting' => self::raiseWaiting($in['raise']),
             // .111: con un cambio en las últimas 24 horas, la espera (cooldown) dice hasta cuándo y cuánto subir después
             ($in['recent_change'] ?? null) !== null => null,
             (bool) ($in['increased_24h'] ?? false) => 'Ya se subió el presupuesto en las últimas 24 horas.',
@@ -272,6 +285,71 @@ class CampaignRules
 
         return $this->out('hold_prune', $data, $reading . ($low ? ' El ' . $day($low['date']) . ' bajaste el presupuesto y sigue encima de C.' : ''),
             'Mantener, podar los caros y meter creativos.' . $pruneText);
+    }
+
+    /**
+     * `.144`: cómo va el último cambio de presupuesto de una campaña (PHP puro).
+     * - waiting: todavía no pasaron $wait días cerrados desde que se subió o se bajó: no se sube otra vez;
+     * - held: pasaron, y la ganancia por día de los últimos $wait días cerrados (compras de Meta × BE − gasto) no cayó más de
+     *   $dropPct % contra la de los 7 días antes de subir: se puede volver a subir;
+     * - fell: cayó: devolver la subida. Se mira siempre lo último: si se recupera, deja de pedirse. Se pide hasta UNDO_DAYS días
+     *   después de la revisión; después ya mandan las otras reglas.
+     * null: no hay cambios, la subida ya no está puesta, o no hay BE para medirla.
+     *
+     * @param array<string, array{spend: float, purchases: float}> $daily
+     * @param list<array{date: string, at?: string, from: float, to: float}> $events los cambios de presupuesto
+     * @return array{status: string, raise: bool, date: string, from: float, to: float, days: int, closed: int, until: string, before?: ?float, after?: ?float}|null
+     */
+    public static function raiseCheck(array $daily, array $events, ?float $budget, ?float $be, string $yesterday, int $wait, float $dropPct): ?array
+    {
+        if ($events === []) {
+            return null;
+        }
+        usort($events, fn ($a, $b) => strtotime($a['at'] ?? $a['date']) <=> strtotime($b['at'] ?? $b['date']));
+        $last = end($events);
+        $raise = $last['to'] > $last['from'];
+        $closed = max(0, (int) round((strtotime($yesterday) - strtotime($last['date'])) / 86400));
+        $base = ['raise' => $raise, 'date' => $last['date'], 'from' => (float) $last['from'], 'to' => (float) $last['to'], 'days' => $wait, 'closed' => $closed,
+            'until' => date('Y-m-d', strtotime($last['date'] . ' +' . ($wait + 1) . ' days'))];
+        if ($closed < $wait) {
+            return ['status' => 'waiting'] + $base;
+        }
+        if (!$raise || !$be || ($budget !== null && $last['from'] >= $budget - 0.005)) {
+            return null;
+        }
+        $gain = function (string $from, string $to) use ($daily, $be): ?float {
+            $days = array_filter($daily, fn ($d) => $d >= $from && $d <= $to, ARRAY_FILTER_USE_KEY);
+
+            return $days ? array_sum(array_map(fn ($d) => (float) $d['purchases'] * $be - (float) $d['spend'], $days)) / count($days) : null;
+        };
+        $before = $gain(date('Y-m-d', strtotime($last['date'] . ' -7 days')), date('Y-m-d', strtotime($last['date'] . ' -1 day')));
+        $after = $gain(date('Y-m-d', strtotime($yesterday . ' -' . ($wait - 1) . ' days')), $yesterday);
+        $fell = $before !== null && $after !== null && $after < $before - abs($before) * $dropPct / 100;
+        if ($fell && $closed > $wait + self::UNDO_DAYS) {
+            return null;
+        }
+
+        return ['status' => $fell ? 'fell' : 'held', 'before' => $before !== null ? round($before, 2) : null, 'after' => $after !== null ? round($after, 2) : null] + $base;
+    }
+
+    /** `.144`: "Devolver la subida": la ganancia por día cayó después de subir. */
+    private function undoRaise(array $r, string $data, float $budget): array
+    {
+        $day = date('d/m', strtotime($r['date']));
+
+        return $this->out('undo_raise', $data, "El {$day} subiste el presupuesto de " . AdRules::money($r['from']) . ' a ' . AdRules::money($r['to'])
+            . ' y lo que deja bajó: ' . AdRules::money($r['before']) . ' por día antes de subir, ' . AdRules::money($r['after']) . " en los últimos {$r['days']} días cerrados.",
+            'Devolver la subida: ' . AdRules::money($budget) . ' → ' . AdRules::money($r['from']) . ". Si vuelve a ir bien, se puede subir otra vez en {$r['days']} días.",
+            $budget, $r['from']) + ['raise' => $r];
+    }
+
+    /** `.144`: por qué todavía no se sube: "Subiste el 06/11 ($30 → $36): se revisa el 10/11, con 3 días cerrados". */
+    private static function raiseWaiting(array $r): string
+    {
+        $what = $r['raise'] ? 'subiste el presupuesto' : 'bajaste el presupuesto';
+
+        return 'El ' . date('d/m', strtotime($r['date'])) . " {$what} (" . AdRules::money($r['from']) . ' → ' . AdRules::money($r['to']) . '): una subida a la vez. '
+            . ($r['raise'] ? 'Se revisa' : 'Se puede volver a subir') . ' el ' . date('d/m', strtotime($r['until'])) . ", con {$r['days']} días cerrados.";
     }
 
     /**
@@ -455,7 +533,7 @@ class CampaignRules
             (bool) ($p['stock_all_out'] ?? false) => 5,
             $noTarget => 5,
             (bool) array_intersect($actions, ['intervene', 'decrease', 'pause_city']) || (int) ($p['healthy'] ?? 0) === 0 && $actions => 1,
-            (bool) array_intersect($actions, ['hold_prune', 'step_down']) || (int) ($p['failing'] ?? 0) > 0 => 2,
+            (bool) array_intersect($actions, ['hold_prune', 'step_down', 'undo_raise']) || (int) ($p['failing'] ?? 0) > 0 => 2,
             in_array('scale', $actions, true) => 3,
             default => 4,
         };
@@ -576,7 +654,7 @@ class CampaignRules
     private function out(string $key, string $data, string $reading, ?string $proposal, ?float $from = null, ?float $to = null): array
     {
         $label = self::ACTIONS[$key]['label'];
-        if (in_array($key, ['scale', 'decrease', 'step_down'], true)) {
+        if (in_array($key, ['scale', 'decrease', 'step_down', 'undo_raise'], true)) {
             $label .= $from && $to ? ' ' . AdRules::money($from) . ' → ' . AdRules::money($to) : '';
         }
 
