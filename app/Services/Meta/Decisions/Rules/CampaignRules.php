@@ -338,18 +338,47 @@ class CampaignRules
     }
 
     /**
-     * `.145`: un producto Malo frena su gasto en cada ciudad. En el break-even o encima, pausar la ciudad de una vez (sin los 2
-     * y 5 días de siempre); entre C y BE, bajar el presupuesto (`decrease_pct`), una vez cada `raise_wait_days` días
-     * cerrados (`.144`); debajo de C, mantener: nunca se sube. Con "No estoy de acuerdo" en la misión del producto, vuelve a
-     * las reglas de siempre por 14 días (ProductWorth::stops).
+     * `.145`: un producto Malo frena su gasto en cada ciudad. Entre C y BE, bajar el presupuesto (`decrease_pct`), una vez
+     * cada `raise_wait_days` días cerrados (`.144`); debajo de C, mantener: nunca se sube. Con "No estoy de acuerdo" en la
+     * misión del producto, vuelve a las reglas de siempre por 14 días (ProductWorth::stops).
+     *
+     * `.146` (dueño, 2026-11-16: "por qué ahora me está mandando a apagarla antes de bajarle el presupuesto a como estaba
+     * antes"; ResistBarPro Aragua, 7 % encima del BE un día, dos días después de la subida que pidió la IA). En el break-even o
+     * encima: primero se devuelve la subida reciente (en su espera, o la que no aguantó); después de bajar, se esperan los días
+     * cerrados; se pausa de una vez solo si pierde claramente (`loser_be_margin_pct` encima del BE, o `loser_be_margin_purchases`
+     * compras, como los creativos de la `.101`); apenas encima, baja como entre C y BE.
      */
     private function worthBad(array $in, array $w, string $data, ?float $cpa, float $c, ?float $be, ?float $budget, float $spend): array
     {
         $why = 'Producto Malo (efectividad ' . AdRules::num($w['effectiveness']) . " % en sus últimos {$w['orders']} pedidos): no van a llegar batches nuevos.";
-        $losing = $be && (($cpa !== null && $cpa >= $be) || ($cpa === null && $spend >= $c * $this->s['loser_spend_cpa']));
-        if ($losing) {
-            return $this->out('pause_city', $data, "{$why} Aquí está en el break-even o encima.",
-                'Pausar la ciudad. Si decides seguir con el producto, marca «No estoy de acuerdo» en su misión.', $budget, null) + ['worth' => $w];
+        $over = $be && (($cpa !== null && $cpa >= $be) || ($cpa === null && $spend >= $c * $this->s['loser_spend_cpa']));
+        $raise = $in['raise'] ?? null;
+        if ($over) {
+            if ($raise && $budget && ($raise['status'] === 'fell' || $raise['status'] === 'waiting' && $raise['raise'])) {
+                $day = date('d/m', strtotime($raise['date']));
+
+                return $this->out('undo_raise', $data, "{$why} Aquí está en el break-even o encima, y el {$day} subiste el presupuesto ("
+                    . AdRules::money($raise['from']) . ' → ' . AdRules::money($raise['to']) . '): primero se devuelve la subida.',
+                    'Devolver la subida: ' . AdRules::money($budget) . ' → ' . AdRules::money($raise['from']) . ". Si en {$raise['days']} días cerrados sigue en el break-even o encima, se frena.",
+                    $budget, (float) $raise['from']) + ['worth' => $w];
+            }
+            if ($raise && $raise['status'] === 'waiting') {
+                return $this->out('hold', $data, "{$why} Aquí está en el break-even o encima. El " . date('d/m', strtotime($raise['date'])) . ' bajaste el presupuesto ('
+                    . AdRules::money($raise['from']) . ' → ' . AdRules::money($raise['to']) . '): se espera hasta el ' . date('d/m', strtotime($raise['until']))
+                    . ", con {$raise['days']} días cerrados, antes del siguiente paso.", 'Mantener.') + ['worth' => $w];
+            }
+            $clear = $cpa === null || $cpa >= $be * (1 + $this->s['loser_be_margin_pct'] / 100)
+                || (float) ($in['purchases3'] ?? 0) >= $this->s['loser_be_margin_purchases'];
+            if ($clear) {
+                return $this->out('pause_city', $data, "{$why} Aquí está en el break-even o encima.",
+                    'Pausar la ciudad. Si decides seguir con el producto, marca «No estoy de acuerdo» en su misión.', $budget, null) + ['worth' => $w];
+            }
+            $to = $budget ? round($budget * (1 - $this->s['decrease_pct'] / 100), 2) : null;
+
+            return $this->out('decrease', $data, "{$why} Aquí está apenas encima del break-even (menos de " . AdRules::num($this->s['loser_be_margin_pct'])
+                . ' % y con menos de ' . AdRules::num($this->s['loser_be_margin_purchases']) . ' compras): baja antes de pausar.',
+                'Bajar ' . AdRules::num($this->s['decrease_pct']) . ' %' . ($to ? ': ' . AdRules::money($budget) . ' → ' . AdRules::money($to) : '') . '.', $budget, $to)
+                + ['worth' => $w];
         }
         if ($cpa === null || $cpa > $c) {
             if (($in['raise']['status'] ?? null) === 'waiting') {

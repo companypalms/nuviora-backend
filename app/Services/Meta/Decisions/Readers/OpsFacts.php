@@ -210,7 +210,7 @@ class OpsFacts
      * worth_min_days días; si son menos de worth_full_orders, los más nuevos hasta juntarlos, como mucho de worth_max_days días.
      *
      * @param int[] $productIds
-     * @return array<int, array{orders: int, delivered: int, since: ?string, to: string, left_out: int, cities: list<array{city: ?string, orders: int, delivered: int}>}>
+     * @return array<int, array{orders: int, delivered: int, since: ?string, to: string, left_out: int, cities: list<array{city_id: ?int, city: ?string, orders: int, delivered: int}>}>
      */
     public function worth(array $productIds, array $s): array
     {
@@ -236,7 +236,7 @@ class OpsFacts
             $out[(int) $pid] = ['orders' => $sample->count(), 'delivered' => $sample->where('outcome', 'delivered')->count(),
                 'since' => $sample->isEmpty() ? null : substr((string) $sample->last()->created_date, 0, 10), 'to' => $to->toDateString(),
                 'left_out' => $all->count() - $ok->count(),
-                'cities' => $sample->groupBy(fn ($r) => (int) $r->city_id)->map(fn ($rs, $cid) => ['city' => $names[$cid] ?? null, 'orders' => $rs->count(),
+                'cities' => $sample->groupBy(fn ($r) => (int) $r->city_id)->map(fn ($rs, $cid) => ['city_id' => $cid ?: null, 'city' => $names[$cid] ?? null, 'orders' => $rs->count(),
                     'delivered' => $rs->where('outcome', 'delivered')->count()])->sortByDesc('orders')->values()->all()];
         }
 

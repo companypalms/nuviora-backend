@@ -79,7 +79,7 @@ describe('.139: los pedidos con los que se juzga cada producto', function () {
         pedidosDelDia(1, '2026-11-09', 10, 0);  // todavía no tuvieron tiempo de entregarse
 
         expect((new OpsFacts())->worth([1], DecisionSettings::defaults())[1])->toBe(['orders' => 56, 'delivered' => 35, 'since' => '2026-11-01', 'to' => '2026-11-07',
-            'left_out' => 0, 'cities' => [['city' => 'Caracas', 'orders' => 35, 'delivered' => 21], ['city' => 'Valencia', 'orders' => 21, 'delivered' => 14]]]);
+            'left_out' => 0, 'cities' => [['city_id' => 1, 'city' => 'Caracas', 'orders' => 35, 'delivered' => 21], ['city_id' => 2, 'city' => 'Valencia', 'orders' => 21, 'delivered' => 14]]]);
     });
 
     it('un producto chico: si en 7 días no junta 50, los más nuevos hasta juntarlos; nunca de más de 60 días', function () {
@@ -180,7 +180,8 @@ describe('.139: un producto Malo', function () {
                     'Si quieres darle otra oportunidad: toca «No estoy de acuerdo» y sus encargos siguen normal 14 días.']])
             ->and($m['detail'])->toBe(['Aragua: 10 de 30 entregados (33,3 %).',
                 'Efectividad = pedidos entregados ÷ pedidos que entraron desde el 20/10, ya con tiempo de entregarse; no cuentan 6 que esperaron stock.',
-                'Mientras decides, no se piden batches nuevos de este producto (lo que los editores ya están haciendo sigue) y sus ciudades frenan el gasto: la que pierde se pausa, la que está entre C y BE baja 20 % y ninguna sube.'])
+                'Mientras decides, no se piden batches nuevos de este producto (lo que los editores ya están haciendo sigue) y sus ciudades frenan el gasto: si subiste hace poco, primero se devuelve la subida; la que pierde claramente se pausa; la que está entre C y BE, o apenas encima, baja 20 %; y ninguna sube.',
+                'La ciudad con 30 pedidos o más que entrega el 45 % o más sigue las reglas de siempre.'])
             ->and(DemandPlanner::plan([9 => $d], [], DecisionSettings::defaults(), now()->toDateString()))->toBe([]);
     });
 
@@ -193,6 +194,20 @@ describe('.139: un producto Malo', function () {
             // con "No estoy de acuerdo", las reglas de siempre (aquí también pausa, pero por sus 14 días sin dejar dinero, .125)
             ->and(valeDecide(valeMuestra(30, 10), dismissed: ['9:worth_bad' => now()->subDays(3)->toDateString()])['campaigns'][VALE_CAMPANA]['action'])
             ->not->toHaveKey('worth')->toHaveKey('chronic');
+    });
+
+    it('.146: la ciudad que entrega bien (Aragua, 50 % en 40 pedidos) se libra del freno: reglas de siempre, con su nota', function () {
+        // El producto es Malo por la otra ciudad (37,5 % en 80 pedidos); ResistBarPro el 16/11: Malo por Carabobo (28 %)
+        $muestra = ['orders' => 80, 'delivered' => 30, 'since' => '2026-10-20', 'to' => '2026-11-07', 'left_out' => 0,
+            'cities' => [['city_id' => 3, 'city' => 'Aragua', 'orders' => 40, 'delivered' => 20], ['city_id' => 2, 'city' => 'Carabobo', 'orders' => 40, 'delivered' => 10]]];
+        $d = valeDecide($muestra);
+        $c = $d['campaigns'][VALE_CAMPANA];
+
+        expect($d['product']['worth'])->toMatchArray(['level' => 'bad', 'stop' => true])
+            ->and($c['action'])->not->toHaveKey('worth')->toHaveKey('chronic')
+            ->and($c['notes'])->toContain(['key' => 'worth_city_ok', 'label' => 'Aquí entrega bien', 'text' => 'Producto Malo, pero aquí entrega bien (50 % en 40 pedidos): reglas de siempre.'])
+            // con 29 pedidos todavía no se juzga sola: el freno del producto
+            ->and(valeDecide(array_replace_recursive($muestra, ['cities' => [0 => ['orders' => 29, 'delivered' => 15]]]))['campaigns'][VALE_CAMPANA]['action'])->toHaveKey('worth');
     });
 
     it('con $500 o más en 4 semanas queda Regular: ni misión ni freno', function () {

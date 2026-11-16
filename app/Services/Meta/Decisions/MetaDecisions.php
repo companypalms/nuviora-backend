@@ -603,6 +603,13 @@ class MetaDecisions
             }
             // .125: lo que gastó y vendió en los últimos 14 días cerrados, y lo que se intentó
             $chronic = self::chronic($h, $yesterday, (int) $s['chronic_days']);
+            // .146 (dueño, 2026-11-16: ResistBarPro era Malo por Carabobo y la IA mandaba a pausar Aragua, la que mejor
+            // entrega): la ciudad con sus propios pedidos suficientes que, sola, no es Mala sigue las reglas de siempre
+            $delivers = $worth['stop'] ? self::cityDelivers($worth, $c['city_id'], $s) : null;
+            if ($delivers) {
+                $out['campaigns'][$id]['notes'][] = ['key' => 'worth_city_ok', 'label' => 'Aquí entrega bien', 'text' => 'Producto Malo, pero aquí entrega bien ('
+                    . AdRules::num($delivers['effectiveness']) . " % en {$delivers['orders']} pedidos): reglas de siempre."];
+            }
             $action = $cr->action([
                 'c' => $c['target'], 'be' => $c['break_even'], 'be_estimated' => (bool) ($c['break_even_estimated'] ?? false), 'mode' => $mode, 'budget' => $budget,
                 'spend3' => $w3['totals']['spend'] ?? 0, 'purchases3' => $w3['totals']['purchases'] ?? 0, 'cpa7' => $cpa7, 'freq3' => $w3['metrics']['frequency'] ?? null,
@@ -622,7 +629,7 @@ class MetaDecisions
                     $c['break_even'] ? (float) $c['break_even'] : null, $yesterday, (int) $s['raise_wait_days'], (float) $s['raise_drop_pct']),
                 'chronic' => $chronic, 'no_batch' => $noBatch,
                 // .145: el producto es Malo (y no dijiste "No estoy de acuerdo"): sus campañas frenan el gasto
-                'worth_bad' => $worth['stop'] ? ['effectiveness' => $worth['effectiveness'], 'orders' => $worth['orders']] : null,
+                'worth_bad' => $worth['stop'] && !$delivers ? ['effectiveness' => $worth['effectiveness'], 'orders' => $worth['orders']] : null,
             ]);
             $out['campaigns'][$id]['action'] = $action;
             // .125 (dueño: "puede ser que la campaña se esté comenzando a recuperar e igual me la mande a apagar"): 14 días sin
@@ -748,7 +755,9 @@ class MetaDecisions
         $m14 = self::periodMoney($f, $history['campaigns'] ?? [], $yesterday, 14);
         $worthBad = $worth['stop'] && $m14['spend'] > 0
             ? $worth + ['phase' => (string) ($ops['phase'] ?? 'iterate'), 'stock' => (int) array_sum(array_column($ops['cities'] ?? [], 'stock')),
-                'line' => (float) $s[$worth['early'] ? 'worth_early_bad_pct' : 'worth_bad_pct']]
+                'line' => (float) $s[$worth['early'] ? 'worth_early_bad_pct' : 'worth_bad_pct'],
+                // .146: la ciudad que se libra del freno
+                'city_orders' => (int) $s['worth_early_orders'], 'city_line' => (float) $s['worth_bad_pct']]
             : null;
         // .140: un producto Bueno con mucho espacio debajo de su C: bajar el precio un escalón para vender más
         $version = $ops['version'] ?? null;
@@ -1186,6 +1195,24 @@ class MetaDecisions
         }
 
         return ['since' => $since, 'batch' => $batch, 'lowered' => $lowered, 'undo' => $undo];
+    }
+
+    /**
+     * `.146`: la ciudad de un producto Malo que, con worth_early_orders pedidos o más en la muestra de la etiqueta, entrega
+     * worth_bad_pct % o más (sola no es Mala): se libra del freno de la `.145`. Las de pocos pedidos usan la del producto. PHP puro.
+     *
+     * @return array{city_id: int, city: ?string, orders: int, delivered: int, effectiveness: float}|null
+     */
+    public static function cityDelivers(array $worth, ?int $cityId, array $s): ?array
+    {
+        foreach ($worth['cities'] ?? [] as $x) {
+            if ($cityId !== null && ($x['city_id'] ?? null) === $cityId && $x['orders'] >= (int) $s['worth_early_orders']
+                && 100 * $x['delivered'] / $x['orders'] >= (float) $s['worth_bad_pct']) {
+                return $x + ['effectiveness' => round(100 * $x['delivered'] / $x['orders'], 1)];
+            }
+        }
+
+        return null;
     }
 
     /**

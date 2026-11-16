@@ -687,7 +687,8 @@ final class UrgentList
                 . AdRules::num($c['orders'] > 0 ? round(100 * $c['delivered'] / $c['orders'], 1) : 0) . ' %).', $w['cities'] ?? []),
                 'Efectividad = pedidos entregados ÷ pedidos que entraron' . (($w['since'] ?? null) ? ' desde el ' . date('d/m', strtotime($w['since'])) : '')
                 . ', ya con tiempo de entregarse' . ($w['left_out'] > 0 ? "; no cuentan {$w['left_out']} que esperaron stock." : '.'),
-                'Mientras decides, no se piden batches nuevos de este producto (lo que los editores ya están haciendo sigue) y sus ciudades frenan el gasto: la que pierde se pausa, la que está entre C y BE baja 20 % y ninguna sube.'],
+                'Mientras decides, no se piden batches nuevos de este producto (lo que los editores ya están haciendo sigue) y sus ciudades frenan el gasto: si subiste hace poco, primero se devuelve la subida; la que pierde claramente se pausa; la que está entre C y BE, o apenas encima, baja 20 %; y ninguna sube.',
+                'La ciudad con ' . (int) ($w['city_orders'] ?? 30) . ' pedidos o más que entrega el ' . AdRules::num($w['city_line'] ?? 45) . ' % o más sigue las reglas de siempre.'],
             'money' => null];
     }
 
@@ -969,7 +970,9 @@ final class UrgentList
             'hold_prune' => $be ? "{$cpa}: entre tu objetivo ({$c}) y tu {$limit} ({$be})" : "{$cpa}; tu objetivo es {$c}",
             // .144: "−17 % · después de subir, deja $8,60 por día (antes $31,50)"
             'undo_raise' => (($a['from'] ?? null) && ($a['to'] ?? null) ? '−' . AdRules::num(abs(round(($a['to'] / $a['from'] - 1) * 100))) . ' % · ' : '')
-                . (($r = $a['raise'] ?? null) ? 'después de subir, deja ' . AdRules::money($r['after']) . ' por día (antes ' . AdRules::money($r['before']) . ')' : "{$cpa}; tu objetivo es {$c}"),
+                . (($r = $a['raise'] ?? null) ? 'después de subir, deja ' . AdRules::money($r['after']) . ' por día (antes ' . AdRules::money($r['before']) . ')'
+                    // .146: producto Malo en el BE o encima, poco después de subir
+                    : (($a['worth'] ?? null) && $be ? "{$cpa}; tu {$limit} es {$be} · producto Malo" : "{$cpa}; tu objetivo es {$c}")),
             // .123: "−17 % · $6,55 por compra: entre tu objetivo ($4,44) y tu límite ($7,61)"
             'step_down' => (($a['from'] ?? null) && ($a['to'] ?? null) ? '−' . AdRules::num(abs(round(($a['to'] / $a['from'] - 1) * 100))) . ' % · ' : '')
                 . ($be ? "{$cpa}: entre tu objetivo ({$c}) y tu {$limit} ({$be})" : "{$cpa}; tu objetivo es {$c}"),
