@@ -551,6 +551,9 @@ describe('Las entregas con archivo', function () {
         Schema::create('meta_ads', function ($t) {
             $t->id();
             $t->unsignedBigInteger('meta_creative_ref_id')->nullable();
+            $t->string('name')->nullable();
+            $t->string('adset_meta_id')->nullable();
+            $t->string('campaign_meta_id')->nullable();
             $t->string('thumbnail_url')->nullable();
             $t->string('image_url')->nullable();
             $t->string('ad_title')->nullable();
@@ -560,6 +563,10 @@ describe('Las entregas con archivo', function () {
         });
         Schema::create('meta_video_transcripts', fn ($t) => [$t->id(), $t->string('video_id'), $t->string('status'), $t->string('hook')->nullable(), $t->text('text')->nullable(),
             $t->timestamp('transcribed_at')->nullable()]);
+        // .150: dónde está el ganador en Meta (EditorWork::whereInMeta)
+        Schema::create('meta_adsets', fn ($t) => [$t->id(), $t->string('meta_id'), $t->string('name')->nullable()]);
+        Schema::create('meta_campaigns', fn ($t) => [$t->id(), $t->string('meta_id'), $t->unsignedBigInteger('city_id')->nullable()]);
+        Schema::create('cities', fn ($t) => [$t->id(), $t->string('name')]);
         // el ganador ya se entregó con su archivo
         DB::table('creative_batch_pieces')->where('id', 21)->update(['file_id' => ($this->upload)(21)->id]);
         DB::table('meta_creatives')->insert([['id' => 7, 'label' => 'C0457 POSP', 'creative_code' => 'C0457'], ['id' => 8, 'label' => 'Viejo', 'creative_code' => null]]);

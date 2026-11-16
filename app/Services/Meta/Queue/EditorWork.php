@@ -620,12 +620,42 @@ class EditorWork
             'code' => preg_match('/^C\d+$/i', (string) $creative->creative_code) ? $creative->creative_code : $name,
             'angle' => $angle,
             'file' => $file,
-            'video_note' => $file ? null : 'Su video no está en el sistema: búscalo en el Drive antiguo como «' . ($name ?? 'el ganador') . '»'
-                . ($angle ? " (ángulo {$angle})" : '') . '.',
+            'video_note' => $file ? null : self::driveNote($name, $angle, self::whereInMeta($creative->id)),
             'thumbnail' => $ref['thumbnail'] ?? null,
             'texts' => QueueRules::withoutPricesIn($ref['texts'] ?? []),
             'script' => QueueRules::withoutPricesIn($script),
         ];
+    }
+
+    /**
+     * `.150` (el editor, 2026-11-16: "de comprimax, no me sale qué creativo es"): «CRE001» solo no dice cuál es en el Drive
+     * antiguo (hay uno en cada batch). Dónde está en Meta: el anuncio, su conjunto de anuncios (que dice el batch y el
+     * ángulo) y la ciudad; hasta 3, los más nuevos primero. Sin el nombre de la campaña (lleva el CPA: el editor no ve montos).
+     *
+     * @return list<array{ad: ?string, adset: ?string, city: ?string}>
+     */
+    private static function whereInMeta(int $creativeId): array
+    {
+        return DB::table('meta_ads as a')
+            ->leftJoin('meta_adsets as s', 's.meta_id', '=', 'a.adset_meta_id')
+            ->leftJoin('meta_campaigns as k', 'k.meta_id', '=', 'a.campaign_meta_id')
+            ->leftJoin('cities as ci', 'ci.id', '=', 'k.city_id')
+            ->where('a.meta_creative_ref_id', $creativeId)->orderByDesc('a.created_time')->orderByDesc('a.id')
+            ->get(['a.name as ad', 's.name as adset', 'ci.name as city'])
+            ->map(fn ($r) => ['ad' => QueueRules::withoutPrices($r->ad), 'adset' => QueueRules::withoutPrices($r->adset), 'city' => $r->city])
+            ->unique(fn ($w) => implode('|', $w))->take(3)->values()->all();
+    }
+
+    /** `.104`: dónde buscar el video del ganador que no está en el sistema. `.150`: con dónde está en Meta, si se sabe. */
+    private static function driveNote(?string $name, ?string $angle, array $where): string
+    {
+        if ($where === []) {
+            return 'Su video no está en el sistema: búscalo en el Drive antiguo como «' . ($name ?? 'el ganador') . '»' . ($angle ? " (ángulo {$angle})" : '') . '.';
+        }
+        $lines = array_map(fn ($w) => implode(' · ', array_filter(['Anuncio: «' . ($w['ad'] ?? $name ?? 'sin nombre') . '»',
+            $w['adset'] ? "Conjunto de anuncios: «{$w['adset']}»" : null, $w['city'] ? "Ciudad: {$w['city']}" : null])), $where);
+
+        return "Su video no está en el sistema: búscalo en el Drive antiguo. En Meta está así:\n" . implode("\n", $lines) . ($angle ? "\nÁngulo: {$angle}" : '');
     }
 
     /** El estado de cada encargo para contar lo pendiente (EditorRules::pending). */

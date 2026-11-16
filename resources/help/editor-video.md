@@ -34,7 +34,12 @@
 - Si el encargo es la iteración (variación) de un ganador, "Ver todo el encargo" lo dice: "Iteración (variación) de este
   ganador", con su nombre (el de su anuncio en Meta, por ejemplo "CRE002-FLEX-FAS-BATCH005"). Si el ganador se hizo en
   el sistema, ahí mismo está su video para ver y bajar. Si es de antes del sistema, dice "Su video no está en el sistema:
-  búscalo en el Drive antiguo como «CRE002-FLEX-FAS-BATCH005» (ángulo FASP)": búscalo en el Drive antiguo con ese nombre.
+  búscalo en el Drive antiguo. En Meta está así:" y, en una línea por lugar (hasta 3), el anuncio, el conjunto de anuncios
+  y la ciudad, por ejemplo: "Anuncio: «CRE001» · Conjunto de anuncios: «BATCH 003 - GORD - CONCEPTO OPEN | TEST» ·
+  Ciudad: Caracas", y su ángulo. El conjunto de anuncios dice de qué batch y de qué ángulo es: búscalo en el Drive antiguo
+  en la carpeta de ese batch, con el nombre del anuncio. Si el sistema no sabe dónde está en Meta, dice solo su nombre y su
+  ángulo ("búscalo en el Drive antiguo como «CRE002-FLEX-FAS-BATCH005» (ángulo FASP)"). Si aun así no lo encuentras,
+  pregúntale a tu líder.
 - "Ver todo el encargo" muestra la ficha del producto: qué es, para qué sirve, cómo funciona, las fotos, los buyer
   personas y los ángulos. Si las piezas son distintas entre sí (por ejemplo, 1 de hook y 2 de formato), dice qué lleva cada una.
 - Más abajo: "Lo que sigue", lo que está "Esperando revisión" y los terminados (se pueden ocultar).

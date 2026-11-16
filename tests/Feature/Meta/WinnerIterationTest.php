@@ -18,7 +18,8 @@ use Illuminate\Support\Facades\Storage;
 beforeEach(function () {
     Schema::create('products', fn ($t) => [$t->id(), $t->string('title'), $t->string('showable_name')->nullable(), $t->timestamps()]);
     Schema::create('meta_campaigns', fn ($t) => [$t->id(), $t->string('meta_id'), $t->unsignedBigInteger('meta_ad_account_id')->nullable(),
-        $t->unsignedBigInteger('product_id')->nullable(), $t->string('name')->nullable(), $t->timestamps()]);
+        $t->unsignedBigInteger('product_id')->nullable(), $t->unsignedBigInteger('city_id')->nullable(), $t->string('name')->nullable(), $t->timestamps()]);
+    Schema::create('cities', fn ($t) => [$t->id(), $t->string('name'), $t->timestamps()]);
     Schema::create('meta_adsets', function ($t) {
         $t->id();
         $t->unsignedBigInteger('meta_ad_account_id')->nullable();
@@ -82,7 +83,8 @@ beforeEach(function () {
         $t->timestamps();
     });
     DB::table('products')->insert(['id' => 5, 'title' => 'FlexiStep Tobillera']);
-    DB::table('meta_campaigns')->insert(['meta_id' => 'c1', 'meta_ad_account_id' => 1, 'product_id' => 5, 'name' => 'FLEXISTEP | CBO']);
+    DB::table('cities')->insert([['id' => 1, 'name' => 'Caracas'], ['id' => 2, 'name' => 'Valencia']]);
+    DB::table('meta_campaigns')->insert(['meta_id' => 'c1', 'meta_ad_account_id' => 1, 'product_id' => 5, 'city_id' => 1, 'name' => 'FLEXISTEP | CBO']);
     DB::table('meta_adsets')->insert(['meta_id' => 's1', 'campaign_meta_id' => 'c1', 'name' => 'B0005 FAS']);
     $this->ad = fn (string $id, string $name, ?int $creative = null, ?string $video = null) => DB::table('meta_ads')->insert(['meta_id' => $id, 'meta_ad_account_id' => 1,
         'campaign_meta_id' => 'c1', 'adset_meta_id' => 's1', 'name' => $name, 'meta_creative_ref_id' => $creative, 'video_id' => $video,
@@ -169,15 +171,40 @@ describe('El ganador de antes del sistema', function () {
         DB::table('creative_batches')->insert(['id' => 1, 'product_id' => 5, 'number' => 101, 'status' => 'approved', 'reference_creative_id' => 642]);
     });
 
-    it('dice su nombre completo y su ángulo para buscarlo en el Drive antiguo, sin llamar a Meta', function () {
+    it('dice su anuncio, su conjunto de anuncios, su ciudad y su ángulo para buscarlo en el Drive antiguo, sin llamar a Meta', function () {
         Http::fake();
 
         expect(EditorWork::iteration(CreativeBatch::find(1)))->toMatchArray(['code' => 'CRE002-FLEX-FAS-BATCH005', 'angle' => 'FASP', 'file' => null,
-            'video_note' => 'Su video no está en el sistema: búscalo en el Drive antiguo como «CRE002-FLEX-FAS-BATCH005» (ángulo FASP).']);
+            'video_note' => "Su video no está en el sistema: búscalo en el Drive antiguo. En Meta está así:\n"
+                . "Anuncio: «CRE002-FLEX-FAS-BATCH005» · Conjunto de anuncios: «B0005 FAS» · Ciudad: Caracas\nÁngulo: FASP"]);
         Http::assertNothingSent();
     });
 
-    it('sin ángulo propio usa el del encargo; el ganador hecho en el sistema (C0457) trae su video y no dice nada', function () {
+    // .150 (el editor, 2026-11-16: "de comprimax, no me sale qué creativo es"): «CRE001» solo no dice cuál es
+    it('el ganador de nombre corto: cada conjunto donde estuvo (hasta 3, el más nuevo primero), sin la campaña ni montos', function () {
+        DB::table('meta_creatives')->where('id', 642)->update(['label' => 'CRE001', 'angle_code' => null]);
+        DB::table('meta_campaigns')->insert(['meta_id' => 'c2', 'meta_ad_account_id' => 1, 'product_id' => 5, 'city_id' => 2, 'name' => 'COMPRIMAX VALENCIA CPA 5$']);
+        foreach ([['s2', 'BATCH 003 - GORD - CONCEPTO OPEN | TEST'], ['s3', 'BATCH 002 - GINE'], ['s4', 'BATCH 001 - GORD'], ['s5', 'PRUEBA $5']] as [$id, $set]) {
+            DB::table('meta_adsets')->insert(['meta_id' => $id, 'campaign_meta_id' => 'c2', 'name' => $set]);
+        }
+        foreach ([['a2', 's2', '2026-11-10'], ['a3', 's3', '2026-11-08'], ['a4', 's2', '2026-11-07'], ['a5', 's4', '2026-10-01'], ['a6', 's5', '2026-11-12']] as [$id, $set, $day]) {
+            DB::table('meta_ads')->insert(['meta_id' => $id, 'meta_ad_account_id' => 1, 'campaign_meta_id' => 'c2', 'adset_meta_id' => $set, 'name' => 'CRE001',
+                'meta_creative_ref_id' => 642, 'created_time' => "{$day} 10:00:00"]);
+        }
+
+        $note = EditorWork::iteration(CreativeBatch::find(1))['video_note'];
+        expect(explode("\n", $note))->toBe([
+            'Su video no está en el sistema: búscalo en el Drive antiguo. En Meta está así:',
+            'Anuncio: «CRE001» · Ciudad: Valencia', // el conjunto con un monto no se muestra
+            'Anuncio: «CRE001» · Conjunto de anuncios: «BATCH 003 - GORD - CONCEPTO OPEN | TEST» · Ciudad: Valencia',
+            'Anuncio: «CRE001» · Conjunto de anuncios: «BATCH 002 - GINE» · Ciudad: Valencia',
+        ])->and($note)->not->toContain('COMPRIMAX')->not->toContain('CPA');
+    });
+
+    it('sin anuncios en Meta dice su nombre y su ángulo; sin ángulo propio usa el del encargo; el ganador hecho en el sistema (C0457) trae su video', function () {
+        DB::table('meta_ads')->delete();
+        expect(EditorWork::iteration(CreativeBatch::find(1))['video_note'])
+            ->toBe('Su video no está en el sistema: búscalo en el Drive antiguo como «CRE002-FLEX-FAS-BATCH005» (ángulo FASP).');
         DB::table('meta_creatives')->where('id', 642)->update(['angle_code' => null]);
         DB::table('creative_batches')->where('id', 1)->update(['angle_code' => 'FAS']);
         expect(EditorWork::iteration(CreativeBatch::find(1))['video_note'])->toEndWith('(ángulo FAS).');

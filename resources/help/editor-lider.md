@@ -31,8 +31,9 @@
   banca o en test), no se pide otra. Y la siguiente prueba otra cosa: si la anterior fue de hook, la siguiente es de
   formato (y al revés). Si ves dos encargos con el mismo título, son dos encargos distintos: mira su código (B0…).
 - Si es la iteración de un ganador, "Ver todo el encargo" dice cuál (el nombre de su anuncio en Meta). Si se hizo en el
-  sistema, trae su video para ver y bajar. Si es de antes del sistema, dice su nombre completo y su ángulo para buscarlo
-  en el Drive antiguo.
+  sistema, trae su video para ver y bajar. Si es de antes del sistema, dice dónde está en Meta para buscarlo en el Drive
+  antiguo: el anuncio, el conjunto de anuncios (que dice el batch y el ángulo) y la ciudad, hasta 3 lugares, y su ángulo.
+  Si el sistema no sabe dónde está en Meta, dice solo su nombre y su ángulo.
 - "Por revisar": todas las entregas que esperan. Tocar una abre la ventana de revisar.
 - "¿Alcanza el equipo?": dice si el equipo llega a tiempo con lo que hace falta. Si dice que falta gente, hay que
   avisarle al dueño.

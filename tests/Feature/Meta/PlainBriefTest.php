@@ -95,6 +95,8 @@ beforeEach(function () {
         $t->id();
         $t->string('meta_id');
         $t->string('name')->nullable();
+        $t->string('adset_meta_id')->nullable();
+        $t->string('campaign_meta_id')->nullable();
         $t->unsignedBigInteger('meta_creative_ref_id')->nullable();
         foreach (['video_id', 'thumbnail_url', 'image_url', 'ad_title'] as $c) {
             $t->string($c)->nullable();
@@ -105,6 +107,10 @@ beforeEach(function () {
     });
     Schema::create('meta_video_transcripts', fn ($t) => [$t->id(), $t->string('video_id'), $t->string('status'), $t->string('hook')->nullable(),
         $t->text('text')->nullable(), $t->timestamp('transcribed_at')->nullable()]);
+    // .150: dónde está el ganador en Meta (EditorWork::whereInMeta)
+    Schema::create('meta_adsets', fn ($t) => [$t->id(), $t->string('meta_id'), $t->string('name')->nullable()]);
+    Schema::create('meta_campaigns', fn ($t) => [$t->id(), $t->string('meta_id'), $t->unsignedBigInteger('city_id')->nullable()]);
+    Schema::create('cities', fn ($t) => [$t->id(), $t->string('name')]);
     Schema::create('ad_angles', function ($t) {
         $t->id();
         $t->unsignedBigInteger('product_id');
