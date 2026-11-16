@@ -64,10 +64,13 @@ class MetaAnalysisController extends Controller
         $files = StoredFile::payloads($batches->flatMap(fn (CreativeBatch $b) => $b->pieces->pluck('file_id'))->all());
 
         return response()->json(['batches' => collect($numbers)->map(fn ($n) => $batches[$n] ?? null)->filter()->map(fn (CreativeBatch $b) => [
-            'code' => $b->code(), 'adset' => QueueRules::metaNames($b->number, $b->angle_code, [])['adset'],
-            'status' => $b->status, 'status_label' => QueueRules::STATUSES[$b->status] ?? $b->status,
+            'id' => $b->id, 'code' => $b->code(), 'adset' => QueueRules::metaNames($b->number, $b->angle_code, [])['adset'],
+            'status' => $b->status,
+            // .148: el que devolviste desde la banca dice que lo están corrigiendo
+            'status_label' => $b->sent_back_at && in_array($b->status, ['approved', 'production', 'review'], true) ? 'devuelto al líder para corregir'
+                : (QueueRules::STATUSES[$b->status] ?? $b->status),
             // El nombre de cada anuncio en Meta ("C0145 VAGO"); el archivo listo, o el video de Drive de los de antes
-            'pieces' => $b->pieces->map(fn (CreativeBatchPiece $p) => ['name' => $p->code() !== null ? trim($p->code() . ' ' . $b->angle_code) : null,
+            'pieces' => $b->pieces->map(fn (CreativeBatchPiece $p) => ['id' => $p->id, 'code' => $p->code(), 'name' => $p->code() !== null ? trim($p->code() . ' ' . $b->angle_code) : null,
                 'file' => $files[$p->file_id] ?? null, 'link' => $p->link])->values()->all(),
         ])->values()->all()]);
     }

@@ -38,6 +38,11 @@
   avisarle al dueño.
 - "Lo que necesitamos": lo que hace falta, del más urgente al menos, con su porqué. Lo pide el sistema solo.
 - "Sin asignar": encargos sin editor, el más urgente arriba, con "Asignar editor".
+- "Devuelto por el dueño": si el dueño ve un batch de la banca que no sirve (por ejemplo, un video de otro producto), lo
+  devuelve con una nota y las piezas que están mal. Te llega a la campanita "El dueño te devolvió B0133…" y el encargo sale
+  primero en "Sin asignar", con su nota a la vista y 2 días de plazo. Asígnalo al mismo editor (el sistema te sugiere el que
+  lo hizo), a otro, o corrígelo tú. El editor ve "Te lo devolvieron" con la nota del dueño y corrige esas piezas; tú lo
+  revisas como siempre (la nota del dueño sigue a la vista para comprobar que se corrigió) y, aprobado, vuelve a la banca.
 - "En curso": lo que están haciendo; en rojo, lo atrasado. "Ver el encargo" muestra todo lo que se pidió. "Cambiar
   editor" lo pasa a otro.
 - Abajo, una línea: "En banca: N batches listos para lanzar" y "Ver la banca y cargar batches" (lleva a la pantalla

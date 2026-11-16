@@ -30,7 +30,13 @@ class EditorWork
 
     /** Lo que se carga para mostrar un encargo. */
     public const WITH = ['pieces', 'product:id,title,showable_name', 'persona', 'reference:id,label,tracking_id,creative_code', 'learningCity:id,name', 'editor:id,names,surnames',
-        'deliveries.editor:id,names,surnames', 'deliveries.reviewer:id,names,surnames'];
+        'deliveries.editor:id,names,surnames', 'deliveries.reviewer:id,names,surnames', 'sentBackUser:id,names,surnames', 'sentBackEditor:id,names,surnames'];
+
+    /**
+     * `.148`: el plazo para corregir lo que devolvió el dueño desde la banca, en días: la fecha "lista" (la entrega más los
+     * días de correcciones del líder, `corrections_days`), la misma que ven el líder y el editor y con la que se atrasa.
+     */
+    public const SEND_BACK_DAYS = 2;
 
     /** @return array{id: int, role: ?string} */
     public static function who(User $user): array
@@ -314,6 +320,67 @@ class EditorWork
     }
 
     /**
+     * `.148` (dueño, 2026-11-16: "los videos estaban malos… no era el producto indicado… necesito que yo reenvíe eso al editor
+     * líder con el inconveniente… con una nota… y que él a su vez pueda reasignárselo al mismo o a otro editor"): el dueño
+     * devuelve un batch de la banca con su nota y las piezas que están mal. Queda sin asignar y primero en la cola, con
+     * SEND_BACK_DAYS días de plazo; el líder elige quién lo corrige (se le sugiere el que lo hizo) y le llega el aviso. La misión
+     * de lanzarlo sale del análisis de hoy y vuelve sola cuando está otra vez en la banca (BankArrival).
+     *
+     * @param list<int> $pieceIds
+     */
+    public function sendBack(CreativeBatch $batch, User $actor, string $note, array $pieceIds): CreativeBatch
+    {
+        $batch = DB::transaction(function () use ($batch, $actor, $note, $pieceIds) {
+            $batch = CreativeBatch::with('deliveries')->lockForUpdate()->findOrFail($batch->id);
+            if ($batch->status !== 'bank') {
+                throw ValidationException::withMessages(['status' => 'Solo se devuelve un batch que está en la banca: ' . $batch->code() . ' está en "'
+                    . (QueueRules::STATUSES[$batch->status] ?? $batch->status) . '".']);
+            }
+            $note = trim($note);
+            if (mb_strlen($note) < 10) {
+                throw ValidationException::withMessages(['note' => 'Escribe qué está mal, con algo que se vea (por ejemplo, "C0199 y C0201: el video es de otro producto").']);
+            }
+            $pieces = $batch->pieces()->whereIn('id', $pieceIds)->get();
+            if ($pieces->isEmpty()) {
+                throw ValidationException::withMessages(['pieces' => 'Marca las piezas que hay que corregir.']);
+            }
+            $now = now();
+            $batch->forceFill([
+                'status' => 'approved', 'status_at' => $now, 'status_by' => $actor->id,
+                'sent_back_at' => $now, 'sent_back_by' => $actor->id, 'sent_back_note' => $note,
+                'sent_back_pieces' => $pieces->map(fn (CreativeBatchPiece $p) => $p->code())->filter()->values()->all(),
+                'sent_back_editor_id' => $batch->deliveries->first()?->editor_id ?? $batch->editor_id,
+                'editor_id' => null, 'assigned_at' => null, 'assigned_by' => null,
+                'due_date' => now(config('app.timezone'))->addDays(max(0, self::SEND_BACK_DAYS - (int) (new \App\Services\Meta\Decisions\DecisionSettings())->get()['corrections_days']))->toDateString(),
+                'position' => (int) CreativeBatch::whereIn('status', QueueRules::QUEUE)->min('position') - 1,
+            ])->save();
+
+            return $batch;
+        });
+        self::dropLaunch($batch);
+        $short = \App\Services\Meta\Analysis\UrgentList::short((string) ($batch->product?->showable_name ?: $batch->product?->title));
+        $message = "El dueño te devolvió {$batch->code()} de {$short} (" . implode(', ', (array) $batch->sent_back_pieces) . "): {$batch->sent_back_note} Asígnalo para corregirlo.";
+        foreach (User::whereNull('deactivated_at')->whereHas('role', fn ($q) => $q->where('description', EditorRules::LEADER))->get() as $u) {
+            $u->notify(new \App\Notifications\MetaWorkNotification('owner_returned', $message, '/editor/equipo'));
+        }
+
+        return $batch;
+    }
+
+    /** `.148`: la misión de lanzarlo (el testeo, o "ya llegó a la banca") sale del análisis de hoy. */
+    private static function dropLaunch(CreativeBatch $batch): void
+    {
+        $analysis = \App\Models\MetaAnalysis::where('date', now(config('app.timezone'))->toDateString())->orderByDesc('version')->first();
+        $code = (string) $batch->code();
+        $urgent = $analysis?->urgent ?? [];
+        $keep = array_values(array_filter($urgent, fn ($u) => !(in_array($u['kind'] ?? null, ['launch_test', 'launch_ready'], true)
+            && (in_array($code, $u['batches'] ?? [], true) || ($u['key'] ?? null) === "{$batch->product_id}:ready:{$code}"))));
+        if ($analysis && count($keep) !== count($urgent)) {
+            $analysis->forceFill(['urgent' => $keep])->save();
+        }
+    }
+
+    /**
      * Los encargos como los ven los editores: todo lo del encargo, sin dinero (ni el gasto, ni el resultado, ni el
      * aprendizaje, que puede traer montos), con la miniatura y los textos de la referencia y lo que puede hacer quien mira.
      *
@@ -468,6 +535,14 @@ class EditorWork
         $files = StoredFile::payloads($b->deliveries->flatMap(fn (CreativeBatchDelivery $d) => array_column((array) $d->pieces, 'file_id'))->all());
         // .92: de qué referencia salió cada pieza (para verla al revisar)
         $refs = ReferenceLibrary::brief($b->deliveries->flatMap(fn (CreativeBatchDelivery $d) => array_column((array) $d->pieces, 'reference_id'))->all());
+        // .148: lo que devolvió el dueño desde la banca, hasta que vuelva a la banca; mientras nadie lo entregue de nuevo, es lo
+        // que hay que corregir (si después el líder devuelve la corrección, manda lo que pidió el líder)
+        $sent = $b->sent_back_at !== null && in_array($b->status, ['approved', 'production', 'review'], true) ? [
+            'note' => $b->sent_back_note, 'pieces' => (array) $b->sent_back_pieces, 'at' => $b->sent_back_at->toIso8601String(),
+            'by' => $b->sentBackUser ? self::name($b->sentBackUser) : null,
+            'editor_id' => $b->sent_back_editor_id, 'editor' => $b->sentBackEditor ? self::name($b->sentBackEditor) : null,
+        ] : null;
+        $redone = $sent !== null && $b->deliveries->contains(fn (CreativeBatchDelivery $d) => $d->created_at > $b->sent_back_at);
 
         return [
             'editor_id' => $b->editor_id, 'editor' => $b->editor ? self::name($b->editor) : null,
@@ -475,8 +550,14 @@ class EditorWork
             'delivered_at' => $b->delivered_at?->toIso8601String(),
             'overdue' => $b->due_date !== null && $b->delivered_at === null && in_array($b->status, ['approved', 'production'], true)
                 && $b->due_date->toDateString() < now(config('app.timezone'))->toDateString(),
-            'returned' => $b->status === 'production' && $last?->review === 'returned' ? ['version' => $last->label(), 'comment' => $last->comment,
-                'by' => $last->reviewer ? self::name($last->reviewer) : null] : null,
+            'returned' => match (true) {
+                $b->status === 'production' && $last?->review === 'returned' => ['version' => $last->label(), 'comment' => $last->comment,
+                    'by' => $last->reviewer ? self::name($last->reviewer) : null],
+                $sent !== null && !$redone && in_array($b->status, ['approved', 'production'], true) => ['version' => $last?->label() ?? 'V01',
+                    'comment' => $sent['note'] . ($sent['pieces'] ? "\nPiezas a corregir: " . implode(', ', $sent['pieces']) . '.' : ''), 'by' => $sent['by'] ?? 'el dueño'],
+                default => null,
+            },
+            'sent_back' => $sent,
             'deliveries' => $b->deliveries->map(fn (CreativeBatchDelivery $d) => [
                 'id' => $d->id, 'version' => $d->label(), 'editor' => $d->editor ? self::name($d->editor) : null, 'delivered_at' => $d->created_at?->toIso8601String(),
                 'concept' => $d->concept, 'angle' => $d->angle, 'notes' => $d->notes,

@@ -14,7 +14,8 @@ class CreativeBatch extends Model
     protected $fillable = ['product_id', 'number', 'position', 'status', 'kind', 'angle_code', 'concept', 'hypothesis', 'goal', 'test_idea', 'improve', 'audience', 'persona_id', 'testing_round',
         'reference_creative_id', 'learning_city_id', 'format', 'style', 'keep', 'offer', 'deliverables', 'urgency', 'due_date', 'source', 'proposed_on',
         'approved_at', 'approved_by', 'status_at', 'status_by', 'discard_reason', 'testing_at', 'tested_at', 'result', 'learning', 'created_by',
-        'editor_id', 'assigned_at', 'assigned_by', 'started_at', 'delivered_at', 'suggested_reference_id'];
+        'editor_id', 'assigned_at', 'assigned_by', 'started_at', 'delivered_at', 'suggested_reference_id',
+        'sent_back_at', 'sent_back_by', 'sent_back_note', 'sent_back_pieces', 'sent_back_editor_id'];
 
     protected $casts = [
         'due_date' => 'date:Y-m-d',
@@ -27,6 +28,8 @@ class CreativeBatch extends Model
         'assigned_at' => 'datetime',
         'started_at' => 'datetime',
         'delivered_at' => 'datetime',
+        'sent_back_at' => 'datetime',
+        'sent_back_pieces' => 'array',
     ];
 
     public function pieces()
@@ -63,6 +66,17 @@ class CreativeBatch extends Model
     public function persona()
     {
         return $this->belongsTo(ProductPersona::class, 'persona_id');
+    }
+
+    /** `.148`: quién lo devolvió desde la banca (el dueño) y quién lo había hecho. */
+    public function sentBackUser()
+    {
+        return $this->belongsTo(User::class, 'sent_back_by');
+    }
+
+    public function sentBackEditor()
+    {
+        return $this->belongsTo(User::class, 'sent_back_editor_id');
     }
 
     /** El editor que lo hace (paso 5a). */

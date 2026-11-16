@@ -64,6 +64,9 @@
 - Los motivos que puede marcar: No es lo que se pidió, No cumple con el propósito, No sigue la referencia, Hook flojo,
   Texto mal puesto, Audio o música, Muy largo o lento.
 - "seg. 0:03" es el segundo del video donde está lo que hay que cambiar.
+- A veces lo devuelve el dueño, después de que ya estaba en la banca (por ejemplo, si un video es de otro producto). El
+  líder te lo asigna y lo ves igual, como "Te lo devolvieron", con la nota del dueño y las piezas a corregir. Corrige
+  solo esas piezas y entrégalo de nuevo; las demás siguen con su archivo.
 
 ## Las fechas y los atrasados
 - Cada encargo tiene su fecha de entrega. Lo urgente es para hoy; lo demás, como máximo en 2 días.

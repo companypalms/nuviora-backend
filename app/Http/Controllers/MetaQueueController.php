@@ -99,6 +99,15 @@ class MetaQueueController extends Controller
         return response()->json(['batch' => $this->presentOne($batch)]);
     }
 
+    /** `.148`: devolver al líder un batch de la banca, con una nota y las piezas que están mal (desde la misión de lanzarlo). */
+    public function sendBack(Request $request, CreativeBatch $batch, EditorWork $work)
+    {
+        $data = $request->validate(['note' => 'required|string|max:2000', 'pieces' => 'required|array|min:1', 'pieces.*' => 'integer']);
+        $batch = $work->sendBack($batch, Auth::user(), $data['note'], array_map('intval', $data['pieces']));
+
+        return response()->json(['batch' => $this->presentOne($batch)]);
+    }
+
     /** "Proponer ahora": lo mismo que corre con el análisis de la mañana (no repite lo ya propuesto hoy). */
     public function propose(QueueProposer $proposer)
     {

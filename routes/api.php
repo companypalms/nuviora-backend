@@ -626,6 +626,8 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         // Etapa 5, paso 5a: el dueño también asigna el editor y revisa las entregas (las del editor líder, solo él)
         Route::put('/queue/{batch}/editor', [\App\Http\Controllers\MetaQueueController::class, 'assign'])->whereNumber('batch');
         Route::post('/queue/{batch}/review', [\App\Http\Controllers\MetaQueueController::class, 'review'])->whereNumber('batch');
+        // .148: devolver al líder un batch de la banca, con nota y piezas (desde la misión de lanzarlo)
+        Route::post('/queue/{batch}/send-back', [\App\Http\Controllers\MetaQueueController::class, 'sendBack'])->whereNumber('batch');
         // .57: lo que "Subir a Meta" va a crear (el simulacro: no escribe nada en Meta)
         Route::post('/queue/{batch}/upload-plan', [\App\Http\Controllers\MetaQueueController::class, 'uploadPlan'])->whereNumber('batch')->middleware('throttle:20,1');
         // Etapa 5, paso 6a: las landings medidas una por una
