@@ -124,9 +124,11 @@ class DecisionSettings
         'angle_rest_days' => [14, 1, 365],
         // .139 (dueño, 2026-11-12: "los recursos son finitos… determinar si un producto es bueno, regular… o malo y no vale la
         // pena seguir renovando creativos"): la etiqueta de cada producto por su efectividad, con sus pedidos maduros sin los
-        // que esperaron stock. Eligió Bueno desde 55 % y Malo debajo de 45 % (Solo Brillo no cuenta: es la excepción)
+        // que esperaron stock. Eligió Bueno desde 55 % y Malo debajo de 45 % (Solo Brillo no cuenta: es la excepción). `.147`
+        // (dueño, 2026-11-16: "debemos bajar la etiqueta del 45% al 40% igual que la de la primera lectura"; ResistBarPro salía
+        // Malo con 44 % y dejando ~$40 por día): Malo debajo de 40 % también en la lectura completa
         'worth_good_pct' => [55, 1, 100],
-        'worth_bad_pct' => [45, 1, 100],
+        'worth_bad_pct' => [40, 1, 100],
         // "En dos tiempos": con 30 pedidos solo se dice Malo si está claramente mal (debajo de 40 %); con 50, las líneas de arriba
         'worth_early_orders' => [30, 10, 200],
         'worth_early_bad_pct' => [40, 1, 100],

@@ -32,10 +32,10 @@ describe('.139: la etiqueta de cada producto', function () {
     });
 
     it('"tiene que dejar una ganancia interesante como para marcarse regular": con $500 o más en 4 semanas, un Malo queda Regular', function () {
-        expect(valeLaPena(100, 44, 500.0))->toMatchArray(['level' => 'regular', 'rescued' => true,
-            'why' => 'Efectividad 44 % en sus últimos 100 pedidos: está debajo de 45 %, pero dejó $500,00 en 4 semanas.'])
-            ->and(valeLaPena(100, 44, 499.99)['level'])->toBe('bad')
-            ->and(valeLaPena(100, 44)['level'])->toBe('bad') // sin BE no se sabe lo que dejó: no se salva
+        expect(valeLaPena(100, 38, 500.0))->toMatchArray(['level' => 'regular', 'rescued' => true,
+            'why' => 'Efectividad 38 % en sus últimos 100 pedidos: está debajo de 40 %, pero dejó $500,00 en 4 semanas.'])
+            ->and(valeLaPena(100, 38, 499.99)['level'])->toBe('bad')
+            ->and(valeLaPena(100, 38)['level'])->toBe('bad') // sin BE no se sabe lo que dejó: no se salva
             ->and(valeLaPena(100, 54, 900.0)['rescued'])->toBeFalse(); // un Regular no necesita salvarse
     });
 

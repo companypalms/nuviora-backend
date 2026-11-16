@@ -181,7 +181,7 @@ describe('.139: un producto Malo', function () {
             ->and($m['detail'])->toBe(['Aragua: 10 de 30 entregados (33,3 %).',
                 'Efectividad = pedidos entregados ÷ pedidos que entraron desde el 20/10, ya con tiempo de entregarse; no cuentan 6 que esperaron stock.',
                 'Mientras decides, no se piden batches nuevos de este producto (lo que los editores ya están haciendo sigue) y sus ciudades frenan el gasto: si subiste hace poco, primero se devuelve la subida; la que pierde claramente se pausa; la que está entre C y BE, o apenas encima, baja 20 %; y ninguna sube.',
-                'La ciudad con 30 pedidos o más que entrega el 45 % o más sigue las reglas de siempre.'])
+                'La ciudad con 30 pedidos o más que entrega el 40 % o más sigue las reglas de siempre.'])
             ->and(DemandPlanner::plan([9 => $d], [], DecisionSettings::defaults(), now()->toDateString()))->toBe([]);
     });
 
@@ -212,7 +212,7 @@ describe('.139: un producto Malo', function () {
 
     it('con $500 o más en 4 semanas queda Regular: ni misión ni freno', function () {
         // 28 días × (6 compras × $7,49 − $20) = $698,32
-        $d = valeDecide(valeMuestra(60, 24), [20.0, 6.0]);
+        $d = valeDecide(valeMuestra(60, 22), [20.0, 6.0]); // 36,7 %
 
         expect($d['product']['worth'])->toMatchArray(['level' => 'regular', 'rescued' => true, 'gain28' => 698.32, 'stop' => false])
             ->and($d['plan']['worth_bad'])->toBeNull();

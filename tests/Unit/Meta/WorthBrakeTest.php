@@ -103,17 +103,17 @@ describe('.146: primero se devuelve la subida', function () {
 });
 
 describe('.146: la ciudad que entrega bien', function () {
-    // ResistBarPro el 16/11: Distrito Capital 18 de 37, Carabobo 7 de 25, Aragua 8 de 13 (y una con 42,5 % en 40)
+    // ResistBarPro el 16/11: Distrito Capital 18 de 37, Carabobo 7 de 25, Aragua 8 de 13 (y una con 37,5 % en 40)
     $worth = ['cities' => [['city_id' => 1, 'city' => 'Distrito Capital', 'orders' => 37, 'delivered' => 18], ['city_id' => 2, 'city' => 'Carabobo', 'orders' => 25, 'delivered' => 7],
-        ['city_id' => 3, 'city' => 'Aragua', 'orders' => 13, 'delivered' => 8], ['city_id' => 4, 'city' => 'Lara', 'orders' => 40, 'delivered' => 17]]];
+        ['city_id' => 3, 'city' => 'Aragua', 'orders' => 13, 'delivered' => 8], ['city_id' => 4, 'city' => 'Lara', 'orders' => 40, 'delivered' => 15]]];
 
-    it('con 30 pedidos o más y 45 % o más, sigue las reglas de siempre; con menos pedidos, o entregando menos, el freno del producto', function () use ($worth) {
+    it('con 30 pedidos o más y 40 % o más (.147), sigue las reglas de siempre; con menos pedidos, o entregando menos, el freno del producto', function () use ($worth) {
         $s = DecisionSettings::defaults();
 
         expect(MetaDecisions::cityDelivers($worth, 1, $s))->toMatchArray(['city' => 'Distrito Capital', 'orders' => 37, 'effectiveness' => 48.6])
             ->and(MetaDecisions::cityDelivers($worth, 2, $s))->toBeNull()     // 28 %
             ->and(MetaDecisions::cityDelivers($worth, 3, $s))->toBeNull()     // 61,5 %, pero solo 13 pedidos
-            ->and(MetaDecisions::cityDelivers($worth, 4, $s))->toBeNull()     // 42,5 % en 40
+            ->and(MetaDecisions::cityDelivers($worth, 4, $s))->toBeNull()     // 37,5 % en 40
             ->and(MetaDecisions::cityDelivers($worth, null, $s))->toBeNull();
     });
 });
