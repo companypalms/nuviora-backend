@@ -196,6 +196,8 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
      * ---------------------**/
     Route::put('/orders/{order}/status', [OrderController::class, 'updateStatus'])->middleware('order.access');
     Route::get('/orders/{order}/available-statuses', [OrderController::class, 'getAvailableStatuses'])->middleware('order.access');
+    // .149 "Cambiar ciudad o agencia": quién y cuándo lo decide OrderRelocation (la líder igual que el dueño)
+    Route::get('/orders/{order}/logistics', [OrderController::class, 'logisticsOptions'])->middleware('order.access');
     Route::put('/orders/{order}/logistics', [OrderController::class, 'updateLogistics'])->middleware('order.access');
     // Auto-asignación masiva de logística
     Route::post('/orders/auto-assign-logistics', [OrderController::class, 'autoAssignAllLogistics']);

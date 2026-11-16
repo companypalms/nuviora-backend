@@ -27,6 +27,7 @@ use App\Notifications\OrderNoveltyResolvedNotification;
 use App\Notifications\OrderScheduledNotification;
 use App\Constants\OrderStatus;
 use App\Services\Orders\ChangeRules;
+use App\Services\Orders\OrderRelocation;
 use App\Services\Orders\Cancellations;
 
 class OrderController extends Controller
@@ -181,6 +182,7 @@ class OrderController extends Controller
             'paymentAccount', // .60: la cuenta de pago móvil de la orden
             'paymentReceipts.check', // 👈 Payment Receipts Gallery, con la revisión de la IA
             'agency', // 👈 incluimos agencia (viejo)
+            'city', // .149: la ciudad del pedido (antes la pantalla mostraba la que escribió el cliente)
             'warehouse', // 👈 incluimos agencia regional (nuevo SCM)
             'postponements.user', // 👈 incluimos historial de reprogramación
             'shop', // 👈 incluimos tienda
@@ -256,6 +258,9 @@ class OrderController extends Controller
                 'bcv_rate'             => \App\Models\Setting::where('key', '=', 'rate_bcv_usd')->first()?->value ?? 0,
                 'eur_rate'             => \App\Models\Setting::where('key', '=', 'rate_bcv_eur')->first()?->value ?? 0,
                 'agency'               => $order->agency,
+                // .149: la ciudad del pedido (la pantalla mostraba siempre la que escribió el cliente)
+                'city_id'              => $order->city_id,
+                'city'                 => $order->city,
                 'shop'                 => $order->shop,
                 'has_stock_warning'    => $hasStockWarning, // 👈 New flag
                 'stock_elsewhere'      => ($order->status?->description === \App\Constants\OrderStatus::SIN_STOCK)
@@ -1717,6 +1722,11 @@ class OrderController extends Controller
             'agency_id' => 'required|integer',
         ]);
 
+        // .149: la misma regla que "Cambiar ciudad o agencia" (antes cualquier vendedora con acceso al pedido)
+        if ($stop = OrderRelocation::stop(OrderRelocation::who(Auth::user(), $order), $order->status?->description, !$order->agency_id)) {
+            return response()->json(['status' => false, 'message' => $stop], 403);
+        }
+
         // 🔒 LOCK: No editar si está Entregado (excepto Admin)
         if ($order->status && $order->status->description === 'Entregado' && \Illuminate\Support\Facades\Auth::user()->role?->description !== 'Admin') {
             return response()->json(['status' => false, 'message' => 'No se puede modificar una orden entregada.'], 403);
@@ -1792,60 +1802,9 @@ class OrderController extends Controller
             $order->save();
             $order->refresh();
 
-            $terminalStatuses = ['Entregado', 'Cancelado', 'Rechazado', 'En ruta', 'Asignar a agencia', 'Novedades', 'Novedad Solucionada'];
-
-            // ⚠️ IMPORTANTE: solo avanzamos la orden si hasStock() es verdadero.
-            // hasStock() usa getStockDetails(), el MISMO chequeo que syncStockStatus()
-            // corre en cada carga del Kanban. Si avanzáramos sin stock real, el
-            // siguiente refresh rebotaría la orden de vuelta a "Sin Stock".
-            if ($order->hasStock()) {
-                // Status destino:
-                //  1. Restaurar el status previo (si existe y no es terminal).
-                //  2. Si no hay previo válido → "Asignado a vendedor". La orden conserva
-                //     SU MISMA vendedora (no se toca agent_id).
-                $restored = $order->previous_status_id ? Status::find($order->previous_status_id) : null;
-
-                if ($restored && !in_array($restored->description, $terminalStatuses)) {
-                    $targetStatus = $restored;
-                } else {
-                    $targetStatus = Status::where('description', OrderStatus::ASIGNADO_VENDEDOR)->first();
-                }
-
-                if ($targetStatus) {
-                    $destinationName = $agencyUser?->names ?? $warehouse?->name ?? 'nueva agencia';
-                    $wasRestored     = $restored && $targetStatus->id === $restored->id;
-
-                    $order->status_id          = $targetStatus->id;
-                    $order->previous_status_id = null;
-                    // 👤 NO se toca agent_id: la vendedora asignada se mantiene.
-                    $order->save();
-
-                    \App\Models\OrderActivityLog::create([
-                        'order_id'    => $order->id,
-                        'user_id'     => auth()->id() ?? 1,
-                        'action'      => 'status_changed',
-                        'description' => "Agencia reasignada a '{$destinationName}'. Stock disponible en el nuevo almacén: orden movida a '{$targetStatus->description}'.",
-                        'properties'  => [
-                            'old_status'   => $sinStockStatus->id,
-                            'new_status'   => $targetStatus->id,
-                            'agency_id'    => $agencyUser?->id,
-                            'warehouse_id' => $warehouse?->id,
-                            'restored'     => $wasRestored,
-                        ],
-                    ]);
-
-                    \App\Models\OrderUpdate::create([
-                        'order_id' => $order->id,
-                        'user_id'  => auth()->id() ?? 1,
-                        'message'  => "✅ Agencia reasignada. Había stock en el nuevo almacén: la orden pasó a '{$targetStatus->description}'.",
-                    ]);
-
-                    $message = "Orden reasignada a {$destinationName}. Pasó a '{$targetStatus->description}'.";
-                }
-            } else {
-                // El nuevo almacén tampoco tiene stock suficiente: la orden se queda en Sin Stock.
-                $message = 'Se reasignó la agencia, pero ese almacén tampoco tiene stock suficiente. La orden permanece en "Sin Stock".';
-            }
+            // ⚠️ Solo avanza si hasStock() (el mismo chequeo del Kanban); si no, rebotaría a "Sin Stock" (OrderRelocation)
+            $message = app(OrderRelocation::class)->releaseSinStock($order, $agencyUser?->names ?? $warehouse?->name ?? 'nueva agencia')
+                ?? 'Se reasignó la agencia, pero ese almacén tampoco tiene stock suficiente. La orden permanece en "Sin Stock".';
         } else {
             // Flujo normal: mover a "Asignar a agencia".
             $statusId = Status::where('description', '=', 'Asignar a agencia')->first()?->id;
@@ -3097,39 +3056,52 @@ class OrderController extends Controller
             'orders' => $orders,
         ]);
     }
+    /** .149: lo que muestra "Cambiar ciudad o agencia" (las ciudades que reparten y sus agencias con stock y cupo). */
+    public function logisticsOptions(Order $order)
+    {
+        return response()->json(['status' => true] + app(OrderRelocation::class)->options($order->loadMissing('status', 'client'), Auth::user()));
+    }
+
+    /**
+     * .149 "Cambiar ciudad o agencia" (dueño, 2026-11-16): la agencia siempre de la ciudad elegida, o la elige el sistema;
+     * la líder de vendedoras igual que el dueño. Antes aceptaba cualquier agencia y dejaba la vieja al cambiar solo la ciudad.
+     */
     public function updateLogistics(Request $request, Order $order)
     {
-        // 🔒 LOCK: No editar si está Entregado (excepto Admin)
-        if ($order->status && $order->status->description === 'Entregado' && \Illuminate\Support\Facades\Auth::user()->role?->description !== 'Admin') {
-            return response()->json(['status' => false, 'message' => 'No se puede modificar una orden entregada.'], 403);
-        }
-
-        $userRole = Auth::user()->role?->description;
-        // 🔥 CLIENT FIX: Allow Vendedor to edit logistics, mostly needed for Sin Stock specialists
-        if (!in_array($userRole, ['Gerente', 'Admin', 'Vendedor'])) {
-            return response()->json(['status' => false, 'message' => 'No tiene permisos para editar la logística'], 403);
-        }
-
-        $validated = $request->validate([
-            'city_id' => 'nullable|exists:cities,id',
-            'agency_id' => 'nullable|exists:users,id',
-            'deliverer_id' => 'nullable|exists:users,id',
+        $data = $request->validate([
+            'city_id' => 'required|integer',
+            'agency_id' => 'nullable|integer',
+            'force' => 'nullable|boolean',
         ]);
-
-        $order->fill($validated);
-        // Almacén de la agencia nueva, igual que en assignAgency. Si la orden ya tenía el stock
-        // descontado, OrderStock lo devuelve al almacén de donde salió y lo descuenta del nuevo.
-        if ($order->isDirty('agency_id')) {
-            $order->warehouse_id = $order->agency_id ? Warehouse::where('user_id', $order->agency_id)->value('id') : null;
-            $order->agency_locked = (bool) $order->agency_id; // elegida a mano (tarea 3c)
+        $order->loadMissing('status', 'client');
+        $status = $order->status?->description;
+        if ($stop = OrderRelocation::stop(OrderRelocation::who(Auth::user(), $order), $status, !$order->agency_id)) {
+            return response()->json(['status' => false, 'message' => $stop], 403);
         }
-        $order->save();
+        // Si la agencia lo recibe (o sale de Sin Stock hacia ella), lo mismo que pide "Asignar a agencia"
+        if (in_array($status, [...OrderRelocation::AT_AGENCY, OrderStatus::SIN_STOCK], true)) {
+            if ($missing = $this->missingSizeMessage($order)) {
+                return response()->json(['status' => false, 'message' => $missing], 422);
+            }
+            if ($pending = ChangeRules::pendingMessage($order)) {
+                return response()->json(['status' => false, 'message' => $pending, 'change_approval_pending' => true], 422);
+            }
+        }
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Logística actualizada correctamente',
-            'order' => $order->fresh(['status', 'agency', 'deliverer', 'city', 'agent', 'client'])
-        ]);
+        try {
+            [$order, $message] = app(OrderRelocation::class)->move($order, Auth::user(), (int) $data['city_id'],
+                isset($data['agency_id']) ? (int) $data['agency_id'] : null, (bool) ($data['force'] ?? false));
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $errors = $e->errors();
+
+            return response()->json(['status' => false, 'message' => collect($errors)->flatten()->first(), 'full' => isset($errors['full'])], 422);
+        }
+
+        $orderArray = $order->fresh(['status', 'agency', 'warehouse', 'deliverer', 'city', 'agent', 'client'])->toArray();
+        $orderArray['stock_elsewhere'] = ($orderArray['status']['description'] ?? null) === OrderStatus::SIN_STOCK
+            ? $order->getStockAvailabilityElsewhere() : [];
+
+        return response()->json(['status' => true, 'message' => $message, 'order' => $orderArray]);
     }
     public function autoAssignAllLogistics(Request $request)
     {
