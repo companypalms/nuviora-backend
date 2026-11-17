@@ -14,6 +14,9 @@ use App\Services\Meta\Decisions\Rules\AdRules;
  * - la hipótesis de cada cambio, con textos fijos y los números del momento (la IA no la inventa);
  * - si se cumplió: los 3 días cerrados de antes contra hasta 3 días cerrados de después, cortando en el siguiente cambio
  *   grande de esa campaña. Un batch nuevo se cumple si queda prometedor o PROVEN en esa ciudad. Pausar no se mide.
+ * - `.151` (dueño, 2026-11-17: "veo que muchas veces no se cumple lo que se quiere"): apagar anuncios se mide aparte
+ *   (adsOff): junto con el batch que se lanzó con él, contra las otras ciudades del producto, y si era poco del gasto, por si
+ *   de verdad perdía.
  */
 final class ChangeRules
 {
@@ -43,6 +46,9 @@ final class ChangeRules
 
     /** Los días cerrados que se miran antes y después. */
     public const DAYS = 3;
+
+    /** `.151`: debajo de esta parte del gasto de la ciudad (los 3 días de antes), lo apagado es muy poco para mover su CPA. */
+    public const OFF_SMALL_SHARE = 0.2;
 
     /** Cuántos días se espera el veredicto de un batch nuevo. */
     public const BATCH_DAYS = 14;
@@ -118,8 +124,9 @@ final class ChangeRules
                     $out[] = self::change('min_off', $info['campaign'], (string) $id, $d, $cur['at'], ['adset' => $info['name'], 'min' => (float) $prev['min_spend']]);
                 }
                 if ($prev['status'] === 'ACTIVE' && $cur['status'] !== null && $cur['status'] !== 'ACTIVE') {
-                    $off[$info['campaign']][$d] ??= ['at' => $cur['at'], 'ads' => [], 'adsets' => []];
+                    $off[$info['campaign']][$d] ??= ['at' => $cur['at'], 'ads' => [], 'adsets' => [], 'ids' => [], 'sets' => []];
                     $off[$info['campaign']][$d]['adsets'][] = $info['name'];
+                    $off[$info['campaign']][$d]['sets'][] = (string) $id;
                     $setsOff[(string) $id][$d] = true;
                 }
             }
@@ -135,14 +142,17 @@ final class ChangeRules
                 if ($d < $since || $prev['status'] !== 'ACTIVE' || $cur['status'] === null || $cur['status'] === 'ACTIVE' || isset($setsOff[(string) $info['adset']][$d])) {
                     continue;
                 }
-                $off[$info['campaign']][$d] ??= ['at' => $cur['at'], 'ads' => [], 'adsets' => []];
+                $off[$info['campaign']][$d] ??= ['at' => $cur['at'], 'ads' => [], 'adsets' => [], 'ids' => [], 'sets' => []];
                 $off[$info['campaign']][$d]['ads'][] = $info['name'];
+                $off[$info['campaign']][$d]['ids'][] = (string) $id;
                 $off[$info['campaign']][$d]['at'] = min($off[$info['campaign']][$d]['at'], $cur['at']);
             }
         }
         foreach ($off as $campaign => $days) {
             foreach ($days as $d => $o) {
-                $out[] = self::change('ads_off', (string) $campaign, null, $d, $o['at'], ['ads' => array_values(array_unique($o['ads'])), 'adsets' => array_values(array_unique($o['adsets']))]);
+                // .151: y cuáles son (sus anuncios y ad sets), para medir lo que gastaban
+                $out[] = self::change('ads_off', (string) $campaign, null, $d, $o['at'], ['ads' => array_values(array_unique($o['ads'])), 'adsets' => array_values(array_unique($o['adsets']))])
+                    + ['off' => ['ads' => array_values(array_unique($o['ids'])), 'adsets' => array_values(array_unique($o['sets']))]];
             }
         }
         // Ad sets nuevos: un batch que se lanzó (o se duplicó de otra ciudad)
@@ -158,16 +168,19 @@ final class ChangeRules
     }
 
     /**
-     * El siguiente cambio grande de la misma campaña: otro el mismo día o el primero de los días que siguen.
+     * El siguiente cambio grande de la misma campaña: otro el mismo día o el primero de los días que siguen. `.151`: sin los de
+     * $skip (los batches que se lanzaron junto con un apagado).
      *
      * @param list<array{fingerprint: string, kind: string, campaign: string, date: string}> $all
+     * @param list<string> $skip huellas que no cuentan
      * @return ?array{date: string, kind: string}
      */
-    public static function nextBig(array $change, array $all): ?array
+    public static function nextBig(array $change, array $all, array $skip = []): ?array
     {
         $next = null;
         foreach ($all as $o) {
-            if ($o['campaign'] !== $change['campaign'] || $o['fingerprint'] === $change['fingerprint'] || !in_array($o['kind'], self::BIG, true) || $o['date'] < $change['date']) {
+            if ($o['campaign'] !== $change['campaign'] || $o['fingerprint'] === $change['fingerprint'] || !in_array($o['kind'], self::BIG, true) || $o['date'] < $change['date']
+                || in_array($o['fingerprint'], $skip, true)) {
                 continue;
             }
             if ($next === null || $o['date'] < $next['date']) {
@@ -176,6 +189,24 @@ final class ChangeRules
         }
 
         return $next;
+    }
+
+    /**
+     * `.151`: los batches que se lanzaron junto con un apagado (en la misma campaña, el mismo día o el siguiente): "apaga X y
+     * lanza Y" es una sola misión, y se mide entera.
+     *
+     * @return list<array{fingerprint: string, adset: string}>
+     */
+    public static function launchedWith(array $change, array $all): array
+    {
+        $out = [];
+        foreach ($all as $o) {
+            if ($o['kind'] === 'new_batch' && $o['campaign'] === $change['campaign'] && $o['date'] >= $change['date'] && $o['date'] <= self::addDays($change['date'], 1)) {
+                $out[] = ['fingerprint' => $o['fingerprint'], 'adset' => (string) ($o['detail']['adset'] ?? '')];
+            }
+        }
+
+        return $out;
     }
 
     /**
@@ -235,11 +266,6 @@ final class ChangeRules
 
                 return ['hypothesis' => "Si la prendo otra vez, vuelve a vender en tu {$name} o debajo ({$m($target)}).",
                     'criterion' => "Se cumple si en los días después vende en tu {$name} o debajo."];
-            case 'ads_off':
-                $names = CreativeCalls::join([...$detail['ads'] ?? [], ...array_map(fn ($s) => "el batch {$s}", $detail['adsets'] ?? [])]);
-
-                return ['hypothesis' => "Si apago {$names}, " . ($before['cpa'] !== null ? "el CPA de la ciudad baja de {$m($before['cpa'])}." : 'la ciudad empieza a vender.'),
-                    'criterion' => 'Se cumple si en los días después el CPA de la ciudad baja.'];
             case 'min_off':
                 return ['hypothesis' => "Si quito el gasto mínimo de {$detail['adset']} ({$m($detail['min'])}), Meta pasa esa plata a los que más venden y "
                         . ($before['cpa'] !== null ? "el CPA de la ciudad no sube de {$m($before['cpa'])}." : 'la ciudad empieza a vender.'),
@@ -261,27 +287,11 @@ final class ChangeRules
         if ($kind === 'pause') {
             return ['after' => null, 'result' => 'not_measured', 'text' => 'No se mide: la campaña quedó apagada y no hay con qué comparar.'];
         }
-        if ($next !== null && $next['date'] === $date) {
-            return ['after' => null, 'result' => 'unknown', 'text' => 'No se puede saber: el mismo día hiciste otro cambio grande en esta ciudad (' . mb_strtolower(self::KINDS[$next['kind']]) . ').'];
+        $w = self::afterWindow($date, $daily, $be, $next, $today);
+        if ($w['stop'] !== null) {
+            return $w['stop'];
         }
-        $start = self::addDays($date, 1);
-        $end = self::addDays($date, self::DAYS);
-        if ($next !== null && $next['date'] <= $end) {
-            if ($next['date'] === $start) {
-                return ['after' => null, 'result' => 'unknown', 'text' => 'No se puede saber: al día siguiente hiciste otro cambio grande en esta ciudad ('
-                    . mb_strtolower(self::KINDS[$next['kind']]) . '), y no quedó ni un día para medir.'];
-            }
-            $end = self::addDays($next['date'], -1);
-        }
-        $closed = self::addDays($today, -1);
-        if ($closed < $end) {
-            $left = self::diffDays($closed < $start ? self::addDays($start, -1) : $closed, $end);
-
-            return ['after' => $closed >= $start ? self::numbers($daily, $start, $closed, $be) : null, 'result' => 'measuring',
-                'text' => 'Midiendo: ' . ($left === 1 ? 'falta 1 día' : "faltan {$left} días") . ' (se mide hasta el ' . self::short($end) . ').'];
-        }
-        $after = self::numbers($daily, $start, $end, $be);
-        $range = $after['days'] === 1 ? 'el ' . self::short($start) : 'del ' . self::short($start) . ' al ' . self::short($end);
+        [$after, $range] = [$w['after'], $w['range']];
         if ($c !== null && $after['spend'] < $c) {
             return ['after' => $after, 'result' => 'unknown', 'text' => "No se puede saber: {$range} gastó muy poco ({$m($after['spend'])}; hace falta al menos una C, {$m($c)})."];
         }
@@ -312,15 +322,141 @@ final class ChangeRules
 
                 return ['after' => $after, 'result' => $ok ? 'met' : 'not_met', 'text' => ($ok ? 'Se cumplió' : 'No se cumplió') . ": {$range} {$sells($after)}"
                     . ($ok ? ", en tu {$name} o debajo ({$m($target)})." : ($after['cpa'] !== null ? ", encima de tu {$name} ({$m($target)})." : '.'))];
-            case 'ads_off':
             case 'min_off':
-                $ok = $after['cpa'] !== null && ($before['cpa'] === null || ($kind === 'ads_off' ? $after['cpa'] < $before['cpa'] : $after['cpa'] <= $before['cpa']));
+                $ok = $after['cpa'] !== null && ($before['cpa'] === null || $after['cpa'] <= $before['cpa']);
 
                 return ['after' => $after, 'result' => $ok ? 'met' : 'not_met', 'text' => ($ok ? 'Se cumplió' : 'No se cumplió') . ": {$range} la ciudad {$sells($after)}"
                     . ($before['cpa'] !== null ? ' (antes ' . $m($before['cpa']) . ').' : ' (antes no vendía).')];
         }
 
         return ['after' => $after, 'result' => 'unknown', 'text' => 'No se puede saber.'];
+    }
+
+    /**
+     * `.151` (dueño, 2026-11-17: "veo que muchas veces no se cumple lo que se quiere"). De los 83 apagados desde el 31/10, 45
+     * salían "no se puede saber" porque la misión también lanzaba un batch, y si lo apagado era menos del 20 % del gasto, el
+     * CPA de la ciudad lo decidía la suerte (8 de 17). Ahora apagar anuncios:
+     * - si era menos del 20 % del gasto de la ciudad (los 3 días de antes): se cumple si en su última semana perdía (CPA
+     *   encima del BE, o sin compras con un BE gastado). No hace falta esperar;
+     * - si no: la ciudad antes y después, junto con el batch que se lanzó con él (launchedWith); se cumple si el CPA de la
+     *   ciudad baja, o sube menos que en las otras ciudades del producto los mismos días (en noviembre todo se encareció);
+     * - si la ciudad no gastó antes, o casi no gastó después (la pausaste, se quedó sin stock): no se puede saber.
+     *
+     * @param array<string, array{spend: float, purchases: float}> $off lo que gastaba lo apagado, por día
+     * @param array<string, array{spend: float, purchases: float}> $control las otras campañas del producto, por día
+     * @param list<string> $launched los batches que se lanzaron con él
+     * @return array{hypothesis: string, criterion: string, after: ?array, result: string, text: string}
+     */
+    public static function adsOff(array $detail, string $date, array $before, array $daily, array $off, array $control, array $launched, ?float $c, ?float $be,
+        ?array $next, string $today): array
+    {
+        $m = fn (?float $v) => AdRules::money($v);
+        $names = CreativeCalls::join([...$detail['ads'] ?? [], ...array_map(fn ($s) => "el batch {$s}", $detail['adsets'] ?? [])]);
+        $share = $before['spend'] > 0 ? self::numbers($off, $before['from'], $before['to'], $be)['spend'] / $before['spend'] : null;
+
+        if ($share !== null && $share < self::OFF_SMALL_SHARE) {
+            return self::smallOff($names, (int) round($share * 100), self::numbers($off, self::addDays($date, -7), self::addDays($date, -1), $be), $c, $be)
+                + ['after' => self::afterWindow($date, $daily, $be, $next, $today)['after']];
+        }
+
+        $out = ['hypothesis' => "Si apago {$names}" . ($launched ? ', y lanzo ' . CreativeCalls::join($launched) : '') . ', '
+                . ($before['cpa'] !== null ? "el CPA de la ciudad baja de {$m($before['cpa'])}, o sube menos que en las otras ciudades del producto." : 'la ciudad empieza a vender.'),
+            'criterion' => 'Se cumple si en los días después el CPA de la ciudad baja, o sube menos que en las otras ciudades del producto.'];
+        if ($before['spend'] <= 0) {
+            return $out + ['after' => null, 'result' => 'unknown', 'text' => 'No se puede saber: en los 3 días de antes la ciudad no gastó.'];
+        }
+        $w = self::afterWindow($date, $daily, $be, $next, $today);
+        if ($w['stop'] !== null) {
+            return $out + $w['stop'];
+        }
+        [$after, $range] = [$w['after'], $w['range']];
+        if ($after['spend'] < max($c ?? 0.0, 1.0)) {
+            return $out + ['after' => $after, 'result' => 'unknown', 'text' => "No se puede saber: {$range} la ciudad casi no gastó ({$m($after['spend'])}"
+                . ($c !== null ? "; hace falta al menos una C, {$m($c)}" : '') . ').'];
+        }
+        if ($before['cpa'] === null || $after['cpa'] === null) {
+            $ok = $after['cpa'] !== null;
+
+            return $out + ['after' => $after, 'result' => $ok ? 'met' : 'not_met', 'text' => ($ok ? 'Se cumplió' : 'No se cumplió') . ": {$range} la ciudad "
+                . ($ok ? 'vende a ' . $m($after['cpa']) . ' por compra' : 'no vende') . ($before['cpa'] !== null ? ' (antes ' . $m($before['cpa']) . ').' : ' (antes no vendía).')];
+        }
+        $ctlBefore = self::numbers($control, $before['from'], $before['to'], null);
+        $ctlAfter = self::numbers($control, $after['from'], $after['to'], null);
+        if ($ctlBefore['cpa'] === null || $ctlAfter['cpa'] === null) {
+            $ok = $after['cpa'] < $before['cpa'];
+
+            return $out + ['after' => $after, 'result' => $ok ? 'met' : 'not_met', 'text' => ($ok ? 'Se cumplió' : 'No se cumplió')
+                . ": {$range} la ciudad vende a {$m($after['cpa'])} por compra (antes {$m($before['cpa'])}). No hay otras ciudades del producto para comparar."];
+        }
+        $city = $after['cpa'] / $before['cpa'] - 1;
+        $others = $ctlAfter['cpa'] / $ctlBefore['cpa'] - 1;
+        $pct = fn (float $x) => ($x >= 0 ? '+' : '−') . abs((int) round($x * 100)) . ' %';
+        $ok = $city < $others;
+
+        return $out + ['after' => $after, 'result' => $ok ? 'met' : 'not_met', 'text' => ($ok ? 'Se cumplió' : 'No se cumplió')
+            . ": {$range} la ciudad vende a {$m($after['cpa'])} por compra (antes {$m($before['cpa'])}, {$pct($city)}); en las otras ciudades del producto, "
+            . "de {$m($ctlBefore['cpa'])} a {$m($ctlAfter['cpa'])} ({$pct($others)})."];
+    }
+
+    /** `.151`: lo apagado era muy poco del gasto: ¿en su última semana perdía? @return array{hypothesis: string, criterion: string, result: string, text: string} */
+    private static function smallOff(string $names, int $pct, array $week, ?float $c, ?float $be): array
+    {
+        $m = fn (?float $v) => AdRules::money($v);
+        $out = ['hypothesis' => "Si apago {$names} (el {$pct} % del gasto de la ciudad), dejo de gastar en lo que pierde.",
+            'criterion' => 'Se cumple si en su última semana perdía: CPA encima de tu BE, o sin compras con un BE gastado. Era muy poco del gasto para mirar el CPA de la ciudad.'];
+        // .120: sin BE, el estimado (1,5 × C)
+        $limit = $be ?? ($c !== null ? round($c * 1.5, 2) : null);
+        $beName = $be !== null ? 'tu BE' : 'tu BE estimado';
+        $spent = 'en su última semana gastó ' . $m($week['spend']) . ($week['purchases'] > 0
+            ? ' con ' . AdRules::num($week['purchases']) . ($week['purchases'] == 1 ? ' compra' : ' compras') . " (CPA {$m($week['cpa'])})" : ' sin compras');
+        if ($week['spend'] < max($c ?? 0.0, 1.0)) {
+            return $out + ['result' => 'not_measured', 'text' => "No se mide: lo apagado casi no gastaba ({$m($week['spend'])} en su última semana)."];
+        }
+        if ($limit === null) {
+            return $out + ['result' => 'unknown', 'text' => 'No se puede saber: la campaña no tiene C ni BE.'];
+        }
+        if ($week['purchases'] == 0 && $week['spend'] < $limit) {
+            return $out + ['result' => 'unknown', 'text' => "No se puede saber: {$spent}, menos que {$beName} ({$m($limit)}): todavía no se sabía si perdía."];
+        }
+        if ($week['purchases'] == 0 || $week['cpa'] > $limit) {
+            return $out + ['result' => 'met', 'text' => "Se cumplió: era el {$pct} % del gasto de la ciudad y {$spent}, " . ($week['purchases'] == 0 ? 'más que' : 'encima de')
+                . " {$beName} ({$m($limit)}). Dejaste de gastar unos " . $m(round($week['spend'] / 7, 2)) . ' por día en lo que perdía.'];
+        }
+
+        return $out + ['result' => 'not_met', 'text' => "No se cumplió: era el {$pct} % del gasto de la ciudad y {$spent}, en {$beName} o debajo ({$m($limit)}): dejaba plata."];
+    }
+
+    /**
+     * Los días cerrados de después de un cambio, hasta 3, cortando en el siguiente cambio grande. Si no se puede medir o
+     * todavía faltan días, `stop` es el resultado.
+     *
+     * @return array{stop: ?array{after: ?array, result: string, text: string}, after: ?array, range: ?string}
+     */
+    private static function afterWindow(string $date, array $daily, ?float $be, ?array $next, string $today): array
+    {
+        $stop = fn (?array $after, string $result, string $text) => ['stop' => ['after' => $after, 'result' => $result, 'text' => $text], 'after' => $after, 'range' => null];
+        if ($next !== null && $next['date'] === $date) {
+            return $stop(null, 'unknown', 'No se puede saber: el mismo día hiciste otro cambio grande en esta ciudad (' . mb_strtolower(self::KINDS[$next['kind']]) . ').');
+        }
+        $start = self::addDays($date, 1);
+        $end = self::addDays($date, self::DAYS);
+        if ($next !== null && $next['date'] <= $end) {
+            if ($next['date'] === $start) {
+                return $stop(null, 'unknown', 'No se puede saber: al día siguiente hiciste otro cambio grande en esta ciudad ('
+                    . mb_strtolower(self::KINDS[$next['kind']]) . '), y no quedó ni un día para medir.');
+            }
+            $end = self::addDays($next['date'], -1);
+        }
+        $closed = self::addDays($today, -1);
+        if ($closed < $end) {
+            $left = self::diffDays($closed < $start ? self::addDays($start, -1) : $closed, $end);
+
+            return $stop($closed >= $start ? self::numbers($daily, $start, $closed, $be) : null, 'measuring',
+                'Midiendo: ' . ($left === 1 ? 'falta 1 día' : "faltan {$left} días") . ' (se mide hasta el ' . self::short($end) . ').');
+        }
+        $after = self::numbers($daily, $start, $end, $be);
+
+        return ['stop' => null, 'after' => $after, 'range' => $after['days'] === 1 ? 'el ' . self::short($start) : 'del ' . self::short($start) . ' al ' . self::short($end)];
     }
 
     /**

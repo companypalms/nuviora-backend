@@ -91,8 +91,6 @@ describe('.131: la hipótesis de cada cambio', function () {
             ->and(ChangeRules::hypothesis('lower', ['from' => 36.0, 'to' => 30.0], $banda, 6.0, 9.0)['criterion'])->toBe('Se cumple si en los días después vende en tu C o debajo.')
             ->and(ChangeRules::hypothesis('pause', [], $encima, 6.0, 9.0))->toBe(['hypothesis' => 'Si pauso la campaña, dejo de perder unos $4,00 por día.',
                 'criterion' => 'No se mide: la campaña queda apagada y no hay con qué comparar.'])
-            ->and(ChangeRules::hypothesis('ads_off', ['ads' => ['C0410 FLEX'], 'adsets' => []], $encima, 6.0, 9.0)['hypothesis'])
-            ->toBe('Si apago C0410 FLEX, el CPA de la ciudad baja de $11,00.')
             ->and(ChangeRules::hypothesis('min_off', ['adset' => 'B0095 FLEX', 'min' => 5.0], $encima, 6.0, 9.0)['hypothesis'])
             ->toBe('Si quito el gasto mínimo de B0095 FLEX ($5,00), Meta pasa esa plata a los que más venden y el CPA de la ciudad no sube de $11,00.')
             ->and(ChangeRules::hypothesis('resume', [], $encima, 6.0, 9.0)['hypothesis'])->toBe('Si la prendo otra vez, vuelve a vender en tu BE o debajo ($9,00).');
@@ -117,12 +115,8 @@ describe('.131: si se cumplió', function () {
             ->toBe('No se cumplió: del 05/11 al 06/11 pierde $4,50 por día (antes dejaba $15,00) y vende a $10,29 por compra.');
     });
 
-    it('apagar anuncios: baja el CPA; quitar el mínimo con un cambio grande al día siguiente: no se puede saber', function () {
-        $off = ($this->of)('ads_off');
+    it('quitar el mínimo con un cambio grande al día siguiente: no se puede saber', function () {
         $before = ChangeRules::numbers($this->daily, '2026-11-02', '2026-11-04', 9.0);
-        $r = ChangeRules::measure('ads_off', $off['date'], $before, $this->daily, 6.0, 9.0, ChangeRules::nextBig($off, $this->found), '2026-11-10');
-        expect($r['result'])->toBe('met')->and($r['text'])->toBe('Se cumplió: el 06/11 la ciudad vende a $6,00 por compra (antes $6,20).');
-
         $min = ($this->of)('min_off');
         expect(ChangeRules::measure('min_off', $min['date'], $before, $this->daily, 6.0, 9.0, ChangeRules::nextBig($min, $this->found), '2026-11-10'))
             ->toBe(['after' => null, 'result' => 'unknown', 'text' => 'No se puede saber: al día siguiente hiciste otro cambio grande en esta ciudad (batch nuevo), y no quedó ni un día para medir.']);
@@ -173,5 +167,87 @@ describe('.131: un batch nuevo', function () {
             'result' => 'measuring', 'text' => 'Midiendo: esperando su veredicto en Carabobo (salió el 07/11).'])
             ->and(ChangeRules::batch($batch, 'B0121 FLEX', 'Carabobo', '2026-10-25', '2026-11-10')['result'])->toBe('unknown')
             ->and(ChangeRules::batch(null, 'PRUEBA FLEX', 'Carabobo', '2026-11-07', '2026-11-10')['result'])->toBe('not_measured');
+    });
+});
+
+// .151 (dueño, 2026-11-17: "veo que muchas veces no se cumple lo que se quiere"): de 83 apagados desde el 31/10, 45 salían "no se
+// puede saber" (la misión también lanzaba un batch) y, si lo apagado era menos del 20 % del gasto, el CPA de la ciudad lo decidía
+// la suerte. La ciudad gastó del 2 al 4 de noviembre $93 con 15 compras (CPA $6,20).
+describe('.151: apagar anuncios', function () {
+    beforeEach(function () {
+        $this->off = ($this->of)('ads_off');
+        $this->before = ChangeRules::numbers($this->daily, '2026-11-02', '2026-11-04', 9.0);
+        $this->series = fn (array $days) => collect($days)->mapWithKeys(fn ($n, $d) => ["2026-{$d}" => ['spend' => (float) $n[0], 'purchases' => (float) $n[1]]])->all();
+        // C0410 FLEX y el batch B0100 FLEX gastaban $30 de los $93 (el 32 %)
+        $this->big = ($this->series)(['11-02' => [10, 1], '11-03' => [10, 0], '11-04' => [10, 1]]);
+        $this->measure = fn (array $off, array $control = [], array $launched = [], ?float $c = 6.0, ?float $be = 9.0, string $today = '2026-11-10', ?array $daily = null)
+            => ChangeRules::adsOff($this->off['detail'], '2026-11-05', $this->before, $daily ?? $this->daily, $off, $control, $launched, $c, $be,
+                ChangeRules::nextBig($this->off, $this->found), $today);
+    });
+
+    it('sabe qué anuncios y ad sets se apagaron', function () {
+        expect($this->off['off'])->toBe(['ads' => ['a1'], 'adsets' => ['s2']]);
+    });
+
+    it('si era una parte grande del gasto: la ciudad antes y después, contra las otras ciudades del producto', function () {
+        $sinOtras = ($this->measure)($this->big);
+        $otrasSuben = ($this->measure)($this->big, ($this->series)(['11-02' => [20, 4], '11-03' => [20, 4], '11-04' => [20, 4], '11-06' => [20, 3]]));
+        $otrasBajan = ($this->measure)($this->big, ($this->series)(['11-02' => [20, 4], '11-03' => [20, 4], '11-04' => [20, 4], '11-06' => [10, 3]]));
+
+        expect($sinOtras)->toMatchArray(['result' => 'met',
+            'hypothesis' => 'Si apago C0410 FLEX y el batch B0100 FLEX, el CPA de la ciudad baja de $6,20, o sube menos que en las otras ciudades del producto.',
+            'criterion' => 'Se cumple si en los días después el CPA de la ciudad baja, o sube menos que en las otras ciudades del producto.',
+            'text' => 'Se cumplió: el 06/11 la ciudad vende a $6,00 por compra (antes $6,20). No hay otras ciudades del producto para comparar.'])
+            ->and($otrasSuben)->toMatchArray(['result' => 'met',
+                'text' => 'Se cumplió: el 06/11 la ciudad vende a $6,00 por compra (antes $6,20, −3 %); en las otras ciudades del producto, de $5,00 a $6,67 (+33 %).'])
+            ->and($otrasBajan)->toMatchArray(['result' => 'not_met',
+                'text' => 'No se cumplió: el 06/11 la ciudad vende a $6,00 por compra (antes $6,20, −3 %); en las otras ciudades del producto, de $5,00 a $3,33 (−33 %).'])
+            ->and($sinOtras['after'])->toMatchArray(['from' => '2026-11-06', 'to' => '2026-11-06', 'spend' => 36.0, 'purchases' => 6.0]);
+    });
+
+    it('apagar y lanzar el mismo día se mide junto (antes: no se puede saber)', function () {
+        $adsetInfo = $this->adsetInfo + ['s4' => ['campaign' => '111', 'name' => 'B0130 FLEX', 'created' => '2026-11-05 13:00:00']];
+        $found = ChangeRules::detect($this->campaigns, $this->adsets, $this->ads, $adsetInfo, $this->adInfo, '2026-11-01');
+        $off = collect($found)->firstWhere('kind', 'ads_off');
+        $launched = ChangeRules::launchedWith($off, $found);
+        $r = ChangeRules::adsOff($off['detail'], '2026-11-05', $this->before, $this->daily, $this->big, [], array_column($launched, 'adset'), 6.0, 9.0,
+            ChangeRules::nextBig($off, $found, array_column($launched, 'fingerprint')), '2026-11-10');
+
+        expect($launched)->toBe([['fingerprint' => 'new_batch:111:s4:2026-11-05', 'adset' => 'B0130 FLEX']])
+            ->and(ChangeRules::nextBig($off, $found))->toBe(['date' => '2026-11-05', 'kind' => 'new_batch'])
+            ->and($r['result'])->toBe('met')
+            ->and($r['hypothesis'])->toBe('Si apago C0410 FLEX y el batch B0100 FLEX, y lanzo B0130 FLEX, el CPA de la ciudad baja de $6,20, o sube menos que en las otras ciudades del producto.');
+    });
+
+    it('si la ciudad casi no gastó después (la pausaste, sin stock) o no gastaba antes: no se puede saber', function () {
+        $paused = ['2026-11-06' => ['spend' => 0.0, 'purchases' => 0.0]] + $this->daily;
+        $dead = ChangeRules::adsOff($this->off['detail'], '2026-11-05', ChangeRules::numbers([], '2026-11-02', '2026-11-04', 9.0), $this->daily, $this->big, [], [], 6.0, 9.0,
+            null, '2026-11-10');
+
+        expect(($this->measure)($this->big, [], [], 6.0, 9.0, '2026-11-10', $paused))
+            ->toMatchArray(['result' => 'unknown', 'text' => 'No se puede saber: el 06/11 la ciudad casi no gastó ($0,00; hace falta al menos una C, $6,00).'])
+            ->and(($this->measure)($this->big, [], [], null, null, '2026-11-10', $paused)['text'])->toBe('No se puede saber: el 06/11 la ciudad casi no gastó ($0,00).')
+            ->and($dead)->toMatchArray(['result' => 'unknown', 'text' => 'No se puede saber: en los 3 días de antes la ciudad no gastó.'])
+            ->and(($this->measure)($this->big, [], [], 6.0, 9.0, '2026-11-06'))->toMatchArray(['result' => 'measuring', 'text' => 'Midiendo: falta 1 día (se mide hasta el 06/11).']);
+    });
+
+    it('si era menos del 20 % del gasto: se cumple si en su semana perdía, sin esperar', function () {
+        $week = fn (float $spend, float $purchases) => ($this->series)(['10-29' => [$spend - 9, $purchases], '11-02' => [3, 0], '11-03' => [3, 0], '11-04' => [3, 0]]);
+        $perdia = ($this->measure)($week(21, 0), [], [], 6.0, 9.0, '2026-11-06');
+        $dejaba = ($this->measure)($week(21, 5));
+
+        expect($perdia)->toMatchArray(['result' => 'met',
+            'hypothesis' => 'Si apago C0410 FLEX y el batch B0100 FLEX (el 10 % del gasto de la ciudad), dejo de gastar en lo que pierde.',
+            'criterion' => 'Se cumple si en su última semana perdía: CPA encima de tu BE, o sin compras con un BE gastado. Era muy poco del gasto para mirar el CPA de la ciudad.',
+            'text' => 'Se cumplió: era el 10 % del gasto de la ciudad y en su última semana gastó $21,00 sin compras, más que tu BE ($9,00). Dejaste de gastar unos $3,00 por día en lo que perdía.'])
+            ->and($dejaba)->toMatchArray(['result' => 'not_met',
+                'text' => 'No se cumplió: era el 10 % del gasto de la ciudad y en su última semana gastó $21,00 con 5 compras (CPA $4,20), en tu BE o debajo ($9,00): dejaba plata.'])
+            // sin BE, el estimado (1,5 × C)
+            ->and(($this->measure)($week(21, 2), [], [], 4.0, null)['text'])
+            ->toBe('Se cumplió: era el 10 % del gasto de la ciudad y en su última semana gastó $21,00 con 2 compras (CPA $10,50), encima de tu BE estimado ($6,00). Dejaste de gastar unos $3,00 por día en lo que perdía.')
+            ->and(($this->measure)(($this->series)(['11-02' => [3, 0], '11-03' => [3, 0], '11-04' => [2, 0]]))['text'])
+            ->toBe('No se puede saber: en su última semana gastó $8,00 sin compras, menos que tu BE ($9,00): todavía no se sabía si perdía.')
+            ->and(($this->measure)(($this->series)(['11-04' => [2, 0]])))
+            ->toMatchArray(['result' => 'not_measured', 'text' => 'No se mide: lo apagado casi no gastaba ($2,00 en su última semana).']);
     });
 });

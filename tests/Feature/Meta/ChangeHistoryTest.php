@@ -5,6 +5,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Services\Meta\Changes\MetaChanges;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -92,6 +93,11 @@ beforeEach(function () {
     foreach (['01' => [30, 5], '02' => [30, 5], '03' => [30, 5], '04' => [33, 5], '05' => [36, 7], '06' => [36, 6], '07' => [36, 4], '08' => [10, 1]] as $d => [$spend, $purchases]) {
         DB::table('meta_insights_daily')->insert(['date' => "2026-11-{$d}", 'level' => 'campaign', 'meta_id' => '111', 'spend' => $spend, 'purchases' => $purchases]);
     }
+    // .151: lo que gastaba C0410 FLEX antes de apagarlo (el 32 % de la ciudad)
+    foreach (['02' => [10, 1], '03' => [10, 0], '04' => [10, 1]] as $d => [$spend, $purchases]) {
+        DB::table('meta_insights_daily')->insert(['date' => "2026-11-{$d}", 'level' => 'ad', 'meta_id' => 'a1', 'adset_meta_id' => 's1', 'ad_meta_id' => 'a1',
+            'spend' => $spend, 'purchases' => $purchases]);
+    }
     // El hook rate del batch (30 %) y el del original (20 %)
     DB::table('meta_insights_daily')->insert([['date' => '2026-11-08', 'level' => 'ad', 'meta_id' => 'a5', 'adset_meta_id' => 's3', 'ad_meta_id' => 'a5', 'impressions' => 1000, 'video_3s_plays' => 300],
         ['date' => '2026-11-08', 'level' => 'ad', 'meta_id' => 'a9', 'adset_meta_id' => 's1', 'ad_meta_id' => 'a9', 'impressions' => 1000, 'video_3s_plays' => 200]]);
@@ -151,6 +157,27 @@ describe('.131: el historial de cambios', function () {
         $this->travelTo(CarbonImmutable::parse('2026-11-30 09:00:00'));
         $svc->refresh();
         expect($raise->fresh()->result)->toBe('met');
+    });
+
+    // .151: los apagados que se midieron con la regla de antes se vuelven a medir una vez (meta:changes --apagados)
+    it('--apagados vuelve a medir los anuncios apagados ya fijos, y nada más', function () {
+        $svc = app(MetaChanges::class);
+        $svc->refresh();
+        $off = MetaChange::where('kind', 'ads_off')->first();
+        $raise = MetaChange::where('kind', 'raise')->first();
+        $off->forceFill(['result' => 'not_met', 'result_text' => 'No se cumplió: con la regla de antes.', 'note' => 'Lo apagó la IA'])->save();
+        $raise->forceFill(['result' => 'not_met'])->save();
+        $this->travelTo(CarbonImmutable::parse('2026-11-30 09:00:00'));
+
+        $svc->refresh();
+        expect($off->fresh()->result)->toBe('not_met');
+
+        $svc->refresh(null, true);
+        expect($off->fresh())->result->toBe('met')->note->toBe('Lo apagó la IA')
+            ->and($off->fresh()->result_text)->toBe('Se cumplió: el 06/11 la ciudad vende a $6,00 por compra (antes $6,20). No hay otras ciudades del producto para comparar.')
+            ->and($off->fresh()->hypothesis)->toBe('Si apago C0410 FLEX, el CPA de la ciudad baja de $6,20, o sube menos que en las otras ciudades del producto.')
+            ->and($raise->fresh()->result)->toBe('not_met')
+            ->and(Artisan::all()['meta:changes']->getDefinition()->hasOption('apagados'))->toBeTrue();
     });
 
     it('la pantalla: el marcador, los filtros y la nota', function () {

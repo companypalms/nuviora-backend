@@ -174,8 +174,13 @@ class MetaChanges
             ->unique()->values()->all();
     }
 
-    /** @return array{found: int, saved: int} */
-    public function refresh(?string $today = null): array
+    /**
+     * `.151`: con $offAgain, los anuncios apagados se vuelven a medir aunque ya hayan quedado fijos (una vez, al publicar la
+     * medición nueva: `meta:changes --apagados`).
+     *
+     * @return array{found: int, saved: int}
+     */
+    public function refresh(?string $today = null, bool $offAgain = false): array
     {
         $tz = config('app.timezone');
         $today ??= now($tz)->toDateString();
@@ -223,6 +228,7 @@ class MetaChanges
             ->get(['meta_id', 'date', 'spend', 'purchases']) as $r) {
             $daily[(string) $r->meta_id][substr((string) $r->date, 0, 10)] = ['spend' => (float) $r->spend, 'purchases' => (float) ($r->purchases ?? 0)];
         }
+        $offDaily = $this->offDaily($found, $adInfo, ChangeRules::addDays($since, -7));
         $analyses = $this->analyses(ChangeRules::addDays($since, -1));
         $batches = $this->batches($found, $adsetInfo, $campaigns->all());
         $existing = MetaChange::whereIn('fingerprint', array_column($found, 'fingerprint'))->get()->keyBy('fingerprint');
@@ -230,7 +236,8 @@ class MetaChanges
         $saved = 0;
         foreach ($found as $ch) {
             $row = $existing[$ch['fingerprint']] ?? null;
-            if ($row && $row->result !== 'measuring' && $row->date->toDateString() < ChangeRules::addDays($today, -self::SETTLE_DAYS)) {
+            if ($row && $row->result !== 'measuring' && $row->date->toDateString() < ChangeRules::addDays($today, -self::SETTLE_DAYS)
+                && !($offAgain && $ch['kind'] === 'ads_off')) {
                 continue; // ya quedó fijo
             }
             $camp = $campaigns[$ch['campaign']];
@@ -245,6 +252,16 @@ class MetaChanges
                 // .132: lo que quería mejorar, para "Lo que sabemos" (cuántas variaciones lo mejoraron)
                 $fields += ['hypothesis' => $b['hypothesis'], 'criterion' => $b['criterion'], 'before' => null, 'after' => ($bd['metric'] ?? null) ? ['metric' => $bd['metric']] : null,
                     'result' => $b['result'], 'result_text' => $b['text']];
+            } elseif ($ch['kind'] === 'ads_off') {
+                // .151: con lo que gastaba lo apagado, las otras ciudades del producto y el batch que se lanzó con él
+                $d = $daily[$ch['campaign']] ?? [];
+                $before = ChangeRules::numbers($d, ChangeRules::addDays($ch['date'], -ChangeRules::DAYS), ChangeRules::addDays($ch['date'], -1), $be);
+                $launched = ChangeRules::launchedWith($ch, $found);
+                $control = $this->sumDaily(array_map(fn ($k) => $daily[$k] ?? [],
+                    $campaigns->filter(fn ($k, $id) => (int) $k->product_id === (int) $camp->product_id && (string) $id !== $ch['campaign'])->keys()->all()));
+                $r = ChangeRules::adsOff($ch['detail'], $ch['date'], $before, $d, $offDaily[$ch['fingerprint']] ?? [], $control, array_column($launched, 'adset'), $c, $be,
+                    ChangeRules::nextBig($ch, $found, array_column($launched, 'fingerprint')), $today);
+                $fields += ['hypothesis' => $r['hypothesis'], 'criterion' => $r['criterion'], 'before' => $before, 'after' => $r['after'], 'result' => $r['result'], 'result_text' => $r['text']];
             } else {
                 $d = $daily[$ch['campaign']] ?? [];
                 $before = ChangeRules::numbers($d, ChangeRules::addDays($ch['date'], -ChangeRules::DAYS), ChangeRules::addDays($ch['date'], -1), $be);
@@ -259,6 +276,53 @@ class MetaChanges
         Cache::put(self::CACHE_KEY, now()->toIso8601String(), now()->addDay());
 
         return ['found' => count($found), 'saved' => $saved];
+    }
+
+    /**
+     * `.151`: lo que gastaba y vendía cada apagado (sus anuncios, y los de sus ad sets), por día.
+     *
+     * @param array<string, array{campaign: string, adset: ?string, name: string}> $adInfo
+     * @return array<string, array<string, array{spend: float, purchases: float}>> huella => fecha => números
+     */
+    private function offDaily(array $found, array $adInfo, string $from): array
+    {
+        $ads = [];
+        foreach ($found as $ch) {
+            if ($ch['kind'] !== 'ads_off') {
+                continue;
+            }
+            $sets = array_flip($ch['off']['adsets'] ?? []);
+            $ids = $ch['off']['ads'] ?? [];
+            foreach ($adInfo as $id => $info) {
+                if ($info['adset'] !== null && isset($sets[$info['adset']])) {
+                    $ids[] = (string) $id;
+                }
+            }
+            $ads[$ch['fingerprint']] = array_values(array_unique($ids));
+        }
+        $rows = [];
+        foreach (array_chunk(array_values(array_unique(array_merge([], ...array_values($ads)))), 1000) as $chunk) {
+            foreach (DB::table('meta_insights_daily')->where('level', 'ad')->whereIn('meta_id', $chunk)->where('date', '>=', $from)
+                ->get(['meta_id', 'date', 'spend', 'purchases']) as $r) {
+                $rows[(string) $r->meta_id][substr((string) $r->date, 0, 10)] = ['spend' => (float) $r->spend, 'purchases' => (float) ($r->purchases ?? 0)];
+            }
+        }
+
+        return array_map(fn (array $ids) => $this->sumDaily(array_map(fn ($id) => $rows[$id] ?? [], $ids)), $ads);
+    }
+
+    /** Varias series por día, sumadas. @param list<array<string, array{spend: float, purchases: float}>> $series */
+    private function sumDaily(array $series): array
+    {
+        $out = [];
+        foreach ($series as $days) {
+            foreach ($days as $d => $n) {
+                $out[$d]['spend'] = ($out[$d]['spend'] ?? 0.0) + $n['spend'];
+                $out[$d]['purchases'] = ($out[$d]['purchases'] ?? 0.0) + $n['purchases'];
+            }
+        }
+
+        return $out;
     }
 
     /**

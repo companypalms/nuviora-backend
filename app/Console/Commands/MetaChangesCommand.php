@@ -11,13 +11,14 @@ use Illuminate\Console\Command;
  */
 class MetaChangesCommand extends Command
 {
-    protected $signature = 'meta:changes';
+    // .151: --apagados vuelve a medir los anuncios apagados que ya habían quedado fijos (una vez, al publicar la medición nueva)
+    protected $signature = 'meta:changes {--apagados : Vuelve a medir los anuncios apagados con la medición de la .151}';
 
     protected $description = 'Arma el historial de cambios de Meta Ads con su hipótesis y si se cumplió';
 
     public function handle(MetaChanges $changes): int
     {
-        $r = $changes->refresh();
+        $r = $changes->refresh(null, (bool) $this->option('apagados'));
         // .140: y los cambios de precio de cada producto
         $p = $changes->refreshPrices();
         $this->info("Precios: {$p['found']} cambios, {$p['saved']} guardados.");
