@@ -30,6 +30,9 @@ class AdRules
 
     public const FUNNEL = ['top' => 'Arriba del embudo', 'middle' => 'Medio del embudo', 'bottom' => 'Abajo del embudo'];
 
+    /** `.152`: con cuántas compras en sus 7 días en una ciudad, un creativo que vende en el BE o debajo no se apaga por 3 días malos. */
+    public const WATCH_PURCHASES = 3;
+
     public function __construct(private array $s)
     {
     }
@@ -433,6 +436,10 @@ class AdRules
         }
         $data = "{$days} días: " . lcfirst($this->spendText($spend, $purchases, $c)) . ($purchases > 0 ? ' · CPA ' . self::money($spend / $purchases) : '')
             . ' · C ' . self::money($c) . self::beText($be, $estimated);
+        // .152: 3 días malos, pero en la semana deja plata: se vigila, no se apaga
+        if ($days === 3 && ($watch = $this->weekHolds($week, $spend, $purchases, $c, $be, $estimated))) {
+            return array_merge($state, ['watch' => $watch, 'reading' => trim($watch . ' ' . ($state['reading'] ?? ''))]);
+        }
 
         return $this->verdict('loser', $data, "Perdedor en los últimos {$days} días: gastó " . self::num($spend / $c) . '×C '
             . ($purchases == 0 ? 'sin compras' : 'con el CPA ' . self::num(round(($spend / $purchases / $be - 1) * 100)) . ' % encima del break-even')
@@ -476,12 +483,39 @@ class AdRules
         }
         $data = "{$days} días: " . lcfirst($this->spendText($spend, $raw, $c)) . ($raw > 0 ? ' · CPA ' . self::money($spend / $raw) : '')
             . ' · C ' . self::money($c) . self::beText($be, $estimated);
+        // .152: también el ganador que falla: si en la semana deja plata, se vigila
+        if ($days === 3 && ($watch = $this->weekHolds($week, $spend, $raw, $c, $be, $estimated, $seen))) {
+            return array_merge($state, ['watch' => $watch, 'reading' => trim($watch . ' ' . ($state['reading'] ?? ''))]);
+        }
         $adjusted = $seen < 1 ? ', ya contando que Meta ve solo el ' . self::num($tracking) . ' % de tus pedidos' : '';
 
         return array_merge($state, ['stop' => true, 'data' => $data,
             'reading' => "Pierde dinero: en los últimos {$days} días gastó " . self::num($spend / $c) . '×C '
                 . ($purchases == 0 ? 'sin compras' : 'con el CPA ' . self::num(round(($spend / $purchases / $be - 1) * 100)) . ' % encima del break-even') . $adjusted . '. ' . $state['reading'],
             'proposal' => 'Apagarlo en esta ciudad e iterarlo en un batch nuevo: fue ganador.']);
+    }
+
+    /**
+     * `.152` (dueño, 2026-11-17, al ver que de 8 apagados grandes que en su semana dejaban plata solo 2 cumplieron, −$71 por
+     * día contra las otras ciudades, y de 8 que perdían cumplieron 8, +$167): 3 días malos no apagan a un creativo que en sus 7
+     * días en esa ciudad vende en el BE o debajo con WATCH_PURCHASES compras o más. Se vigila; los 3 días malos cuentan en la
+     * semana, así que si siguen malos, la semana pasa el BE y se apaga como siempre. Sin BE, no se protege. $seen: la parte de
+     * las compras que ve Meta (`.121`).
+     *
+     * @return ?string el aviso ("Vigila: …"), o null si la semana no lo sostiene
+     */
+    private function weekHolds(?array $week, float $spend, float $purchases, float $c, ?float $be, bool $estimated, float $seen = 1.0): ?string
+    {
+        $wSpend = (float) ($week['spend'] ?? 0);
+        $wRaw = (float) ($week['purchases'] ?? 0);
+        if ($be === null || $week === null || $wRaw / $seen < self::WATCH_PURCHASES || $wSpend / ($wRaw / $seen) > $be) {
+            return null;
+        }
+
+        return 'Vigila: en los últimos 3 días gastó ' . self::money($spend) . ' (' . self::num($spend / $c) . '×C) '
+            . ($purchases > 0 ? 'con ' . self::num($purchases) . ($purchases == 1 ? ' compra' : ' compras') . ' (CPA ' . self::money($spend / $purchases) . ')' : 'sin compras')
+            . ', pero en su semana deja plata: ' . self::num($wRaw) . ' compras con CPA ' . self::money($wSpend / $wRaw) . ' (tu BE' . ($estimated ? ' estimado' : '')
+            . ' es ' . self::money($be) . '). No se apaga mientras su semana siga en tu BE o debajo.';
     }
 
     /**

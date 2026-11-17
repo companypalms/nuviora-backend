@@ -90,8 +90,9 @@ describe('Ganador que empezó a fallar', function () {
 describe('.119: un ganador que falla y pierde dinero se apaga en esa ciudad (ZenPulse Caracas: C = 4,44, BE = 7,61)', function () {
     $falla = ['key' => 'failing', 'label' => 'Ganador que empezó a fallar', 'data' => 'su vida', 'reading' => 'Fue ganador.', 'proposal' => 'Revisar la landing.', 'causes' => [['key' => 'landing_offer']]];
 
+    // .152: con su semana del 9/11 ($118,61 con 17 compras, $6,98, debajo del BE) hoy se vigila (ver abajo); con la semana encima del BE se apaga
     it('CREATIVO 5: $51,87 en 3 días con el CPA en $10,37: se apaga y sigue siendo ganador', function () use ($falla) {
-        $v = reglas()->failingStop($falla, ['spend' => 51.87, 'purchases' => 5], 4.44, 7.61, ['spend' => 118.61, 'purchases' => 17]);
+        $v = reglas()->failingStop($falla, ['spend' => 51.87, 'purchases' => 5], 4.44, 7.61, ['spend' => 138.61, 'purchases' => 17]);
         expect($v['key'])->toBe('failing')->and($v['stop'])->toBeTrue()
             ->and($v['data'])->toBe('3 días: gastó $51,87 (11,7×C) · 5 compras · CPA $10,37 · C $4,44 · BE $7,61')
             ->and($v['reading'])->toBe('Pierde dinero: en los últimos 3 días gastó 11,7×C con el CPA 36 % encima del break-even. Fue ganador.')
@@ -99,8 +100,15 @@ describe('.119: un ganador que falla y pierde dinero se apaga en esa ciudad (Zen
             ->and($v['causes'])->toBe($falla['causes']);
     });
 
-    it('CREATIVO 4: 2 compras y el CPA en $13,10: también', function () use ($falla) {
-        expect(reglas()->failingStop($falla, ['spend' => 26.19, 'purchases' => 2], 4.44, 7.61, ['spend' => 45.39, 'purchases' => 9])['stop'])->toBeTrue();
+    it('CREATIVO 4: 2 compras y el CPA en $13,10: también (sin la semana)', function () use ($falla) {
+        expect(reglas()->failingStop($falla, ['spend' => 26.19, 'purchases' => 2], 4.44, 7.61)['stop'])->toBeTrue();
+    });
+
+    it('.152: los dos, con su semana del 9/11 en el BE o debajo, hoy se vigilan', function () use ($falla) {
+        $cinco = reglas()->failingStop($falla, ['spend' => 51.87, 'purchases' => 5], 4.44, 7.61, ['spend' => 118.61, 'purchases' => 17]);
+        expect($cinco)->not->toHaveKey('stop')
+            ->and($cinco['watch'])->toContain('17 compras con CPA $6,98 (tu BE es $7,61)')
+            ->and(reglas()->failingStop($falla, ['spend' => 26.19, 'purchases' => 2], 4.44, 7.61, ['spend' => 45.39, 'purchases' => 9]))->not->toHaveKey('stop');
     });
 
     it('CREATIVO 8: en 3 días no llegó a 3×C y en 7 días su CPA está debajo del BE: sigue', function () use ($falla) {
@@ -263,8 +271,10 @@ describe('.114: si en 3 días no llegó a 2×C, se mira la semana (FlexiStep en 
     });
 
     it('si en 3 días ya llegó a 2×C, mandan los 3 días', function () use ($intermedio) {
-        $v = reglas()->recentLoser(['spend' => 13.0, 'purchases' => 0], $intermedio, 6.38, 9.78, ['spend' => 30.54, 'purchases' => 5]);
-        expect($v['reading'])->toBe('Perdedor en los últimos 3 días: gastó 2×C sin compras (en toda su vida: intermedio).');
+        $v = reglas()->recentLoser(['spend' => 13.0, 'purchases' => 0], $intermedio, 6.38, 9.78, ['spend' => 30.54, 'purchases' => 2]);
+        expect($v['reading'])->toBe('Perdedor en los últimos 3 días: gastó 2×C sin compras (en toda su vida: intermedio).')
+            // .152: con 5 compras a $6,11 en la semana (debajo del BE), se vigila
+            ->and(reglas()->recentLoser(['spend' => 13.0, 'purchases' => 0], $intermedio, 6.38, 9.78, ['spend' => 30.54, 'purchases' => 5])['key'])->toBe('intermediate');
     });
 });
 
@@ -434,5 +444,43 @@ describe('Estado automático del creativo', function () {
             ->and(MetaDecisions::autoStatus($cr('intermediate'), '2026-10-29', $s, '2026-10-30')[0])->toBe('testing')
             ->and(MetaDecisions::autoStatus($cr('proven', [], false), '2026-10-10', $s, '2026-10-30')[0])->toBe('archived')
             ->and(MetaDecisions::autoStatus($cr('proven', [], false), '2026-10-25', $s, '2026-10-30')[0])->toBe('winner');
+    });
+});
+
+describe('.152: 3 días malos no apagan al que deja plata en la semana (ZenPulse en Aragua: C $3,96, BE $6,80)', function () {
+    $intermedio = ['key' => 'intermediate', 'label' => 'Intermedio', 'reading' => 'Intermedio en toda su vida.'];
+    $malos = ['spend' => 40.0, 'purchases' => 2]; // $20,00 por compra
+
+    it('con 3 compras o más en la semana, en el BE o debajo: se vigila (no es perdedor)', function () use ($intermedio, $malos) {
+        $v = reglas()->recentLoser($malos, $intermedio, 3.96, 6.80, ['spend' => 109.93, 'purchases' => 23]);
+        $sinCompras = reglas()->recentLoser(['spend' => 12.0, 'purchases' => 0], $intermedio, 3.96, 6.80, ['spend' => 30.0, 'purchases' => 6], true);
+
+        expect($v['key'])->toBe('intermediate')
+            ->and($v['watch'])->toBe('Vigila: en los últimos 3 días gastó $40,00 (10,1×C) con 2 compras (CPA $20,00), pero en su semana deja plata: '
+                . '23 compras con CPA $4,78 (tu BE es $6,80). No se apaga mientras su semana siga en tu BE o debajo.')
+            ->and($v['reading'])->toBe($v['watch'] . ' Intermedio en toda su vida.')
+            ->and($sinCompras['watch'])->toBe('Vigila: en los últimos 3 días gastó $12,00 (3×C) sin compras, pero en su semana deja plata: '
+                . '6 compras con CPA $5,00 (tu BE estimado es $6,80). No se apaga mientras su semana siga en tu BE o debajo.');
+    });
+
+    it('si la semana pasa el BE, o tiene menos de 3 compras, o no hay BE: se apaga como siempre', function () use ($intermedio, $malos) {
+        expect(reglas()->recentLoser($malos, $intermedio, 3.96, 6.80, ['spend' => 109.93, 'purchases' => 15])['key'])->toBe('loser')   // $7,33
+            ->and(reglas()->recentLoser($malos, $intermedio, 3.96, 6.80, ['spend' => 10.0, 'purchases' => 2])['key'])->toBe('loser')        // 2 compras
+            ->and(reglas()->recentLoser($malos, $intermedio, 3.96, 6.80)['key'])->toBe('loser')                                              // sin la semana
+            ->and(reglas()->recentLoser(['spend' => 40.0, 'purchases' => 0], $intermedio, 3.96, null, ['spend' => 60.0, 'purchases' => 20])['key'])->toBe('loser');
+    });
+
+    it('si se juzga por la semana (en 3 días no llegó a 2×C), no hay nada que vigilar', function () use ($intermedio) {
+        expect(reglas()->recentLoser(['spend' => 7.0, 'purchases' => 0], $intermedio, 3.96, 6.80, ['spend' => 30.0, 'purchases' => 0])['key'])->toBe('loser');
+    });
+
+    it('el ganador que falla (.119) también se vigila si su semana deja plata', function () {
+        $falla = ['key' => 'failing', 'label' => 'Ganador que falla', 'reading' => 'Ganador que falla.'];
+        $v = reglas()->failingStop($falla, ['spend' => 51.87, 'purchases' => 5], 4.44, 7.61, ['spend' => 120.0, 'purchases' => 20]);
+
+        expect($v)->not->toHaveKey('stop')
+            ->and($v['key'])->toBe('failing')
+            ->and($v['watch'])->toStartWith('Vigila: en los últimos 3 días gastó $51,87 (11,7×C) con 5 compras (CPA $10,37), pero en su semana deja plata: 20 compras con CPA $6,00')
+            ->and(reglas()->failingStop($falla, ['spend' => 51.87, 'purchases' => 5], 4.44, 7.61, ['spend' => 160.0, 'purchases' => 20])['stop'])->toBeTrue(); // $8,00
     });
 });

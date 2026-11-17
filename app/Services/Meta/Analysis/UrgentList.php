@@ -66,7 +66,7 @@ final class UrgentList
         'decrease' => 2, 'undo_raise' => 2, 'intervene' => 2, 'tracking' => 2, 'late_urgent' => 2, 'drop_product' => 2, 'worth_bad' => 2,
         'hold_prune' => 3, 'step_down' => 3, 'few_batches' => 3, 'min_spend' => 3, 'late_batch' => 3, 'launch_ready' => 3, 'no_city' => 3, 'no_be' => 3,
         'scale' => 4, 'launch_test' => 4, 'relaunch' => 4, 'new_product_late' => 4, 'price_down' => 4,
-        'alarm' => 5, 'names' => 5, 'cooldown' => 5, 'angle_rest' => 5, 'left_city' => 5, 'stale' => 5, 'lesson' => 5,
+        'alarm' => 5, 'names' => 5, 'cooldown' => 5, 'angle_rest' => 5, 'left_city' => 5, 'stale' => 5, 'lesson' => 5, 'watch' => 5,
         'price' => 6,
     ];
 
@@ -77,6 +77,7 @@ final class UrgentList
         'late_urgent' => 'arreglar', 'late_batch' => 'arreglar', 'launch_ready' => 'arreglar', 'no_city' => 'arreglar', 'no_be' => 'arreglar',
         'scale' => 'crecer', 'launch_test' => 'crecer', 'relaunch' => 'crecer', 'new_product_late' => 'crecer', 'price_down' => 'crecer',
         'stock_out' => 'frenar', 'stock_waiting' => 'aviso', 'alarm' => 'aviso', 'price' => 'aviso', 'names' => 'aviso', 'cooldown' => 'aviso', 'angle_rest' => 'aviso', 'left_city' => 'aviso', 'stale' => 'aviso', 'lesson' => 'aviso',
+        'watch' => 'aviso',
     ];
 
     /** Cuántos nombres de creativos caben en la línea del porqué. */
@@ -129,6 +130,12 @@ final class UrgentList
             }
             foreach ($stopCity as $city => $labels) {
                 $items[] = $base + self::stop($p, $city, $labels, $campaigns[$city] ?? null);
+            }
+            // .152: 3 días malos, pero su semana deja plata: no se apagan, se vigilan (salvo que la ciudad se pause entera)
+            foreach ($p['watch_by_city'] ?? [] as $city => $list) {
+                if (!in_array($kinds[(string) $city] ?? null, ['pause_city', 'not_sold'], true)) {
+                    $items[] = $base + self::watch((int) $p['product_id'], $short, (string) $city, $list);
+                }
             }
 
             foreach ($p['cities'] as $c) {
@@ -351,6 +358,26 @@ final class UrgentList
     private static function kind(array $a): string
     {
         return $a['key'] !== 'none' ? $a['key'] : (['No se vende aquí' => 'not_sold', 'Producto en pausa' => 'product_off'][$a['label']] ?? 'none');
+    }
+
+    /**
+     * `.152` (dueño, 2026-11-17): los creativos que la regla de 3 días habría apagado en una ciudad, pero que en su semana dejan
+     * plata: un aviso para vigilarlos (no se tocan). Si su semana pasa el BE, al día siguiente salen en "Apagar creativos".
+     *
+     * @param list<array{label: string, text: string}> $list
+     */
+    private static function watch(int $productId, string $short, string $city, array $list): array
+    {
+        $labels = array_column($list, 'label');
+        $names = CreativeCalls::join($labels);
+        // En la lista de avisos se ve solo esta línea (con el producto y la ciudad delante): que diga el porqué
+        $title = count($labels) === 1 ? "Vigila {$labels[0]}: 3 días malos, pero en su semana deja plata (no lo apagues)"
+            : 'Vigila ' . count($labels) . ' creativos: 3 días malos, pero en su semana dejan plata (no los apagues)';
+
+        return ['key' => "{$productId}:watch:" . substr(md5($city . '|' . implode(',', $labels)), 0, 10), 'city' => $city, 'kind' => 'watch', 'label' => 'Vigilar',
+            'text' => "{$names}: 3 días malos en {$city}, pero en su semana dejan plata.", 'tone' => 'info', 'where' => $short . ' · ' . $city, 'title' => $title,
+            'steps' => [], 'why' => count($labels) === 1 ? '3 días malos, pero en su semana deja plata' : '3 días malos, pero en su semana dejan plata',
+            'detail' => array_map(fn ($w) => "{$w['label']}: {$w['text']}", $list)];
     }
 
     /** `.82`: apagar creativos: los perdedores en todas las ciudades ($city null) o los que pierden en una ciudad. */

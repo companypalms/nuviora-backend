@@ -61,9 +61,16 @@ final class AnalysisFacts
             // .80: qué apagar hoy, por ciudad (de todos los activos, no solo de los 12 que más gastaron)
             $stopByCity = [];
             $stopAll = [];
+            $watchByCity = [];
             foreach ($creatives as $cr) {
                 foreach (CreativeCalls::stopIn($cr) as $city) {
                     $stopByCity[$city][] = (string) $cr['label'];
+                }
+                // .152: 3 días malos, pero su semana deja plata: no se apaga, se vigila
+                foreach ($cr['cities'] ?? [] as $c) {
+                    if (!empty($c['watch']) && ($c['active'] ?? true) && ($c['city'] ?? null) !== null) {
+                        $watchByCity[(string) $c['city']][] = ['label' => (string) $cr['label'], 'text' => (string) $c['watch']];
+                    }
                 }
                 // .82: los perdedores (PARAR), que se apagan en todas las ciudades
                 if (($cr['verdict']['key'] ?? null) === 'loser') {
@@ -120,6 +127,7 @@ final class AnalysisFacts
                 // .126: lo que dejó el producto en 3 y en 7 días
                 'gain' => $plan['gain'] ?? null,
                 'cities' => $cities, 'creatives' => $creatives, 'batches' => $batches, 'stop_by_city' => $stopByCity, 'stop_all' => $stopAll,
+                'watch_by_city' => $watchByCity,
                 // .119: los ganadores ya apagados siguen en la fila de iteraciones (no salen en la lista del análisis)
                 'off_winners' => array_values(array_map(fn ($cr) => ['id' => $cr['id'], 'label' => $cr['label'], 'verdict_key' => $cr['verdict']['key'], 'off_winner' => true,
                     'type' => $cr['type'] ?? null, 'video' => $cr['video'] ? ['iterate' => $cr['video']['iterate']] : null, 'call' => CreativeCalls::afterOff($cr)],
@@ -182,6 +190,9 @@ final class AnalysisFacts
             }
             foreach ($p['stop_by_city'] ?? [] as $city => $labels) {
                 $lines[] = "Apagar hoy en {$city} (ahí pierden): " . implode(', ', $labels);
+            }
+            foreach ($p['watch_by_city'] ?? [] as $city => $list) {
+                $lines[] = "Vigilar en {$city}, NO apagar (3 días malos, pero su semana deja plata): " . implode(', ', array_column($list, 'label'));
             }
             foreach ($p['creatives'] as $i => $cr) {
                 $week = $cr['week'] ? ' · 7 días: gasto ' . self::money($cr['week']['spend']) . ', ' . rtrim(rtrim(number_format((float) $cr['week']['purchases'], 1, ',', ''), '0'), ',')

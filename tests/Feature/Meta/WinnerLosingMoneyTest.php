@@ -20,21 +20,28 @@ use Illuminate\Support\Facades\Schema;
 
 const ZEN_CARACAS = '120000000000000061';
 
-/** Por creativo: nombre, batch, [vida, 7 días, 3 días] (gasto, compras) y su historia por día (día => gasto, compras). */
+/**
+ * Por creativo: nombre, batch, [vida, 7 días, 3 días] (gasto, compras) y su historia por día (día => gasto, compras).
+ * `.152`: la semana del 5 y del 4 es la del día siguiente (encima del BE: también pierden en la semana, y se apagan). Con la
+ * del 9/11 ($118,61 con 17 y $45,39 con 9, debajo del BE) hoy se vigilan: ZEN_REAL_WEEK y el último test.
+ */
 function zenCaracasCreatives(): array
 {
     $days = ['10-27', '10-28', '10-29', '10-30', '10-31', '11-01', '11-02', '11-03', '11-04', '11-05', '11-06', '11-07', '11-08'];
     $rows = fn (array $n) => array_combine(array_map(fn ($d) => "2026-{$d}", $days), array_map(fn ($p) => ['spend' => $p[0], 'purchases' => $p[1]], $n));
 
     return [
-        5 => ['CREATIVO 5 27/10/2026', 'A', [216.89, 48, 118.61, 17, 51.87, 5], $rows([[5.04, 3], [18.35, 5], [18.81, 7], [17.49, 6], [14.59, 3], [19.39, 5], [18.66, 5], [18.33, 4], [15.49, 0], [14.26, 3], [16.07, 2], [17.72, 1], [18.08, 2]])],
-        4 => ['CREATIVO 4 27/10/2026', 'A', [54.45, 11, 45.39, 9, 26.19, 2], $rows([[.4, 0], [0, 0], [1.02, 0], [1.12, 1], [1.64, 1], [2.5, 0], [1.68, 2], [3.02, 0], [7.3, 3], [7.2, 2], [4.16, 1], [9.75, 0], [12.28, 1]])],
+        5 => ['CREATIVO 5 27/10/2026', 'A', [216.89, 48, 138.61, 17, 51.87, 5], $rows([[5.04, 3], [18.35, 5], [18.81, 7], [17.49, 6], [14.59, 3], [19.39, 5], [18.66, 5], [18.33, 4], [15.49, 0], [14.26, 3], [16.07, 2], [17.72, 1], [18.08, 2]])],
+        4 => ['CREATIVO 4 27/10/2026', 'A', [54.45, 11, 45.39, 5, 26.19, 2], $rows([[.4, 0], [0, 0], [1.02, 0], [1.12, 1], [1.64, 1], [2.5, 0], [1.68, 2], [3.02, 0], [7.3, 3], [7.2, 2], [4.16, 1], [9.75, 0], [12.28, 1]])],
         8 => ['CREATIVO 8 27/10/2026', 'B', [36.96, 8, 17.57, 3, 9.22, 1], $rows([[5.55, 4], [2.76, 0], [3.12, 1], [1.68, 0], [2.32, 0], [3.31, 0], [1.64, 0], [2.51, 0], [1.96, 2], [2.24, 0], [3.72, 0], [2.11, 1], [3.39, 0]])],
         6 => ['CREATIVO 6 27/10/2026', 'B', [55.72, 20, 24.35, 11, 12.52, 5], $rows([[8.7, 2], [8.31, 2], [4.32, 2], [2.96, 2], [3.37, 0], [3.15, 1], [3.1, 2], [3.86, 2], [1.72, 1], [3.15, 1], [4.93, 1], [2.56, 1], [5.03, 3]])],
     ];
 }
 
-function zenCaracasMeta(array $off = [], array $noSpend = []): array
+/** `.152`: la semana del 5 y del 4 el 9/11. */
+const ZEN_REAL_WEEK = [5 => [118.61, 17], 4 => [45.39, 9]];
+
+function zenCaracasMeta(array $off = [], array $noSpend = [], array $week = []): array
 {
     $w = function (float $spend, float $purchases) {
         $t = MetaMetrics::sum([['spend' => $spend, 'purchases' => $purchases, 'impressions' => 2000]]);
@@ -55,6 +62,9 @@ function zenCaracasMeta(array $off = [], array $noSpend = []): array
         if (in_array($cid, $noSpend, true)) {
             [$n[2], $n[3], $n[4], $n[5]] = [0, 0, 0, 0];
         }
+        if (isset($week[$cid])) {
+            [$n[2], $n[3]] = $week[$cid];
+        }
         $out['creatives'][$cid] = ['id' => $cid, 'label' => $label, 'type' => 'video', 'status' => null, 'status_source' => null, 'angle_code' => null,
             'batch_code' => null, 'creative_code' => null, 'iteration_of' => null, 'ads' => [$adId]];
         $out['ads'][$adId] = ['id' => $cid, 'meta_id' => $adId, 'name' => $label, 'campaign_meta_id' => $id, 'adset_meta_id' => "{$id}{$set}", 'creative_id' => $cid,
@@ -65,10 +75,10 @@ function zenCaracasMeta(array $off = [], array $noSpend = []): array
     return $out;
 }
 
-function zenCaracasDecision(array $off = [], array $noSpend = [], bool $history = true): array
+function zenCaracasDecision(array $off = [], array $noSpend = [], bool $history = true, array $week = []): array
 {
     $facts = Mockery::mock(AdFacts::class);
-    $facts->allows('load')->andReturn([1149 => zenCaracasMeta($off, $noSpend)]);
+    $facts->allows('load')->andReturn([1149 => zenCaracasMeta($off, $noSpend, $week)]);
     $daily = [];
     foreach (zenCaracasCreatives() as $cid => $c) {
         $daily[ZEN_CARACAS . $cid] = $history ? $c[3] : [];
@@ -133,6 +143,22 @@ describe('.119: ZenPulse en Caracas, con los números del 9/11', function () {
 
         expect($n['prune'])->toBe(['CREATIVO 5 27/10/2026', 'CREATIVO 4 27/10/2026'])
             ->and($n['live'])->toBe(1); // el batch A se queda sin anuncios; el B sigue con el 8 y el 6
+    });
+
+    // .152 (dueño, 2026-11-17): con la semana del 9/11 en el BE o debajo, se vigilan; al día siguiente su semana pasó el BE y
+    // se apagaron (la ciudad pasó de $7,09 a $3,97)
+    it('.152: con su semana del 9/11 (debajo del BE) se vigilan, no se apagan', function () {
+        $d = zenCaracasDecision([], [], true, ZEN_REAL_WEEK);
+        $facts = AnalysisFacts::build([1149 => $d]);
+        $watch = collect(UrgentList::build($facts))->firstWhere('kind', 'watch');
+
+        expect($d['creatives'][5]['cities'][0])->not->toHaveKey('stop')
+            ->and($d['creatives'][5]['cities'][0]['watch'])->toContain('17 compras con CPA $6,98 (tu BE es $7,61)')
+            ->and(CreativeCalls::stopIn($d['creatives'][5]))->toBe([])
+            ->and($facts[0]['stop_by_city'])->toBe([])
+            ->and($d['campaigns'][ZEN_CARACAS]['numbers']['prune'])->toBe([])
+            ->and($watch['title'])->toBe('Vigila 2 creativos: 3 días malos, pero en su semana dejan plata (no los apagues)')
+            ->and($watch['where'])->toBe('ZenPulse · Distrito Capital');
     });
 });
 
