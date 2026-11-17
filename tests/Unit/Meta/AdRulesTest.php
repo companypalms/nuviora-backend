@@ -451,21 +451,23 @@ describe('.152: 3 días malos no apagan al que deja plata en la semana (ZenPulse
     $intermedio = ['key' => 'intermediate', 'label' => 'Intermedio', 'reading' => 'Intermedio en toda su vida.'];
     $malos = ['spend' => 40.0, 'purchases' => 2]; // $20,00 por compra
 
-    it('con 3 compras o más en la semana, en el BE o debajo: se vigila (no es perdedor)', function () use ($intermedio, $malos) {
+    it('con 5 compras o más en la semana, en el BE o debajo: se vigila (no es perdedor)', function () use ($intermedio, $malos) {
         $v = reglas()->recentLoser($malos, $intermedio, 3.96, 6.80, ['spend' => 109.93, 'purchases' => 23]);
-        $sinCompras = reglas()->recentLoser(['spend' => 12.0, 'purchases' => 0], $intermedio, 3.96, 6.80, ['spend' => 30.0, 'purchases' => 6], true);
+        $sinCompras = reglas()->recentLoser(['spend' => 12.0, 'purchases' => 0], $intermedio, 3.96, 6.80, ['spend' => 30.0, 'purchases' => 6]);
 
         expect($v['key'])->toBe('intermediate')
             ->and($v['watch'])->toBe('Vigila: en los últimos 3 días gastó $40,00 (10,1×C) con 2 compras (CPA $20,00), pero en su semana deja plata: '
                 . '23 compras con CPA $4,78 (tu BE es $6,80). No se apaga mientras su semana siga en tu BE o debajo.')
             ->and($v['reading'])->toBe($v['watch'] . ' Intermedio en toda su vida.')
             ->and($sinCompras['watch'])->toBe('Vigila: en los últimos 3 días gastó $12,00 (3×C) sin compras, pero en su semana deja plata: '
-                . '6 compras con CPA $5,00 (tu BE estimado es $6,80). No se apaga mientras su semana siga en tu BE o debajo.');
+                . '6 compras con CPA $5,00 (tu BE es $6,80). No se apaga mientras su semana siga en tu BE o debajo.');
     });
 
-    it('si la semana pasa el BE, o tiene menos de 3 compras, o no hay BE: se apaga como siempre', function () use ($intermedio, $malos) {
+    // Los 2 seguros que eligió el dueño: 5 compras (3 pueden ser suerte) y un BE real (con uno estimado no se sabe si deja plata)
+    it('si la semana pasa el BE, tiene menos de 5 compras, o el BE es estimado o no hay: se apaga como siempre', function () use ($intermedio, $malos) {
         expect(reglas()->recentLoser($malos, $intermedio, 3.96, 6.80, ['spend' => 109.93, 'purchases' => 15])['key'])->toBe('loser')   // $7,33
-            ->and(reglas()->recentLoser($malos, $intermedio, 3.96, 6.80, ['spend' => 10.0, 'purchases' => 2])['key'])->toBe('loser')        // 2 compras
+            ->and(reglas()->recentLoser($malos, $intermedio, 3.96, 6.80, ['spend' => 16.0, 'purchases' => 4])['key'])->toBe('loser')        // 4 compras a $4,00
+            ->and(reglas()->recentLoser($malos, $intermedio, 3.96, 6.80, ['spend' => 109.93, 'purchases' => 23], true)['key'])->toBe('loser') // BE estimado
             ->and(reglas()->recentLoser($malos, $intermedio, 3.96, 6.80)['key'])->toBe('loser')                                              // sin la semana
             ->and(reglas()->recentLoser(['spend' => 40.0, 'purchases' => 0], $intermedio, 3.96, null, ['spend' => 60.0, 'purchases' => 20])['key'])->toBe('loser');
     });

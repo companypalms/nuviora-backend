@@ -30,8 +30,11 @@ class AdRules
 
     public const FUNNEL = ['top' => 'Arriba del embudo', 'middle' => 'Medio del embudo', 'bottom' => 'Abajo del embudo'];
 
-    /** `.152`: con cuántas compras en sus 7 días en una ciudad, un creativo que vende en el BE o debajo no se apaga por 3 días malos. */
-    public const WATCH_PURCHASES = 3;
+    /**
+     * `.152`: con cuántas compras en sus 7 días en una ciudad, un creativo que vende en el BE o debajo no se apaga por 3 días
+     * malos (dueño, 2026-11-17: eligió 5, no 3, "con los 2 seguros": 3 compras pueden ser suerte).
+     */
+    public const WATCH_PURCHASES = 5;
 
     public function __construct(private array $s)
     {
@@ -499,8 +502,8 @@ class AdRules
      * `.152` (dueño, 2026-11-17, al ver que de 8 apagados grandes que en su semana dejaban plata solo 2 cumplieron, −$71 por
      * día contra las otras ciudades, y de 8 que perdían cumplieron 8, +$167): 3 días malos no apagan a un creativo que en sus 7
      * días en esa ciudad vende en el BE o debajo con WATCH_PURCHASES compras o más. Se vigila; los 3 días malos cuentan en la
-     * semana, así que si siguen malos, la semana pasa el BE y se apaga como siempre. Sin BE, no se protege. $seen: la parte de
-     * las compras que ve Meta (`.121`).
+     * semana, así que si siguen malos, la semana pasa el BE y se apaga como siempre. Sin BE, o con uno estimado, no se protege.
+     * $seen: la parte de las compras que ve Meta (`.121`).
      *
      * @return ?string el aviso ("Vigila: …"), o null si la semana no lo sostiene
      */
@@ -508,14 +511,15 @@ class AdRules
     {
         $wSpend = (float) ($week['spend'] ?? 0);
         $wRaw = (float) ($week['purchases'] ?? 0);
-        if ($be === null || $week === null || $wRaw / $seen < self::WATCH_PURCHASES || $wSpend / ($wRaw / $seen) > $be) {
+        // Los dos seguros que eligió el dueño: con un BE estimado (`.120`) no se sabe si de verdad deja plata
+        if ($be === null || $estimated || $week === null || $wRaw / $seen < self::WATCH_PURCHASES || $wSpend / ($wRaw / $seen) > $be) {
             return null;
         }
 
         return 'Vigila: en los últimos 3 días gastó ' . self::money($spend) . ' (' . self::num($spend / $c) . '×C) '
             . ($purchases > 0 ? 'con ' . self::num($purchases) . ($purchases == 1 ? ' compra' : ' compras') . ' (CPA ' . self::money($spend / $purchases) . ')' : 'sin compras')
-            . ', pero en su semana deja plata: ' . self::num($wRaw) . ' compras con CPA ' . self::money($wSpend / $wRaw) . ' (tu BE' . ($estimated ? ' estimado' : '')
-            . ' es ' . self::money($be) . '). No se apaga mientras su semana siga en tu BE o debajo.';
+            . ', pero en su semana deja plata: ' . self::num($wRaw) . ' compras con CPA ' . self::money($wSpend / $wRaw) . ' (tu BE es ' . self::money($be)
+            . '). No se apaga mientras su semana siga en tu BE o debajo.';
     }
 
     /**
