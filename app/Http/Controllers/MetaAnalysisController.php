@@ -16,6 +16,7 @@ use App\Services\Meta\Products\NewProductMissions;
 use App\Services\Meta\Products\NewProductRules;
 use App\Services\Meta\Products\ProductWorthBoard;
 use App\Services\Meta\Queue\QueueRules;
+use App\Services\Meta\Upload\MetaUploads;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
@@ -48,6 +49,7 @@ class MetaAnalysisController extends Controller
             'runs_left' => MetaAnalyzer::runsLeft(),
             'queue_pending' => CreativeBatch::where('status', 'proposed')->count(), // paso 4b
             'new_product' => $this->newProduct(), // .118
+            'upload_on' => MetaUploads::on(), // .155: «Aprobar y subir»
         ]);
     }
 

@@ -26,6 +26,8 @@ return [
     // meta_connections (§3, §4). La versión se cambia en un solo lugar (§53); sin versión, la Ads API responde 2635.
     'meta' => [
         'graph_version' => env('META_GRAPH_API_VERSION', 'v26.0'),
+        // .155: "Aprobar y subir" con un Meta simulado (solo funciona con APP_ENV=local; para probar en esta PC)
+        'fake_uploads' => (bool) env('META_FAKE_UPLOADS', false),
         // §8: días de la importación inicial; §25: tamaño de cada pedido del histórico
         'initial_days' => 30,
         'history_chunk_days' => 7,

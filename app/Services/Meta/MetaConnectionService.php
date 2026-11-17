@@ -13,6 +13,9 @@ class MetaConnectionService
     /** Permisos que bastan para leer; cualquier otro permite más de lo que el módulo necesita (§1). */
     public const READ_SCOPES = ['ads_read', 'read_insights', 'public_profile'];
 
+    /** `.155`: y el que deja crear anuncios ("Aprobar y subir"), que ya no es de más. */
+    public const WRITE_SCOPES = ['ads_management'];
+
     /**
      * Prueba un token antes de guardarlo: quién es (GET /me) y qué permisos tiene (GET /me/permissions). Sin ads_read
      * no puede leer las cuentas ni sus métricas, así que no se acepta.
@@ -43,10 +46,10 @@ class MetaConnectionService
         return ['user_id' => $me['id'] ?? null, 'user_name' => $me['name'] ?? null, 'scopes' => $scopes];
     }
 
-    /** Permisos de más para una integración de solo lectura (para avisar en la pantalla, §1). */
+    /** Permisos de más (para avisar en la pantalla, §1). `.155`: el de crear anuncios no es de más. */
     public static function extraScopes(?array $scopes): array
     {
-        return array_values(array_diff($scopes ?? [], self::READ_SCOPES));
+        return array_values(array_diff($scopes ?? [], self::READ_SCOPES, self::WRITE_SCOPES));
     }
 
     /**

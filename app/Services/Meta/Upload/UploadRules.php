@@ -10,10 +10,175 @@ namespace App\Services\Meta\Upload;
  * - Los archivos se bajan de Drive con su enlace público ("cualquiera con el enlace").
  * - Los anuncios se crean ACTIVOS (decisión del dueño) y el ad set sin presupuesto propio (sus campañas reparten el
  *   presupuesto: CBO).
+ * - `.155` (dueño, 2026-11-17: "Las primeras 5 en pausa"): las primeras 5 subidas de verdad dejan el ad set apagado, para
+ *   que el dueño lo revise en el Administrador y lo prenda; de ahí en adelante quedan prendidos.
  */
 final class UploadRules
 {
     public const STATUS = 'ACTIVE';
+
+    /** `.155`: cuántas subidas se crean en pausa antes de crearlas prendidas. */
+    public const PAUSED_FIRST = 5;
+
+    /** `.155`: el interruptor "Subir a Meta" (apagado hasta que el dueño lo prenda). */
+    public const ENABLED = 'meta_upload_enabled';
+
+    /** `.155`: cuánto se espera a que Meta procese los videos antes de avisar. */
+    public const WAIT_MINUTES = 30;
+
+    /** `.155`: el permiso de Meta que deja crear anuncios. */
+    public const WRITE_SCOPE = 'ads_management';
+
+    /** `.155`: ¿el token de una conexión puede subir anuncios? null si Meta no dijo sus permisos. */
+    public static function canUpload(?array $scopes): ?bool
+    {
+        return $scopes === null ? null : in_array(self::WRITE_SCOPE, $scopes, true);
+    }
+
+    /** `.155`: ¿un ad set que ya está en la campaña es el mismo batch? ("B0123 FASP" y "B0123 FASP - Copia", sí). */
+    public static function sameAdset(string $existing, string $wanted): bool
+    {
+        $code = strtoupper((string) strtok(trim($wanted), ' '));
+
+        return $code !== '' && strtoupper((string) strtok(trim($existing), ' ')) === $code;
+    }
+
+    /** `.155`: el gasto mínimo en centavos, como lo pide Meta. */
+    public static function cents(float $usd): int
+    {
+        return (int) round($usd * 100);
+    }
+
+    /**
+     * `.155`: lo que dice Meta de un video que se subió: listo, procesando o con error.
+     *
+     * @return array{state: string, note: ?string}
+     */
+    public static function videoState(array $status): array
+    {
+        $phase = (array) ($status['processing_phase'] ?? []);
+        $video = (string) ($status['video_status'] ?? '');
+        if ($video === 'error' || ($phase['status'] ?? null) === 'error' || (($status['uploading_phase'] ?? [])['status'] ?? null) === 'error') {
+            $errors = array_merge((array) ($phase['errors'] ?? []), (array) (($status['uploading_phase'] ?? [])['errors'] ?? []));
+            $note = null;
+            foreach ($errors as $e) {
+                if (is_array($e) && !empty($e['message'])) {
+                    $note = (string) $e['message'];
+                    break;
+                }
+            }
+
+            return ['state' => 'error', 'note' => $note];
+        }
+
+        return ['state' => $video === 'ready' ? 'ready' : 'processing', 'note' => null];
+    }
+
+    /** `.155`: la miniatura que eligió Meta (o la primera). */
+    public static function thumbnail(array $rows): ?string
+    {
+        $rows = array_values(array_filter($rows, fn ($r) => is_array($r) && !empty($r['uri'])));
+        foreach ($rows as $r) {
+            if (!empty($r['is_preferred'])) {
+                return (string) $r['uri'];
+            }
+        }
+
+        return isset($rows[0]) ? (string) $rows[0]['uri'] : null;
+    }
+
+    /** `.155`: el botón del anuncio de donde se copia (Comprar, Más información…); si no dice, "Comprar". */
+    public static function ctaType(array $creative): string
+    {
+        $story = (array) ($creative['object_story_spec'] ?? []);
+        foreach ([$story['video_data']['call_to_action']['type'] ?? null, $story['link_data']['call_to_action']['type'] ?? null,
+            $creative['asset_feed_spec']['call_to_action_types'][0] ?? null] as $type) {
+            if (is_string($type) && preg_match('/^[A-Z_]+$/', $type)) {
+                return $type;
+            }
+        }
+
+        return 'SHOP_NOW';
+    }
+
+    /** `.155`: la página de Facebook y el Instagram del anuncio de donde se copia. @return array{page_id: ?string, instagram: ?array{0: string, 1: string}} */
+    public static function identity(array $creative): array
+    {
+        $story = (array) ($creative['object_story_spec'] ?? []);
+        $ig = match (true) {
+            !empty($story['instagram_user_id']) => ['instagram_user_id', (string) $story['instagram_user_id']],
+            !empty($story['instagram_actor_id']) => ['instagram_actor_id', (string) $story['instagram_actor_id']],
+            default => null,
+        };
+
+        return ['page_id' => !empty($story['page_id']) ? (string) $story['page_id'] : null, 'instagram' => $ig];
+    }
+
+    /**
+     * `.155`: el creativo de una pieza: la página y el Instagram del anuncio de donde se copia, su video (o imagen), el
+     * texto, el título, la landing con su botón y los parámetros de URL.
+     *
+     * @param array $source el creativo del anuncio de donde se copia (object_story_spec, asset_feed_spec)
+     * @param array{type: string, video_id?: string, thumbnail?: ?string, hash?: string} $media
+     * @param array{title: ?string, body: ?string, landing_url: ?string, url_tags: ?string} $texts
+     */
+    public static function creativeSpec(array $source, array $media, array $texts, string $name): array
+    {
+        $who = self::identity($source);
+        $link = (string) $texts['landing_url'];
+        $cta = ['type' => self::ctaType($source), 'value' => ['link' => $link]];
+        $clean = fn (array $a) => array_filter($a, fn ($v) => $v !== null && $v !== '');
+        $story = ['page_id' => (string) $who['page_id']];
+        if ($who['instagram']) {
+            $story[$who['instagram'][0]] = $who['instagram'][1];
+        }
+        if ($media['type'] === 'image') {
+            $story['link_data'] = $clean(['image_hash' => $media['hash'] ?? null, 'link' => $link, 'message' => $texts['body'] ?? null,
+                'name' => $texts['title'] ?? null, 'call_to_action' => $cta]);
+        } else {
+            $story['video_data'] = $clean(['video_id' => $media['video_id'] ?? null, 'image_url' => $media['thumbnail'] ?? null,
+                'message' => $texts['body'] ?? null, 'title' => $texts['title'] ?? null, 'call_to_action' => $cta]);
+        }
+
+        return $clean(['name' => $name, 'object_story_spec' => $story, 'url_tags' => $texts['url_tags'] ?? null]);
+    }
+
+    /** `.155`: un video de Drive que Meta baja solo (este enlace no pide confirmar los archivos grandes). */
+    public static function driveVideoUrl(string $fileId): string
+    {
+        return 'https://drive.usercontent.google.com/download?id=' . rawurlencode($fileId) . '&export=download&confirm=t';
+    }
+
+    /**
+     * `.155`: lo que se ve en la misión mientras sube y al terminar.
+     *
+     * @param array{files: int, files_done: int, ads: int, ads_done: int} $count
+     */
+    public static function progress(string $status, ?string $step, array $count, bool $paused, string $adset, ?string $error): string
+    {
+        return match (true) {
+            $status === 'failed' => 'No se pudo terminar: ' . rtrim((string) $error, '.') . '. Lo que alcanzó a crearse quedó apagado; «Reintentar» sigue donde se quedó, sin repetir nada.',
+            $status === 'done' && $paused => "Listo, EN PAUSA: revisa el ad set «{$adset}» en el Administrador de anuncios y préndelo. Después marca la misión como hecha.",
+            $status === 'done' => "Listo: «{$adset}» quedó prendido con " . ($count['ads'] === 1 ? 'su anuncio.' : "sus {$count['ads']} anuncios."),
+            $status === 'queued' => 'En cola: empieza en menos de un minuto.',
+            $status === 'waiting' || $step === 'processing' => 'Meta está procesando los videos (puede tardar unos minutos).',
+            $step === 'adset' => "Creando el ad set «{$adset}».",
+            $step === 'ads' => "Creando los anuncios: {$count['ads_done']} de {$count['ads']}.",
+            default => "Subiendo los archivos a Meta: {$count['files_done']} de {$count['files']}.",
+        };
+    }
+
+    /** `.155`: un error de Meta en palabras. */
+    public static function metaError(string $kind, string $message): string
+    {
+        return match ($kind) {
+            'token' => 'el token de esta conexión ya no sirve (venció o lo quitaron): pega uno nuevo en Integraciones › Meta Ads › Conexiones',
+            'permission' => 'Meta dice que el token no tiene permiso para eso (' . mb_substr($message, 0, 160) . '). Revisa la guía del permiso',
+            'rate_limit' => 'Meta pidió esperar (límite de llamadas): reintenta en un rato',
+            'timeout' => 'Meta no respondió a tiempo: reintenta',
+            default => 'Meta respondió: ' . mb_substr($message, 0, 220),
+        };
+    }
 
     /** Los de la `.53`: utm_content={{ad.id}} dice el anuncio de cada pedido. */
     public const UTM = [

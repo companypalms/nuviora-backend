@@ -23,12 +23,16 @@ use Illuminate\Support\Facades\Http;
  * - el texto, la landing y los parámetros de URL: los del anuncio más nuevo de la referencia (o, sin referencia, del ad
  *   set que se copia), con los UTM de la `.53`.
  * Lo que impide subirlo va en "problems"; lo que conviene saber, en "warnings".
+ *
+ * `.155` ("Aprobar y subir" desde la misión): con la campaña de la misión y el gasto mínimo del batch (`.124`). Además
+ * revisa que la conexión de esa cuenta pueda subir anuncios y dice si queda en pausa (las primeras 5).
  */
 class UploadPlanner
 {
-    public function plan(CreativeBatch $batch, bool $checkFiles = true): array
+    public function plan(CreativeBatch $batch, bool $checkFiles = true, ?string $campaignMetaId = null, ?float $min = null): array
     {
         $batch->loadMissing(['pieces', 'product:id,title,showable_name', 'learningCity:id,name', 'reference:id,label']);
+        $upload = $campaignMetaId !== null;
         $problems = [];
         $warnings = [];
         $angle = $batch->angle_code;
@@ -43,9 +47,19 @@ class UploadPlanner
             $problems[] = 'El batch no tiene ángulo: póntelo para que los nombres queden como "B0123 FASP".';
         }
 
-        // La campaña del producto en la ciudad de aprendizaje
+        // La campaña del producto en la ciudad de aprendizaje (.155: o la de la misión)
         $campaign = null;
-        if (!$batch->learning_city_id) {
+        if ($upload) {
+            $campaign = MetaCampaign::where('meta_id', $campaignMetaId)->whereNull('missing_since')->first();
+            if (!$campaign) {
+                $problems[] = 'La campaña de esta misión ya no está en Meta.';
+            } elseif ((int) $campaign->product_id !== (int) $batch->product_id) {
+                $problems[] = "La campaña {$campaign->name} no es de " . $this->productName($batch) . '.';
+                $campaign = null;
+            } elseif ($campaign->effective_status !== 'ACTIVE') {
+                $problems[] = "La campaña {$campaign->name} está apagada: los batches nuevos van en una campaña prendida.";
+            }
+        } elseif (!$batch->learning_city_id) {
             $problems[] = 'El batch no tiene ciudad de aprendizaje: elígela para saber en qué campaña va.';
         } else {
             $spend = DB::table('meta_insights_daily')->where('level', 'campaign')->where('date', '>=', now()->subDays(7)->toDateString())
@@ -59,6 +73,21 @@ class UploadPlanner
             }
         }
         $budget = $campaign ? UploadRules::campaignBudget($campaign->meta) : null;
+        // .155: la cuenta, y que su conexión pueda subir anuncios
+        $account = $campaign?->account()->with('connection:id,name,scopes')->first();
+        $canUpload = $account?->connection ? UploadRules::canUpload($account->connection->scopes) : null;
+        if ($upload && $campaign) {
+            if (!$account?->connection) {
+                $problems[] = "La cuenta de la campaña {$campaign->name} no está conectada al sistema.";
+            } elseif ($canUpload === false) {
+                $problems[] = "La conexión «{$account->connection->name}» solo puede leer: su token no tiene el permiso para crear anuncios (ads_management). Sigue la guía del permiso y pega el token nuevo en Integraciones › Meta Ads › Conexiones.";
+            } elseif ($canUpload === null) {
+                $warnings[] = "Meta no dijo los permisos de la conexión «{$account->connection->name}»: si no puede crear anuncios, lo dirá en el primer paso.";
+            }
+            if ($min === null) {
+                $problems[] = 'No sé el gasto mínimo del ad set nuevo: pon el CPA en el nombre de la campaña o tu C de esa ciudad en Productos y objetivos.';
+            }
+        }
         if ($campaign && $budget === null) {
             $problems[] = "La campaña {$campaign->name} no tiene presupuesto de campaña: el ad set nuevo necesitaría uno propio y tus campañas reparten el presupuesto desde la campaña.";
         }
@@ -82,6 +111,9 @@ class UploadPlanner
         }
         if (!$source || (!$source->ad_body && !$source->landing_url)) {
             $problems[] = 'No hay un anuncio de donde copiar el texto y la landing (ni de la referencia ni del ad set que se copia).';
+        }
+        if ($upload && $source && !$source->meta_creative_id) {
+            $problems[] = 'El anuncio de donde se copia el texto no dice su creativo: no sé con qué página e Instagram publicarlo.';
         }
         if ($source && !$source->landing_url) {
             $problems[] = 'El anuncio de donde se copia no tiene landing.';
@@ -107,7 +139,11 @@ class UploadPlanner
             if (!$file['ok']) {
                 $problems[] = ($piece->code() ?? 'Una pieza') . ': ' . $file['note'];
             }
+            $sf = $piece->file_id ? $stored->get($piece->file_id) : null;
             $ads[] = [
+                'piece_id' => $piece->id, 'file_id' => $sf?->id,
+                // .155: video o imagen (el archivo lo dice; los de Drive, el formato del batch)
+                'type' => $sf ? (str_starts_with((string) $sf->mime, 'image/') ? 'image' : 'video') : ($batch->format === 'image' ? 'image' : 'video'),
                 'code' => $piece->code(), 'name' => $piece->code() ? UploadRules::adName($piece->code(), $angle) : null,
                 'format' => $piece->format ?: $batch->format, 'hook' => $piece->hook, 'link' => $piece->link,
                 'file_name' => $piece->file_id ? $stored->get($piece->file_id)?->name : null,
@@ -117,17 +153,25 @@ class UploadPlanner
         if ($ads === []) {
             $problems[] = 'El batch no tiene piezas.';
         }
-        $warnings[] = 'Los anuncios se crean ENCENDIDOS: empiezan a gastar del presupuesto de la campaña en cuanto Meta los aprueba.';
+        $paused = $upload ? MetaUploads::pausedNext() : null;
+        $warnings[] = match (true) {
+            $paused === true => 'Se crea EN PAUSA (una de tus primeras ' . UploadRules::PAUSED_FIRST . ' subidas): revísalo en el Administrador de anuncios y préndelo tú.',
+            $min !== null => 'Se crea PRENDIDO, con un gasto mínimo de $' . number_format($min, 2) . ' por día: empieza a gastar del presupuesto de la campaña en cuanto Meta aprueba los anuncios.',
+            default => 'Los anuncios se crean ENCENDIDOS: empiezan a gastar del presupuesto de la campaña en cuanto Meta los aprueba.',
+        };
 
         return [
             'batch' => ['id' => $batch->id, 'code' => $code, 'product' => $this->productName($batch), 'angle' => $angle,
                 'city' => $batch->learningCity?->name, 'reference' => $batch->reference?->label],
             'campaign' => $campaign ? ['meta_id' => $campaign->meta_id, 'name' => $campaign->name, 'budget' => $budget] : null,
+            'account' => $account ? ['id' => $account->id, 'meta_id' => $account->meta_id, 'name' => $account->name,
+                'connection' => $account->connection?->name, 'can_upload' => $canUpload] : null,
+            'min_spend' => $min, 'paused' => $paused,
             'template_adset' => $template ? ['meta_id' => $template->meta_id, 'name' => $template->name, 'optimization_goal' => $template->optimization_goal] : null,
             'adset_name' => $code ? UploadRules::adsetName($code, $angle) : null,
             'status' => UploadRules::STATUS,
             'texts' => $source ? ['from' => $from, 'title' => $source->ad_title, 'body' => $source->ad_body, 'landing_url' => $source->landing_url,
-                'url_tags' => UploadRules::urlTags($source->url_tags)] : null,
+                'url_tags' => UploadRules::urlTags($source->url_tags), 'creative_id' => $source->meta_creative_id] : null,
             'ads' => $ads,
             'problems' => array_values(array_unique($problems)),
             'warnings' => $warnings,

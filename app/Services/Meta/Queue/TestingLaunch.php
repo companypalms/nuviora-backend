@@ -64,12 +64,12 @@ class TestingLaunch
         return $out;
     }
 
-    /** Las campañas activas de unos productos (null: de todos), con su ciudad. @return list<array{name: string, city: ?string}> */
+    /** Las campañas activas de unos productos (null: de todos), con su ciudad. @return list<array{name: string, city: ?string, meta_id: string}> */
     private static function campaigns(?array $productIds): array
     {
         return DB::table('meta_campaigns as c')->leftJoin('cities as ci', 'ci.id', '=', 'c.city_id')
             ->where('c.effective_status', 'ACTIVE')->whereNull('c.missing_since')->whereNotNull('c.product_id')
             ->when($productIds !== null, fn ($q) => $q->whereIn('c.product_id', $productIds))
-            ->orderBy('ci.name')->get(['c.name', 'ci.name as city'])->map(fn ($c) => ['name' => (string) $c->name, 'city' => $c->city])->all();
+            ->orderBy('ci.name')->get(['c.name', 'ci.name as city', 'c.meta_id'])->map(fn ($c) => ['name' => (string) $c->name, 'city' => $c->city, 'meta_id' => (string) $c->meta_id])->all();
     }
 }

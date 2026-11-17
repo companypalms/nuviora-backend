@@ -9,6 +9,8 @@ use App\Models\MetaSyncLog;
 use App\Services\Meta\MetaApiException;
 use App\Services\Meta\MetaClient;
 use App\Services\Meta\MetaConnectionService;
+use App\Services\Meta\Upload\MetaUploads;
+use App\Services\Meta\Upload\UploadRules;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -33,6 +35,7 @@ class MetaConnectionController extends Controller
         return response()->json([
             'graph_version' => config('services.meta.graph_version'),
             'connections' => $connections->map(fn (MetaConnection $c) => $this->present($c, $owners)),
+            'upload_on' => MetaUploads::on(), // .155: el interruptor «Subir a Meta»
         ]);
     }
 
@@ -233,6 +236,7 @@ class MetaConnectionController extends Controller
             'meta_user_name' => $c->meta_user_name,
             'scopes' => $c->scopes,
             'extra_scopes' => MetaConnectionService::extraScopes($c->scopes),
+            'can_upload' => UploadRules::canUpload($c->scopes), // .155: si su token puede crear anuncios
             'status' => $c->status,
             'last_success_at' => $c->last_success_at?->toIso8601String(),
             'last_error_kind' => $c->last_error_kind,

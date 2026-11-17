@@ -589,7 +589,8 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
 
     /**---------------------
      * META ADS (documento de Fran del 2026-10-08, Módulo 2). Credenciales de Meta, gasto y métricas del negocio: solo el
-     * Administrador (§44). Todo es lectura de Meta: nada de esto modifica campañas, presupuestos ni anuncios (§1).
+     * Administrador (§44). Todo es lectura de Meta: nada de esto modifica campañas, presupuestos ni anuncios (§1). La única
+     * excepción es "Aprobar y subir" (.155, /uploads): crea ad sets y anuncios de los batches que aprueba el dueño.
      * ---------------------**/
     Route::middleware('role:Admin')->prefix('meta')->group(function () {
         Route::get('/connections', [\App\Http\Controllers\MetaConnectionController::class, 'index']);
@@ -634,6 +635,12 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::post('/queue/{batch}/send-back', [\App\Http\Controllers\MetaQueueController::class, 'sendBack'])->whereNumber('batch');
         // .57: lo que "Subir a Meta" va a crear (el simulacro: no escribe nada en Meta)
         Route::post('/queue/{batch}/upload-plan', [\App\Http\Controllers\MetaQueueController::class, 'uploadPlan'])->whereNumber('batch')->middleware('throttle:20,1');
+        // .155: "Aprobar y subir" desde la misión (lo único que escribe en Meta: crea ad sets y anuncios, nunca borra)
+        Route::get('/uploads', [\App\Http\Controllers\MetaUploadController::class, 'index']);
+        Route::post('/uploads/plan', [\App\Http\Controllers\MetaUploadController::class, 'plan'])->middleware('throttle:20,1');
+        Route::post('/uploads', [\App\Http\Controllers\MetaUploadController::class, 'store'])->middleware('throttle:10,1');
+        Route::post('/uploads/{upload}/retry', [\App\Http\Controllers\MetaUploadController::class, 'retry'])->whereNumber('upload')->middleware('throttle:10,1');
+        Route::put('/uploads/settings', [\App\Http\Controllers\MetaUploadController::class, 'settings']);
         // Etapa 5, paso 6a: las landings medidas una por una
         Route::get('/landings', [\App\Http\Controllers\MetaLandingsController::class, 'index']);
         Route::put('/landings/{landing}', [\App\Http\Controllers\MetaLandingsController::class, 'update'])->whereNumber('landing');

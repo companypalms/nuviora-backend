@@ -177,6 +177,8 @@ final class UrgentList
                     'where' => $short . ($c['city'] ? " · {$c['city']}" : ''), 'title' => $wait ? self::waiting($kind, $n, $a['cooldown'] ?? null, $a['ladder'] ?? null) : $mission['title'],
                     'steps' => $wait ? [] : $mission['steps'], 'batches' => $wait ? [] : $mission['batches'],
                     'copy' => $wait ? null : $mission['copy'],
+                    // .155: los de la banca que el sistema puede subir solo a esta campaña (prender una campaña, no)
+                    'upload' => $wait || $kind === 'relaunch' ? [] : self::uploads($mission['batches'], (string) $c['campaign_meta_id'], self::newMin($c['campaign'] ?? null, $n)),
                     'why' => self::why($kind, $a, $n),
                     'detail' => array_values(array_filter([...self::numbers($n), $a['reading'], $a['proposal'], ...$c['notes'], ...$c['budget_notes'],
                         count($prune) > self::NAMES_IN_STEP ? 'Todos los anuncios a apagar: ' . CreativeCalls::join($prune) . '.' : null, self::liveLine($n)])),
@@ -293,7 +295,13 @@ final class UrgentList
             . ' (sus videos, aquí abajo).';
         // .124: el gasto mínimo de cada ad set nuevo y los parámetros de URL de sus anuncios
         $c = $t['target'] ?? null;
+        $uploads = [];
         if ($t['campaigns'] !== []) {
+            // .155: cada batch del testeo en cada campaña del producto, con el gasto mínimo del CPA de su nombre (o tu C)
+            foreach ($t['campaigns'] as $camp) {
+                $cpa = CampaignNameTargets::parse($camp['name'] ?? null)['target_cpa'] ?? $c;
+                array_push($uploads, ...self::uploads(array_map('strval', array_column($t['batches'], 'code')), $camp['meta_id'] ?? null, $cpa !== null ? [(float) $cpa, ''] : null));
+            }
             $title = "Lanza los ángulos nuevos de {$short}: {$codes}";
             $why = "Ronda {$t['round']} del testeo: sus {$n} batches están listos en la banca";
             $mins = array_values(array_unique(array_filter(array_map(fn ($x) => CampaignNameTargets::parse($x['name'] ?? null)['target_cpa'] ?? null, $t['campaigns']))));
@@ -322,6 +330,7 @@ final class UrgentList
         return ['key' => "{$t['product_id']}:test:{$t['round']}", 'product_id' => $t['product_id'], 'product' => $t['product'], 'urgency' => null,
             'city' => null, 'kind' => 'launch_test', 'label' => 'Testeo', 'tone' => 'success', 'text' => "{$why}.", 'where' => $short,
             'title' => $title, 'steps' => $steps, 'batches' => array_values(array_map('strval', array_column($t['batches'], 'code'))), 'copy' => self::urlTags(), 'why' => $why,
+            'upload' => $uploads,
             'detail' => [], 'money' => null, 'severity' => self::SEVERITY['launch_test'], 'group' => self::GROUP['launch_test']];
     }
 
@@ -635,6 +644,25 @@ final class UrgentList
         return array_values(array_unique(array_map(fn ($o) => (string) $o['code'], array_filter($launch, fn ($o) => ($o['how'] ?? 'bank') !== 'copy'))));
     }
 
+    /**
+     * `.155` (dueño, 2026-11-17: "yo le doy un botón de aprobar y él los suba automáticamente en meta ads… los batch se suben
+     * obviamente en las cuentas publicitarias y en las campañas que ya están rodando ese producto en la ciudad
+     * correspondiente"): lo que "Aprobar y subir" sube de una misión: cada batch de la banca en la campaña de la misión, con el
+     * gasto mínimo de la `.124`. Duplicar el ad set de otra ciudad sigue a mano (`.156`).
+     *
+     * @param list<string> $codes los batches de la banca (bankCodes)
+     * @param ?array{0: float, 1: string} $min
+     * @return list<array{code: string, campaign: string, min: ?float}>
+     */
+    public static function uploads(array $codes, ?string $campaignMetaId, ?array $min): array
+    {
+        if ($campaignMetaId === null || $campaignMetaId === '') {
+            return [];
+        }
+
+        return array_values(array_map(fn ($code) => ['code' => (string) $code, 'campaign' => $campaignMetaId, 'min' => isset($min[0]) ? round((float) $min[0], 2) : null], $codes));
+    }
+
     /** `.89`: "«B0110 POSP» con los anuncios «C0457 POSP», «C0458 POSP» y «C0459 POSP»". */
     private static function adsetWithAds(string $adset, array $ads): string
     {
@@ -660,6 +688,7 @@ final class UrgentList
             },
             'steps' => $launch ? [self::open($c['campaign'] ?? null, $short, $c['city']), ...self::launchSteps($launch, self::newMin($c['campaign'] ?? null, $n))] : [],
             'batches' => self::bankCodes($launch), 'copy' => $launch ? self::urlTags() : null,
+            'upload' => self::uploads(self::bankCodes($launch), (string) $c['campaign_meta_id'], self::newMin($c['campaign'] ?? null, $n)), // .155
             'why' => $live === 0 ? 'No queda ningún batch vivo: la campaña no tiene anuncios que mostrar'
                 : "Solo queda 1 batch vivo: {$budget} cae todo en él; con 2, Meta reparte",
             'detail' => array_values(array_filter([self::liveLine($n), $launch === [] ? 'Cuando haya un batch en la banca, te sale como misión.' : null])),
@@ -942,6 +971,9 @@ final class UrgentList
             'city' => count($cities) === 1 ? $cities[0]['city'] : null, 'kind' => 'launch_ready', 'label' => 'Lanzar', 'tone' => 'success',
             'text' => "{$code} llegó a la banca a las {$at} (hora de Venezuela).", 'where' => $short . ($names !== '' ? " · {$names}" : ''),
             'title' => "Lanza {$code}: ya llegó a la banca", 'steps' => $steps, 'batches' => self::bankCodes(array_column($cities, 'offer')), 'copy' => self::urlTags(),
+            // .155: en cada ciudad, a su campaña
+            'upload' => array_merge(...array_map(fn ($c) => self::uploads(self::bankCodes([$c['offer']]), $c['campaign_meta_id'] ?? null,
+                self::newMin($c['campaign'], ['c' => $c['c'] ?? null])), $cities)),
             'why' => "Llegó a la banca a las {$at}" . ($whys ? ' · ' . implode('; ', $whys) : ''),
             'detail' => [], 'money' => null, 'severity' => self::SEVERITY['launch_ready'], 'group' => self::GROUP['launch_ready']];
     }

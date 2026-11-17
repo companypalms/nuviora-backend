@@ -60,7 +60,7 @@ class BankArrival
             $holds = UrgentList::holds($a);
             $offer = collect(array_slice($n['offers'] ?? [], 0, UrgentList::need($key, $n, 'normal', $holds)))->firstWhere('code', $code);
             if ($offer) {
-                $cities[] = ['city' => $c['city'] ?? null, 'campaign' => $names[(string) $id] ?? null, 'offer' => $offer,
+                $cities[] = ['city' => $c['city'] ?? null, 'campaign' => $names[(string) $id] ?? null, 'campaign_meta_id' => (string) $id, 'offer' => $offer,
                     'why' => DemandRules::reason($holds ? 'hold' : $key, $n['live'] ?? null), 'c' => $n['c'] ?? null];
             }
         }
