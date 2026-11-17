@@ -15,6 +15,7 @@ use App\Services\Meta\Decisions\MetaDecisions;
 use App\Services\Meta\Products\AngleProposals;
 use App\Services\Meta\Products\ProductProfileRules;
 use App\Services\Meta\Products\ProductProfiles;
+use App\Services\Meta\Products\ProductQueue;
 use App\Services\Meta\Products\TestingPhase;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -73,6 +74,8 @@ class QueueProposer
         $pieces = max(1, (int) $s['batch_pieces']);
         // .65: las rondas de testeo que ya tienen todos sus resultados se cierran (con un ganador, el producto pasa a iterar)
         TestingPhase::refresh();
+        // .154: si el equipo tiene chance, sale el siguiente de la cola de productos por montar (sus batches se piden abajo)
+        (new ProductQueue())->release($decisions, $today, (int) $s['corrections_days']);
         $testingIds = \App\Models\ProductProfile::where('phase', 'testing')->pluck('product_id')->map(fn ($v) => (int) $v)->all();
         // .64: sin ficha completa, la IA no escribe encargos de ese producto (no sabría qué es ni para qué sirve)
         $complete = ProductProfiles::completeIds(array_unique(array_merge(array_keys($decisions), $testingIds)));

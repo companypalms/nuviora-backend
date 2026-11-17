@@ -109,7 +109,7 @@ class NewProductMissions
     public function sync(NewProductMission $m): void
     {
         $changes = [];
-        $productId = $m->product_id ?? $this->newProductSince($m);
+        $productId = $m->product_id ?? $this->fromQueue() ?? $this->newProductSince($m);
         if ($productId !== null && $m->product_id === null) {
             $changes['product_id'] = $productId;
             $changes['search_done_at'] = $m->search_done_at ?? now();
@@ -185,6 +185,25 @@ class NewProductMissions
         $last = max(substr((string) $lastMission, 0, 10), substr((string) $lastProduct, 0, 10)) ?: null;
 
         return ['no_ready' => $noReady, 'need_today' => $needToday, 'last' => $last, 'today' => $today, 'forecast' => $forecast];
+    }
+
+    /**
+     * `.154` (dueño: "que use la cola"): el producto de la cola de productos por montar. Primero el que ya salió de la cola y
+     * todavía no se lanzó (y no es de otra misión); si no hay, el primero de la cola al que no le falta nada (ese sale antes
+     * que los demás: ProductQueueRules::pick).
+     */
+    private function fromQueue(): ?int
+    {
+        $taken = NewProductMission::whereNotNull('product_id')->pluck('product_id')->map(fn ($v) => (int) $v)->all();
+        $released = ProductProfile::where('phase', 'testing')->whereNotNull('released_at')->whereNotIn('product_id', $taken ?: [0])->orderBy('released_at')->pluck('product_id');
+        foreach ($released as $id) {
+            if (!DB::table('meta_campaigns')->where('product_id', $id)->exists()) {
+                return (int) $id;
+            }
+        }
+        $first = ProductQueueRules::pick(array_values(array_filter(ProductQueue::rows(), fn ($r) => !in_array($r['product_id'], $taken, true))), null);
+
+        return $first;
     }
 
     /** El producto nuevo que entró a testeo después de abrir la misión: sin campañas en Meta todavía, o sus batches ya salieron. */

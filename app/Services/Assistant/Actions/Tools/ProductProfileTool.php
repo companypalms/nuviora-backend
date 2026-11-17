@@ -34,6 +34,7 @@ use Illuminate\Support\Facades\DB;
  * número, se usa ese (nunca uno repetido).
  * `.90` (dueño, 2026-11-03): las fotos y los PDF que adjuntó en la última hora se guardan en el producto al confirmar
  * (fotos → las fotos del producto, que ven los editores; PDF → su documento de estrategia, que solo ve el dueño).
+ * `.154` (dueño, 2026-11-17): un producto nuevo entra a la cola de productos por montar (ProductQueue), salvo "empiézalo ya".
  */
 class ProductProfileTool extends ChangeTool
 {
@@ -50,7 +51,7 @@ class ProductProfileTool extends ChangeTool
 
     public const ANGLE_ARGS = ['codigo' => 'code', 'nombre' => 'name', 'hipotesis' => 'hypothesis', 'buyer' => 'persona'];
 
-    private const PHASE_ARGS = ['testeo' => 'testing', 'iterar' => 'iterate'];
+    private const PHASE_ARGS = ['cola' => 'queued', 'testeo' => 'testing', 'iterar' => 'iterate'];
 
     public function __construct(private Lookup $lookup)
     {
@@ -112,10 +113,10 @@ class ProductProfileTool extends ChangeTool
                         'additionalProperties' => false,
                     ],
                 ],
-                'producto_nuevo' => ['type' => 'boolean', 'description' => 'true si el dueño dice que es un producto nuevo que todavía no está en el sistema: se crea al confirmar, en testeo. Si ya existe con ese nombre, se usa ese.'],
+                'producto_nuevo' => ['type' => 'boolean', 'description' => 'true si el dueño dice que es un producto nuevo que todavía no está en el sistema: se crea al confirmar y entra a la cola de productos por montar (o en testeo, si el dueño pide empezarlo ya). Si ya existe con ese nombre, se usa ese.'],
                 'link_shopify' => $text('El link del producto en Shopify, si el dueño lo pasó (el del panel: admin.shopify.com/…/products/número, o el de la página en la tienda: …/products/nombre). Así los pedidos de ese producto se unen a él. null si no lo pasó.'),
-                'fase' => ['type' => 'string', 'enum' => ['testeo', 'iterar', 'sin_cambio'],
-                    'description' => 'testeo = un producto nuevo que se va a testear (3 batches: 1 por cada uno de los 3 ángulos principales); iterar = ya se sabe qué funciona; sin_cambio = la deja como está.'],
+                'fase' => ['type' => 'string', 'enum' => ['cola', 'testeo', 'iterar', 'sin_cambio'],
+                    'description' => 'cola = a la cola de productos por montar: sale solo al editor líder cuando el equipo tenga chance, uno a la vez (lo normal para un producto nuevo); testeo = empieza el testeo ya, sin esperar la cola (solo si el dueño lo pide: "empiézalo ya"; 3 batches: 1 por cada uno de los 3 ángulos principales); iterar = ya se sabe qué funciona; sin_cambio = la deja como está.'],
             ],
             'required' => ['producto', ...array_keys(self::ARGS), 'buyer_personas', 'quitar_buyer_personas', 'angulos', 'producto_nuevo', 'link_shopify', 'fase'],
             'additionalProperties' => false,
@@ -152,7 +153,7 @@ class ProductProfileTool extends ChangeTool
                 throw new ToolProblem('Falta el producto: pregúntale al dueño de cuál es la ficha.');
             }
 
-            return self::proposal(0, $name, null, [], ['fase' => 'testeo'] + array_diff_key($args, ['fase' => 1]), [], 'iterate', [], ['create' => true, 'shopify' => $shopify], $files);
+            return self::proposal(0, $name, null, [], ['fase' => self::newProductPhase($args['fase'] ?? null)] + array_diff_key($args, ['fase' => 1]), [], 'iterate', [], ['create' => true, 'shopify' => $shopify], $files);
         }
         $product = Product::find($productId, ['id', 'title', 'showable_name', 'product_id']);
         $name = $product->showable_name ?: $product->title;
@@ -163,6 +164,12 @@ class ProductProfileTool extends ChangeTool
             (string) (ProductProfile::where('product_id', $productId)->value('phase') ?? 'iterate'), TestingPhase::testedAngles($productId),
             ['create' => false, 'shopify' => $shopify && (int) $product->product_id !== $shopify['id'] ? $shopify : null,
                 'campaigns' => TestingPhase::liveCampaigns($productId)], $files);
+    }
+
+    /** `.154`: un producto nuevo entra a la cola de productos por montar, salvo que el dueño pida empezarlo ya ("testeo"). */
+    public static function newProductPhase(?string $fase): string
+    {
+        return $fase === 'testeo' ? 'testeo' : 'cola';
     }
 
     /**
@@ -274,7 +281,8 @@ class ProductProfileTool extends ChangeTool
         $lines = [Proposal::line('Producto', $name)];
         $changed = [];
         if ($create) {
-            $lines[] = Proposal::line('Producto nuevo', 'Se crea al confirmar y empieza su testeo: sus batches le llegan solos al editor líder.');
+            $lines[] = Proposal::line('Producto nuevo', $phase === 'queued' ? 'Se crea al confirmar y entra a tu cola de productos por montar: sale solo al editor líder cuando el equipo tenga chance, uno a la vez.'
+                : 'Se crea al confirmar y empieza su testeo: sus batches le llegan solos al editor líder.');
         }
         if ($shopify) {
             $changed[] = 'el enlace con Shopify';
@@ -315,8 +323,8 @@ class ProductProfileTool extends ChangeTool
             $changed[] = 'la fase';
         }
         $lines[] = Proposal::line('Fase', TestingRules::PHASES[$phase], $phase !== $beforePhase ? TestingRules::PHASES[$beforePhase] : null);
-        if ($phase === 'testing' && ($phase !== $beforePhase || $anglesChanged)) {
-            $lines[] = Proposal::line('El testeo pide', ProductProfileRules::testingText(array_values(array_diff(array_column($angles, 'code'), $tested)))
+        if (($phase === 'testing' || $phase === 'queued' && $angles !== []) && ($phase !== $beforePhase || $anglesChanged)) {
+            $lines[] = Proposal::line($phase === 'queued' ? 'Cuando salga de la cola, el testeo pide' : 'El testeo pide', ProductProfileRules::testingText(array_values(array_diff(array_column($angles, 'code'), $tested)))
                 . ($tested !== [] ? ' (los ángulos que ya se probaron no se repiten)' : ''));
         }
         // .90: lo que se guarda en el producto (fotos para los editores; el PDF, solo para ti)
@@ -338,6 +346,9 @@ class ProductProfileTool extends ChangeTool
         }
         if ($phase === 'testing' && $angles === []) {
             $warnings[] = 'En testeo, pero sin ángulos: el testeo no puede empezar hasta que la ficha tenga sus ángulos.';
+        }
+        if ($phase === 'queued' && $angles === []) {
+            $warnings[] = 'En la cola, pero sin ángulos: no sale de la cola hasta que la ficha tenga sus ángulos.';
         }
         // .100: un producto que ya vende normalmente no va en testeo
         if ($phase === 'testing' && $phase !== $beforePhase && ($w = TestingRules::sellingWarning($name, (int) ($link['campaigns'] ?? 0)))) {
@@ -389,6 +400,8 @@ class ProductProfileTool extends ChangeTool
         $f = ProductProfiles::get($pid);
         $missing = ProductProfileRules::missing($f['profile'], $f['personas']);
         $testing = ($payload['phase'] ?? null) === 'testing' && $missing === [];
+        // .154: en la cola, con su lugar (si ya salió en esta misma corrida, dice eso)
+        $queued = ($payload['phase'] ?? null) === 'queued' ? ProductProfile::where('product_id', $pid)->first(['phase', 'queue_position']) : null;
         // .90: las fotos y el documento de estrategia que adjuntó
         $saved = self::saveFiles($payload['files'] ?? [], $pid, (int) $context->user->id);
         $savedText = self::join(array_filter([
@@ -401,6 +414,7 @@ class ProductProfileTool extends ChangeTool
             . ($saved['problems'] ? ' No pude guardar: ' . implode(' ', $saved['problems']) : '')
             . ($missing ? ' Todavía falta: ' . self::join(array_map('mb_strtolower', $missing)) . '.' : ' Está completa: la IA ya la usa en los encargos.')
             . ($testing ? ' El testeo empieza: sus batches le llegan ya al editor líder.' : '')
+            . ($queued !== null ? ($queued->phase === 'queued' ? " Entró a tu cola de productos por montar (lugar {$queued->queue_position}): sale solo al editor líder cuando el equipo tenga chance." : ' Ya salió de la cola: sus batches le llegan al editor líder.') : '')
             . (($payload['create'] ?? null) && (int) $payload['create']['shopify_id'] === 0 ? ' Cuando esté en tu tienda, pásame el link de Shopify.' : ''),
             ['label' => 'Ver la ficha', 'to' => '/admin/integraciones?seccion=meta&tab=profile&producto=' . $pid]);
     }

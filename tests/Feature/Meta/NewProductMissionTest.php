@@ -40,7 +40,9 @@ beforeEach(function () {
         }
         $t->string('phase', 12)->default('iterate');
         $t->unsignedTinyInteger('testing_round')->default(0);
+        $t->unsignedInteger('queue_position')->nullable(); // .154
         $t->timestamp('phase_at')->nullable();
+        $t->timestamp('released_at')->nullable(); // .154
         $t->json('testing_results')->nullable();
         $t->timestamps();
     });

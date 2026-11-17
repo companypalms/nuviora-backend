@@ -139,6 +139,8 @@ class MetaProductProfileController extends Controller
             'labels' => ['fields' => ProductProfileRules::FIELDS, 'persona' => ProductProfileRules::PERSONA_FIELDS],
             // .65: la fase, los ángulos de la ficha y en qué va el testeo
             'phase' => $row->phase ?? 'iterate', 'phases' => TestingRules::PHASES,
+            // .154: su lugar en la cola de productos por montar
+            'queue_position' => ($row->phase ?? null) === 'queued' ? ((int) array_search($productId, \App\Services\Meta\Products\ProductQueue::ids(), true) + 1) : null,
             'angles' => array_map(fn ($a) => ['code' => $a['code'], 'name' => $a['name'], 'hypothesis' => $a['hypothesis'], 'persona' => $a['persona']],
                 TestingPhase::angles($productId)),
             'testing' => TestingPhase::summary($productId),

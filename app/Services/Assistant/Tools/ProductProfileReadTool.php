@@ -66,6 +66,11 @@ class ProductProfileReadTool implements Tool
             fn ($v) => $v !== null), $angles) ?: 'ninguno';
         $phase = \App\Models\ProductProfile::where('product_id', $productId)->value('phase') ?? 'iterate';
         $data['fase'] = \App\Services\Meta\Products\TestingRules::PHASES[$phase];
+        // .154: en la cola, su lugar (sale solo, uno a la vez, cuando el equipo tiene chance)
+        if ($phase === 'queued') {
+            $pos = array_search($productId, \App\Services\Meta\Products\ProductQueue::ids(), true);
+            $data['fase'] .= $pos !== false ? ', lugar ' . ($pos + 1) . ' de la cola' : '';
+        }
         if ($summary = \App\Services\Meta\Products\TestingPhase::summary($productId)) {
             $data['testeo'] = $summary['text'];
         }

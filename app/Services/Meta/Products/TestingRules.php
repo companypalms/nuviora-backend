@@ -16,7 +16,8 @@ use App\Services\Meta\Queue\EditorRules;
  */
 final class TestingRules
 {
-    public const PHASES = ['testing' => 'En testeo', 'iterate' => 'Iterar lo que funciona'];
+    /** `.154`: queued = en la cola de productos por montar (sale solo al editor líder cuando el equipo tiene chance; ProductQueue). */
+    public const PHASES = ['queued' => 'En cola (por montar)', 'testing' => 'En testeo', 'iterate' => 'Iterar lo que funciona'];
 
     public const MAX_ANGLES = 10;
 

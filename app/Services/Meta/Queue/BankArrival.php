@@ -99,6 +99,10 @@ class BankArrival
     {
         try {
             self::handle($batch);
+            // .154: un batch del testeo en la banca puede dejar salir el siguiente producto de la cola
+            if ($batch->testing_round !== null) {
+                \App\Services\Meta\Products\ProductQueue::wake();
+            }
         } catch (\Throwable $e) {
             report($e);
         }

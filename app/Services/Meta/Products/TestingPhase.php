@@ -69,16 +69,26 @@ class TestingPhase
         AdAngle::where('product_id', $productId)->whereNotNull('position')->when($codes !== [], fn ($q) => $q->whereNotIn('code', $codes))->update(['position' => null]);
     }
 
-    /** "En testeo" empieza una ronda nueva; "Iterar lo que funciona" la deja. Sin cambio si ya estaba en esa fase. */
+    /**
+     * "En testeo" empieza una ronda nueva; "Iterar lo que funciona" la deja. Sin cambio si ya estaba en esa fase.
+     * `.154`: "En cola" lo pone al final de la cola de productos por montar (ProductQueue); al salir de la cola a testeo, queda
+     * como salido de ella.
+     */
     public static function setPhase(int $productId, string $phase): void
     {
         $p = ProductProfile::where('product_id', $productId)->first();
         if (!$p || !isset(TestingRules::PHASES[$phase]) || $p->phase === $phase) {
             return;
         }
-        $p->forceFill(['phase' => $phase, 'phase_at' => now(), 'testing_round' => $phase === 'testing' ? $p->testing_round + 1 : $p->testing_round])->save();
-        // .89: los batches del testeo se piden solos, sin botón
-        if ($phase === 'testing') {
+        $from = $p->phase;
+        $p->forceFill(['phase' => $phase, 'phase_at' => now(), 'testing_round' => $phase === 'testing' ? $p->testing_round + 1 : $p->testing_round]
+            + ($phase === 'queued' ? ['queue_position' => ProductQueue::nextPosition()] : [])
+            + ($from === 'queued' ? ['queue_position' => null] + ($phase === 'testing' ? ['released_at' => now()] : []) : []))->save();
+        if ($from === 'queued') {
+            ProductQueue::left($productId, $phase);
+        }
+        // .89: los batches del testeo se piden solos, sin botón. .154: al entrar a la cola, se revisa si ya puede salir
+        if ($phase === 'testing' || $phase === 'queued') {
             \App\Services\Meta\Queue\QueueProposer::later();
         }
     }

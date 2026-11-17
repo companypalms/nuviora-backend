@@ -20,11 +20,11 @@ final class NewProductRules
     /** Las etapas, en orden. days: los días que tiene; manual: la marca el dueño; own: depende de él. */
     public const STAGES = [
         'search' => ['label' => 'Buscar y analizar el producto', 'who' => 'Tú', 'days' => 2, 'manual' => true, 'own' => true,
-            'how' => 'Busca y analiza qué producto vas a lanzar. Cuando lo tengas elegido, márcalo.'],
+            'how' => 'Busca y analiza qué producto vas a lanzar. Cuando lo tengas elegido, márcalo. Si ya tienes uno en tu cola de productos por montar, se marca sola.'],
         'strategy' => ['label' => 'Crear la estrategia', 'who' => 'Tú, con el asistente', 'days' => 1, 'manual' => false, 'own' => true,
-            'how' => 'Dile a tu asistente «Producto nuevo: X», con su estrategia y el link de Shopify. Se marca sola al crear la ficha.'],
+            'how' => 'Dile a tu asistente «Producto nuevo: X», con su estrategia, sus fotos y el link de Shopify: entra a tu cola de productos por montar. Se marca sola con la ficha completa.'],
         'creatives' => ['label' => 'Hacer los creativos', 'who' => 'Líder y editores', 'days' => 2, 'manual' => false, 'own' => false,
-            'how' => 'Al editor líder le llegan solos los 3 batches del testeo. Se marca sola cuando estén en la banca.'],
+            'how' => 'Al editor líder le llegan solos los 3 batches del testeo en cuanto el equipo tiene chance (Productos por montar). Se marca sola cuando estén en la banca.'],
         'landing' => ['label' => 'Hacer la landing', 'who' => 'Tú', 'days' => 1, 'manual' => true, 'own' => true,
             'how' => 'Haz la landing del producto. Cuando esté lista, márcala.'],
         'publish' => ['label' => 'Publicar en Meta', 'who' => 'Tú', 'days' => 1, 'manual' => false, 'own' => true,

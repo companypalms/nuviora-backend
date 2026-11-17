@@ -668,6 +668,10 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::get('/product-profiles', [\App\Http\Controllers\MetaProductProfileController::class, 'index']);
         Route::put('/product-profiles/{product}', [\App\Http\Controllers\MetaProductProfileController::class, 'update']);
         Route::post('/product-profiles/{product}/next-round', [\App\Http\Controllers\MetaProductProfileController::class, 'nextRound']); // .65
+        // .154: la cola de productos por montar (sale sola al editor líder; el dueño la ordena o saca uno)
+        Route::get('/product-queue', [\App\Http\Controllers\MetaProductQueueController::class, 'index']);
+        Route::post('/product-queue/{product}/move', [\App\Http\Controllers\MetaProductQueueController::class, 'move']);
+        Route::delete('/product-queue/{product}', [\App\Http\Controllers\MetaProductQueueController::class, 'remove']);
         // .90: las fotos y el documento de estrategia del producto, en el almacén; y "Probar el almacén"
         Route::post('/product-profiles/{product}/files', [\App\Http\Controllers\MetaProductProfileController::class, 'upload'])->middleware('throttle:60,1');
         Route::post('/files/{file}/confirm', [\App\Http\Controllers\MetaProductProfileController::class, 'confirm'])->whereNumber('file');
