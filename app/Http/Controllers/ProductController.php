@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\Product;
 use App\Models\StockMovement;
+use App\Services\Editors\Commissions;
+use App\Services\Metrics\PersonName;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 
@@ -50,6 +52,14 @@ class ProductController extends Controller
                 'total'        => $paginated->total(),
                 'last_page'    => $paginated->lastPage(),
             ],
+        ]);
+    }
+
+    /** `.153`: los líderes de editores activos (cada uno es un grupo), para elegir el grupo de un producto. */
+    public function editorLeaders()
+    {
+        return response()->json([
+            'leaders' => Commissions::leaders()->map(fn ($u) => ['id' => $u->id, 'name' => PersonName::of($u->names, $u->surnames) ?: "Usuario {$u->id}"])->values(),
         ]);
     }
 
@@ -126,7 +136,16 @@ class ProductController extends Controller
             'image' => 'nullable|string',
             'stock' => 'nullable|integer',
             'description' => 'nullable|string',
+            // .153: el grupo de editores (su líder); vacío = ningún grupo. Solo lo cambia el dueño
+            'editor_leader_id' => ['sometimes', 'nullable', 'integer', function ($attr, $value, $fail) {
+                if ($value !== null && !Commissions::leaders()->contains('id', (int) $value)) {
+                    $fail('Elige un líder de editores activo.');
+                }
+            }],
         ]);
+        if (array_key_exists('editor_leader_id', $data) && !in_array(Auth::user()?->role?->description, ['Admin', 'Master'], true)) {
+            unset($data['editor_leader_id']);
+        }
         $p->fill($data);
         $p->save();
         return response()->json(['status' => true, 'product' => $p, 'message' => 'Producto actualizado']);

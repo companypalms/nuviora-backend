@@ -16,6 +16,9 @@
   necesita hoy").
 
 ## "Encargos del equipo": ¿qué reviso o asigno ahora?
+- Arriba de todo, "Tu comisión": lo que llevas en la quincena y una barra que se llena contra lo que cobraste la quincena
+  anterior. Se cobra el 15 y el último día de cada mes; ese día dice "Hoy cobras" y, cuando el dueño te paga, "¡Cobrada!".
+  Si tienes dudas de tu comisión, pregúntale al dueño. Solo la ve el líder.
 - El marcador: cuántas entregas esperan su revisión ("Por revisar"), cuántos encargos no tienen editor ("Sin asignar") y
   cuántos están atrasados.
 - Debajo, su juego: racha al día, el equipo a tiempo este mes y los ganadores del equipo.

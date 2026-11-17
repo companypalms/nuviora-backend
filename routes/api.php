@@ -229,6 +229,8 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
     Route::put('orders/{order}/total', [OrderController::class, 'updateTotal'])->middleware('order.access');
     // Productos
     Route::get('products', [ProductController::class, 'index']);
+    // .153: los grupos de editores que se pueden elegir en un producto (sus líderes)
+    Route::get('products/editor-leaders', [ProductController::class, 'editorLeaders'])->middleware('role:Admin,Master');
     Route::get('products/{id}', [ProductController::class, 'show']);
     // Editar el catálogo (precio, costo, fotos): solo administración. Antes cualquier rol podía (análisis de seguridad, 26/10)
     Route::put('products/{id}', [ProductController::class, 'update'])->middleware('role:Admin,Gerente,Master');
@@ -735,6 +737,8 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::delete('/imports/{batch}', [\App\Http\Controllers\EditorImportController::class, 'cancel'])->whereNumber('batch');
         // .99: la banca del líder (en su menú)
         Route::get('/bank', [\App\Http\Controllers\EditorQueueController::class, 'bank']);
+        // .153: la barra de la comisión del líder (solo él)
+        Route::get('/commission', [\App\Http\Controllers\EditorQueueController::class, 'commission']);
         // .96: la ayuda "¿Dudas?" (la IA solo sabe el libro de ayuda de su rol)
         Route::get('/help', [\App\Http\Controllers\EditorHelpController::class, 'index']);
         Route::post('/help', [\App\Http\Controllers\EditorHelpController::class, 'store'])->middleware('throttle:10,1');

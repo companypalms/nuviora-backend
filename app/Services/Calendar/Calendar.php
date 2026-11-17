@@ -751,6 +751,10 @@ class Calendar
         if ($weeks['sellers_pay'] !== [] || $weeks['agencies_pay'] !== []) {
             $facts += $this->facts->weeks($weeks['sellers_pay'], $weeks['agencies_pay']);
         }
+        // .153: la comisión del líder de editores de cada quincena que sale
+        if (($dates['editor_leader_pay'] ?? []) !== []) {
+            $facts += $this->facts->editorCommissions(array_column($dates['editor_leader_pay'], 'due'), $now);
+        }
         // .67: el trabajo de los editores (la semana que se revisa) y lo que aprendimos (los 7 días antes), si ya empezó
         $editorWeeks = array_values(array_filter(array_map(fn ($d) => ReminderRules::lastWeek(CarbonImmutable::parse($d['due']))[0]->toDateString(), $dates['editors_week'] ?? []),
             fn ($monday) => $monday <= $today));

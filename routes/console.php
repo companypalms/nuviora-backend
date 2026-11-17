@@ -83,6 +83,8 @@ try {
     // .48b: los reportes del negocio del asistente (los días de las revisiones del calendario), con el CPA y Meta al día.
     // .85: a las 00:45, después del análisis
     Schedule::command('metrics:report')->dailyAt('00:45')->withoutOverlapping(30);
+    // .153: el día de pago (el 15 y el último), la comisión del líder de editores queda congelada
+    Schedule::command('editors:comision')->dailyAt('00:50')->withoutOverlapping(30);
     // .55: los videos de los creativos ganadores (con sus estados de las 00:20 al día), hasta 40 por día.
     // .105 (dueño, 2026-11-05: "apágala también por el momento"): apagada mientras Meta no dé permiso para bajar los
     // videos (#10 en los 158). Para encenderla otra vez: VideoTranscriber::SCHEDULED = true.

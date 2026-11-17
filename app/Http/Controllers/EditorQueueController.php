@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\CreativeBatch;
 use App\Models\CreativeBatchPiece;
 use App\Models\StoredFile;
+use App\Services\Editors\Commissions;
 use App\Services\Files\FileStore;
 use App\Services\Files\Uploads;
 use App\Services\Meta\Products\ProductModes;
@@ -22,7 +23,7 @@ use Illuminate\Http\Request;
  * Las pantallas de los editores (Etapa 5, paso 5a): "Mis encargos" para los dos y, para el editor líder, "Encargos del
  * equipo" (asignar y revisar); y "Mis resultados" (paso 5b). Solo entran los roles "Editor líder" y "Editor de video", y
  * RestrictLimitedRoles no les deja llegar a ninguna otra parte de la API. Los permisos de cada encargo son los de
- * EditorRules. Sin dinero.
+ * EditorRules. Sin dinero, salvo la comisión del líder (`.153`: solo su monto, aprobado por el dueño).
  */
 class EditorQueueController extends Controller
 {
@@ -185,6 +186,18 @@ class EditorQueueController extends Controller
      * producto, cuántos hay en la banca, en camino, en Meta y en espera; los de la banca y los que están en Meta; y los
      * probados o descartados de los últimos días. Sin dinero ni resultados.
      */
+    /**
+     * `.153` (dueño, 2026-11-17: "solo su comisión… no se le explica de ninguna manera de dónde se obtiene ese número… todo
+     * como si fuera un juego"): la comisión del líder en la quincena, la barra y el día que cobra. Sin la ganancia ni el %.
+     */
+    public function commission(Request $request, Commissions $commissions)
+    {
+        $who = EditorWork::who($request->user());
+        abort_unless($who['role'] === EditorRules::LEADER, 403, 'La comisión la ve el editor líder.');
+
+        return response()->json($commissions->current($request->user(), CarbonImmutable::now()));
+    }
+
     public function bank(Request $request)
     {
         $who = EditorWork::who($request->user());

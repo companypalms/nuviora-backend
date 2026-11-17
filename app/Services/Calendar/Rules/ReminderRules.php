@@ -2,6 +2,7 @@
 
 namespace App\Services\Calendar\Rules;
 
+use App\Services\Editors\CommissionRules;
 use Carbon\CarbonImmutable;
 
 /**
@@ -22,6 +23,8 @@ use Carbon\CarbonImmutable;
  *   aprobar, las entregas que esperan al dueño, que los editores vayan al día y la banca; y cada semana, el trabajo de los
  *   editores (lunes) y lo que aprendimos (sábado). Lo que dicen lo arma MetaReminderRules.
  * - `.116`: el ángulo que propone la IA, solo cuando hay uno por decidir (hidden: los demás días no sale).
+ * - `.153`: el 15 y el último, la comisión del líder de editores de esa quincena (Editors\Commissions); antes del 16/11 o
+ *   sin líder, no sale.
  */
 final class ReminderRules
 {
@@ -43,6 +46,13 @@ final class ReminderRules
             'title' => 'Pagar a las agencias',
             'help' => 'El cierre de la semana pasada de cada agencia: lo que el sistema calculó y lo que cobra. Se paga desde Cierres de agencias; cuando todas quedan "Pagado", esto se tilda solo.',
             'link' => '/admin/cierres-agencias',
+        ],
+        // .153 (dueño, 2026-11-17: "la comisión se la pago cada 15 y último, por lo que tenemos que coordinar bien eso")
+        'editor_leader_pay' => [
+            'type' => 'payment', 'group' => null, 'repeat' => 'twice_monthly', 'accumulates' => true, 'auto' => false,
+            'title' => 'Pagar la comisión del líder de editores',
+            'help' => 'La ganancia neta de los productos de su grupo en la quincena (la de Reportes del negocio), menos el 10 %, por el 1 % (se cambian en Finanzas › Configuración). Se congela la madrugada del día de pago: lo que esa quincena suma después (los pedidos que se entregan más tarde) se le suma a la siguiente. Él solo ve su comisión; cuando la tildas, le sale "¡Cobrada!".',
+            'link' => null,
         ],
         'rate' => [
             'type' => 'task', 'group' => 'daily', 'repeat' => 'daily', 'accumulates' => false, 'auto' => true,
@@ -248,6 +258,27 @@ final class ReminderRules
                     $out['auto_note'] = $rows === [] ? 'No hubo cierres de agencias esa semana.' : 'Todas las agencias de esa semana están pagadas.';
                 }
                 $out['actions'] = [['label' => 'Ir a cierres', 'link' => $rule['link']]];
+                break;
+
+            case 'editor_leader_pay':
+                // .153: antes del 16/11 no hay nada que pagar con el sistema (esa quincena la pagó el dueño a mano)
+                $rows = $facts['editor_commissions'][$due] ?? null;
+                if ($rows === null || $rows === []) {
+                    $out['hidden'] = true;
+                    break;
+                }
+                $q = CommissionRules::quincena($due);
+                $frozen = count(array_filter($rows, fn ($r) => $r['frozen'])) === count($rows);
+                $out['details'] = CommissionRules::periodLabel($q) . ': ' . match (true) {
+                    $q['start'] > $today => 'la comisión de esa quincena (todavía no empieza).',
+                    $frozen => count($rows) === 1 ? 'ya está congelada; es lo que le pagas.' : 'ya están congeladas; es lo que les pagas.',
+                    default => 'lo de hasta ahora. Se congela la madrugada del día de pago.',
+                };
+                $out['lines'] = array_map(fn (array $r) => [
+                    'label' => $r['name'],
+                    'value' => $r['amount'] !== null ? self::money($r['amount']) : '—',
+                    'note' => $r['frozen'] ? null : 'lo de hasta ahora',
+                ], $rows);
                 break;
 
             case 'rate':

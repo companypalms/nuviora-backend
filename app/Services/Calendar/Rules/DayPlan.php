@@ -39,6 +39,7 @@ final class DayPlan
     public const RULE_DEFAULTS = [
         'sellers_pay' => ['priority' => 'alta', 'minutes' => 15],
         'agencies_pay' => ['priority' => 'alta', 'minutes' => 15],
+        'editor_leader_pay' => ['priority' => 'alta', 'minutes' => 10],
         'rate' => ['priority' => 'alta', 'minutes' => 5],
         'reconciliation' => ['priority' => 'alta', 'minutes' => 20],
         'approvals' => ['priority' => 'alta', 'minutes' => 10],

@@ -11,6 +11,7 @@ use App\Models\ReconciliationItem;
 use App\Models\RecurringExpense;
 use App\Models\Setting;
 use App\Models\User;
+use App\Services\Editors\Commissions;
 use App\Services\Finance\OtherPayments;
 use App\Services\Metrics\GoalSettings;
 use App\Services\Metrics\PersonName;
@@ -37,7 +38,24 @@ class ReminderFacts
         private DayBuilder $reconciliation,
         private OtherPayments $payments,
         private MetaReminderFacts $meta,
+        private Commissions $commissions,
     ) {
+    }
+
+    /**
+     * `.153`: la comisión del líder de editores de cada quincena (por su último día): cada líder con su monto, o null si
+     * esa quincena no cuenta.
+     *
+     * @param list<string> $dues
+     */
+    public function editorCommissions(array $dues, CarbonImmutable $now): array
+    {
+        $out = [];
+        foreach (array_unique($dues) as $due) {
+            $out[$due] = $this->commissions->forReminder($due, $now);
+        }
+
+        return ['editor_commissions' => $out];
     }
 
     /** Lo que sirve para cualquier fecha: qué días se guardó una tasa y de qué meses hay metas. */

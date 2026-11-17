@@ -9,6 +9,7 @@ use App\Models\ProductFinancialSetting;
 use App\Models\Setting;
 use App\Models\TargetCpaVersion;
 use App\Services\CommissionService;
+use App\Services\Editors\Commissions;
 use App\Services\Finance\CohortReport;
 use App\Services\Finance\FinancialCpa;
 use App\Services\Finance\OrderEconomics;
@@ -93,6 +94,8 @@ class FinanceCpaController extends Controller
             'cpa_city_min_purchases' => FinancialCpa::minClosedOrders(),
             'cpa_sin_stock_hours' => FinancialCpa::sinStockHours(),
             'commissions' => CommissionService::amounts(),
+            // .153: la comisión del líder de editores (descuento y %)
+            'editor_leader_commission' => Commissions::settings(),
             // §15: la regla de desgaste de los viajes de traslado
             'vehicle_wear' => TransferTrips::wearRule(),
             'wear_modes' => TransferTrips::WEAR_MODES,
@@ -118,6 +121,8 @@ class FinanceCpaController extends Controller
             'commission_order' => 'required|numeric|min:0|max:1000',
             'commission_upsell_unit' => 'required|numeric|min:0|max:1000',
             'commission_deliverer' => 'required|numeric|min:0|max:1000',
+            'editor_reserve_pct' => 'sometimes|numeric|min:0|max:90',
+            'editor_pct' => 'sometimes|numeric|min:0|max:100',
             'vehicle_wear_mode' => ['sometimes', Rule::in(array_keys(TransferTrips::WEAR_MODES))],
             'vehicle_wear_value' => ['sometimes', 'numeric', 'min:0', 'max:100000',
                 fn ($attr, $value, $fail) => $request->input('vehicle_wear_mode') === 'percent' && $value > 100 ? $fail('El porcentaje de desgaste no puede pasar de 100.') : null],
@@ -140,6 +145,10 @@ class FinanceCpaController extends Controller
         Setting::set(CommissionService::SETTING_ORDER, round((float) $data['commission_order'], 2));
         Setting::set(CommissionService::SETTING_UPSELL_UNIT, round((float) $data['commission_upsell_unit'], 2));
         Setting::set(CommissionService::SETTING_DELIVERER, round((float) $data['commission_deliverer'], 2));
+        if (isset($data['editor_reserve_pct'], $data['editor_pct'])) {
+            // .153: vale para la quincena que está corriendo; las congeladas guardan los suyos
+            Commissions::saveSettings((float) $data['editor_reserve_pct'], (float) $data['editor_pct']);
+        }
         if (isset($data['vehicle_wear_mode'], $data['vehicle_wear_value'])) {
             // Vale para los viajes que se registren desde ahora; cada viaje guarda la regla con la que se registró
             Setting::set(TransferTrips::SETTING_WEAR_MODE, $data['vehicle_wear_mode']);
@@ -182,6 +191,7 @@ class FinanceCpaController extends Controller
             'cpa_city_min_purchases' => FinancialCpa::minClosedOrders(),
             'cpa_sin_stock_hours' => FinancialCpa::sinStockHours(),
         ] + array_map(fn ($v) => round((float) $v, 2), CommissionService::amounts())
-            + ['vehicle_wear' => TransferTrips::wearLabel(TransferTrips::wearRule()['mode'], TransferTrips::wearRule()['value'])];
+            + ['vehicle_wear' => TransferTrips::wearLabel(TransferTrips::wearRule()['mode'], TransferTrips::wearRule()['value'])]
+            + ['editor_leader_commission' => array_intersect_key(Commissions::settings(), array_flip(['reserve_pct', 'pct']))];
     }
 }

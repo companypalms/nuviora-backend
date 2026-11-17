@@ -2,8 +2,10 @@
 
 namespace App\Models;
 
+use App\Services\Editors\Commissions;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Schema;
 
 class Product extends Model
 {
@@ -12,6 +14,13 @@ class Product extends Model
     
     protected static function booted()
     {
+        // .153: hoy hay un solo grupo de editores: un producto nuevo (de Shopify, del asistente o de Inventario) es de su líder
+        static::creating(function (Product $product) {
+            if ($product->editor_leader_id === null && Schema::hasColumn($product->getTable(), 'editor_leader_id')) {
+                $product->editor_leader_id = Commissions::onlyLeader();
+            }
+        });
+
         static::updated(function ($product) {
             if ($product->wasChanged('showable_name')) {
                 $product->orderProducts()->update([
@@ -94,6 +103,7 @@ class Product extends Model
         // SCM fields
         'lead_time_days',
         'defect_percentage',
+        'editor_leader_id', // .153: el grupo de editores (su líder)
     ];
 
     protected $casts = [
