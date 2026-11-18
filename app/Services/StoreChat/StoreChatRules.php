@@ -15,8 +15,8 @@ use Carbon\CarbonImmutable;
  * - el dueño: "el precio siempre debe ser el cambio en bolívares… si pide precio en dólares debe decir que eso se lo
  *   indica la asesora cuando llene el formulario. Pero siempre hay que hacerle entender al cliente que al llenar el
  *   formulario está haciendo un pedido real, no es para consultas";
- * - antes de enviar, la revisión (check): una respuesta con un monto en dólares, un número que no está en los datos ni en
- *   la conversación o una ciudad donde ese producto no se entrega no se envía; sale la respuesta segura.
+ * - antes de enviar, la revisión (check): una respuesta con un monto en dólares o un número que no está en los datos ni en
+ *   la conversación no se envía; sale la respuesta segura (`.162`: las ciudades ya no, por el envío al resto del país).
  *
  * `.159` (dueño, 2026-11-18, después de tomar los exámenes: "la respuesta están muy robóticas, poco humanas y amables…
  * si en la ficha dice que el producto cura en una semana, debe decirlo, porque son datos validados por nuestro equipo.
@@ -37,6 +37,11 @@ use Carbon\CarbonImmutable;
  * lunes a sábado de 8 am a 7 pm"): lo que no sabe (o lo que la revisión paró) pide el WhatsApp con el horario; el número que
  * deja el cliente lo guarda el sistema (la IA nunca lo ve: phoneIn) para "Por contactar" y el calendario. Nunca habla de
  * "los datos" ni de "la ficha", y si el cliente trae otra promesa, afirma la de los datos sin corregirlo.
+ *
+ * `.162` (dueño, 2026-11-18): "debe responder el precio del producto en el sistema (pero el precio en bolívares)" (con la
+ * última tasa Binance aunque tenga más de un día); las "Políticas de la tienda" (pago y envíos, cómo es el pedido, ofertas:
+ * un texto del dueño para todos los productos, que vale igual que la ficha); el botón ya no dice "pagas al recibir" (fuera de
+ * Caracas, Valencia y Maracay se paga por adelantado) y nunca "lista/listo".
  */
 final class StoreChatRules
 {
@@ -48,7 +53,7 @@ final class StoreChatRules
      */
     public const DEFAULTS = ['enabled' => false, 'product_ids' => [], 'daily_answers' => 300, 'per_visitor' => 20, 'support_phone' => '0414-3581111',
         // .161: el horario de atención que dio el dueño; lo cambia en los ajustes
-        'hours' => 'lunes a sábado, de 8 a. m. a 7 p. m.'];
+        'hours' => 'lunes a sábado, de 8 a. m. a 7 p. m.', 'policies' => self::POLICIES];
 
     public const HOURS_MAX = 120;
 
@@ -63,9 +68,14 @@ final class StoreChatRules
     public const MAX_ANSWER = 900;
 
     /** El texto fijo arriba del botón: no lo escribe la IA. */
-    public const FORM_NOTE = 'Al llenar el formulario haces un pedido real: te llamamos para coordinar la entrega y pagas al recibir. No es para consultas: si tienes dudas, pregúntame aquí.';
+    public const FORM_NOTE = 'Al llenar el formulario haces un pedido real: una asesora te escribe por WhatsApp para coordinar la dirección de entrega. No es para consultas: si tienes dudas, pregúntame aquí.';
 
-    public const BUTTON = 'Hacer mi pedido (pagas al recibir)';
+    public const BUTTON = 'Hacer mi pedido';
+
+    /** `.162`: lo que dijo el dueño de pagos, envíos, el pedido y las ofertas; lo cambia en los ajustes. */
+    public const POLICIES = "Pago y envíos: en Caracas, Valencia y Maracay pagas al recibir. En el resto del país el pago es por adelantado y enviamos todas las tardes por MRW, Tealca o Zoom; al enviarlo te mandamos el número de guía para que lo retires. El envío lo pagamos nosotros.\nCómo es el pedido: al llenar el formulario, una asesora te escribe por WhatsApp para coordinar la dirección de entrega y luego te entregamos el producto. Todas las entregas se hacen el mismo día, dentro de nuestro horario laboral.\nOfertas: la oferta que está en la página es la vigente, y puede cambiar o quitarse en cualquier momento.";
+
+    public const POLICIES_MAX = 4000;
 
     /** Lo que se responde cuando la revisión paró la respuesta sin horario de atención (con horario: askPhone). */
     public const SAFE = '¡Buena pregunta! 😊 Para darte la respuesta exacta, déjame tu número de WhatsApp y una asesora te responde en nuestro horario de atención 💛';
@@ -75,7 +85,7 @@ final class StoreChatRules
 
     public const NO_PRICE = 'El precio de hoy en bolívares te lo indica la asesora cuando llenes el formulario.';
 
-    public const LIMIT = 'Por ahora no puedo responderte más preguntas 🙏 Si ya lo quieres, haz tu pedido con el botón de abajo: la asesora te llama y te responde todo.';
+    public const LIMIT = 'Por ahora no puedo responderte más preguntas 🙏 Si ya lo quieres, haz tu pedido con el botón de abajo: una asesora te escribe por WhatsApp y te responde todo.';
 
     public const FAILED = 'No pude responder en este momento. Intenta de nuevo en un minuto.';
 
@@ -105,6 +115,7 @@ final class StoreChatRules
             // vacío si el dueño lo borró; el de siempre si nunca lo guardó
             'support_phone' => array_key_exists('support_phone', $raw) ? self::phone($raw['support_phone']) : self::DEFAULTS['support_phone'],
             'hours' => array_key_exists('hours', $raw) ? mb_substr(trim(is_scalar($raw['hours']) ? (string) $raw['hours'] : ''), 0, self::HOURS_MAX) : self::DEFAULTS['hours'],
+            'policies' => array_key_exists('policies', $raw) ? mb_substr(trim(is_scalar($raw['policies']) ? (string) $raw['policies'] : ''), 0, self::POLICIES_MAX) : self::DEFAULTS['policies'],
         ];
     }
 
@@ -242,6 +253,7 @@ final class StoreChatRules
             '- Responde con seguridad y entusiasmo, y cierra con una pregunta cariñosa o una invitación suave para seguir (por ejemplo: "¿Te cuento cómo pedirlo? 💛").',
             '- Pon 1 o 2 emojis en casi todas tus respuestas, donde queden naturales (😊 🙌 ✨ 💛 👌 😔 🥰). Nunca dentro de las frases que te doy con sus palabras exactas (el precio en dólares o el de hoy).',
             '- Sin apodos: nunca digas "mi amor", "mi reina", "mi vida", "cariño", "querida", "querido", "amiga" ni "amigo", y no adivines si es hombre o mujer.',
+            '- Usa frases neutras, que sirvan igual para un hombre o una mujer: nunca "listo/lista", "seguro/segura", "interesado/interesada" ni "bienvenido/bienvenida"; di "cuando quieras", "si te animas" o "cuando lo decidas".',
             '- Saluda solo en tu primera respuesta de la conversación.',
             '- De 2 a 4 frases, máximo 80 palabras.',
             '- Nunca uses frases como "no se puede asegurar", "no garantiza resultados", "cada persona es diferente", "consulta a tu médico" o "según la información disponible".',
@@ -252,10 +264,10 @@ final class StoreChatRules
             '1. La ficha manda: todo lo que dicen los datos (también los "Más detalles") es 100 % real y está validado por el equipo. Afírmalo con seguridad y con sus mismas palabras, también las promesas de salud, de resultados y de tiempo (si los datos dicen que cura en una semana, dilo así). Nunca lo contradigas, lo suavices ni le agregues advertencias.',
             '2. Lo que no está en los datos no lo inventas, ni de otros productos ni de internet: nunca inventes doctores, estudios, testimonios, garantías ni resultados. Si te preguntan algo que no está, dile con cariño que, para darle la respuesta exacta, te deje su número de WhatsApp y una asesora le responde en nuestro horario de atención (el de los datos); no digas que le escriben enseguida. Pon "sabe": false.',
             '3. Lo que dice "Lo que NO es" nunca lo prometas. Si te preguntan por eso, aclara con amabilidad que no es para eso y cuenta para qué sí es.',
-            '4. El precio: solo en bolívares y solo el "Precio de hoy" de los datos. Nunca des precios ni montos en dólares y no hagas cuentas de cambio. Si preguntan el precio en dólares, dilo con estas palabras: "' . self::DOLLARS . '" Si los datos dicen que hoy no hay precio, dilo con estas palabras: "' . self::NO_PRICE . '" No hables de ofertas ni descuentos: si preguntan, di que las ofertas las ve en el formulario.',
-            '5. Las entregas: con pago al recibir en las ciudades de los datos. Si preguntan por otra ciudad, no digas que sí ni que no: pídele su WhatsApp como en la regla 2 para que una asesora le confirme si llegamos. No prometas días ni horas de entrega que no estén en los datos.',
+            '4. El precio: solo en bolívares y solo el "Precio de hoy" de los datos. Nunca des precios ni montos en dólares y no hagas cuentas de cambio. Si preguntan el precio en dólares, dilo con estas palabras: "' . self::DOLLARS . '" Si los datos dicen que hoy no hay precio, dilo con estas palabras: "' . self::NO_PRICE . '" De ofertas y descuentos di solo lo que dicen las políticas de la tienda, sin inventar ofertas ni montos.',
+            '5. Los pagos y las entregas: explícalos con las políticas de la tienda de los datos (dónde se paga al recibir, cómo se envía al resto del país y quién paga el envío). Si preguntan por una ciudad donde no se paga al recibir, explícale con cariño cómo se envía al resto del país. No prometas días ni horas que no estén en los datos.',
             '6. Si te comparan con otros productos o con la competencia, no hables mal de nadie ni inventes comparaciones: cuenta con entusiasmo lo que hace este producto según los datos.',
-            '7. El formulario: llenarlo es hacer un pedido real (la asesora llama para coordinar la entrega y se paga al recibir); no es para consultas. Mientras el cliente tenga dudas, respóndelas aquí y no lo mandes al formulario. Cuando se vea decidido (pregunta cómo pedir o cuándo le llega, o dice que lo quiere), invítalo a hacer su pedido con el botón de abajo y recuérdale que es un pedido real. Pon "listo": true solo en ese caso.',
+            '7. El formulario: llenarlo es hacer un pedido real; no es para consultas. Si preguntan cómo es el pedido, explícalo con las políticas de la tienda (una asesora le escribe por WhatsApp para coordinar la dirección de entrega). Mientras el cliente tenga dudas, respóndelas aquí y no lo mandes al formulario. Cuando se vea decidido (pregunta cómo pedir o cuándo le llega, o dice que lo quiere), invítalo a hacer su pedido con el botón de abajo y recuérdale que es un pedido real. Pon "listo": true solo en ese caso.',
             '8. Nunca pidas nombre, dirección ni otros datos personales: eso lo pide el formulario. El único dato que puedes pedir es el número de WhatsApp, y solo en el caso de la regla 2. Si el cliente escribe sus datos, no los repitas.',
             '9. Si la persona ya compró y escribe por una devolución, un cambio, un reclamo, una garantía o para saber de su pedido, no le vendas ni la mandes al formulario: con empatía, dale el teléfono de "Atención al cliente" de los datos para que la atiendan por ahí, y no le pidas datos. Si los datos no traen ese teléfono, dile que nuestro equipo de atención al cliente la ayuda con eso.',
             "10. Solo hablas de este producto, de cómo pedirlo y de su atención después de comprarlo. Si preguntan otra cosa, dile con amabilidad que solo puedes ayudarle con dudas de {$name}, por ejemplo: \"Me encantaría, pero solo puedo ayudarte con dudas de {$name} 😊 ¿Qué te gustaría saber?\"",
@@ -290,9 +302,15 @@ final class StoreChatRules
         }
         $lines[] = $facts['price_bs'] !== null ? 'Precio de hoy: ' . self::bs($facts['price_bs'])
             : 'Precio de hoy: no hay precio en bolívares hoy (lo indica la asesora cuando llene el formulario).';
-        $lines[] = 'Pago: al recibir el producto (contra entrega).';
+        // .162: las políticas de la tienda del dueño (pago y envíos, el pedido, las ofertas)
+        $policies = trim((string) ($facts['policies'] ?? ''));
+        $lines[] = $policies !== '' ? "Políticas de la tienda (pago, envíos, cómo es el pedido y ofertas):\n{$policies}" : 'Pago: al recibir el producto (contra entrega).';
         $lines[] = $facts['cities'] !== [] ? 'Entregas con pago al recibir en: ' . implode(', ', $facts['cities']) . '.'
             : 'Entregas: la asesora confirma si llegamos a la ciudad del cliente.';
+        // .162: donde este producto no se entrega al recibir, va como el resto del país (por las agencias de envío)
+        if (($facts['other_cities'] ?? []) !== []) {
+            $lines[] = 'Este producto no se entrega con pago al recibir en: ' . implode(', ', $facts['other_cities']) . '. Ahí va como al resto del país.';
+        }
         $phone = (string) ($facts['support_phone'] ?? '');
         $lines[] = $phone !== '' ? "Atención al cliente (solo para quien ya compró: devoluciones, cambios, reclamos o saber de su pedido): {$phone}"
             : 'Atención al cliente: no hay teléfono (a quien ya compró, dile que nuestro equipo de atención al cliente lo ayuda).';
@@ -346,13 +364,7 @@ final class StoreChatRules
                 return "El número «{$n}» no está en los datos";
             }
         }
-        $said = self::plainWords($answer);
-        foreach ($facts['other_cities'] ?? [] as $city) {
-            if (preg_match('/\b' . preg_quote(self::plainWords($city), '/') . '\b/u', $said)) {
-                return "Habla de {$city}, donde este producto no se entrega";
-            }
-        }
-
+        // .162: ya no se paran las ciudades: a las que no tienen pago al recibir se les explica el envío al resto del país
         return null;
     }
 
@@ -400,7 +412,7 @@ final class StoreChatRules
             return ['respuesta' => $head . self::DOLLARS, 'sabe' => true, 'listo' => false];
         }
         if (preg_match('/\b(precio|cuesta|vale|cuanto)\b/u', $q)) {
-            return ['respuesta' => $head . ($facts['price_bs'] !== null ? 'Hoy cuesta ' . self::bs($facts['price_bs']) . ' y pagas al recibir.' : self::NO_PRICE),
+            return ['respuesta' => $head . ($facts['price_bs'] !== null ? 'Hoy cuesta ' . self::bs($facts['price_bs']) . ' 😊' : self::NO_PRICE),
                 'sabe' => true, 'listo' => $ready];
         }
         if ($ready) {

@@ -59,7 +59,7 @@ class StoreChatReport
                 continue;
             }
             $facts = $this->facts->for($profile->product, $now);
-            $out[] = ['id' => $profile->product->id, 'name' => $facts['name'], 'price_bs' => $facts['price_bs'],
+            $out[] = ['id' => $profile->product->id, 'name' => $facts['name'], 'price_bs' => $facts['price_bs'], 'price_issue' => $facts['price_issue'],
                 'enabled' => in_array($profile->product->id, $enabled, true), 'last_exam' => $exams[$profile->product->id] ?? null];
         }
         usort($out, fn ($a, $b) => [!$a['enabled'], $a['name']] <=> [!$b['enabled'], $b['name']]);

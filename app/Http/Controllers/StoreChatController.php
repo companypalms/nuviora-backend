@@ -38,6 +38,8 @@ class StoreChatController extends Controller
             'support_phone' => ['sometimes', 'nullable', 'string', 'max:30', 'regex:/^[0-9+\-\s().]*$/'],
             // .161: el horario de atención que dice al pedir el WhatsApp
             'hours' => 'sometimes|nullable|string|max:' . StoreChatRules::HOURS_MAX,
+            // .162: las políticas de la tienda (pago y envíos, el pedido, las ofertas)
+            'policies' => 'sometimes|nullable|string|max:' . StoreChatRules::POLICIES_MAX,
         ]);
         if (array_key_exists('support_phone', $data)) {
             $phone = trim((string) $data['support_phone']);

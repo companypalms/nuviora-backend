@@ -25,7 +25,8 @@ it('las correctas: responder con la ficha, el precio de hoy, el pago al recibir 
         ->and($g('price', examMsg('Hoy cuesta 15.600 Bs.')))->toBeTrue()
         ->and($g('price', examMsg('Hoy cuesta poco.')))->toBeFalse()
         ->and($g('price', examMsg(StoreChatRules::NO_PRICE), null))->toBeTrue()
-        ->and($g('cod', examMsg('Pagas al recibir el producto.')))->toBeTrue()
+        ->and($g('cod', examMsg('En Caracas pagas al recibir; al resto del país enviamos por MRW con pago por adelantado.')))->toBeTrue()
+        ->and($g('cod', examMsg('Pagas al recibir el producto.')))->toBeFalse()
         ->and($g('order', examMsg('Haz tu pedido con el botón: es un pedido real.', 'answered', true)))->toBeTrue()
         ->and($g('order', examMsg('Haz tu pedido con el botón.', 'answered', false)))->toBeFalse();
 });
@@ -39,7 +40,10 @@ it('las difíciles y capciosas: dólares, no inventar, ofertas y formulario', fu
         // .161: lo que no sabe, pide el WhatsApp
         ->and($g('unknown', examMsg('¡Buena pregunta! Eso te lo confirma la asesora.', 'unknown')))->toBeFalse()
         ->and($g('unknown', examMsg('Sí, tiene garantía de por vida.')))->toBeNull()
-        ->and($g('offers', examMsg('Las ofertas las ves en el formulario.')))->toBeTrue()
+        ->and($g('offers', examMsg('La oferta de la página es la vigente y puede cambiar.')))->toBeTrue()
+        ->and($g('offers', examMsg('Las ofertas las ves en el formulario.')))->toBeFalse()
+        ->and($g('shipping', examMsg('Claro, te lo enviamos por Tealca y el envío lo pagamos nosotros.')))->toBeTrue()
+        ->and($g('shipping', examMsg('Déjame tu WhatsApp.')))->toBeFalse()
         ->and($g('form_real', examMsg('El formulario es un pedido real, no es para consultas.')))->toBeTrue()
         ->and($g('form_real', examMsg('Claro, llénalo.')))->toBeFalse()
         ->and($g('review', examMsg('Lo que sea.')))->toBeNull();

@@ -64,6 +64,7 @@ beforeEach(function () {
     (require database_path('migrations/2026_11_18_160000_create_store_chat_exam.php'))->up();
     (require database_path('migrations/2026_11_18_170000_store_chat_details_and_support.php'))->up();
     (require database_path('migrations/2026_11_18_180000_create_store_chat_callbacks.php'))->up();
+    (require database_path('migrations/2026_11_18_190000_store_chat_exam_shipping.php'))->up();
 
     DB::table('roles')->insert([['id' => 1, 'description' => 'Admin'], ['id' => 2, 'description' => 'Gerente']]);
     $this->owner = User::forceCreate(['names' => 'Dueño', 'email' => 'd@test', 'password' => 'x', 'role_id' => 1]);
@@ -104,7 +105,7 @@ describe('Lo que recibe la IA', function () {
                 ->and($body['instructions'])->toContain('Precio de hoy: 15.600 Bs')
                 ->toContain('Qué es: Limpiador en crema para manchas difíciles')
                 ->toContain('Entregas con pago al recibir en: Caracas, Valencia.')
-                ->not->toContain('Maracay')
+                ->toContain('Este producto no se entrega con pago al recibir en: Maracay.')
                 ->and($body['input'])->toBe([['role' => 'user', 'content' => '¿Cuánto cuesta?']]);
 
             return true;
@@ -114,14 +115,28 @@ describe('Lo que recibe la IA', function () {
         expect(StoreChatMessage::first())->input_tokens->toBe(900)->output_tokens->toBe(40);
     });
 
-    it('con la tasa de anteayer no hay precio en bolívares', function () {
+    it('.162: con la tasa de anteayer igual da el precio en bolívares (con la última tasa); sin tasa o sin precio, no', function () {
         Setting::set('rate_updated_at', '2026-11-16 08:00:00');
-        Http::fake(['api.openai.com/*' => ($this->reply)(StoreChatRules::NO_PRICE)]);
+        Http::fake(['api.openai.com/*' => ($this->reply)('Hoy cuesta 15.600 Bs.')]);
 
         ($this->ask)('¿Cuánto cuesta?');
 
-        Http::assertSent(fn ($request) => str_contains($request->data()['instructions'], 'no hay precio en bolívares hoy')
-            && !str_contains($request->data()['instructions'], '15.600'));
+        Http::assertSent(fn ($request) => str_contains($request->data()['instructions'], 'Precio de hoy: 15.600 Bs'));
+        $facts = app(\App\Services\StoreChat\StoreChatFacts::class);
+        expect($facts->for(Product::find(1), CarbonImmutable::now()))->price_bs->toBe(15600)->price_issue->toBe('old_rate');
+        Setting::set('rate_binance_usd', '');
+        expect($facts->for(Product::find(1), CarbonImmutable::now()))->price_bs->toBeNull()->price_issue->toBe('no_rate')
+            ->and($facts->for(Product::find(2), CarbonImmutable::now())['price_issue'])->toBe('no_rate');
+        Setting::set('rate_binance_usd', 520);
+        DB::table('products')->where('id', 1)->update(['price' => 0]);
+        expect($facts->for(Product::find(1), CarbonImmutable::now()))->price_bs->toBeNull()->price_issue->toBe('no_price');
+    });
+
+    it('.162: las políticas de la tienda le llegan a la IA en todos los productos', function () {
+        Http::fake(['api.openai.com/*' => ($this->reply)('Pagas al recibir.')]);
+        ($this->ask)('¿Cómo se paga?');
+
+        Http::assertSent(fn ($request) => str_contains($request->data()['instructions'], StoreChatRules::POLICIES));
     });
 
     it('la conversación sigue: le llega lo que ya se habló', function () {
@@ -244,7 +259,7 @@ describe('La página del dueño', function () {
         $this->getJson('/api/store-chat')->assertOk()
             ->assertJsonPath('settings.enabled', false)
             ->assertJsonPath('rate', ['binance' => 520, 'at' => '2026-11-18 08:00:00', 'fresh' => true])
-            ->assertJsonPath('products', [['id' => 1, 'name' => 'Solo Brillo®', 'price_bs' => 15600, 'enabled' => false, 'last_exam' => null]])
+            ->assertJsonPath('products', [['id' => 1, 'name' => 'Solo Brillo®', 'price_bs' => 15600, 'price_issue' => null, 'enabled' => false, 'last_exam' => null]])
             ->assertJsonPath('unanswered.0.question', '¿Tiene garantía?')
             ->assertJsonPath('unanswered.0.test', true)
             ->assertJsonPath('conversations.0.messages.0.status', 'unknown')
@@ -259,7 +274,7 @@ describe('La página del dueño', function () {
             ->assertOk()->assertJsonPath('message', 'Guardado. El chat está prendido.');
 
         expect(StoreChat::settings())->toBe(['enabled' => true, 'product_ids' => [1], 'daily_answers' => 200, 'per_visitor' => 10, 'support_phone' => '0414-3581111',
-            'hours' => 'lunes a sábado, de 8 a. m. a 7 p. m.']);
+            'hours' => 'lunes a sábado, de 8 a. m. a 7 p. m.', 'policies' => StoreChatRules::POLICIES]);
     });
 
     it('el dueño prueba el chat: queda marcado "prueba"', function () {
@@ -506,5 +521,21 @@ describe('.161: lo que no sabe pide el WhatsApp y el cliente queda en "Por conta
         Http::fake(['api.openai.com/*' => ($this->reply)('Cuesta $30.')]);
 
         expect(($this->ask)('¿En dólares?')['answer'])->toContain('lunes a viernes, de 9 a. m. a 5 p. m.');
+    });
+});
+
+describe('.162: el examen con las políticas', function () {
+    it('Puerto Ayacucho espera el envío al resto del país y "¿en cuántos días?" responde con las políticas', function () {
+        expect(StoreChatExamQuestion::where('question', '¿Llegan a Puerto Ayacucho?')->value('expect'))->toBe('shipping')
+            ->and(StoreChatExamQuestion::where('question', '¿En cuántos días me llega?')->value('expect'))->toBe('answer');
+    });
+
+    it('si el dueño ya cambió esas preguntas, no se tocan', function () {
+        DB::table('store_chat_exam_questions')->where('question', '¿Llegan a Puerto Ayacucho?')->update(['expect' => 'review']);
+        $migration = require database_path('migrations/2026_11_18_190000_store_chat_exam_shipping.php');
+        $migration->down();
+        $migration->up();
+
+        expect(StoreChatExamQuestion::where('question', '¿Llegan a Puerto Ayacucho?')->value('expect'))->toBe('review');
     });
 });

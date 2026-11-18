@@ -38,7 +38,7 @@ describe('Lo que sabe la IA', function () {
             ->toContain('Precio de hoy: 15.600 Bs')
             ->toContain('Pago: al recibir el producto (contra entrega).')
             ->toContain('Entregas con pago al recibir en: Caracas, Valencia.')
-            ->not->toContain('Maracay');
+            ->not->toContain('Entregas con pago al recibir en: Caracas, Maracay');
     });
 
     it('las reglas del dueño: nunca dólares, el formulario es un pedido real, no inventa, no pide datos', function () {
@@ -92,7 +92,7 @@ describe('Lo que sabe la IA', function () {
 
     it('el texto del formulario y el botón son fijos', function () {
         expect(StoreChatRules::FORM_NOTE)->toContain('pedido real')->toContain('No es para consultas')
-            ->and(StoreChatRules::BUTTON)->toBe('Hacer mi pedido (pagas al recibir)');
+            ->and(StoreChatRules::BUTTON)->toBe('Hacer mi pedido');
     });
 });
 
@@ -138,9 +138,9 @@ describe('La revisión antes de enviar', function () {
             ->and(StoreChatRules::check("1. Aplícalo\n2. Frota", storeFacts()))->toBeNull();
     });
 
-    it('para una ciudad donde ese producto no se entrega', function () {
-        expect(StoreChatRules::check('Sí, llegamos a Maracay.', storeFacts()))->toBe('Habla de Maracay, donde este producto no se entrega')
-            ->and(StoreChatRules::check('Sí, llegamos a Caracas.', storeFacts()))->toBeNull();
+    it('.162: las ciudades ya no se paran: donde no hay pago al recibir, se explica el envío al resto del país', function () {
+        expect(StoreChatRules::check('A Maracay te lo enviamos por MRW.', storeFacts()))->toBeNull()
+            ->and(StoreChatRules::data(storeFacts()))->toContain('Este producto no se entrega con pago al recibir en: Maracay. Ahí va como al resto del país.');
     });
 
     it('los números se comparan sin separadores ni decimales en cero', function () {
@@ -160,10 +160,10 @@ describe('Datos personales', function () {
 describe('Los ajustes', function () {
     it('apagado por defecto y con topes en su rango', function () {
         expect(StoreChatRules::settings(null))->toBe(['enabled' => false, 'product_ids' => [], 'daily_answers' => 300, 'per_visitor' => 20, 'support_phone' => '0414-3581111',
-            'hours' => 'lunes a sábado, de 8 a. m. a 7 p. m.'])
+            'hours' => 'lunes a sábado, de 8 a. m. a 7 p. m.', 'policies' => StoreChatRules::POLICIES])
             ->and(StoreChatRules::settings(['enabled' => true, 'product_ids' => ['5', 5, 'x', 0], 'daily_answers' => 1, 'per_visitor' => 999]))
             ->toBe(['enabled' => true, 'product_ids' => [5], 'daily_answers' => 10, 'per_visitor' => 100, 'support_phone' => '0414-3581111',
-                'hours' => 'lunes a sábado, de 8 a. m. a 7 p. m.']);
+                'hours' => 'lunes a sábado, de 8 a. m. a 7 p. m.', 'policies' => StoreChatRules::POLICIES]);
     });
 
     it('sin qué es, para qué sirve o cómo funciona no hay ficha', function () {
@@ -231,7 +231,7 @@ describe('.161: lo que no sabe pide el WhatsApp (con el horario) y no habla de "
         expect($rules)->toContain('te deje su número de WhatsApp y una asesora le responde en nuestro horario de atención (el de los datos); no digas que le escriben enseguida')
             ->toContain('Horario de atención de las asesoras: lunes a sábado, de 8 a. m. a 7 p. m.')
             ->toContain('El único dato que puedes pedir es el número de WhatsApp')
-            ->toContain('pídele su WhatsApp como en la regla 2 para que una asesora le confirme si llegamos')
+            ->toContain('explícale con cariño cómo se envía al resto del país')
             ->and(StoreChatRules::askPhone('lunes a sábado, de 8 a. m. a 7 p. m.'))
             ->toBe('¡Buena pregunta! 😊 Para darte la respuesta exacta, déjame tu número de WhatsApp y una asesora te responde en nuestro horario de atención: lunes a sábado, de 8 a. m. a 7 p. m. 💛')
             ->and(StoreChatRules::phoneSaved('lunes a sábado, de 8 a. m. a 7 p. m.'))
@@ -266,5 +266,38 @@ describe('.161: lo que no sabe pide el WhatsApp (con el horario) y no habla de "
     it('el horario se guarda en los ajustes (vacío si el dueño lo borra)', function () {
         expect(StoreChatRules::settings(['hours' => '  lunes a viernes, de 9 a 5  ']))->toMatchArray(['hours' => 'lunes a viernes, de 9 a 5'])
             ->and(StoreChatRules::settings(['hours' => '']))->toMatchArray(['hours' => '']);
+    });
+});
+
+describe('.162: las políticas de la tienda, el botón y frases neutras', function () {
+    it('las políticas del dueño van en los datos de todos los productos y valen igual que la ficha', function () {
+        $facts = storeFacts(['policies' => StoreChatRules::POLICIES]);
+        $rules = StoreChatRules::instructions($facts);
+
+        expect(StoreChatRules::POLICIES)->toContain('en Caracas, Valencia y Maracay pagas al recibir')
+            ->toContain('el pago es por adelantado y enviamos todas las tardes por MRW, Tealca o Zoom')
+            ->toContain('te mandamos el número de guía para que lo retires. El envío lo pagamos nosotros.')
+            ->toContain('una asesora te escribe por WhatsApp para coordinar la dirección de entrega')
+            ->toContain('Todas las entregas se hacen el mismo día, dentro de nuestro horario laboral.')
+            ->toContain('la oferta que está en la página es la vigente, y puede cambiar o quitarse en cualquier momento')
+            ->and($rules)->toContain("Políticas de la tienda (pago, envíos, cómo es el pedido y ofertas):\n" . StoreChatRules::POLICIES)
+            ->toContain('explícalos con las políticas de la tienda de los datos')
+            ->toContain('De ofertas y descuentos di solo lo que dicen las políticas de la tienda')
+            ->not->toContain('Pago: al recibir el producto (contra entrega).');
+    });
+
+    it('el botón ya no dice "pagas al recibir" y el texto habla del WhatsApp', function () {
+        expect(StoreChatRules::BUTTON)->toBe('Hacer mi pedido')
+            ->and(StoreChatRules::FORM_NOTE)->toContain('una asesora te escribe por WhatsApp para coordinar la dirección de entrega')
+            ->not->toContain('pagas al recibir');
+    });
+
+    it('frases neutras: nunca "lista/listo"', function () {
+        expect(StoreChatRules::instructions(storeFacts()))->toContain('nunca "listo/lista", "seguro/segura", "interesado/interesada"');
+    });
+
+    it('las políticas se cambian en los ajustes (vacías si el dueño las borra)', function () {
+        expect(StoreChatRules::settings(['policies' => '  Solo pago al recibir.  ']))->toMatchArray(['policies' => 'Solo pago al recibir.'])
+            ->and(StoreChatRules::settings(['policies' => '']))->toMatchArray(['policies' => '']);
     });
 });

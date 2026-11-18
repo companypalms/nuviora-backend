@@ -12,8 +12,8 @@ use Carbon\CarbonImmutable;
 /**
  * `.158`: lo que sabe el chat de la tienda de un producto, leído del sistema. Solo lee.
  * - la ficha (Meta Ads › Ficha del producto, `.64`); los buyer personas y "Lo que sabemos" no: son estrategia;
- * - el precio de hoy en bolívares: el precio del producto por la tasa Binance (la que usan las órdenes), solo si la tasa
- *   se actualizó hoy o ayer;
+ * - el precio de hoy en bolívares: el precio del producto por la tasa Binance (la que usan las órdenes); `.162`: con la última
+ *   tasa aunque tenga más de un día (el dueño: "debe responder el precio"); la página avisa si está vieja (price_issue);
  * - las ciudades donde ese producto se entrega (las que no están marcadas "no disponible" en Inventario);
  * - `.159`: los "Más detalles" de la ficha (solo para el chat) y el teléfono de atención al cliente de los ajustes.
  */
@@ -21,7 +21,7 @@ class StoreChatFacts
 {
     /**
      * @return array{product_id: int, name: string, ficha: array<string, ?string>, price_usd: float, price_bs: ?int, rate: ?float,
-     *               rate_at: ?string, rate_fresh: bool, cities: list<string>, other_cities: list<string>, details: ?string, support_phone: string, hours: string}
+     *               rate_at: ?string, rate_fresh: bool, cities: list<string>, other_cities: list<string>, details: ?string, support_phone: string, hours: string, price_issue: ?string, policies: string}
      */
     public function for(Product $product, CarbonImmutable $now): array
     {
@@ -46,7 +46,14 @@ class StoreChatFacts
                 'key_info' => $profile?->key_info,
             ],
             'price_usd' => (float) $product->price,
-            'price_bs' => $fresh ? StoreChatRules::priceBs((float) $product->price, $rate) : null,
+            'price_bs' => StoreChatRules::priceBs((float) $product->price, $rate),
+            // .162: por qué no hay precio (o si la tasa está vieja), para la página del dueño
+            'price_issue' => match (true) {
+                (float) $product->price <= 0 => 'no_price',
+                $rate === null => 'no_rate',
+                !$fresh => 'old_rate',
+                default => null,
+            },
             'rate' => $rate,
             'rate_at' => $rateAt,
             'rate_fresh' => $fresh,
@@ -55,6 +62,7 @@ class StoreChatFacts
             'details' => $profile?->chat_details,
             'support_phone' => $settings['support_phone'],
             'hours' => $settings['hours'],
+            'policies' => $settings['policies'],
         ];
     }
 
