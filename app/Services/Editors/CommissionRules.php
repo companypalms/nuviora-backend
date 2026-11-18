@@ -21,13 +21,17 @@ use Carbon\CarbonImmutable;
  *
  * El día de pago, de madrugada, la quincena se congela: lo que se paga ya no se mueve. Lo que esa quincena todavía suma
  * después (los pedidos que se entregan más tarde, lo del mismo día de pago) se le suma a la siguiente ("carry").
+ *
+ * `.157` (dueño, 2026-11-18: "yo al editor ya le pagué su comisión hasta el 13 de este mes. Para el último me toca pagarle
+ * desde el 14 hasta el último"): se cuenta desde un día cualquiera ("since"). Si cae a mitad de una quincena, esos días se
+ * suman a la quincena siguiente: el primer pago (30/11) cubre del 14 al 30.
  */
 final class CommissionRules
 {
     public const SETTING = 'finance.editor_leader_commission';
 
-    /** El 1–15/11 ya se lo pagó el dueño a mano: cuenta desde el 16/11. */
-    public const DEFAULTS = ['reserve_pct' => 10.0, 'pct' => 1.0, 'since' => '2026-11-16'];
+    /** `.157`: el 1–13/11 ya se lo pagó el dueño a mano: cuenta desde el 14/11 (el 14 y el 15 van con el pago del 30/11). */
+    public const DEFAULTS = ['reserve_pct' => 10.0, 'pct' => 1.0, 'since' => '2026-11-14'];
 
     /** Lo que se le muestra al líder unos días después de cobrar. */
     public const PAID_NOTICE_DAYS = 3;
@@ -43,9 +47,40 @@ final class CommissionRules
         return [
             'reserve_pct' => round(min(90.0, max(0.0, $reserve)), 2),
             'pct' => round(min(100.0, max(0.0, $pct)), 2),
-            // siempre desde el principio de una quincena
-            'since' => self::quincena($since)['start'],
+            // .157: desde ese día (si cae a mitad de una quincena, esos días van con la siguiente: first)
+            'since' => CarbonImmutable::parse($since)->toDateString(),
         ];
+    }
+
+    /**
+     * `.157`: el primer periodo que se paga con el sistema. Si "since" es el primer día de una quincena, es esa quincena; si
+     * cae a mitad, va de "since" al final de la quincena siguiente (con su día de pago).
+     *
+     * @return array{start: string, end: string, payday: string}
+     */
+    public static function first(string $since): array
+    {
+        $q = self::quincena($since);
+
+        return $q['start'] === $since ? $q : ['start' => $since] + self::next($q);
+    }
+
+    /**
+     * `.157`: el periodo que se paga en la quincena de un día (por su último día), o null si esa quincena no se paga con el
+     * sistema (antes de "since", o los días que se suman al primer pago).
+     *
+     * @return ?array{start: string, end: string, payday: string}
+     */
+    public static function period(string $date, string $since): ?array
+    {
+        $q = self::quincena($date);
+        $first = self::first($since);
+
+        return match (true) {
+            $q['end'] < $first['end'] => null,
+            $q['end'] === $first['end'] => $first,
+            default => $q,
+        };
     }
 
     /**

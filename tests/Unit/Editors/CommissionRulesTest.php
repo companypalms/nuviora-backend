@@ -49,10 +49,25 @@ describe('La cuenta', function () {
             ->and(CommissionRules::amount(10.0, 2.5))->toBe(12.5);
     });
 
-    it('los ajustes guardados quedan en su rango y "desde" siempre al principio de una quincena', function () {
-        expect(CommissionRules::settings(null))->toBe(['reserve_pct' => 10.0, 'pct' => 1.0, 'since' => '2026-11-16'])
+    it('los ajustes guardados quedan en su rango; "desde" es el 14/11 (.157: el dueño pagó a mano hasta el 13)', function () {
+        expect(CommissionRules::settings(null))->toBe(['reserve_pct' => 10.0, 'pct' => 1.0, 'since' => '2026-11-14'])
             ->and(CommissionRules::settings(['reserve_pct' => 150, 'pct' => -2, 'since' => '2026-12-20']))
-            ->toBe(['reserve_pct' => 90.0, 'pct' => 0.0, 'since' => '2026-12-16']);
+            ->toBe(['reserve_pct' => 90.0, 'pct' => 0.0, 'since' => '2026-12-20']);
+    });
+
+    it('.157: el primer pago cubre del 14 al 30/11 (el 14 y el 15 se suman a la quincena siguiente)', function () {
+        expect(CommissionRules::first('2026-11-14'))->toBe(['start' => '2026-11-14', 'end' => '2026-11-30', 'payday' => '2026-11-30'])
+            // si empieza el primer día de una quincena, es esa quincena
+            ->and(CommissionRules::first('2026-11-16'))->toBe(['start' => '2026-11-16', 'end' => '2026-11-30', 'payday' => '2026-11-30'])
+            ->and(CommissionRules::first('2026-12-01'))->toBe(['start' => '2026-12-01', 'end' => '2026-12-15', 'payday' => '2026-12-15']);
+    });
+
+    it('.157: qué se paga en cada quincena: nada el 15/11, del 14 al 30 el 30/11 y desde diciembre, normal', function () {
+        expect(CommissionRules::period('2026-11-15', '2026-11-14'))->toBeNull()
+            ->and(CommissionRules::period('2026-10-31', '2026-11-14'))->toBeNull()
+            ->and(CommissionRules::period('2026-11-30', '2026-11-14'))->toBe(['start' => '2026-11-14', 'end' => '2026-11-30', 'payday' => '2026-11-30'])
+            ->and(CommissionRules::period('2026-12-15', '2026-11-14'))->toBe(['start' => '2026-12-01', 'end' => '2026-12-15', 'payday' => '2026-12-15'])
+            ->and(CommissionRules::period('2026-12-31', '2026-11-14'))->toBe(['start' => '2026-12-16', 'end' => '2026-12-31', 'payday' => '2026-12-31']);
     });
 });
 

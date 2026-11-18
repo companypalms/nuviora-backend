@@ -84,7 +84,7 @@ class Commissions
         $n = 0;
         foreach (self::leaders() as $leader) {
             $last = $this->lastFrozen($leader->id);
-            $q = $last ? CommissionRules::next(self::range($last)) : CommissionRules::quincena($s['since']);
+            $q = $last ? CommissionRules::next(self::range($last)) : CommissionRules::first($s['since']);
             for (; $q['payday'] <= $today; $q = CommissionRules::next($q)) {
                 $this->freezeOne($leader->id, $q, $s, $now);
                 $n++;
@@ -103,7 +103,7 @@ class Commissions
         $this->freeze($now);
         $today = $now->toDateString();
         $last = $this->lastFrozen($leader->id);
-        $q = $last ? CommissionRules::next(self::range($last)) : CommissionRules::quincena(self::settings()['since']);
+        $q = $last ? CommissionRules::next(self::range($last)) : CommissionRules::first(self::settings()['since']);
         $amount = $q['start'] > $today ? 0.0 : $this->live($leader->id, $q, $last, $now);
         $previous = $last?->amount_usd;
         $bar = CommissionRules::bar($amount, $previous, $q, $today);
@@ -122,14 +122,16 @@ class Commissions
 
     /**
      * Lo que dice el recordatorio del dueño de una quincena (por su último día): cada líder con su monto (congelado, o lo
-     * de hasta ahora), o null si esa quincena no cuenta (antes de "since").
+     * de hasta ahora) y el periodo que se paga (`.157`: el primero puede empezar a mitad de la quincena anterior), o null si
+     * esa quincena no se paga con el sistema.
      *
-     * @return ?list<array{id: int, name: string, amount: ?float, frozen: bool}>
+     * @return ?list<array{id: int, name: string, amount: ?float, frozen: bool, start: string, end: string}>
      */
     public function forReminder(string $due, CarbonImmutable $now): ?array
     {
-        $q = CommissionRules::quincena($due);
-        if ($q['start'] < self::settings()['since']) {
+        $since = self::settings()['since'];
+        $q = CommissionRules::period($due, $since);
+        if ($q === null) {
             return null;
         }
         $this->freeze($now);
@@ -138,13 +140,13 @@ class Commissions
             $name = PersonName::of($leader->names, $leader->surnames) ?: "Usuario {$leader->id}";
             $frozen = EditorCommission::where('user_id', $leader->id)->whereDate('period_start', $q['start'])->first();
             if ($frozen) {
-                $rows[] = ['id' => $leader->id, 'name' => $name, 'amount' => $frozen->amount_usd, 'frozen' => true];
+                $rows[] = ['id' => $leader->id, 'name' => $name, 'amount' => $frozen->amount_usd, 'frozen' => true, 'start' => $q['start'], 'end' => $q['end']];
                 continue;
             }
             $last = $this->lastFrozen($leader->id);
-            $isNext = $last ? CommissionRules::next(self::range($last))['start'] === $q['start'] : $q['start'] === self::settings()['since'];
+            $isNext = $last ? CommissionRules::next(self::range($last))['start'] === $q['start'] : $q['start'] === CommissionRules::first($since)['start'];
             $amount = $q['start'] <= $now->toDateString() && $isNext ? $this->live($leader->id, $q, $last, $now) : null;
-            $rows[] = ['id' => $leader->id, 'name' => $name, 'amount' => $amount, 'frozen' => false];
+            $rows[] = ['id' => $leader->id, 'name' => $name, 'amount' => $amount, 'frozen' => false, 'start' => $q['start'], 'end' => $q['end']];
         }
 
         return $rows;
@@ -175,7 +177,8 @@ class Commissions
         $ids = self::productIds($leaderId);
         $profit = $this->profit($ids, $q, $now);
         $own = CommissionRules::own($profit, $s['reserve_pct'], $s['pct']);
-        $prev = EditorCommission::where('user_id', $leaderId)->whereDate('period_start', CommissionRules::previous($q)['start'])->first();
+        // .157: la anterior es la que terminó el día antes (la primera puede haber empezado a mitad de una quincena)
+        $prev = EditorCommission::where('user_id', $leaderId)->whereDate('period_end', CarbonImmutable::parse($q['start'])->subDay()->toDateString())->first();
         $carry = $prev ? $this->carry($prev, $ids, $now) : 0.0;
         EditorCommission::create([
             'user_id' => $leaderId, 'period_start' => $q['start'], 'period_end' => $q['end'], 'payday' => $q['payday'],

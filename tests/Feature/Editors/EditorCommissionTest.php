@@ -88,7 +88,7 @@ beforeEach(function () {
         }
     };
     app()->instance(CommissionFacts::class, $this->facts);
-    $this->nov = '2026-11-16|2026-11-30';
+    $this->nov = '2026-11-14|2026-11-30'; // .157: el primer pago, del 14 al 30
     $this->dec = '2026-12-01|2026-12-15';
 });
 
@@ -142,12 +142,12 @@ describe('El congelado de cada quincena', function () {
 
         expect(EditorCommission::count())->toBe(1);
         expect(EditorCommission::first()->only(['period_start', 'period_end', 'payday', 'profit_usd', 'reserve_pct', 'pct', 'own_usd', 'carry_usd', 'amount_usd']))
-            ->toEqual(['period_start' => CarbonImmutable::parse('2026-11-16'), 'period_end' => CarbonImmutable::parse('2026-11-30'), 'payday' => CarbonImmutable::parse('2026-11-30'),
+            ->toEqual(['period_start' => CarbonImmutable::parse('2026-11-14'), 'period_end' => CarbonImmutable::parse('2026-11-30'), 'payday' => CarbonImmutable::parse('2026-11-30'),
                 'profit_usd' => 2500.0, 'reserve_pct' => 10.0, 'pct' => 1.0, 'own_usd' => 22.5, 'carry_usd' => 0.0, 'amount_usd' => 22.5]);
     });
 
-    it('antes del 16/11 no se congela nada (esa quincena la pagó el dueño a mano)', function () {
-        $this->travelTo(CarbonImmutable::parse('2026-11-20 10:00:00'));
+    it('el 14/11 (el pago del 1 al 15) no se congela nada: el 14 y el 15 van con el pago del 30 (.157)', function () {
+        $this->travelTo(CarbonImmutable::parse('2026-11-16 10:00:00'));
         expect(app(Commissions::class)->freeze(CarbonImmutable::now()))->toBe(0)
             ->and(EditorCommission::count())->toBe(0);
     });
@@ -173,7 +173,7 @@ describe('El congelado de cada quincena', function () {
         $this->facts->profits[$this->nov] = [1 => 1000.0];
         $this->travelTo(CarbonImmutable::parse('2026-12-20 10:00:00'));
         expect(app(Commissions::class)->freeze(CarbonImmutable::now()))->toBe(2)
-            ->and(EditorCommission::orderBy('period_start')->get()->map(fn ($c) => $c->period_start->toDateString())->all())->toBe(['2026-11-16', '2026-12-01']);
+            ->and(EditorCommission::orderBy('period_start')->get()->map(fn ($c) => $c->period_start->toDateString())->all())->toBe(['2026-11-14', '2026-12-01']);
     });
 
     it('un cambio del % vale para la quincena que corre; la congelada guarda los suyos', function () {
@@ -183,13 +183,13 @@ describe('El congelado de cada quincena', function () {
         Commissions::saveSettings(10, 2);
 
         expect(EditorCommission::first()->amount_usd)->toBe(9.0)
-            ->and(Commissions::settings())->toBe(['reserve_pct' => 10.0, 'pct' => 2.0, 'since' => '2026-11-16']);
+            ->and(Commissions::settings())->toBe(['reserve_pct' => 10.0, 'pct' => 2.0, 'since' => '2026-11-14']);
     });
 });
 
 describe('Lo que ve el líder', function () {
     it('su comisión de la quincena, la barra y el día que cobra; sin la ganancia ni el %', function () {
-        $this->facts->profits['2026-11-16|2026-11-30'] = [1 => 2000.0];
+        $this->facts->profits['2026-11-14|2026-11-30'] = [1 => 2000.0];
         $this->travelTo(CarbonImmutable::parse('2026-11-20 10:00:00'));
         Sanctum::actingAs($this->leader);
 
@@ -225,7 +225,7 @@ describe('Lo que ve el líder', function () {
 });
 
 describe('El recordatorio del dueño', function () {
-    it('el 30/11 dice cuánto le paga a cada líder; el 15/11 no sale (antes del 16/11)', function () {
+    it('el 30/11 dice cuánto le paga a cada líder, del 14 al 30; el 15/11 no sale (.157)', function () {
         $this->facts->profits[$this->nov] = [1 => 2500.0];
         $this->travelTo(CarbonImmutable::parse('2026-11-25 10:00:00'));
         $facts = app(ReminderFacts::class)->editorCommissions(['2026-11-15', '2026-11-30'], CarbonImmutable::now());
@@ -233,13 +233,13 @@ describe('El recordatorio del dueño', function () {
 
         expect(ReminderRules::occurrence('editor_leader_pay', '2026-11-15', $today, $facts)['hidden'] ?? false)->toBeTrue();
         $o = ReminderRules::occurrence('editor_leader_pay', '2026-11-30', $today, $facts);
-        expect($o['details'])->toBe('Del 16/11 al 30/11: lo de hasta ahora. Se congela la madrugada del día de pago.')
+        expect($o['details'])->toBe('Del 14/11 al 30/11: lo de hasta ahora. Se congela la madrugada del día de pago.')
             ->and($o['lines'])->toBe([['label' => 'Leo', 'value' => '$22,50', 'note' => 'lo de hasta ahora']]);
 
         $this->travelTo(CarbonImmutable::parse('2026-11-30 09:00:00'));
         $facts = app(ReminderFacts::class)->editorCommissions(['2026-11-30'], CarbonImmutable::now());
         $o = ReminderRules::occurrence('editor_leader_pay', '2026-11-30', '2026-11-30', $facts);
-        expect($o['details'])->toBe('Del 16/11 al 30/11: ya está congelada; es lo que le pagas.')
+        expect($o['details'])->toBe('Del 14/11 al 30/11: ya está congelada; es lo que le pagas.')
             ->and($o['lines'][0])->toBe(['label' => 'Leo', 'value' => '$22,50', 'note' => null]);
     });
 

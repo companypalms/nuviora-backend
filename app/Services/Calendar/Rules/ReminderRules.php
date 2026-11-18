@@ -23,7 +23,7 @@ use Carbon\CarbonImmutable;
  *   aprobar, las entregas que esperan al dueño, que los editores vayan al día y la banca; y cada semana, el trabajo de los
  *   editores (lunes) y lo que aprendimos (sábado). Lo que dicen lo arma MetaReminderRules.
  * - `.116`: el ángulo que propone la IA, solo cuando hay uno por decidir (hidden: los demás días no sale).
- * - `.153`: el 15 y el último, la comisión del líder de editores de esa quincena (Editors\Commissions); antes del 16/11 o
+ * - `.153`: el 15 y el último, la comisión del líder de editores de esa quincena (Editors\Commissions); antes del 14/11 o
  *   sin líder, no sale.
  */
 final class ReminderRules
@@ -261,13 +261,14 @@ final class ReminderRules
                 break;
 
             case 'editor_leader_pay':
-                // .153: antes del 16/11 no hay nada que pagar con el sistema (esa quincena la pagó el dueño a mano)
+                // .153: antes del 14/11 no hay nada que pagar con el sistema (lo pagó el dueño a mano; .157: el 14 y el 15 van el 30/11)
                 $rows = $facts['editor_commissions'][$due] ?? null;
                 if ($rows === null || $rows === []) {
                     $out['hidden'] = true;
                     break;
                 }
-                $q = CommissionRules::quincena($due);
+                // .157: el periodo que se paga (el primero empezó el 14/11)
+                $q = isset($rows[0]['start'], $rows[0]['end']) ? ['start' => $rows[0]['start'], 'end' => $rows[0]['end']] : CommissionRules::quincena($due);
                 $frozen = count(array_filter($rows, fn ($r) => $r['frozen'])) === count($rows);
                 $out['details'] = CommissionRules::periodLabel($q) . ': ' . match (true) {
                     $q['start'] > $today => 'la comisión de esa quincena (todavía no empieza).',
