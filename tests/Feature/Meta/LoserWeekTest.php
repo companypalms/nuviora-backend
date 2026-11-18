@@ -101,3 +101,13 @@ describe('.114: "perdedor en los últimos días" mira la semana si en 3 días no
             ->and(CreativeCalls::stopIn($cr))->toBe([]);
     });
 });
+
+describe('.156: el porqué de apagar trae sus números', function () {
+    it('CRE003-FLEX-FAS-BATCH003, perdedor en todas: lo que gastó en Carabobo en su semana y tu regla', function () {
+        $m = collect(UrgentList::build(AnalysisFacts::build([1148 => flexiWeekDecision()])))->firstWhere('kind', 'stop_creatives');
+
+        expect($m['detail'][0])->toBe('CRE003-FLEX-FAS-BATCH003 en Distrito Capital: gastó $14,25 (3×C) con 1 compra. Tu C ahí es $4,79 y tu BE $7,21.')
+            ->and(collect($m['detail'])->first(fn ($l) => str_starts_with($l, 'CRE003-FLEX-FAS-BATCH003 en Carabobo: en 7 días gastó $')))->not->toBeNull()
+            ->and($m['detail'])->toContain('Tu regla: un creativo que pierde en todas las ciudades donde se probó se apaga en todas las campañas.');
+    });
+});

@@ -143,3 +143,15 @@ describe('.113: se apaga solo donde perdió; "en todas las campañas" solo si pe
             ->and($v['data'])->toBe('Aragua: Gastó $19,41 | Carabobo: Gastó $1,15 | Distrito Capital: Gastó $1,15');
     });
 });
+
+describe('.156: el porqué de apagar trae sus números', function () {
+    it('C0153 en Aragua: la razón corta, sus números con tu C y tu BE, tu regla y que en Carabobo sigue prendido', function () {
+        $facts = AnalysisFacts::build([1149 => c0153Decision()]);
+        $m = collect(UrgentList::build($facts))->firstWhere('kind', 'stop_creatives');
+
+        expect($m['why'])->toStartWith('Gastó $')
+            ->and($m['detail'][0])->toStartWith('C0153 en Aragua, en toda su vida ahí: gastó $')
+            ->and($m['detail'][1])->toStartWith('Tu regla: con 2 compras o más se le da hasta 3 veces tu C')
+            ->and(end($m['detail']))->toBe('En Carabobo sigue prendido: ahí no lo toques.');
+    });
+});

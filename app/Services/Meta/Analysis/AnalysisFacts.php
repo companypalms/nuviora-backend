@@ -62,9 +62,18 @@ final class AnalysisFacts
             $stopByCity = [];
             $stopAll = [];
             $watchByCity = [];
+            // .156: por qué se apaga cada uno, con sus números (de todos los que se apagan, no solo de los 12 que más gastaron)
+            $stopWhy = [];
+            $stopAllWhy = [];
             foreach ($creatives as $cr) {
+                $label = (string) $cr['label'];
                 foreach (CreativeCalls::stopIn($cr) as $city) {
-                    $stopByCity[$city][] = (string) $cr['label'];
+                    $stopByCity[$city][] = $label;
+                    $there = collect($cr['cities'] ?? [])->first(fn ($c) => ($c['city'] ?? null) === $city && !empty($c['why']));
+                    if ($there) {
+                        $stopWhy[$city][$label] = ['short' => StopWhy::short($there['why']), 'lines' => StopWhy::lines($label, $city, $there['why']),
+                            'others' => StopWhy::others($city, $cr['cities'] ?? [])];
+                    }
                 }
                 // .152: 3 días malos, pero su semana deja plata: no se apaga, se vigila
                 foreach ($cr['cities'] ?? [] as $c) {
@@ -74,7 +83,16 @@ final class AnalysisFacts
                 }
                 // .82: los perdedores (PARAR), que se apagan en todas las ciudades
                 if (($cr['verdict']['key'] ?? null) === 'loser') {
-                    $stopAll[] = (string) $cr['label'];
+                    $stopAll[] = $label;
+                    $lost = [];
+                    foreach ($cr['cities'] ?? [] as $c) {
+                        if (($c['key'] ?? null) === 'loser' && !empty($c['why']) && ($c['city'] ?? null) !== null) {
+                            $lost[(string) $c['city']] = $c['why'];
+                        }
+                    }
+                    if ($lost) {
+                        $stopAllWhy[$label] = StopWhy::everywhere($label, $lost);
+                    }
                 }
             }
             usort($creatives, fn ($a, $b) => ($b['week']['spend'] ?? 0) <=> ($a['week']['spend'] ?? 0));
@@ -127,6 +145,7 @@ final class AnalysisFacts
                 // .126: lo que dejó el producto en 3 y en 7 días
                 'gain' => $plan['gain'] ?? null,
                 'cities' => $cities, 'creatives' => $creatives, 'batches' => $batches, 'stop_by_city' => $stopByCity, 'stop_all' => $stopAll,
+                'stop_why' => $stopWhy, 'stop_all_why' => $stopAllWhy, // .156
                 'watch_by_city' => $watchByCity,
                 // .119: los ganadores ya apagados siguen en la fila de iteraciones (no salen en la lista del análisis)
                 'off_winners' => array_values(array_map(fn ($cr) => ['id' => $cr['id'], 'label' => $cr['label'], 'verdict_key' => $cr['verdict']['key'], 'off_winner' => true,

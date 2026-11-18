@@ -135,7 +135,9 @@ describe('.119: ZenPulse en Caracas, con los números del 9/11', function () {
             ->and($call(8)['stop_in'])->toBe([])
             ->and($stop)->toHaveCount(1)
             ->and($stop[0]['title'])->toBe('Apaga 2 creativos que aquí pierden')
-            ->and($stop[0]['detail'][0])->toBe('CREATIVO 5 27/10/2026 en Distrito Capital: 3 días: gastó $51,87 (11,7×C) · 5 compras · CPA $10,37 · C $4,44 · BE $7,61');
+            // .156: con sus números en palabras, tu C y tu BE
+            ->and($stop[0]['detail'][0])->toBe('CREATIVO 5 27/10/2026 en Distrito Capital, últimos 3 días: gastó $51,87 (11,7×C) y tuvo 5 compras (CPA $10,37). Tu C ahí es $4,44 y tu BE $7,61.')
+            ->and($stop[0]['detail'][1])->toStartWith('Fue ganador, pero tu regla apaga en una ciudad a un ganador que gasta 3 veces tu C');
     });
 
     it('cuentan como apagados para la ciudad: la lista de podar y los batches vivos', function () {

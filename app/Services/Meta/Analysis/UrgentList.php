@@ -398,9 +398,16 @@ final class UrgentList
         $names = CreativeCalls::join(array_map(fn ($l) => self::q($l), $labels));
         $shown = array_slice($labels, 0, self::LABELS_IN_WHY);
         $more = $count - count($shown);
+        // .156: por qué se apaga cada uno, con sus números y tu regla en palabras (los análisis de antes no lo traen)
+        $whys = $city ? ($p['stop_why'][$city] ?? []) : ($p['stop_all_why'] ?? []);
+        $one = $count === 1 ? ($whys[$labels[0]] ?? null) : null;
         // Sus números: en esa ciudad o, si pierde en todas, su lectura (solo los 12 que más gastaron están en el análisis)
         $lines = [];
         foreach ($labels as $label) {
+            if (isset($whys[$label])) {
+                array_push($lines, ...$whys[$label]['lines']);
+                continue;
+            }
             $cr = collect($p['creatives'] ?? [])->first(fn ($x) => (string) $x['label'] === $label);
             $there = $cr && $city ? collect($cr['cities'] ?? [])->first(fn ($x) => ($x['city'] ?? null) === $city) : null;
             $lines[] = match (true) {
@@ -419,10 +426,12 @@ final class UrgentList
             'steps' => $city ? [self::open($campaign, $short, $city), "Apaga los anuncios de {$names} (búscalos por nombre).", 'En las otras ciudades no los toques.']
                 : [$count === 1 ? 'En el buscador de Ads Manager, escribe ' . self::q($labels[0]) . '.' : "En el buscador de Ads Manager, busca cada uno: {$names}.",
                     "Apaga todos sus anuncios activos, en todas las campañas de {$short}."],
-            'why' => ($count === 1 ? '' : implode(', ', $shown) . ($more > 0 ? " y {$more} más" : '') . ' · ')
+            'why' => $one !== null ? $one['short'] : ($count === 1 ? '' : implode(', ', $shown) . ($more > 0 ? " y {$more} más" : '') . ' · ')
                 . ($city ? ($count === 1 ? 'ahí pierde' : 'ahí pierden') : ($count === 1 ? 'es perdedor con tus reglas' : 'son perdedores con tus reglas')),
-            'detail' => [...$lines, $city ? ($count === 1 ? 'Apágalo' : 'Apágalos') . " solo en {$city}: en las otras ciudades no " . ($count === 1 ? 'lo' : 'los') . ' toques.'
-                : ($count === 1 ? 'Apágalo' : 'Apágalos') . ' en todas las ciudades donde ' . ($count === 1 ? 'esté activo.' : 'estén activos.')]];
+            // .156: con un solo creativo, lo de las otras ciudades dice dónde sigue prendido (o que queda apagado del todo)
+            'detail' => [...$lines, $city && $one !== null && ($one['others'] ?? null) !== null ? $one['others']
+                : ($city ? ($count === 1 ? 'Apágalo' : 'Apágalos') . " solo en {$city}: en las otras ciudades no " . ($count === 1 ? 'lo' : 'los') . ' toques.'
+                    : ($count === 1 ? 'Apágalo' : 'Apágalos') . ' en todas las ciudades donde ' . ($count === 1 ? 'esté activo.' : 'estén activos.'))]];
     }
 
     /**

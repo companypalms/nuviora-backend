@@ -70,7 +70,7 @@ class AdRules
         }
         if ($purchases <= 1 && $times >= $this->s['loser_spend_cpa']) {
             return $this->verdict('loser', $data, 'Perdedor: gastó ' . self::num($times) . '×C con ' . ($purchases == 0 ? 'ninguna compra' : 'una sola compra') . '.',
-                $this->offProposal($unit));
+                $this->offProposal($unit)) + ['why' => $this->why('life_spend', null, $spend, $purchases, $c, $be, $estimated)];
         }
         if ($purchases >= 2 && $be !== null && $cpa >= $be) {
             // .101: con pocas compras, apenas encima del BE no alcanza: puede ser mala suerte (o un BE con pocos datos)
@@ -80,7 +80,8 @@ class AdRules
                     . self::num($this->s['loser_be_margin_pct']) . ' %.', 'Mantener; se vuelve a mirar cada día.');
             }
             if ($times >= $this->s['evaluation_cap_cpa']) {
-                return $this->verdict('loser', $data, 'Perdedor: llegó a ' . self::num($times) . '×C con el CPA en el break-even o encima.', $this->offProposal($unit));
+                return $this->verdict('loser', $data, 'Perdedor: llegó a ' . self::num($times) . '×C con el CPA en el break-even o encima.', $this->offProposal($unit))
+                    + ['why' => $this->why('life_be', null, $spend, $purchases, $c, $be, $estimated)];
             }
 
             return $this->verdict('evaluation', $data, 'En evaluación, con el CPA en el break-even o encima.',
@@ -430,6 +431,7 @@ class AdRules
         if (!($window = $this->recentWindow($recent, $week, $c * $this->s['loser_spend_cpa'], $be))) {
             return null;
         }
+        $recent3 = $recent;
         [$recent, $days] = $window;
         $spend = (float) ($recent['spend'] ?? 0);
         $purchases = (float) ($recent['purchases'] ?? 0);
@@ -447,7 +449,8 @@ class AdRules
         return $this->verdict('loser', $data, "Perdedor en los últimos {$days} días: gastó " . self::num($spend / $c) . '×C '
             . ($purchases == 0 ? 'sin compras' : 'con el CPA ' . self::num(round(($spend / $purchases / $be - 1) * 100)) . ' % encima del break-even')
             . ' (en toda su vida: ' . mb_strtolower($state['label']) . ').',
-            $this->offProposal('creativo'));
+            $this->offProposal('creativo')) + ['why' => $this->why('recent', $days, $spend, $purchases, $c, $be, $estimated, ['life' => mb_strtolower($state['label']),
+                'spend3' => (float) ($recent3['spend'] ?? 0), 'week' => $days === 3 ? self::totals($week) : null])];
     }
 
     /**
@@ -476,6 +479,7 @@ class AdRules
         if (!($window = $this->recentWindow($recent, $week, $cap, $be, $seen))) {
             return null;
         }
+        $recent3 = $recent;
         [$recent, $days] = $window;
         $spend = (float) ($recent['spend'] ?? 0);
         $raw = (float) ($recent['purchases'] ?? 0);
@@ -495,7 +499,9 @@ class AdRules
         return array_merge($state, ['stop' => true, 'data' => $data,
             'reading' => "Pierde dinero: en los últimos {$days} días gastó " . self::num($spend / $c) . '×C '
                 . ($purchases == 0 ? 'sin compras' : 'con el CPA ' . self::num(round(($spend / $purchases / $be - 1) * 100)) . ' % encima del break-even') . $adjusted . '. ' . $state['reading'],
-            'proposal' => 'Apagarlo en esta ciudad e iterarlo en un batch nuevo: fue ganador.']);
+            'proposal' => 'Apagarlo en esta ciudad e iterarlo en un batch nuevo: fue ganador.',
+            'why' => $this->why('failing', $days, $spend, $raw, $c, $be, $estimated, ['spend3' => (float) ($recent3['spend'] ?? 0),
+                'week' => $days === 3 ? self::totals($week) : null, 'seen_pct' => $seen < 1 ? $tracking : null])]);
     }
 
     /**
@@ -689,6 +695,26 @@ class AdRules
             in_array('landing_speed', $keys, true) => 'Revisar la velocidad de la landing.',
             default => 'Vigilar 1 o 2 días más antes de apagarlo y revisarlo en Ads Manager.',
         };
+    }
+
+    /**
+     * `.156` (dueño, 2026-11-18: "ármame la ficha de los números en el porqué"): los números con que una regla apaga algo y
+     * los límites de esa regla (los de sus ajustes), para que la misión los diga en palabras (Analysis\StopWhy).
+     *
+     * @param string $rule life_spend (2×C con 0 o 1 compra), life_be (3×C encima del BE), recent (`.86`/`.114`) o failing (`.119`)
+     * @param ?int $days 3 o 7 (lo reciente); null = toda su vida en esa ciudad
+     */
+    private function why(string $rule, ?int $days, float $spend, float $purchases, float $c, ?float $be, bool $estimated, array $extra = []): array
+    {
+        return ['rule' => $rule, 'days' => $days, 'spend' => round($spend, 2), 'purchases' => $purchases, 'c' => $c, 'be' => $be, 'estimated' => $estimated,
+            'min' => (float) $this->s['loser_spend_cpa'], 'cap' => (float) $this->s['evaluation_cap_cpa'], 'margin' => (float) $this->s['loser_be_margin_pct'],
+            'margin_n' => (float) $this->s['loser_be_margin_purchases'], 'watch' => self::WATCH_PURCHASES] + $extra;
+    }
+
+    /** `.156`: solo el gasto y las compras de unos totales. */
+    private static function totals(?array $t): ?array
+    {
+        return $t === null ? null : ['spend' => round((float) ($t['spend'] ?? 0), 2), 'purchases' => (float) ($t['purchases'] ?? 0)];
     }
 
     private function verdict(string $key, string $data, string $reading, ?string $proposal): array
