@@ -61,12 +61,26 @@ describe('Lo que sabe la IA', function () {
             ->toContain('Nunca lo contradigas, lo suavices ni le agregues advertencias')
             ->toContain('Nunca uses frases como "no se puede asegurar", "no garantiza resultados"')
             ->toContain('una asesora venezolana amable')
-            ->toContain('cierra con una pregunta corta')
-            ->toContain('Como mucho un emoji por respuesta')
+            ->toContain('cierra con una pregunta cariñosa')
+            ->toContain('Pon 1 o 2 emojis en casi todas tus respuestas')
             ->toContain('Saluda solo en tu primera respuesta')
             ->toContain('no hables mal de nadie ni inventes comparaciones')
             ->not->toContain('sin emojis')
             ->not->toContain('responde exactamente');
+    });
+
+    it('.160: más cariño (sin apodos), 1 o 2 emojis casi siempre y la verdad si le preguntan si es un robot', function () {
+        $rules = StoreChatRules::instructions(storeFacts());
+
+        expect($rules)->toContain('"¡Claro que sí!", "¡Con muchísimo gusto te ayudo!"')
+            ->toContain('primero muéstrale que lo entiendes')
+            ->toContain('"¿Te cuento cómo pedirlo? 💛"')
+            ->toContain('Nunca dentro de las frases que te doy con sus palabras exactas')
+            ->toContain('Sin apodos: nunca digas "mi amor", "mi reina"')
+            ->toContain('no adivines si es hombre o mujer')
+            ->toContain('que eres la asesora virtual de la tienda y que una asesora de verdad lo llama cuando haga su pedido. Nunca digas que eres una persona.')
+            ->not->toContain('Como mucho un emoji')
+            ->and(StoreChatRules::SAFE)->toContain('😊');
     });
 
     it('sin precio de hoy, lo dice la asesora; sin ciudades, la asesora confirma', function () {
