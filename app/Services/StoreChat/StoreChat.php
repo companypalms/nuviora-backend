@@ -49,15 +49,17 @@ class StoreChat
         return app()->environment('local') ? 'example' : 'unavailable';
     }
 
-    /** Las respuestas de hoy que llamaron a la IA (las de la tienda y las de prueba): el tope del día. */
+    /** Las respuestas de hoy que llamaron a la IA (las de la tienda y las de prueba; los exámenes no): el tope del día. */
     public function answeredToday(): int
     {
-        return StoreChatMessage::whereIn('status', StoreChatMessage::BILLED)->where('created_at', '>=', today())->count();
+        return StoreChatMessage::whereIn('status', StoreChatMessage::BILLED)->where('created_at', '>=', today())
+            ->whereHas('conversation', fn ($q) => $q->where('source', '<>', StoreChatConversation::EXAM))->count();
     }
 
     /**
      * Responde una pregunta. La tienda solo pregunta si el chat está prendido en ese producto; el dueño prueba siempre.
-     * Con un tope alcanzado sale el mensaje fijo (y el botón sigue); si la IA falla, "intenta de nuevo".
+     * Con un tope alcanzado sale el mensaje fijo (y el botón sigue); si la IA falla, "intenta de nuevo". En un examen cada
+     * pregunta va sola (como un cliente nuevo) y no hay topes.
      *
      * @return array{id: int, question: string, answer: string, status: string, reason: ?string, raw: ?string, ready: bool, note: string, button: string}
      */
@@ -78,13 +80,14 @@ class StoreChat
             ['visitor' => $visitor, 'product_id' => $product->id, 'source' => $source],
             ['ip_hash' => $ip !== null ? hash('sha256', $ip . '|' . config('app.key')) : null],
         );
-        $limited = $this->answeredToday() >= $settings['daily_answers']
-            || ($source === StoreChatConversation::STORE && $this->visitorToday($visitor) >= $settings['per_visitor']);
+        $exam = $source === StoreChatConversation::EXAM;
+        $limited = !$exam && ($this->answeredToday() >= $settings['daily_answers']
+            || ($source === StoreChatConversation::STORE && $this->visitorToday($visitor) >= $settings['per_visitor']));
         if ($limited) {
             return $this->save($conversation, $question, StoreChatRules::LIMIT, StoreChatMessage::LIMIT, false);
         }
 
-        $history = $conversation->messages()->whereIn('status', [StoreChatMessage::ANSWERED, StoreChatMessage::UNKNOWN])
+        $history = $exam ? collect() : $conversation->messages()->whereIn('status', [StoreChatMessage::ANSWERED, StoreChatMessage::UNKNOWN])
             ->orderByDesc('id')->take(StoreChatRules::HISTORY)->get()->reverse()->values();
         try {
             $reply = $mode === 'openai'

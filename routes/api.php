@@ -816,6 +816,12 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::get('/', [\App\Http\Controllers\StoreChatController::class, 'index']);
         Route::put('/settings', [\App\Http\Controllers\StoreChatController::class, 'saveSettings']);
         Route::post('/test', [\App\Http\Controllers\StoreChatController::class, 'test'])->middleware('throttle:10,1');
+        // El "Examen del chat": empezar, cada pregunta (van seguidas: hasta 60 por minuto) y las preguntas que cambia el dueño
+        Route::post('/exam/start', [\App\Http\Controllers\StoreChatController::class, 'examStart']);
+        Route::post('/exam/ask', [\App\Http\Controllers\StoreChatController::class, 'examAsk'])->middleware('throttle:60,1');
+        Route::post('/exam/questions', [\App\Http\Controllers\StoreChatController::class, 'examCreate']);
+        Route::put('/exam/questions/{question}', [\App\Http\Controllers\StoreChatController::class, 'examUpdate'])->whereNumber('question');
+        Route::delete('/exam/questions/{question}', [\App\Http\Controllers\StoreChatController::class, 'examDelete'])->whereNumber('question');
     });
 
     // Calendario del dueño (Etapa 3): sus notas, los recordatorios del sistema y lo que marca como hecho. Solo el Admin

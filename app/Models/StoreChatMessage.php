@@ -22,7 +22,10 @@ class StoreChatMessage extends Model
     /** Las que cuentan para el tope del día (las que llamaron a la IA). */
     public const BILLED = [self::ANSWERED, self::UNKNOWN, self::BLOCKED];
 
-    protected $fillable = ['conversation_id', 'question', 'answer', 'status', 'blocked_reason', 'raw_answer', 'model', 'input_tokens', 'output_tokens'];
+    protected $fillable = ['conversation_id', 'question', 'answer', 'status', 'blocked_reason', 'raw_answer', 'model', 'input_tokens', 'output_tokens',
+        'exam_question_id', 'exam_ok', 'exam_note'];
+
+    protected $casts = ['exam_ok' => 'boolean'];
 
     public function conversation(): BelongsTo
     {

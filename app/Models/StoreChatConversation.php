@@ -8,12 +8,14 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * Una conversación del chat de la tienda (`.158`): un visitante (número al azar de su navegador) en un producto. "test"
- * son las del dueño probando desde su página.
+ * son las del dueño probando desde su página; "exam", cada vez que toma el examen de un producto (no cuentan para los
+ * topes ni salen en las listas).
  */
 class StoreChatConversation extends Model
 {
     public const STORE = 'store';
     public const TEST = 'test';
+    public const EXAM = 'exam';
 
     protected $fillable = ['visitor', 'product_id', 'source', 'ip_hash', 'questions', 'unanswered'];
 

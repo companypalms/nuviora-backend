@@ -4,14 +4,16 @@ namespace App\Http\Controllers;
 
 use App\Models\Product;
 use App\Models\StoreChatConversation;
+use App\Models\StoreChatExamQuestion;
 use App\Services\StoreChat\StoreChat;
+use App\Services\StoreChat\StoreChatExam;
 use App\Services\StoreChat\StoreChatReport;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 
 /**
- * `.158` "Chat de la tienda" (solo el Admin): los ajustes, la página y el chat de prueba del dueño. El chat de los
- * clientes en la tienda llega con la `.159`.
+ * `.158` "Chat de la tienda" (solo el Admin): los ajustes, la página, el chat de prueba del dueño y el "Examen del chat"
+ * (sus preguntas las cambia el dueño). El chat de los clientes en la tienda llega con la `.159`.
  */
 class StoreChatController extends Controller
 {
@@ -49,5 +51,47 @@ class StoreChatController extends Controller
 
         return response()->json($chat->ask(Product::findOrFail($data['product_id']), $data['visitor'], $data['question'],
             StoreChatConversation::TEST, null, CarbonImmutable::now()));
+    }
+
+    /** Empieza un examen: el número de esta vuelta y las preguntas. */
+    public function examStart(Request $request, StoreChatExam $exam)
+    {
+        $data = $request->validate(['product_id' => 'required|integer|exists:products,id']);
+
+        return response()->json($exam->start(Product::findOrFail($data['product_id']), CarbonImmutable::now()));
+    }
+
+    /** Una pregunta del examen, respondida y calificada. */
+    public function examAsk(Request $request, StoreChatExam $exam)
+    {
+        $data = $request->validate([
+            'product_id' => 'required|integer|exists:products,id',
+            'run' => ['required', 'string', 'regex:/^examen-[a-z0-9]{8,20}$/'],
+            'question_id' => 'required|integer|exists:store_chat_exam_questions,id',
+        ]);
+
+        return response()->json($exam->ask(Product::findOrFail($data['product_id']), $data['run'],
+            StoreChatExamQuestion::findOrFail($data['question_id']), CarbonImmutable::now()));
+    }
+
+    public function examCreate(Request $request, StoreChatExam $exam)
+    {
+        $exam->create($request->only(['group', 'question', 'expect']));
+
+        return response()->json(['message' => 'Pregunta agregada al examen.', 'questions' => $exam->questions()]);
+    }
+
+    public function examUpdate(Request $request, StoreChatExamQuestion $question, StoreChatExam $exam)
+    {
+        $exam->update($question, $request->only(['group', 'question', 'expect']));
+
+        return response()->json(['message' => 'Pregunta guardada.', 'questions' => $exam->questions()]);
+    }
+
+    public function examDelete(StoreChatExamQuestion $question, StoreChatExam $exam)
+    {
+        $exam->delete($question);
+
+        return response()->json(['message' => 'Pregunta quitada del examen.', 'questions' => $exam->questions()]);
     }
 }
