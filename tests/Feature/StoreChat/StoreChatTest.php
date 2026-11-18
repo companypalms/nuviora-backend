@@ -12,6 +12,7 @@ use App\Services\StoreChat\StoreChatRules;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Schema;
 use Laravel\Sanctum\Sanctum;
 use Symfony\Component\HttpKernel\Exception\HttpException;
@@ -62,6 +63,7 @@ beforeEach(function () {
     (require database_path('migrations/2026_11_18_150000_create_store_chat_tables.php'))->up();
     (require database_path('migrations/2026_11_18_160000_create_store_chat_exam.php'))->up();
     (require database_path('migrations/2026_11_18_170000_store_chat_details_and_support.php'))->up();
+    (require database_path('migrations/2026_11_18_180000_create_store_chat_callbacks.php'))->up();
 
     DB::table('roles')->insert([['id' => 1, 'description' => 'Admin'], ['id' => 2, 'description' => 'Gerente']]);
     $this->owner = User::forceCreate(['names' => 'Dueño', 'email' => 'd@test', 'password' => 'x', 'role_id' => 1]);
@@ -150,7 +152,7 @@ describe('La revisión antes de enviar', function () {
 
         $r = ($this->ask)('¿Cuánto cuesta en dólares?');
 
-        expect($r)->status->toBe('blocked')->answer->toBe(StoreChatRules::SAFE)->reason->toBe('Un monto en dólares')->raw->toBe('Cuesta $30.')
+        expect($r)->status->toBe('blocked')->answer->toBe(StoreChatRules::askPhone('lunes a sábado, de 8 a. m. a 7 p. m.'))->reason->toBe('Un monto en dólares')->raw->toBe('Cuesta $30.')
             ->and(StoreChatConversation::first()->unanswered)->toBeTrue();
     });
 
@@ -256,7 +258,8 @@ describe('La página del dueño', function () {
         $this->putJson('/api/store-chat/settings', ['enabled' => true, 'product_ids' => [1], 'daily_answers' => 200, 'per_visitor' => 10])
             ->assertOk()->assertJsonPath('message', 'Guardado. El chat está prendido.');
 
-        expect(StoreChat::settings())->toBe(['enabled' => true, 'product_ids' => [1], 'daily_answers' => 200, 'per_visitor' => 10, 'support_phone' => '0414-3581111']);
+        expect(StoreChat::settings())->toBe(['enabled' => true, 'product_ids' => [1], 'daily_answers' => 200, 'per_visitor' => 10, 'support_phone' => '0414-3581111',
+            'hours' => 'lunes a sábado, de 8 a. m. a 7 p. m.']);
     });
 
     it('el dueño prueba el chat: queda marcado "prueba"', function () {
@@ -297,7 +300,7 @@ describe('El examen del chat', function () {
         $this->postJson('/api/store-chat/exam/ask', ['product_id' => 1, 'run' => $run, 'question_id' => $rules->id])->assertOk()
             ->assertJsonPath('ok', true);
         $this->postJson('/api/store-chat/exam/ask', ['product_id' => 1, 'run' => $run, 'question_id' => $days->id])->assertOk()
-            ->assertJsonPath('ok', false)->assertJsonPath('status', 'blocked')->assertJsonPath('answer', StoreChatRules::SAFE);
+            ->assertJsonPath('ok', false)->assertJsonPath('status', 'blocked')->assertJsonPath('answer', StoreChatRules::askPhone('lunes a sábado, de 8 a. m. a 7 p. m.'));
 
         // cada pregunta sola: a la IA no le llega lo anterior
         Http::assertSent(fn ($request) => count($request->data()['input']) === 1);
@@ -401,5 +404,107 @@ describe('.159: "Más detalles" y el teléfono de atención al cliente', functio
             ->and(fn () => $tool->propose(['telefono' => '0412-5550000'], $ctx))->toThrow(\App\Services\Assistant\Tools\ToolProblem::class, 'ya es');
         expect(\App\Services\Assistant\Ai\ExampleModel::change('Cambia el teléfono de atención al cliente a 0414-3581111', CarbonImmutable::now()))
             ->toBe(['name' => 'proponer_telefono_atencion', 'arguments' => ['telefono' => '0414-3581111']]);
+    });
+});
+
+describe('.161: lo que no sabe pide el WhatsApp y el cliente queda en "Por contactar" y en el calendario', function () {
+    beforeEach(function () {
+        Notification::fake();
+    });
+
+    it('lo que no sabe espera el WhatsApp; el número que llega después se guarda sin llamar a la IA (que nunca lo ve)', function () {
+        Http::fake(['api.openai.com/*' => ($this->reply)('¡Buena pregunta! 😊 Déjame tu WhatsApp y una asesora te responde.', false)]);
+
+        expect(($this->ask)('¿Tiene garantía?'))->status->toBe('unknown');
+        expect(StoreChatConversation::first())->awaiting_phone->toBeTrue()->awaiting_question->toBe('¿Tiene garantía?');
+
+        $r = ($this->ask)('Claro, es el 0414-1234567');
+
+        expect($r)->status->toBe('callback')->answer->toBe(StoreChatRules::phoneSaved('lunes a sábado, de 8 a. m. a 7 p. m.'))
+            ->question->toBe('Claro, es el [teléfono]');
+        Http::assertSentCount(1);
+        $callback = \App\Models\StoreChatCallback::first();
+        expect($callback)->question->toBe('¿Tiene garantía?')->phone->toBe('0414-1234567')->status->toBe('pending')->source->toBe('test')
+            ->and(StoreChatConversation::first()->awaiting_phone)->toBeFalse();
+        Notification::assertSentTo($this->owner, \App\Notifications\MetaWorkNotification::class);
+        Notification::assertNotSentTo($this->manager, \App\Notifications\MetaWorkNotification::class);
+    });
+
+    it('si la revisión paró la respuesta, también pide el WhatsApp; sin pedírselo, un número no se guarda', function () {
+        Http::fake(['api.openai.com/*' => ($this->reply)('Te llega en 24 horas.')]);
+        ($this->ask)('Mi número es 0414-1234567', 'test', 'visitante-2');
+        expect(\App\Models\StoreChatCallback::count())->toBe(0);
+
+        expect(($this->ask)('¿Cuándo llega?'))->status->toBe('blocked');
+        expect(StoreChatConversation::where('visitor', 'visitante-1')->first()->awaiting_phone)->toBeTrue();
+    });
+
+    it('la conversación lleva lo que ya se habló, también lo que paró la revisión', function () {
+        Http::fakeSequence('api.openai.com/*')->pushResponse(($this->reply)('Cuesta $30.'))->pushResponse(($this->reply)('Es un limpiador.'));
+        ($this->ask)('¿Cuánto en dólares?');
+        ($this->ask)('¿Qué es?');
+
+        Http::assertSent(fn ($request) => count($request->data()['input']) === 3
+            && $request->data()['input'][1]['content'] === StoreChatRules::askPhone('lunes a sábado, de 8 a. m. a 7 p. m.'));
+    });
+
+    it('en el examen no se guarda ningún número', function () {
+        Http::fake(['api.openai.com/*' => ($this->reply)('No lo sé.', false)]);
+        Sanctum::actingAs($this->owner);
+        $run = $this->postJson('/api/store-chat/exam/start', ['product_id' => 1])->json('run');
+        $first = StoreChatExamQuestion::where('question', '¿Tiene garantía?')->first();
+        $phone = StoreChatExamQuestion::where('question', 'Mi número es 0414-555-1234, llámame ya')->first();
+        $this->postJson('/api/store-chat/exam/ask', ['product_id' => 1, 'run' => $run, 'question_id' => $first->id])->assertOk();
+        $this->postJson('/api/store-chat/exam/ask', ['product_id' => 1, 'run' => $run, 'question_id' => $phone->id])->assertOk()->assertJsonPath('status', 'unknown');
+
+        expect(\App\Models\StoreChatCallback::count())->toBe(0);
+    });
+
+    it('"Por contactar" en la página del dueño, con el enlace de WhatsApp, y "Ya lo contacté"', function () {
+        Http::fake(['api.openai.com/*' => ($this->reply)('Déjame tu WhatsApp.', false)]);
+        ($this->ask)('¿Sirve para niños?');
+        ($this->ask)('0414-1234567');
+        Sanctum::actingAs($this->owner);
+
+        $id = $this->getJson('/api/store-chat')->assertOk()
+            ->assertJsonPath('callbacks.0.question', '¿Sirve para niños?')
+            ->assertJsonPath('callbacks.0.phone', '0414-1234567')
+            ->assertJsonPath('callbacks.0.product', 'Solo Brillo®')
+            ->assertJsonPath('callbacks.0.test', true)
+            ->assertJsonPath('callbacks.0.wa', fn ($wa) => str_starts_with($wa, 'https://wa.me/584141234567?text='))
+            ->json('callbacks.0.id');
+        $this->postJson("/api/store-chat/callbacks/{$id}/done")->assertOk()->assertJsonCount(0, 'callbacks');
+        $this->postJson("/api/store-chat/callbacks/{$id}/done")->assertStatus(422);
+        expect(\App\Models\StoreChatCallback::first())->status->toBe('done')->contacted_by->toBe($this->owner->id);
+
+        Sanctum::actingAs($this->manager);
+        $this->postJson("/api/store-chat/callbacks/{$id}/done")->assertForbidden();
+    });
+
+    it('el calendario de hoy muestra a cada cliente con lo que preguntó y su WhatsApp; sin nadie, no sale', function () {
+        $today = '2026-11-18';
+        expect(\App\Services\Calendar\Rules\ReminderRules::occurrence('store_chat_callbacks', $today, $today, ['store_chat_callbacks' => ['pending' => [], 'done_today' => 0]])['hidden'] ?? false)->toBeTrue();
+
+        Http::fake(['api.openai.com/*' => ($this->reply)('Déjame tu WhatsApp.', false)]);
+        ($this->ask)('¿Sirve para niños?');
+        ($this->ask)('0414-1234567');
+        $o = \App\Services\Calendar\Rules\ReminderRules::occurrence('store_chat_callbacks', $today, $today,
+            ['store_chat_callbacks' => \App\Services\StoreChat\StoreChatCallbacks::forCalendar(CarbonImmutable::now())]);
+
+        expect($o['title'])->toBe('Responder a 1 cliente del chat')
+            ->and($o['details'])->toBe('Un cliente espera que le escribas por WhatsApp.')
+            ->and($o['lines'][0]['label'])->toBe('«¿Sirve para niños?»')
+            ->and($o['lines'][0]['note'])->toStartWith('WhatsApp 0414-1234567 · Solo Brillo®')
+            ->and($o['auto_done'])->toBeFalse()
+            ->and(\App\Services\Calendar\Rules\ReminderRules::occurrence('store_chat_callbacks', $today, $today,
+                ['store_chat_callbacks' => ['pending' => [], 'done_today' => 1]])['auto_done'])->toBeTrue();
+    });
+
+    it('el horario se cambia en Ajustes y es el que dice el chat', function () {
+        Sanctum::actingAs($this->owner);
+        $this->putJson('/api/store-chat/settings', ['enabled' => false, 'product_ids' => [], 'daily_answers' => 300, 'per_visitor' => 20, 'hours' => 'lunes a viernes, de 9 a. m. a 5 p. m.'])->assertOk();
+        Http::fake(['api.openai.com/*' => ($this->reply)('Cuesta $30.')]);
+
+        expect(($this->ask)('¿En dólares?')['answer'])->toContain('lunes a viernes, de 9 a. m. a 5 p. m.');
     });
 });

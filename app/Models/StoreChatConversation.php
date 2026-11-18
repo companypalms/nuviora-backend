@@ -17,9 +17,9 @@ class StoreChatConversation extends Model
     public const TEST = 'test';
     public const EXAM = 'exam';
 
-    protected $fillable = ['visitor', 'product_id', 'source', 'ip_hash', 'questions', 'unanswered'];
+    protected $fillable = ['visitor', 'product_id', 'source', 'ip_hash', 'questions', 'unanswered', 'awaiting_phone', 'awaiting_question'];
 
-    protected $casts = ['unanswered' => 'boolean'];
+    protected $casts = ['unanswered' => 'boolean', 'awaiting_phone' => 'boolean'];
 
     public function product(): BelongsTo
     {

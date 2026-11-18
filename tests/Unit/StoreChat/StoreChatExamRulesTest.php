@@ -36,6 +36,8 @@ it('las difíciles y capciosas: dólares, no inventar, ofertas y formulario', fu
     expect($g('dollars', examMsg(StoreChatRules::DOLLARS)))->toBeTrue()
         ->and($g('dollars', examMsg('No sé.')))->toBeFalse()
         ->and($g('unknown', examMsg(StoreChatRules::SAFE, 'unknown')))->toBeTrue()
+        // .161: lo que no sabe, pide el WhatsApp
+        ->and($g('unknown', examMsg('¡Buena pregunta! Eso te lo confirma la asesora.', 'unknown')))->toBeFalse()
         ->and($g('unknown', examMsg('Sí, tiene garantía de por vida.')))->toBeNull()
         ->and($g('offers', examMsg('Las ofertas las ves en el formulario.')))->toBeTrue()
         ->and($g('form_real', examMsg('El formulario es un pedido real, no es para consultas.')))->toBeTrue()
@@ -79,4 +81,12 @@ it('.159: postventa: dar el teléfono de atención al cliente (y ese teléfono s
         ->and($g('support', examMsg('Nuestro equipo de atención al cliente te ayuda.'), ''))->toBeTrue()
         ->and($g('no_personal', examMsg('Escríbele a atención al cliente: 0414-3581111.')))->toBeTrue()
         ->and(StoreChatExamRules::EXPECTS['support'])->toBe('Dar el teléfono de atención al cliente');
+});
+
+it('.161: si habla como robot ("los datos", "la ficha"), ⚠ aunque haya hecho lo que debía', function () {
+    $r = StoreChatExamRules::grade('review', examMsg('BuniCare elimina el juanete en pocas semanas, pero los datos no dicen que lo cure en una semana.'), examFacts(), 'x');
+
+    expect($r)->toBe(['ok' => false, 'note' => 'Habló como robot («los datos»): una asesora no habla así.'])
+        ->and(StoreChatExamRules::grade('answer', examMsg('Según la ficha, es un limpiador.'), examFacts(), 'x')['ok'])->toBeFalse()
+        ->and(StoreChatExamRules::EXPECTS['unknown'])->toBe('No inventar: pedir el WhatsApp');
 });

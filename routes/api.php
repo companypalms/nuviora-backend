@@ -817,6 +817,8 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::put('/settings', [\App\Http\Controllers\StoreChatController::class, 'saveSettings']);
         Route::post('/test', [\App\Http\Controllers\StoreChatController::class, 'test'])->middleware('throttle:10,1');
         // El "Examen del chat": empezar, cada pregunta (van seguidas: hasta 60 por minuto) y las preguntas que cambia el dueño
+        // .161: "Ya lo contacté" de un cliente que dejó su WhatsApp
+        Route::post('/callbacks/{callback}/done', [\App\Http\Controllers\StoreChatController::class, 'callbackDone'])->whereNumber('callback');
         // .159: "Lo que sabe el chat" de un producto y sus "Más detalles" (también desde su ficha)
         Route::get('/products/{product}/knowledge', [\App\Http\Controllers\StoreChatController::class, 'knowledge'])->whereNumber('product');
         Route::put('/products/{product}/details', [\App\Http\Controllers\StoreChatController::class, 'saveDetails'])->whereNumber('product');

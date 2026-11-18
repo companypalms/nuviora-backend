@@ -43,6 +43,7 @@ final class DayPlan
         'rate' => ['priority' => 'alta', 'minutes' => 5],
         'reconciliation' => ['priority' => 'alta', 'minutes' => 20],
         'approvals' => ['priority' => 'alta', 'minutes' => 10],
+        'store_chat_callbacks' => ['priority' => 'alta', 'minutes' => 10],
         'inventory' => ['priority' => 'normal', 'minutes' => 10],
         'meta_analysis' => ['priority' => 'alta', 'minutes' => 15],
         'meta_queue' => ['priority' => 'normal', 'minutes' => 10],

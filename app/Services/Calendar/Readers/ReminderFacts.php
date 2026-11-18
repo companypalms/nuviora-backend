@@ -179,6 +179,12 @@ class ReminderFacts
         if ($inventory !== null) {
             $facts['inventory'] = $inventory;
         }
+        // .161: los clientes del chat que dejaron su WhatsApp (si falla, el recordatorio no sale)
+        try {
+            $facts['store_chat_callbacks'] = \App\Services\StoreChat\StoreChatCallbacks::forCalendar($now);
+        } catch (\Throwable $e) {
+            report($e);
+        }
         // .67: Meta Ads y los editores (si falla, esos recordatorios se muestran sin el dato)
         try {
             $facts['meta_work'] = $this->meta->now($now);

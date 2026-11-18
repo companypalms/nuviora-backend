@@ -72,6 +72,13 @@ final class ReminderRules
             'help' => 'Mientras un comprobante o un vuelto espera tu revisión, esa orden no avanza o la agencia no recibe su vuelto.',
             'link' => '/por-aprobar',
         ],
+        // .161: los clientes del chat de la tienda que dejaron su WhatsApp (solo sale si hay alguno esperando)
+        'store_chat_callbacks' => [
+            'type' => 'task', 'group' => 'daily', 'repeat' => 'daily', 'accumulates' => false, 'auto' => true,
+            'title' => 'Responder a los clientes del chat',
+            'help' => 'El chat de la tienda no supo responderles y dejaron su WhatsApp: esperan que una asesora les escriba en el horario de atención.',
+            'link' => '/chat-tienda',
+        ],
         'inventory' => [
             'type' => 'task', 'group' => 'daily', 'repeat' => 'daily', 'accumulates' => false, 'auto' => true,
             'title' => 'Revisar el inventario bajo',
@@ -314,6 +321,31 @@ final class ReminderRules
                     $out['details'] = 'Revisa los comprobantes, los vueltos por validar y los vueltos por pagar.';
                 }
                 $out['actions'] = [['label' => 'Ir a Por aprobar', 'link' => $rule['link']]];
+                break;
+
+            case 'store_chat_callbacks':
+                $callbacks = $isToday ? ($facts['store_chat_callbacks'] ?? null) : null;
+                if ($callbacks === null || ($callbacks['pending'] === [] && $callbacks['done_today'] === 0)) {
+                    $out['hidden'] = true;
+                    break;
+                }
+                $n = count($callbacks['pending']);
+                // el título dice cuántos esperan, para verlo sin abrir la tarea
+                if ($n > 0) {
+                    $out['title'] = $n === 1 ? 'Responder a 1 cliente del chat' : "Responder a {$n} clientes del chat";
+                }
+                $out['auto_done'] = $n === 0;
+                $out['auto_note'] = $n === 0 ? "Ya les escribiste a {$callbacks['done_today']} hoy." : null;
+                $out['details'] = $n === 0 ? 'Nadie está esperando respuesta.'
+                    : ($n === 1 ? 'Un cliente espera que le escribas por WhatsApp.' : "{$n} clientes esperan que les escribas por WhatsApp.");
+                // la pregunta a todo lo ancho (es lo largo y en el teléfono se acomoda); debajo, el WhatsApp, el producto y la hora
+                $out['lines'] = array_map(fn (array $c) => [
+                    'label' => '«' . $c['question'] . '»',
+                    'value' => '',
+                    'note' => 'WhatsApp ' . $c['phone'] . ' · ' . $c['product']
+                        . ($c['at'] ? ' · ' . CarbonImmutable::parse($c['at'])->setTimezone(config('app.timezone'))->format('d/m H:i') : '') . ($c['test'] ? ' (prueba)' : ''),
+                ], $callbacks['pending']);
+                $out['actions'] = [['label' => 'Ir a Por contactar', 'link' => $rule['link']]];
                 break;
 
             case 'inventory':

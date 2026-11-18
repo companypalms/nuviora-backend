@@ -3,9 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\Product;
+use App\Models\StoreChatCallback;
 use App\Models\StoreChatConversation;
 use App\Models\StoreChatExamQuestion;
 use App\Services\StoreChat\StoreChat;
+use App\Services\StoreChat\StoreChatCallbacks;
 use App\Services\StoreChat\StoreChatExam;
 use App\Services\StoreChat\StoreChatReport;
 use App\Services\StoreChat\StoreChatRules;
@@ -34,6 +36,8 @@ class StoreChatController extends Controller
             'per_visitor' => 'required|integer|min:3|max:100',
             // .159: el teléfono de atención al cliente (vacío: el chat no da ninguno)
             'support_phone' => ['sometimes', 'nullable', 'string', 'max:30', 'regex:/^[0-9+\-\s().]*$/'],
+            // .161: el horario de atención que dice al pedir el WhatsApp
+            'hours' => 'sometimes|nullable|string|max:' . StoreChatRules::HOURS_MAX,
         ]);
         if (array_key_exists('support_phone', $data)) {
             $phone = trim((string) $data['support_phone']);
@@ -73,6 +77,14 @@ class StoreChatController extends Controller
         StoreChat::saveDetails($product, $data['details']);
 
         return response()->json(['message' => 'Detalles guardados: el chat ya los usa.']);
+    }
+
+    /** `.161` "Ya lo contacté": el cliente sale de "Por contactar" y del calendario. */
+    public function callbackDone(Request $request, StoreChatCallback $callback)
+    {
+        StoreChatCallbacks::done($callback, $request->user());
+
+        return response()->json(['message' => 'Listo: ya no sale en Por contactar.', 'callbacks' => StoreChatCallbacks::pending()]);
     }
 
     /** Empieza un examen: el número de esta vuelta y las preguntas. */

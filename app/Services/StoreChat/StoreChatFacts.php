@@ -21,7 +21,7 @@ class StoreChatFacts
 {
     /**
      * @return array{product_id: int, name: string, ficha: array<string, ?string>, price_usd: float, price_bs: ?int, rate: ?float,
-     *               rate_at: ?string, rate_fresh: bool, cities: list<string>, other_cities: list<string>, details: ?string, support_phone: string}
+     *               rate_at: ?string, rate_fresh: bool, cities: list<string>, other_cities: list<string>, details: ?string, support_phone: string, hours: string}
      */
     public function for(Product $product, CarbonImmutable $now): array
     {
@@ -33,6 +33,7 @@ class StoreChatFacts
         $fresh = StoreChatRules::rateFresh($rateAt, $now);
         $off = ProductCityAvailability::where('product_id', $product->id)->where('is_available', false)->pluck('city_id')->all();
         $cities = City::orderBy('name')->get(['id', 'name']);
+        $settings = StoreChatRules::settings(Setting::get(StoreChatRules::SETTING));
 
         return [
             'product_id' => $product->id,
@@ -52,7 +53,8 @@ class StoreChatFacts
             'cities' => $cities->reject(fn ($c) => in_array($c->id, $off))->pluck('name')->values()->all(),
             'other_cities' => $cities->filter(fn ($c) => in_array($c->id, $off))->pluck('name')->values()->all(),
             'details' => $profile?->chat_details,
-            'support_phone' => StoreChatRules::settings(Setting::get(StoreChatRules::SETTING))['support_phone'],
+            'support_phone' => $settings['support_phone'],
+            'hours' => $settings['hours'],
         ];
     }
 

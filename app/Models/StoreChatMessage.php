@@ -18,6 +18,8 @@ class StoreChatMessage extends Model
     public const BLOCKED = 'blocked';
     public const FAILED = 'failed';
     public const LIMIT = 'limit';
+    /** `.161`: el cliente dejó su WhatsApp (se respondió sin la IA y quedó en "Por contactar"). */
+    public const CALLBACK = 'callback';
 
     /** Las que cuentan para el tope del día (las que llamaron a la IA). */
     public const BILLED = [self::ANSWERED, self::UNKNOWN, self::BLOCKED];

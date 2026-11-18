@@ -35,6 +35,8 @@ class StoreChatReport
             'mode' => $this->chat->mode(),
             'rate' => $this->rate($now),
             'today' => ['answers' => $this->chat->answeredToday(), 'cap' => $settings['daily_answers']],
+            // .161: los clientes que dejaron su WhatsApp
+            'callbacks' => StoreChatCallbacks::pending(),
             'products' => $products,
             'unanswered' => $this->unanswered($now),
             'conversations' => $this->conversations(),

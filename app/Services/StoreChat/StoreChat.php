@@ -74,6 +74,8 @@ class StoreChat
      * Responde una pregunta. La tienda solo pregunta si el chat está prendido en ese producto; el dueño prueba siempre.
      * Con un tope alcanzado sale el mensaje fijo (y el botón sigue); si la IA falla, "intenta de nuevo". En un examen cada
      * pregunta va sola (como un cliente nuevo) y no hay topes.
+     * `.161`: lo que no sabe (o la revisión paró) pide el WhatsApp; si en un mensaje después viene el número, se guarda en
+     * "Por contactar" sin llamar a la IA (que nunca ve el número) y el cliente recibe la confirmación con el horario.
      *
      * @return array{id: int, question: string, answer: string, status: string, reason: ?string, raw: ?string, ready: bool, note: string, button: string}
      */
@@ -87,7 +89,8 @@ class StoreChat
         abort_unless(StoreChatRules::hasFicha($facts['ficha']), 422, 'Este producto no tiene ficha: el chat no sabría qué responder. Llénala en Integraciones › Meta Ads › Ficha del producto.');
         $mode = $this->mode();
         abort_unless(in_array($mode, ['openai', 'example'], true), 503, 'El chat no está disponible ahora.');
-        $question = StoreChatRules::mask(trim(mb_substr($question, 0, StoreChatRules::MAX_QUESTION)));
+        $raw = trim(mb_substr($question, 0, StoreChatRules::MAX_QUESTION));
+        $question = StoreChatRules::mask($raw);
         abort_if($question === '', 422, 'Escribe tu pregunta.');
 
         $conversation = StoreChatConversation::firstOrCreate(
@@ -95,13 +98,23 @@ class StoreChat
             ['ip_hash' => $ip !== null ? hash('sha256', $ip . '|' . config('app.key')) : null],
         );
         $exam = $source === StoreChatConversation::EXAM;
+        // .161: le había pedido el WhatsApp y aquí viene
+        $phone = !$exam && $conversation->awaiting_phone ? StoreChatRules::phoneIn($raw) : null;
+        if ($phone !== null) {
+            StoreChatCallbacks::create($conversation, (string) $conversation->awaiting_question, $phone);
+            $conversation->forceFill(['awaiting_phone' => false, 'awaiting_question' => null])->save();
+
+            return $this->save($conversation, $question, StoreChatRules::phoneSaved($settings['hours']), StoreChatMessage::CALLBACK, false);
+        }
         $limited = !$exam && ($this->answeredToday() >= $settings['daily_answers']
             || ($source === StoreChatConversation::STORE && $this->visitorToday($visitor) >= $settings['per_visitor']));
         if ($limited) {
             return $this->save($conversation, $question, StoreChatRules::LIMIT, StoreChatMessage::LIMIT, false);
         }
 
-        $history = $exam ? collect() : $conversation->messages()->whereIn('status', [StoreChatMessage::ANSWERED, StoreChatMessage::UNKNOWN])
+        // .161: también lo que la revisión paró y la confirmación del WhatsApp (lo que el cliente ya leyó)
+        $history = $exam ? collect() : $conversation->messages()
+            ->whereIn('status', [StoreChatMessage::ANSWERED, StoreChatMessage::UNKNOWN, StoreChatMessage::BLOCKED, StoreChatMessage::CALLBACK])
             ->orderByDesc('id')->take(StoreChatRules::HISTORY)->get()->reverse()->values();
         try {
             $reply = $mode === 'openai'
@@ -118,7 +131,12 @@ class StoreChat
         $reason = $answer === '' ? 'La IA respondió vacío' : StoreChatRules::check($answer, $facts, $context);
         $status = $reason !== null ? StoreChatMessage::BLOCKED : ($reply['sabe'] ? StoreChatMessage::ANSWERED : StoreChatMessage::UNKNOWN);
 
-        return $this->save($conversation, $question, $reason !== null ? StoreChatRules::SAFE : $answer, $status, $reason === null && $reply['listo'], [
+        // .161: lo que no supo (o la revisión paró) queda esperando el WhatsApp
+        if (!$exam && $status !== StoreChatMessage::ANSWERED) {
+            $conversation->forceFill(['awaiting_phone' => true, 'awaiting_question' => $question])->save();
+        }
+
+        return $this->save($conversation, $question, $reason !== null ? StoreChatRules::askPhone($settings['hours']) : $answer, $status, $reason === null && $reply['listo'], [
             'blocked_reason' => $reason, 'raw_answer' => $reason !== null ? $answer : null,
             'model' => $reply['model'], 'input_tokens' => $reply['in'], 'output_tokens' => $reply['out'],
         ]);
