@@ -811,6 +811,13 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::post('/run', [\App\Http\Controllers\BusinessReportsController::class, 'run'])->middleware('throttle:5,1');
     });
 
+    // .158: el chat con IA de la tienda: los ajustes, la página y el chat de prueba del dueño. Solo el Admin
+    Route::middleware('role:Admin')->prefix('store-chat')->group(function () {
+        Route::get('/', [\App\Http\Controllers\StoreChatController::class, 'index']);
+        Route::put('/settings', [\App\Http\Controllers\StoreChatController::class, 'saveSettings']);
+        Route::post('/test', [\App\Http\Controllers\StoreChatController::class, 'test'])->middleware('throttle:10,1');
+    });
+
     // Calendario del dueño (Etapa 3): sus notas, los recordatorios del sistema y lo que marca como hecho. Solo el Admin
     Route::middleware('role:Admin')->prefix('calendar')->group(function () {
         Route::get('/', [\App\Http\Controllers\CalendarController::class, 'index']);

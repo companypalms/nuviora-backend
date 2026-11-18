@@ -84,6 +84,8 @@ return [
         'help_model' => env('OPENAI_HELP_MODEL', env('OPENAI_INSIGHTS_MODEL', 'gpt-6-luna')),
         // .55: los videos de los creativos ganadores (por defecto, el mismo de la voz)
         'video_transcribe_model' => env('OPENAI_VIDEO_TRANSCRIBE_MODEL', env('OPENAI_TRANSCRIBE_MODEL', 'gpt-transcribe')),
+        // .158: el chat de la tienda (respuestas cortas a clientes, sin herramientas: uno de los económicos)
+        'store_chat_model' => env('OPENAI_STORE_CHAT_MODEL', env('OPENAI_HELP_MODEL', env('OPENAI_INSIGHTS_MODEL', 'gpt-6-luna'))),
     ],
     // El asistente del dueño (Etapa 4): se puede apagar sin publicar y tiene un límite de mensajes por día
     'assistant' => [
