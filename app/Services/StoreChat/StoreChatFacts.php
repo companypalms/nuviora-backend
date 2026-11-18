@@ -14,13 +14,14 @@ use Carbon\CarbonImmutable;
  * - la ficha (Meta Ads › Ficha del producto, `.64`); los buyer personas y "Lo que sabemos" no: son estrategia;
  * - el precio de hoy en bolívares: el precio del producto por la tasa Binance (la que usan las órdenes), solo si la tasa
  *   se actualizó hoy o ayer;
- * - las ciudades donde ese producto se entrega (las que no están marcadas "no disponible" en Inventario).
+ * - las ciudades donde ese producto se entrega (las que no están marcadas "no disponible" en Inventario);
+ * - `.159`: los "Más detalles" de la ficha (solo para el chat) y el teléfono de atención al cliente de los ajustes.
  */
 class StoreChatFacts
 {
     /**
      * @return array{product_id: int, name: string, ficha: array<string, ?string>, price_usd: float, price_bs: ?int, rate: ?float,
-     *               rate_at: ?string, rate_fresh: bool, cities: list<string>, other_cities: list<string>}
+     *               rate_at: ?string, rate_fresh: bool, cities: list<string>, other_cities: list<string>, details: ?string, support_phone: string}
      */
     public function for(Product $product, CarbonImmutable $now): array
     {
@@ -50,6 +51,8 @@ class StoreChatFacts
             'rate_fresh' => $fresh,
             'cities' => $cities->reject(fn ($c) => in_array($c->id, $off))->pluck('name')->values()->all(),
             'other_cities' => $cities->filter(fn ($c) => in_array($c->id, $off))->pluck('name')->values()->all(),
+            'details' => $profile?->chat_details,
+            'support_phone' => StoreChatRules::settings(Setting::get(StoreChatRules::SETTING))['support_phone'],
         ];
     }
 

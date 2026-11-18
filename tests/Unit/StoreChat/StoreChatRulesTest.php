@@ -21,6 +21,8 @@ function storeFacts(array $over = []): array
         'price_bs' => 15600,
         'cities' => ['Caracas', 'Valencia'],
         'other_cities' => ['Maracay'],
+        'details' => null,
+        'support_phone' => '0414-3581111',
     ], $over);
 }
 
@@ -54,7 +56,7 @@ describe('Lo que sabe la IA', function () {
     it('.159: la ficha manda (se afirma tal cual, sin advertencias) y habla como una asesora amable', function () {
         $rules = StoreChatRules::instructions(storeFacts());
 
-        expect($rules)->toContain('La ficha manda: todo lo que dicen los datos es 100 % real')
+        expect($rules)->toContain('La ficha manda: todo lo que dicen los datos (también los "Más detalles") es 100 % real')
             ->toContain('si los datos dicen que cura en una semana, dilo así')
             ->toContain('Nunca lo contradigas, lo suavices ni le agregues advertencias')
             ->toContain('Nunca uses frases como "no se puede asegurar", "no garantiza resultados"')
@@ -142,9 +144,9 @@ describe('Datos personales', function () {
 
 describe('Los ajustes', function () {
     it('apagado por defecto y con topes en su rango', function () {
-        expect(StoreChatRules::settings(null))->toBe(['enabled' => false, 'product_ids' => [], 'daily_answers' => 300, 'per_visitor' => 20])
+        expect(StoreChatRules::settings(null))->toBe(['enabled' => false, 'product_ids' => [], 'daily_answers' => 300, 'per_visitor' => 20, 'support_phone' => '0414-3581111'])
             ->and(StoreChatRules::settings(['enabled' => true, 'product_ids' => ['5', 5, 'x', 0], 'daily_answers' => 1, 'per_visitor' => 999]))
-            ->toBe(['enabled' => true, 'product_ids' => [5], 'daily_answers' => 10, 'per_visitor' => 100]);
+            ->toBe(['enabled' => true, 'product_ids' => [5], 'daily_answers' => 10, 'per_visitor' => 100, 'support_phone' => '0414-3581111']);
     });
 
     it('sin qué es, para qué sirve o cómo funciona no hay ficha', function () {
@@ -163,6 +165,44 @@ describe('La PC de pruebas (sin IA)', function () {
         expect($price['respuesta'])->toContain('15.600 Bs')->and(StoreChatRules::check($price['respuesta'], storeFacts()))->toBeNull()
             ->and($dollars['respuesta'])->toContain(StoreChatRules::DOLLARS)
             ->and($order['listo'])->toBeTrue()->and($order['respuesta'])->toContain('pedido real')
-            ->and($unknown['sabe'])->toBeFalse();
+            ->and($unknown['sabe'])->toBeFalse()
+            // .159: quien ya compró, al teléfono de atención al cliente
+            ->and(StoreChatRules::example(storeFacts(), 'Ya compré y me llegó dañado, quiero devolverlo')['respuesta'])->toContain('0414-3581111');
+    });
+});
+
+describe('.159: los "Más detalles" y el teléfono de atención al cliente', function () {
+    it('los "Más detalles" van con la ficha y valen igual que ella', function () {
+        $rules = StoreChatRules::instructions(storeFacts(['details' => "Preguntas frecuentes:\nSe usa 2 veces por semana. Sirve en cerámica y vidrio."]));
+
+        expect($rules)->toContain("Más detalles:\nPreguntas frecuentes:\nSe usa 2 veces por semana. Sirve en cerámica y vidrio.")
+            ->toContain('todo lo que dicen los datos (también los "Más detalles") es 100 % real')
+            ->and(StoreChatRules::check('Úsalo 2 veces por semana.', storeFacts(['details' => 'Se usa 2 veces por semana.'])))->toBeNull()
+            ->and(StoreChatRules::data(storeFacts()))->not->toContain('Más detalles');
+    });
+
+    it('a quien ya compró le da el teléfono de atención al cliente; sin teléfono, no inventa ninguno', function () {
+        expect(StoreChatRules::instructions(storeFacts()))
+            ->toContain('Si la persona ya compró y escribe por una devolución, un cambio, un reclamo')
+            ->toContain('Atención al cliente (solo para quien ya compró: devoluciones, cambios, reclamos o saber de su pedido): 0414-3581111')
+            ->and(StoreChatRules::data(storeFacts(['support_phone' => ''])))->toContain('Atención al cliente: no hay teléfono');
+    });
+
+    it('la revisión deja pasar ese teléfono escrito como sea; otro teléfono no', function () {
+        foreach (['Escríbenos al 0414-3581111.', 'Al 04143581111 te ayudan.', 'Al +58 414 358 1111 te ayudan.', 'Al (0414) 358.1111'] as $answer) {
+            expect(StoreChatRules::check($answer, storeFacts()))->toBeNull($answer);
+        }
+        expect(StoreChatRules::check('Llama al 0412-5550000.', storeFacts()))->toStartWith('El número')
+            ->and(StoreChatRules::check('Escríbenos al 0414-3581111.', storeFacts(['support_phone' => ''])))->toStartWith('El número');
+    });
+
+    it('el teléfono como lo escribe el dueño', function () {
+        expect(StoreChatRules::phone(' 0414-3581111 '))->toBe('0414-3581111')
+            ->and(StoreChatRules::phone('+58 (414) 358.1111'))->toBe('+58 (414) 358.1111')
+            ->and(StoreChatRules::phone('123'))->toBe('')
+            ->and(StoreChatRules::phone('llámame'))->toBe('')
+            ->and(StoreChatRules::settings(['support_phone' => '']))->toMatchArray(['support_phone' => ''])
+            ->and(StoreChatRules::hasPhone('al 04143581111', '0414-3581111'))->toBeTrue()
+            ->and(StoreChatRules::hasPhone('al 0412-5550000', '0414-3581111'))->toBeFalse();
     });
 });

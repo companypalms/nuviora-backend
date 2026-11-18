@@ -254,6 +254,10 @@ class ExampleModel implements AssistantModel
             return ['name' => 'proponer_reactivar_usuario', 'arguments' => ['persona' => $m[1]]];
         }
 
+        // .159: "cambia el teléfono de atención al cliente a 0414-3581111"
+        if (preg_match('/\btelefono\b.*\b(atencion|soporte)\b|\b(atencion|soporte)\b.*\btelefono\b/u', $t) && preg_match('/\+?\d[\d\s\-.()]{5,}\d/u', $message, $phone)) {
+            return ['name' => 'proponer_telefono_atencion', 'arguments' => ['telefono' => trim($phone[0])]];
+        }
         if (preg_match('/\b(tasa|binance|bcv)\b.*?\b(?:a|en)\s+(\d+(?:[.,]\d+)?)/u', $t, $m) && preg_match('/cambi|pon|actualiz|esta en|subio|bajo/u', $t)) {
             $key = str_contains($t, 'binance') ? 'binance_usd' : (str_contains($t, 'euro') ? 'bcv_eur' : 'bcv_usd');
 

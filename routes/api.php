@@ -817,6 +817,9 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::put('/settings', [\App\Http\Controllers\StoreChatController::class, 'saveSettings']);
         Route::post('/test', [\App\Http\Controllers\StoreChatController::class, 'test'])->middleware('throttle:10,1');
         // El "Examen del chat": empezar, cada pregunta (van seguidas: hasta 60 por minuto) y las preguntas que cambia el dueño
+        // .159: "Lo que sabe el chat" de un producto y sus "Más detalles" (también desde su ficha)
+        Route::get('/products/{product}/knowledge', [\App\Http\Controllers\StoreChatController::class, 'knowledge'])->whereNumber('product');
+        Route::put('/products/{product}/details', [\App\Http\Controllers\StoreChatController::class, 'saveDetails'])->whereNumber('product');
         Route::post('/exam/start', [\App\Http\Controllers\StoreChatController::class, 'examStart']);
         Route::post('/exam/ask', [\App\Http\Controllers\StoreChatController::class, 'examAsk'])->middleware('throttle:60,1');
         Route::post('/exam/questions', [\App\Http\Controllers\StoreChatController::class, 'examCreate']);

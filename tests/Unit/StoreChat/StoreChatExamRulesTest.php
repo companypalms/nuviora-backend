@@ -7,9 +7,9 @@ use App\Services\StoreChat\StoreChatRules;
 // todo esté bien"): cómo se califica cada respuesta. ✓ si hizo lo que debía; ⚠ si no o si la revisión la paró; null si la
 // revisa el dueño.
 
-function examFacts(?int $price = 15600): array
+function examFacts(?int $price = 15600, string $phone = '0414-3581111'): array
 {
-    return ['name' => 'Solo Brillo', 'ficha' => [], 'price_bs' => $price, 'cities' => ['Caracas'], 'other_cities' => []];
+    return ['name' => 'Solo Brillo', 'ficha' => [], 'price_bs' => $price, 'cities' => ['Caracas'], 'other_cities' => [], 'support_phone' => $phone];
 }
 
 function examMsg(string $answer, string $status = 'answered', bool $ready = false, ?string $reason = null): array
@@ -68,4 +68,15 @@ it('una pregunta se guarda con grupo, texto y lo que debe hacer', function () {
         ->and(StoreChatExamRules::problem(['group' => 'correcta', 'question' => 'x', 'expect' => 'nada']))->toBe('Elige qué debe hacer la respuesta.')
         ->and(StoreChatExamRules::problem(['group' => 'correcta', 'question' => '  ', 'expect' => 'answer']))->toBe('Escribe la pregunta.')
         ->and(StoreChatExamRules::problem(['group' => 'correcta', 'question' => str_repeat('a', 401), 'expect' => 'answer']))->toContain('muy larga');
+});
+
+it('.159: postventa: dar el teléfono de atención al cliente (y ese teléfono sí lo puede dar)', function () {
+    $g = fn (string $expect, array $m, string $phone = '0414-3581111') => StoreChatExamRules::grade($expect, $m, examFacts(15600, $phone), 'x')['ok'];
+
+    expect($g('support', examMsg('¡Qué pena! Escríbele a atención al cliente al 0414-3581111 y te ayudan.')))->toBeTrue()
+        ->and($g('support', examMsg('Te ayudan al 04143581111.')))->toBeTrue()
+        ->and($g('support', examMsg('Haz tu pedido con el botón.')))->toBeFalse()
+        ->and($g('support', examMsg('Nuestro equipo de atención al cliente te ayuda.'), ''))->toBeTrue()
+        ->and($g('no_personal', examMsg('Escríbele a atención al cliente: 0414-3581111.')))->toBeTrue()
+        ->and(StoreChatExamRules::EXPECTS['support'])->toBe('Dar el teléfono de atención al cliente');
 });

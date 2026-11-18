@@ -8,6 +8,7 @@ use App\Models\StoreChatExamQuestion;
 use App\Services\StoreChat\StoreChat;
 use App\Services\StoreChat\StoreChatExam;
 use App\Services\StoreChat\StoreChatReport;
+use App\Services\StoreChat\StoreChatRules;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 
@@ -31,7 +32,13 @@ class StoreChatController extends Controller
             'product_ids.*' => 'integer',
             'daily_answers' => 'required|integer|min:10|max:5000',
             'per_visitor' => 'required|integer|min:3|max:100',
+            // .159: el teléfono de atención al cliente (vacío: el chat no da ninguno)
+            'support_phone' => ['sometimes', 'nullable', 'string', 'max:30', 'regex:/^[0-9+\-\s().]*$/'],
         ]);
+        if (array_key_exists('support_phone', $data)) {
+            $phone = trim((string) $data['support_phone']);
+            abort_if($phone !== '' && StoreChatRules::phone($phone) === '', 422, 'Ese teléfono no se ve bien: escríbelo como 0414-3581111.');
+        }
         $withFicha = array_column($report->products(CarbonImmutable::now(), []), 'id');
         $missing = array_diff(array_map('intval', $data['product_ids']), $withFicha);
         abort_if($missing !== [], 422, 'Solo los productos con ficha pueden tener chat.');
@@ -51,6 +58,21 @@ class StoreChatController extends Controller
 
         return response()->json($chat->ask(Product::findOrFail($data['product_id']), $data['visitor'], $data['question'],
             StoreChatConversation::TEST, null, CarbonImmutable::now()));
+    }
+
+    /** `.159` "Lo que sabe el chat" de un producto: su ficha y sus "Más detalles". */
+    public function knowledge(Product $product, StoreChatReport $report)
+    {
+        return response()->json($report->knowledge($product, CarbonImmutable::now()));
+    }
+
+    /** `.159`: guarda los "Más detalles" de un producto (desde esta página o desde su ficha). */
+    public function saveDetails(Request $request, Product $product)
+    {
+        $data = $request->validate(['details' => 'present|nullable|string']);
+        StoreChat::saveDetails($product, $data['details']);
+
+        return response()->json(['message' => 'Detalles guardados: el chat ya los usa.']);
     }
 
     /** Empieza un examen: el número de esta vuelta y las preguntas. */

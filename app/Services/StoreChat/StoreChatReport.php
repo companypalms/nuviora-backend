@@ -2,6 +2,7 @@
 
 namespace App\Services\StoreChat;
 
+use App\Models\Product;
 use App\Models\ProductProfile;
 use App\Models\Setting;
 use App\Models\StoreChatConversation;
@@ -62,6 +63,28 @@ class StoreChatReport
         usort($out, fn ($a, $b) => [!$a['enabled'], $a['name']] <=> [!$b['enabled'], $b['name']]);
 
         return $out;
+    }
+
+    /**
+     * `.159` "Lo que sabe el chat" de un producto: los campos de su ficha (se cambian en la ficha) y sus "Más detalles"
+     * (se cambian aquí o en la ficha). Sin ficha guardada, no hay detalles que guardar.
+     */
+    public function knowledge(Product $product, CarbonImmutable $now): array
+    {
+        $facts = $this->facts->for($product, $now);
+        $saved = ProductProfile::where('product_id', $product->id)->exists();
+
+        return [
+            'product_id' => $product->id,
+            'name' => $facts['name'],
+            'has_profile' => $saved,
+            'has_ficha' => StoreChatRules::hasFicha($facts['ficha']),
+            'ficha' => $facts['ficha'],
+            'labels' => ['what_it_is' => 'Qué es', 'benefits' => 'Para qué sirve', 'mechanism' => 'Cómo funciona', 'key_info' => 'Información clave',
+                'not_this' => 'Lo que NO es'],
+            'details' => (string) ($facts['details'] ?? ''),
+            'max' => StoreChatRules::DETAILS_MAX,
+        ];
     }
 
     /** @return array{binance: ?float, at: ?string, fresh: bool} */

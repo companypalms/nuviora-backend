@@ -3,6 +3,7 @@
 namespace App\Services\StoreChat;
 
 use App\Models\Product;
+use App\Models\ProductProfile;
 use App\Models\Setting;
 use App\Models\StoreChatConversation;
 use App\Models\StoreChatMessage;
@@ -31,12 +32,25 @@ class StoreChat
         return StoreChatRules::settings(Setting::get(StoreChatRules::SETTING));
     }
 
+    /** Guarda lo que llega; lo que no llega queda como estaba (el asistente cambia solo el teléfono). */
     public static function saveSettings(array $settings): array
     {
-        $clean = StoreChatRules::settings($settings);
+        $clean = StoreChatRules::settings($settings + self::settings());
         Setting::set(StoreChatRules::SETTING, $clean);
 
         return $clean;
+    }
+
+    /** `.159`: guarda los "Más detalles" de un producto (solo si ya tiene su ficha guardada). */
+    public static function saveDetails(Product $product, ?string $details): string
+    {
+        $profile = ProductProfile::where('product_id', $product->id)->first();
+        abort_if($profile === null, 422, 'Guarda primero la ficha del producto (Qué es, Para qué sirve y Cómo funciona).');
+        $details = trim((string) $details);
+        abort_if(mb_strlen($details) > StoreChatRules::DETAILS_MAX, 422, 'Los detalles son muy largos (hasta ' . number_format(StoreChatRules::DETAILS_MAX, 0, ',', '.') . ' letras).');
+        $profile->forceFill(['chat_details' => $details !== '' ? $details : null])->save();
+
+        return $details;
     }
 
     /** openai, example (la PC de pruebas, sin llave) o unavailable (sin llave en el servidor). */

@@ -75,6 +75,8 @@ class ToolCatalog
         Change\ProductNoteTool::class,
         // .99: pausar, poner en liquidación, abandonar o reactivar un producto
         Change\ProductModeTool::class,
+        // .159: el teléfono de atención al cliente del chat de la tienda
+        Change\StoreChatPhoneTool::class,
     ];
 
     /** @var array<string, Tool>|null */
