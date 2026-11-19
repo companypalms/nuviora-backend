@@ -43,11 +43,13 @@ class StorefrontController extends Controller
     public function config(Request $request, string $shopifyId): Response
     {
         $product = $this->catalog->product($shopifyId);
-        if (!$this->catalog->enabledFor($product)) {
+        // La vista previa de "Formulario de la tienda" (desde el panel) se ve aunque el formulario esté apagado
+        $preview = $product !== null && $request->query('prueba') === '1' && $this->panel((string) $request->headers->get('Origin'));
+        if (!$preview && !$this->catalog->enabledFor($product)) {
             return $this->json($request, ['enabled' => false], 200);
         }
 
-        return $this->json($request, $this->catalog->config($product, $request->query('tasa'), $request->query('precio')));
+        return $this->json($request, ['enabled' => true] + $this->catalog->config($product, $request->query('tasa'), $preview ? null : $request->query('precio')));
     }
 
     public function order(Request $request, StorefrontOrders $orders): Response
@@ -157,6 +159,12 @@ class StorefrontController extends Controller
             $list = [...$list, 'http://127.0.0.1:8090', 'http://localhost:8090'];
         }
 
-        return in_array($clean, $list, true);
+        return in_array($clean, $list, true) || $this->panel($origin);
+    }
+
+    /** El panel de Nuviora (la vista previa del formulario en "Formulario de la tienda"). */
+    private function panel(string $origin): bool
+    {
+        return $origin !== '' && in_array(rtrim($origin, '/'), array_map(fn ($o) => rtrim((string) $o, '/'), (array) config('cors.allowed_origins', [])), true);
     }
 }

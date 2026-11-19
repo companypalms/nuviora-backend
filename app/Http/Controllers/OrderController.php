@@ -276,6 +276,7 @@ class OrderController extends Controller
                 'courier_recipient_name'      => $order->courier_recipient_name,
                 'courier_recipient_id_number' => $order->courier_recipient_id_number,
                 'courier_recipient_phone'     => $order->courier_recipient_phone,
+                'express_fee'          => $order->express_fee, // .164: Delivery Express del formulario de la tienda
                 'cash_received'        => $order->cash_received,
                 'change_amount'        => $order->change_amount,
                 'change_covered_by'    => $order->change_covered_by,
