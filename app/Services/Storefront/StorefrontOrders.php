@@ -126,8 +126,8 @@ class StorefrontOrders
             'price' => round($productUsd / $units, 2), 'quantity' => $units, 'image' => $product->image,
             'size' => $variant?->title,
         ]);
-        OrderActivityLog::create(['order_id' => $order->id, 'action' => 'created',
-            'description' => 'Pedido del formulario de la tienda' . ($express !== null ? ' (con Delivery Express)' : '') . '.']);
+        // El Delivery Express va en el total, como el de Releasit, sin avisarle a la vendedora ni a la agencia (dueño, 19/11)
+        OrderActivityLog::create(['order_id' => $order->id, 'action' => 'created', 'description' => 'Pedido del formulario de la tienda.']);
         $front->forceFill(['order_id' => $order->id])->save();
 
         return [$order, $front];
