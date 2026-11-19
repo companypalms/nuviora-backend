@@ -299,8 +299,8 @@
       input.setAttribute('aria-describedby', id + '-err');
       if (required) input.setAttribute('aria-required', 'true');
       input.addEventListener('focus', function () { touched(key); });
-      input.addEventListener('input', function () { touched(key); clearErr(box, err); });
-      input.addEventListener('change', function () { touched(key); clearErr(box, err); });
+      input.addEventListener('input', function () { typed(key, input); clearErr(box, err); });
+      input.addEventListener('change', function () { typed(key, input); clearErr(box, err); });
       var kids = label ? [el('label', { for: id }, [label + ' ', required ? el('span', { class: 'nvf-req', text: '*' }) : null]), box, err] : [box, err];
       var r = el('div', { class: 'nvf-row' + (label ? '' : ' no-label'), 'data-field': key }, kids);
       r._box = box;
@@ -316,16 +316,21 @@
       r._err.classList.add('is-on');
       r.querySelector('input,select').setAttribute('aria-invalid', 'true');
     }
+    // .165 (dueño: "con solo darle clic puede ser una equivocación"): tocar un campo, cambiar de oferta o marcar el express
+    // solo cuenta en qué campos estuvo; "empezaron" y el InitiateCheckout salen la primera vez que escribe algo en un campo
+    // (o elige su ciudad o talla), también con el autocompletar del teléfono.
     function touched(key) {
-      if (!started) {
-        started = true;
-        track('start');
-        if (cfg.pixel.initiate) {
-          var o = cfg.offers[state.offer];
-          pixel('InitiateCheckout', content(o.units, o.price_usd));
-        }
-      }
       if (key !== 'submit' && !seenFields[key]) { seenFields[key] = true; track('field:' + key); }
+    }
+    function typed(key, input) {
+      touched(key);
+      if (started || (input && !String(input.value).trim())) return;
+      started = true;
+      track('start');
+      if (cfg.pixel.initiate) {
+        var o = cfg.offers[state.offer];
+        pixel('InitiateCheckout', content(o.units, o.price_usd));
+      }
     }
     function totals() {
       var o = cfg.offers[state.offer];
@@ -360,7 +365,7 @@
         if (firstBad) firstBad.focus();
         return;
       }
-      touched('submit');
+      typed('submit');
       track('submit');
       var x = totals();
       if (PREVIEW) {
