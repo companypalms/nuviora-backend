@@ -72,8 +72,44 @@ final class StopWhy
             . AdRules::money((float) $why['spend']) . ' (' . AdRules::num((float) $why['spend'] / $c) . "×C) y {$bought}. " . self::targets($why);
     }
 
-    /** Tu regla, en palabras. */
-    private static function rule(array $why): string
+    /**
+     * `.163` (dueño, 2026-11-19: "está diciendo unos gastos… que no estoy viendo en Meta Ads en ninguno de los dos creativos
+     * que se llaman así"): un anuncio que se apaga en una campaña, con sus propios números (no los de la campaña), su regla y,
+     * si otro anuncio prendido se llama igual, que ese no se toca.
+     *
+     * @param array $ad MetaDecisions::pruneAd
+     * @param list<string> $keep los ad sets de los que se llaman igual y no se apagan
+     * @return list<string>
+     */
+    public static function ad(array $ad, ?string $city, array $keep = []): array
+    {
+        $why = $ad['why'] ?? null;
+        $numbers = 'Anuncio «' . $ad['name'] . '»' . (($ad['adset'] ?? null) ? ' del ad set «' . $ad['adset'] . '»' : '') . ': en 3 días gastó '
+            . AdRules::money((float) $ad['spend3']) . self::bought3((float) $ad['spend3'], (float) $ad['purchases3']) . '; en toda su vida, '
+            . AdRules::money((float) $ad['spend']) . self::bought3((float) $ad['spend'], (float) $ad['purchases']) . '.';
+        $rule = match (true) {
+            $why === null => ($ad['reading'] ?? null) ? 'Por qué se apaga: ' . lcfirst((string) $ad['reading']) : null,
+            ($ad['rule'] ?? 'ad') === 'creative' => 'Se apaga porque su creativo pierde ' . ($city ? "en {$city}" : 'aquí') . ': ' . lcfirst(self::short($why)) . '. ' . self::rule($why),
+            default => self::targets($why) . ' ' . self::rule($why, 'anuncio'),
+        };
+        $twins = $keep ? 'Ojo: hay otro «' . $ad['name'] . '» prendido en ' . (count($keep) === 1 ? 'el ad set ' : 'los ad sets ')
+            . CreativeCalls::join(array_map(fn ($s) => "«{$s}»", $keep)) . ': ' . (count($keep) === 1 ? 'ese no se apaga.' : 'esos no se apagan.') : null;
+
+        return array_values(array_filter([$numbers, $rule, $twins]));
+    }
+
+    /** `.163`: " sin compras", " con 1 compra" o " con 3 compras ($6,92 por compra)". */
+    private static function bought3(float $spend, float $purchases): string
+    {
+        return match (true) {
+            $purchases == 0 => ' sin compras',
+            $purchases == 1 => ' con 1 compra',
+            default => ' con ' . AdRules::num($purchases) . ' compras (' . AdRules::money($spend / $purchases) . ' por compra)',
+        };
+    }
+
+    /** Tu regla, en palabras (`.163`: de un anuncio, o de un creativo en una ciudad). */
+    private static function rule(array $why, string $unit = 'creativo'): string
     {
         $min = AdRules::num((float) $why['min']);
         $cap = AdRules::num((float) $why['cap']);
@@ -83,7 +119,8 @@ final class StopWhy
             ? ' Se miró la semana porque en 3 días gastó solo ' . AdRules::money((float) ($why['spend3'] ?? 0)) . " y no llegó a {$times}×C." : '';
 
         return match ($why['rule']) {
-            'life_spend' => "Tu regla: un creativo que en una ciudad gasta {$min} veces tu C con 0 o 1 compra se apaga ahí.",
+            'life_spend' => $unit === 'anuncio' ? "Tu regla: un anuncio que gasta {$min} veces tu C con 0 o 1 compra se apaga."
+                : "Tu regla: un creativo que en una ciudad gasta {$min} veces tu C con 0 o 1 compra se apaga ahí.",
             'life_be' => "Tu regla: con 2 compras o más se le da hasta {$cap} veces tu C; si llega con el costo por compra encima de tu BE (más de un {$margin} %, o con "
                 . AdRules::num((float) $why['margin_n']) . ' compras o más), se apaga ahí.',
             'failing' => "Fue ganador, pero tu regla apaga en una ciudad a un ganador que gasta {$cap} veces tu C {$selling}. Se sigue iterando en batches nuevos."

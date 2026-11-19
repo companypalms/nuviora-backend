@@ -4,6 +4,7 @@ namespace App\Services\Meta\Decisions;
 
 use App\Models\MetaCreative;
 use App\Services\Meta\Analysis\CreativeCalls;
+use App\Services\Meta\CreativeTrackingId;
 use App\Services\Meta\Decisions\Readers\AdFacts;
 use App\Services\Meta\Decisions\Readers\OpsFacts;
 use App\Services\Meta\Decisions\Rules\AdRules;
@@ -582,9 +583,11 @@ class MetaDecisions
                     . ': la campaña gastó ' . AdRules::money($spent) . ' desde entonces. Manda stock; mientras tanto no se sube el presupuesto ahí.';
             }
             $prune = [];
+            $pruneAds = [];
             foreach ($f['ads'] as $adId => $ad) {
                 if ($ad['campaign_meta_id'] === $id && $ad['active'] && (($out['ads'][$adId]['key'] ?? null) === 'loser' || self::stopsHere($ad, $out, $id))) {
                     $prune[] = $ad['name'];
+                    $pruneAds[] = self::pruneAd($f, $out, (string) $adId, $id);
                 }
             }
             $newBatches = 0;
@@ -648,6 +651,8 @@ class MetaDecisions
             $out['campaigns'][$id]['numbers'] = ['spend3' => (float) ($w3['totals']['spend'] ?? 0), 'purchases3' => (float) ($w3['totals']['purchases'] ?? 0),
                 'c' => $c['target'], 'be' => $c['break_even'], 'source' => $c['target_source'] ?? null, 'budget' => $budget,
                 'streak' => $streak['days'], 'prune' => $prune,
+                // .163: los números de cada anuncio que se apaga (los de arriba son de la campaña completa) y de qué días son
+                'prune_ads' => $pruneAds, 'dates3' => $f['dates']['3d'] ?? null,
                 // .87: los batches vivos (contando lo que se apaga hoy) y lo que puede lanzar, en orden
                 'live' => self::live($f, $out, $id, in_array($action['key'], ['hold_prune', 'intervene'], true)), 'offers' => $offers,
                 'mins' => ['off' => $mins['off'], 'keep' => $mins['keep'], 'stays' => $mins['stays']],
@@ -898,6 +903,38 @@ class MetaDecisions
         }
 
         return $res;
+    }
+
+    /**
+     * `.163` (dueño, 2026-11-19, LegUp en Caracas: "está diciendo unos gastos y unas cosas que no estoy viendo en Meta Ads en
+     * ninguno de los dos creativos que se llaman así"): lo de un anuncio que se apaga, para que la misión no muestre solo los
+     * números de la campaña: su ad set, sus números de 3 días y de toda su vida, por qué se apaga (la regla del anuncio o la de
+     * su creativo en esta ciudad) y los ad sets de los otros anuncios prendidos de la campaña que se llaman igual. PHP puro.
+     *
+     * @return array{name: string, adset: ?string, spend3: float, purchases3: float, spend: float, purchases: float, rule: string, why: ?array, reading: ?string, twins: list<string>}
+     */
+    public static function pruneAd(array $f, array $out, string $adId, string $campaignId): array
+    {
+        $ad = $f['ads'][$adId];
+        $t3 = $ad['windows']['3d']['totals'] ?? [];
+        $life = $ad['windows']['max']['totals'] ?? [];
+        $label = mb_strtolower(CreativeTrackingId::label($ad['name']));
+        $twins = [];
+        foreach ($f['ads'] as $otherId => $o) {
+            if ((string) $otherId !== $adId && $o['campaign_meta_id'] === $campaignId && $o['active'] && mb_strtolower(CreativeTrackingId::label($o['name'])) === $label) {
+                $twins[] = (string) ($f['adsets'][$o['adset_meta_id']]['name'] ?? '');
+            }
+        }
+        $v = $out['ads'][$adId] ?? [];
+        // .119/.86: no pierde el anuncio, pierde su creativo en esta ciudad
+        $city = ($v['key'] ?? null) === 'loser' || $ad['creative_id'] === null ? null
+            : collect($out['creatives'][$ad['creative_id']]['cities'] ?? [])->first(fn ($x) => (string) $x['campaign_meta_id'] === $campaignId);
+
+        return ['name' => (string) $ad['name'], 'adset' => isset($f['adsets'][$ad['adset_meta_id']]) ? (string) $f['adsets'][$ad['adset_meta_id']]['name'] : null,
+            'spend3' => round((float) ($t3['spend'] ?? 0), 2), 'purchases3' => (float) ($t3['purchases'] ?? 0),
+            'spend' => round((float) ($life['spend'] ?? 0), 2), 'purchases' => (float) ($life['purchases'] ?? 0),
+            'rule' => $city !== null ? 'creative' : 'ad', 'why' => $city !== null ? ($city['why'] ?? null) : ($v['why'] ?? null),
+            'reading' => $city !== null ? ($city['reading'] ?? null) : ($v['reading'] ?? null), 'twins' => array_values(array_filter($twins))];
     }
 
     /** `.119`: si el creativo de este anuncio es un ganador que pierde dinero en esta ciudad. */

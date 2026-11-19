@@ -58,7 +58,8 @@ class MetaAnalyzer
         $late = \App\Services\Meta\Queue\LateBatches::find($decisions, $date, (int) (new \App\Services\Meta\Decisions\DecisionSettings())->get()['corrections_days']);
         // .89: y los testeos listos para lanzar (todos sus batches en la banca)
         $urgent = UrgentList::build($facts, $late, \App\Services\Meta\Queue\LateBatches::leader(), \App\Services\Meta\Queue\TestingLaunch::ready(),
-            \App\Services\Meta\NameCheck::find()); // .89: y lo que no se puede reconocer por su nombre
+            \App\Services\Meta\NameCheck::find(), // .89: y lo que no se puede reconocer por su nombre
+            \App\Services\Meta\NameCheck::mismatches()); // .163: y los anuncios con el código C de otro batch
         // .132: "la última vez" en cada misión, y el aviso si el mismo cambio no se cumplió 3 veces seguidas en una ciudad
         $urgent = ChangeLessons::missions($urgent, $facts, $lessons);
         array_push($urgent, ...ChangeLessons::notices($lessons, array_column($facts, 'product', 'product_id'), $date));

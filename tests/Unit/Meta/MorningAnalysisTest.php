@@ -102,15 +102,15 @@ describe('.82: tu día en Meta Ads', function () {
             ->and($by['intervene']['title'])->toBe('Apaga 2 anuncios que pierden')
             // .87: sin nada en la banca, no pide "cuando llegue un batch": solo lo que se puede hacer hoy
             ->and($by['intervene']['steps'])->toBe(['Abre la campaña «FLEXISTEP ARAGUA CBO».', 'Apaga «AD 1» y «AD 2».', 'No toques el presupuesto hoy.'])
-            ->and($by['intervene']['why'])->toBe('$10,29 por compra; tu límite es $7,22 · 1 día encima')
+            ->and($by['intervene']['why'])->toBe('La campaña: $10,29 por compra; tu límite es $7,22 · 1 día encima')
             ->and($by['intervene']['group'])->toBe('arreglar')
-            ->and($by['intervene']['detail'][0])->toBe('En 3 días: gastaste $72,00 y Meta vio 7 compras = $10,29 por compra.')
+            ->and($by['intervene']['detail'][0])->toBe('La campaña completa (todos sus anuncios), en 3 días: gastó $72,00 y Meta vio 7 compras = $10,29 por compra.')
             ->and($by['intervene']['detail'][1])->toBe('Tu objetivo (C) aquí es $5,39 y tu límite para no perder (BE) es $7,22.')
             ->and($by['hold_prune']['title'])->toBe('Apaga 1 anuncio caro y lanza B0104')
             ->and($by['hold_prune']['steps'])->toBe(['Abre la campaña de FlexiStep en Carabobo.', 'Apaga «AD 3».', 'Lanza el batch «B0104» de la banca (sus videos, aquí abajo).',
                 // .124: el gasto mínimo del ad set nuevo y los parámetros de URL
                 'Ponle al ad set nuevo un gasto mínimo diario de $5,39 (tu C aquí). Va solo mientras se prueba.', 'En cada anuncio nuevo, abre «Seguimiento» y pega los parámetros de URL (botón «Copiar parámetros», aquí abajo).'])
-            ->and($by['hold_prune']['why'])->toBe('$7,35 por compra: entre tu objetivo ($5,39) y tu límite ($7,22)')
+            ->and($by['hold_prune']['why'])->toBe('La campaña: $7,35 por compra: entre tu objetivo ($5,39) y tu límite ($7,22)')
             ->and($by['alarm']['group'])->toBe('aviso')
             ->and($by['alarm']['title'])->toBe('Poco stock en Caracas: quedan 3 unidades.')
             ->and($by['alarm']['where'])->toBe('FlexiStep');

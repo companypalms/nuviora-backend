@@ -147,7 +147,7 @@ describe('.120: la misión de poner el BE real', function () {
     it('las misiones de la ciudad dicen que el límite es estimado', function () {
         $aragua = collect(UrgentList::build(releevFacts()))->first(fn ($m) => $m['kind'] === 'intervene' && $m['city'] === 'Aragua');
 
-        expect($aragua['why'])->toBe('$8,16 por compra; tu límite estimado es $6,00')
+        expect($aragua['why'])->toBe('La campaña: $8,16 por compra; tu límite estimado es $6,00')
             ->and($aragua['detail'])->toContain('Tu objetivo (C) aquí es $4,00 (referencia del nombre de la campaña). Todavía no tiene BE: se usa $6,00, estimado.');
     });
 });

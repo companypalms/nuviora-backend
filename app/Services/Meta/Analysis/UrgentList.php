@@ -64,7 +64,7 @@ final class UrgentList
     public const SEVERITY = [
         'pause_city' => 1, 'not_sold' => 1, 'product_off' => 1, 'stock_out' => 1, 'stock_waiting' => 1, 'stop_creatives' => 1,
         'decrease' => 2, 'undo_raise' => 2, 'intervene' => 2, 'tracking' => 2, 'late_urgent' => 2, 'drop_product' => 2, 'worth_bad' => 2,
-        'hold_prune' => 3, 'step_down' => 3, 'few_batches' => 3, 'min_spend' => 3, 'late_batch' => 3, 'launch_ready' => 3, 'no_city' => 3, 'no_be' => 3,
+        'hold_prune' => 3, 'step_down' => 3, 'few_batches' => 3, 'min_spend' => 3, 'rename' => 3, 'late_batch' => 3, 'launch_ready' => 3, 'no_city' => 3, 'no_be' => 3,
         'scale' => 4, 'launch_test' => 4, 'relaunch' => 4, 'new_product_late' => 4, 'price_down' => 4,
         'alarm' => 5, 'names' => 5, 'cooldown' => 5, 'angle_rest' => 5, 'left_city' => 5, 'stale' => 5, 'lesson' => 5, 'watch' => 5,
         'price' => 6,
@@ -73,7 +73,7 @@ final class UrgentList
     /** `.82`: en qué grupo de la pantalla va cada cosa. */
     public const GROUP = [
         'pause_city' => 'frenar', 'not_sold' => 'frenar', 'product_off' => 'frenar', 'drop_product' => 'frenar', 'worth_bad' => 'frenar', 'stop_creatives' => 'frenar', 'decrease' => 'frenar', 'undo_raise' => 'frenar',
-        'intervene' => 'arreglar', 'tracking' => 'arreglar', 'hold_prune' => 'arreglar', 'step_down' => 'arreglar', 'few_batches' => 'arreglar', 'min_spend' => 'arreglar',
+        'intervene' => 'arreglar', 'tracking' => 'arreglar', 'hold_prune' => 'arreglar', 'step_down' => 'arreglar', 'few_batches' => 'arreglar', 'min_spend' => 'arreglar', 'rename' => 'arreglar',
         'late_urgent' => 'arreglar', 'late_batch' => 'arreglar', 'launch_ready' => 'arreglar', 'no_city' => 'arreglar', 'no_be' => 'arreglar',
         'scale' => 'crecer', 'launch_test' => 'crecer', 'relaunch' => 'crecer', 'new_product_late' => 'crecer', 'price_down' => 'crecer',
         'stock_out' => 'frenar', 'stock_waiting' => 'aviso', 'alarm' => 'aviso', 'price' => 'aviso', 'names' => 'aviso', 'cooldown' => 'aviso', 'angle_rest' => 'aviso', 'left_city' => 'aviso', 'stale' => 'aviso', 'lesson' => 'aviso',
@@ -99,7 +99,7 @@ final class UrgentList
      * @param list<array> $facts AnalysisFacts::build
      * @return list<array{key: string, product_id: int, product: string, city: ?string, kind: string, label: string, text: string, tone: string, urgency: ?string, severity: int, group: string, title: string, why: ?string, detail: list<string>, money: ?array{cut: ?float, add: ?float}}>
      */
-    public static function build(array $facts, array $late = [], ?string $leader = null, array $tests = [], array $names = []): array
+    public static function build(array $facts, array $late = [], ?string $leader = null, array $tests = [], array $names = [], array $wrong = []): array
     {
         // .89: los encargos atrasados, para presionar al editor líder
         $items = self::late($late, $leader);
@@ -180,7 +180,7 @@ final class UrgentList
                     // .155: los de la banca que el sistema puede subir solo a esta campaña (prender una campaña, no)
                     'upload' => $wait || $kind === 'relaunch' ? [] : self::uploads($mission['batches'], (string) $c['campaign_meta_id'], self::newMin($c['campaign'] ?? null, $n)),
                     'why' => self::why($kind, $a, $n),
-                    'detail' => array_values(array_filter([...self::numbers($n), $a['reading'], $a['proposal'], ...$c['notes'], ...$c['budget_notes'],
+                    'detail' => array_values(array_filter([...($wait ? [] : $mission['lines']), ...self::numbers($n), $a['reading'], $a['proposal'], ...$c['notes'], ...$c['budget_notes'],
                         count($prune) > self::NAMES_IN_STEP ? 'Todos los anuncios a apagar: ' . CreativeCalls::join($prune) . '.' : null, self::liveLine($n)])),
                     'money' => self::money($kind, $a, $n)] + ($wait ? ['group' => 'aviso'] : []);
             }
@@ -251,7 +251,61 @@ final class UrgentList
 
         // .89: los testeos listos para lanzar (TestingLaunch), al final: van en "Crecer"
         return [...array_map(fn ($i) => array_diff_key($i, ['_level' => 1, '_risk' => 1, '_gain' => 1]), $items), ...array_map(fn ($t) => self::testLaunch($t), $tests),
-            ...array_map(fn ($n) => self::names($n), $names)];
+            ...array_map(fn ($n) => self::names($n), $names), ...array_map(fn ($w) => self::rename($w), $wrong)];
+    }
+
+    /**
+     * `.163` (dueño, 2026-11-19: en LegUp Caracas, el anuncio "C0181 CERV" del ad set B0128 ROD era el C0186 ROD y el sistema
+     * sumaba sus resultados al C0181; eligió una misión "Corrige el nombre", con los pasos exactos): por campaña, los anuncios
+     * prendidos con el código C de otro batch (NameCheck::mismatches) y qué nombre ponerles. Cambiar el nombre no toca nada
+     * más del anuncio. Cuando se corrige, el próximo análisis ya no lo trae.
+     *
+     * @param array{campaign_meta_id: string, campaign: string, product_id: ?int, product: ?string, city: ?string, ads: list<array>, repeats: list<array>} $w
+     */
+    public static function rename(array $w): array
+    {
+        $short = self::short((string) ($w['product'] ?? $w['campaign']));
+        $ads = $w['ads'];
+        $repeats = $w['repeats'];
+        $count = count($ads) + count($repeats);
+        $code = fn (string $c) => preg_replace('/^(C\d+).*$/u', '$1', $c);
+        $one = $count === 1 && $ads ? $ads[0] : null;
+        $or = fn (array $xs) => count($xs) > 1 ? implode(', ', array_slice($xs, 0, -1)) . ' o ' . end($xs) : (string) ($xs[0] ?? '');
+        $steps = [self::open($w['campaign'], $short, $w['city'] ?? null)];
+        foreach ($ads as $a) {
+            $find = 'En «Anuncios», busca ' . self::q($a['name']) . ' y elige el del ad set ' . self::q($a['adset']);
+            $steps[] = match (true) {
+                $a['suggest'] !== null => "{$find}. Toca «Editar», cámbiale el nombre a " . self::q($a['suggest']) . ' y publica.',
+                $a['options'] !== [] => "{$find}. Mira su video y ponle el nombre que le toca: " . $or(array_map(fn ($x) => self::q($x), $a['options'])) . '. Publica.',
+                default => "{$find}. Mira su video y ponle el código C de su pieza (está en Cola y banca). Publica.",
+            };
+        }
+        foreach ($repeats as $r) {
+            $steps[] = 'Busca ' . self::q($r['name']) . ': está prendido en los ad sets ' . CreativeCalls::join(array_map(fn ($x) => self::q($x), $r['adsets']))
+                . '. Mira sus videos: deja ese nombre solo en el que es y ponle al otro el código C de su pieza (está en Cola y banca).';
+        }
+        $steps[] = 'Cambiar solo el nombre no toca el video, el presupuesto ni lo que Meta ya aprendió del anuncio.';
+
+        return ['key' => "rename:{$w['campaign_meta_id']}:" . substr(md5(implode(',', [...array_column($ads, 'meta_id'), ...array_column($repeats, 'name')])), 0, 10),
+            'product_id' => (int) ($w['product_id'] ?? 0), 'product' => (string) ($w['product'] ?? $w['campaign']), 'urgency' => null, 'city' => $w['city'] ?? null,
+            'kind' => 'rename', 'label' => 'Nombre', 'tone' => 'warning',
+            'text' => $one ? "{$one['name']} está en {$one['adset']}, pero {$code($one['code'])} es del batch {$one['belongs']}." : "{$count} anuncios con un nombre que no cuadra.",
+            'where' => $short . (($w['city'] ?? null) ? " · {$w['city']}" : ''),
+            'title' => match (true) {
+                $one !== null && $one['suggest'] !== null => "Corrige el nombre: {$one['name']} de {$one['adset']} es {$one['suggest']}",
+                $one !== null => "Corrige el nombre de {$one['name']} en {$one['adset']}",
+                $count === 1 => "Corrige el nombre: {$repeats[0]['name']} está repetido",
+                default => "Corrige el nombre de {$count} anuncios",
+            },
+            'steps' => $steps, 'batches' => [], 'copy' => null,
+            'why' => $one ? "{$code($one['code'])} es del batch {$one['belongs']}: con ese nombre, sus resultados se suman a otro creativo"
+                : 'Con esos nombres, sus resultados se suman a otro creativo',
+            'detail' => [...array_map(fn ($a) => self::q($a['name']) . ' está en el ad set ' . self::q($a['adset']) . ', pero ' . $code($a['code']) . ' es una pieza del batch ' . self::q($a['belongs'])
+                . '.' . ($a['options'] !== [] ? ' En ' . self::q($a['adset']) . (count($a['options']) === 1 ? ' falta ' : ' faltan ') . CreativeCalls::join(array_map(fn ($x) => self::q($x), $a['options'])) . '.' : ''), $ads),
+                ...array_map(fn ($r) => self::q($r['name']) . ' está prendido en ' . count($r['adsets']) . ' ad sets de batches distintos: ' . CreativeCalls::join(array_map(fn ($x) => self::q($x), $r['adsets'])) . '.', $repeats),
+                'El sistema reconoce cada creativo por su nombre: mientras no se corrija, mezcla sus números, su ángulo y lo que sabemos de él con los de otro creativo.',
+                'Si al ver el video no es ese, ponle el código C de su pieza (está en Cola y banca). Cuando lo corrijas, en la próxima lectura de Meta sus resultados pasan a su creativo y esta misión ya no sale.'],
+            'money' => null, 'severity' => self::SEVERITY['rename'], 'group' => self::GROUP['rename']];
     }
 
     /**
@@ -449,8 +503,19 @@ final class UrgentList
         $count = count($prune);
         $losing = $count === 1 ? '1 anuncio que pierde' : "{$count} anuncios que pierden";
         $costly = $count === 1 ? '1 anuncio caro' : "{$count} anuncios caros";
-        $off = $count ? 'Apaga ' . CreativeCalls::join(array_map(fn ($x) => self::q($x), array_slice($prune, 0, self::NAMES_IN_STEP)))
+        // .163: cada anuncio con lo suyo (los análisis de antes solo traen los nombres); si otro prendido se llama igual, cuál
+        $ads = in_array($kind, ['intervene', 'hold_prune'], true) && count($n['prune_ads'] ?? []) === $count ? array_slice($n['prune_ads'] ?? [], 0, self::NAMES_IN_STEP) : [];
+        $keep = self::keep($ads);
+        $shown = $ads ? array_map(fn ($a) => self::q($a['name']) . ($a['twins'] ? ' del ad set ' . self::q((string) $a['adset']) . ' (gastó ' . AdRules::money($a['spend3']) . ' en 3 días)' : ''), $ads)
+            : array_map(fn ($x) => self::q($x), array_slice($prune, 0, self::NAMES_IN_STEP));
+        $off = $count ? 'Apaga ' . CreativeCalls::join($shown)
             . ($count > self::NAMES_IN_STEP ? ' y ' . ($count - self::NAMES_IN_STEP) . ' más (todos en «¿Por qué?»)' : '') . '.' : null;
+        $leave = array_values(array_unique(array_filter(array_map(fn ($a, $k) => match (count($k)) {
+            0 => null,
+            1 => 'No apagues el otro ' . self::q($a['name']) . ', el del ad set ' . self::q($k[0]) . ': ese se queda prendido.',
+            default => 'No apagues los otros ' . self::q($a['name']) . ', los de los ad sets ' . CreativeCalls::join(array_map(fn ($x) => self::q($x), $k)) . ': esos se quedan prendidos.',
+        }, $ads, $keep))));
+        $lines = $ads ? array_merge(...array_map(fn ($a, $k) => StopWhy::ad($a, $city, $k), $ads, $keep)) : [];
         // .87: qué lanzar (de la banca o duplicado de otra ciudad); si no hay nada, la misión no lo pide ("cuando llegue")
         $go = $launch ? CreativeCalls::join(array_column($launch, 'code')) : null;
         $launchSteps = self::launchSteps($launch, self::newMin($campaign, $n));
@@ -489,15 +554,15 @@ final class UrgentList
                 $count > 0 => "Apaga {$losing}",
                 $go !== null => "Lanza {$go}",
                 default => null,
-            }, array_values(array_filter([$open, $off, ...$launchSteps, 'No toques el presupuesto hoy.']))],
+            }, array_values(array_filter([$open, $off, ...$leave, ...$launchSteps, 'No toques el presupuesto hoy.']))],
             'hold_prune' => $mode === 'liquidation'
-                ? [$count ? 'Deja solo los anuncios que no pierden' : null, array_values(array_filter([$open, $off]))]
+                ? [$count ? 'Deja solo los anuncios que no pierden' : null, array_values(array_filter([$open, $off, ...$leave]))]
                 : [match (true) {
                     $count && $go => "Apaga {$costly} y lanza {$go}",
                     $count > 0 => "Apaga {$costly}",
                     $go !== null => "Lanza {$go}",
                     default => null,
-                }, array_values(array_filter([$open, $off, ...$launchSteps]))],
+                }, array_values(array_filter([$open, $off, ...$leave, ...$launchSteps]))],
             default => [(string) $a['label'], array_values(array_filter([$open, $a['proposal'] ?? null]))],
         };
 
@@ -507,7 +572,24 @@ final class UrgentList
         // .124: los parámetros de URL para copiar, si la misión lanza algo
         $launches = $launch !== [] && (in_array($kind, self::FEEDS, true) && $mode !== 'liquidation' || $kind === 'relaunch');
 
-        return ['title' => $title, 'steps' => array_values(array_filter($steps, fn ($s) => $s !== '')), 'batches' => $batches, 'copy' => $launches ? self::urlTags() : null];
+        return ['title' => $title, 'steps' => array_values(array_filter($steps, fn ($s) => $s !== '')), 'batches' => $batches, 'copy' => $launches ? self::urlTags() : null,
+            'lines' => $lines];
+    }
+
+    /**
+     * `.163`: de cada anuncio que se apaga, los ad sets de los que se llaman igual y siguen prendidos sin apagarse (los que
+     * también se apagan no cuentan).
+     *
+     * @param list<array> $ads MetaDecisions::pruneAd
+     * @return list<list<string>>
+     */
+    private static function keep(array $ads): array
+    {
+        return array_map(function ($a) use ($ads) {
+            $same = array_column(array_filter($ads, fn ($b) => mb_strtolower(trim($b['name'])) === mb_strtolower(trim($a['name']))), 'adset');
+
+            return array_values(array_diff($a['twins'] ?? [], array_filter($same)));
+        }, $ads);
     }
 
     /**
@@ -1025,6 +1107,8 @@ final class UrgentList
         $limit = !empty($n['be_estimated']) ? 'límite estimado' : 'límite';
         $streak = (int) ($n['streak'] ?? 0);
         $days = $streak > 0 ? " · {$streak} " . ($streak === 1 ? 'día' : 'días') . ' encima' : '';
+        // .163: si la misión nombra anuncios, que se sepa que estos números son de la campaña
+        $camp = in_array($kind, ['intervene', 'hold_prune'], true) ? 'La campaña: ' : '';
         // .125: "En 14 días gastó $290,10 a $8,53 por compra; tu límite es $7,49"
         if ($kind === 'pause_city' && ($ch = $a['chronic'] ?? null) && $be) {
             return "En {$ch['days']} días gastó " . AdRules::money($ch['spend']) . ($ch['purchases'] > 0 ? ' a ' . AdRules::money($ch['spend'] / $ch['purchases']) . ' por compra' : ' sin compras')
@@ -1035,7 +1119,7 @@ final class UrgentList
             // .126: "… · deja unos $350,00 por día"
             'scale' => (($a['from'] ?? null) && ($a['to'] ?? null) ? '+' . AdRules::num(round(($a['to'] / $a['from'] - 1) * 100)) . ' % · ' : '')
                 . "{$cpa}; tu objetivo es {$c}" . (($n['gain3'] ?? 0) > 0 ? ' · deja unos ' . AdRules::money($n['gain3'] / 3) . ' por día' : ''),
-            'hold_prune' => $be ? "{$cpa}: entre tu objetivo ({$c}) y tu {$limit} ({$be})" : "{$cpa}; tu objetivo es {$c}",
+            'hold_prune' => $camp . ($be ? "{$cpa}: entre tu objetivo ({$c}) y tu {$limit} ({$be})" : "{$cpa}; tu objetivo es {$c}"),
             // .144: "−17 % · después de subir, deja $8,60 por día (antes $31,50)"
             'undo_raise' => (($a['from'] ?? null) && ($a['to'] ?? null) ? '−' . AdRules::num(abs(round(($a['to'] / $a['from'] - 1) * 100))) . ' % · ' : '')
                 . (($r = $a['raise'] ?? null) ? 'después de subir, deja ' . AdRules::money($r['after']) . ' por día (antes ' . AdRules::money($r['before']) . ')'
@@ -1044,7 +1128,7 @@ final class UrgentList
             // .123: "−17 % · $6,55 por compra: entre tu objetivo ($4,44) y tu límite ($7,61)"
             'step_down' => (($a['from'] ?? null) && ($a['to'] ?? null) ? '−' . AdRules::num(abs(round(($a['to'] / $a['from'] - 1) * 100))) . ' % · ' : '')
                 . ($be ? "{$cpa}: entre tu objetivo ({$c}) y tu {$limit} ({$be})" : "{$cpa}; tu objetivo es {$c}"),
-            default => ($be ? "{$cpa}; tu {$limit} es {$be}" : "{$cpa}; tu objetivo es {$c}") . $days,
+            default => $camp . ($be ? "{$cpa}; tu {$limit} es {$be}" : "{$cpa}; tu objetivo es {$c}") . $days,
         };
     }
 
@@ -1056,8 +1140,11 @@ final class UrgentList
         }
         $source = CampaignRules::SOURCES[$n['source'] ?? ''] ?? null;
 
+        // .163 (dueño, 2026-11-19: "está diciendo unos gastos… que no estoy viendo en Meta Ads"): son de toda la campaña, y de qué días
+        $days = self::days($n['dates3'] ?? null);
+
         return array_values(array_filter([
-            'En 3 días: gastaste ' . AdRules::money($n['spend3']) . ($n['purchases3'] > 0
+            'La campaña completa (todos sus anuncios), ' . ($days ?? 'en 3 días') . ': gastó ' . AdRules::money($n['spend3']) . ($n['purchases3'] > 0
                 ? ' y Meta vio ' . AdRules::num($n['purchases3']) . ' ' . ($n['purchases3'] == 1 ? 'compra' : 'compras') . ' = ' . AdRules::money($n['spend3'] / $n['purchases3']) . ' por compra.'
                 : ' y Meta no vio compras.'),
             // .120: si el BE es estimado, la referencia es solo de la C
@@ -1067,9 +1154,21 @@ final class UrgentList
                     . ($source ? " ({$source})" : '') . '.',
             $n['budget'] ? 'Presupuesto: ' . AdRules::money($n['budget']) . ' por día.' : null,
             // .126: lo que dejó, en dólares (con el BE estimado, se dice)
-            ($n['gain3'] ?? null) !== null ? 'En 3 días ' . ($n['gain3'] >= 0 ? 'dejó unos ' : 'perdió unos ') . AdRules::money(abs($n['gain3'])) . ' (compras × tu BE'
+            ($n['gain3'] ?? null) !== null ? 'En esos 3 días la campaña ' . ($n['gain3'] >= 0 ? 'dejó unos ' : 'perdió unos ') . AdRules::money(abs($n['gain3'])) . ' (compras × tu BE'
                 . (!empty($n['be_estimated']) ? ' estimado' : '') . ' − gasto): unos ' . AdRules::money(abs($n['gain3']) / 3) . ' por día.' : null,
         ]));
+    }
+
+    /** `.163`: "del 16 al 18/11" (o "del 30/11 al 02/12"); null si el análisis no trae los días. @param ?array{0: string, 1: string} $dates */
+    private static function days(?array $dates): ?string
+    {
+        if (!isset($dates[0], $dates[1])) {
+            return null;
+        }
+        $from = strtotime((string) $dates[0]);
+        $to = strtotime((string) $dates[1]);
+
+        return 'del ' . date(date('m', $from) === date('m', $to) ? 'd' : 'd/m', $from) . ' al ' . date('d/m', $to);
     }
 
     private static function firstSentence(string $t): string

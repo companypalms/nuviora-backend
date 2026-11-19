@@ -163,7 +163,7 @@ describe('.126: las misiones de subir, primero la que más deja', function () {
 
         expect(array_column($scale, 'where'))->toBe(['ZenPulse · Distrito Capital', 'Cervimax · Carabobo', 'ZenPulse · Aragua'])
             ->and($scale[0]['why'])->toBe('+20 % · $3,00 por compra; tu objetivo es $4,44 · deja unos $46,10 por día')
-            ->and($scale[0]['detail'])->toContain('En 3 días dejó unos $138,30 (compras × tu BE − gasto): unos $46,10 por día.')
+            ->and($scale[0]['detail'])->toContain('En esos 3 días la campaña dejó unos $138,30 (compras × tu BE − gasto): unos $46,10 por día.')
             ->and($scale[0])->not->toHaveKey('_gain');
     });
 
@@ -175,6 +175,6 @@ describe('.126: las misiones de subir, primero la que más deja', function () {
         $m = UrgentList::build([['product_id' => 1149, 'product' => 'ZenPulse', 'mode' => 'normal', 'urgency' => ['level' => 1, 'label' => 'U1', 'batches' => '1', 'reasons' => []],
             'money_at_risk' => 0, 'next_work' => [], 'price' => [], 'price_watch' => null, 'alarms' => [], 'tracking' => null, 'cities' => [$city], 'creatives' => [], 'batches' => []]]);
 
-        expect(collect($m)->firstWhere('kind', 'intervene')['detail'])->toContain('En 3 días perdió unos $50,36 (compras × tu BE estimado − gasto): unos $16,79 por día.');
+        expect(collect($m)->firstWhere('kind', 'intervene')['detail'])->toContain('En esos 3 días la campaña perdió unos $50,36 (compras × tu BE estimado − gasto): unos $16,79 por día.');
     });
 });
