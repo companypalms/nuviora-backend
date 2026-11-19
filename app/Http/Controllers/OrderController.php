@@ -1964,7 +1964,7 @@ class OrderController extends Controller
             $newTotal = \App\Models\OrderProduct::where('order_id', $order->id)
                 ->sum(\Illuminate\Support\Facades\DB::raw('price * quantity'));
                 
-            $order->current_total_price = $newTotal;
+            $order->current_total_price = $newTotal + (float) ($order->express_fee ?? 0); // .164: el Delivery Express no se pierde
             $order->save();
 
             // 🆕 Si la orden ya está ENTREGADA, sincronizamos las comisiones de inmediato
@@ -2023,7 +2023,7 @@ class OrderController extends Controller
                 $newTotal = \App\Models\OrderProduct::where('order_id', $order->id)
                     ->sum(\Illuminate\Support\Facades\DB::raw('price * quantity'));
                 
-                $order->current_total_price = $newTotal;
+                $order->current_total_price = $newTotal + (float) ($order->express_fee ?? 0); // .164: el Delivery Express no se pierde
                 $order->save();
 
                 // 🆕 Si la orden ya está ENTREGADA, sincronizamos las comisiones (quitará el upsell/producto del reporte)
@@ -2166,7 +2166,7 @@ class OrderController extends Controller
             $newTotal = \App\Models\OrderProduct::where('order_id', $order->id)
                 ->sum(\Illuminate\Support\Facades\DB::raw('price * quantity'));
                 
-            $order->current_total_price = $newTotal;
+            $order->current_total_price = $newTotal + (float) ($order->express_fee ?? 0); // .164: el Delivery Express no se pierde
             $order->save();
             
             // 🆕 Si la orden ya está ENTREGADA, sincronizamos las comisiones
@@ -2242,53 +2242,6 @@ class OrderController extends Controller
     }
 
     public function create() {}
-    /**
-     * 🔥 Tarea 2: cierre del alta manual, con los productos ya guardados.
-     * - Ya trae vendedora: se avisa a n8n su estado actual (como hacía el observer).
-     * - Sin stock: pasa a "Sin Stock" (sin webhook de "Nuevo", regla de Fran) y se reparte si hay stock en otra agencia.
-     * - Con stock: webhook de "Nuevo" y luego auto-asignación (que dispara el de "Asignado a vendedor").
-     */
-    private function finishManualOrderIntake(Order $order): void
-    {
-        try {
-            $order->refresh();
-            $webhooks = app(\App\Services\WebhookService::class);
-            $assigner = app(\App\Services\Assignment\AssignOrderService::class);
-
-            $order->load('products');
-            app(\App\Services\Agencies\AgencyRouter::class)->provisional($order); // otra agencia de la ciudad con stock (tarea 3c)
-
-            // Fran (2026-09-30): aunque ya traiga vendedora, sin stock queda en "Sin Stock", como uno de Shopify
-            if ($order->agent_id) {
-                if ($order->getStockDetails()['has_warning']) {
-                    $sinStock = Status::where('description', \App\Constants\OrderStatus::SIN_STOCK)->first();
-                    if ($sinStock && $order->status_id !== $sinStock->id) {
-                        $order->status_id = $sinStock->id;
-                        $order->save();
-                    }
-                    return;
-                }
-                $webhooks->triggerOrderStatus($order);
-                return;
-            }
-
-            if ($order->getStockDetails()['has_warning']) {
-                $sinStock = Status::where('description', \App\Constants\OrderStatus::SIN_STOCK)->first();
-                if ($sinStock && $order->status_id !== $sinStock->id) {
-                    $order->status_id = $sinStock->id;
-                    $order->save();
-                }
-                $assigner->assignOne($order);
-                return;
-            }
-
-            $webhooks->triggerOrderStatus($order);
-            $assigner->assignOne($order);
-        } catch (\Throwable $e) {
-            \Log::error("Cierre de alta manual falló para {$order->number_label}: " . $e->getMessage());
-        }
-    }
-
     public function store(Request $request)
     {
         // 1. Validation
@@ -2388,10 +2341,8 @@ class OrderController extends Controller
             // Generate a manual order_id (mocking Shopify ID)
             $manualOrderId = (int) (microtime(true) * 1000);
 
-            // 🔥 Tarea 2: el observer no asigna al crear; se hace al final (finishManualOrderIntake)
-            \App\Observers\OrderObserver::$deferIntake = true;
-            try {
-            $order = Order::create([
+            // 🔥 Tarea 2: el observer no asigna al crear; se hace al final (OrderIntake::finish)
+            $order = \App\Services\Orders\OrderIntake::deferring(fn () => Order::create([
                 'order_id' => $manualOrderId, // Add generated ID
                 'name' => $orderName,
                 'order_number' => $nextId, 
@@ -2403,10 +2354,7 @@ class OrderController extends Controller
                 'city_id' => $cityId,
                 'delivery_cost' => $deliveryCost,
                 'status_id' => $status ? $status->id : 1,
-            ]);
-            } finally {
-                \App\Observers\OrderObserver::$deferIntake = false;
-            }
+            ]));
 
             // 6. Products
             $total = 0;
@@ -2472,7 +2420,7 @@ class OrderController extends Controller
 
             \DB::commit();
 
-            $this->finishManualOrderIntake($order);
+            app(\App\Services\Orders\OrderIntake::class)->finish($order); // .164: el mismo cierre que el formulario de la tienda
 
             // 📡 BROADCAST EVENT: New Order created
             event(new \App\Events\OrderUpdated($order));

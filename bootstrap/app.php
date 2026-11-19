@@ -12,6 +12,10 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         channels: __DIR__.'/../routes/channels.php',
         health: '/up',
+        // .164: el formulario de la tienda (público, sin sesión): https://api.nuviora.cloud/tienda/...
+        then: function () {
+            \Illuminate\Support\Facades\Route::middleware('api')->prefix('tienda')->group(base_path('routes/tienda.php'));
+        },
     )
     ->withMiddleware(function (Middleware $middleware): void {
         // Ensure CORS middleware runs first in the global stack

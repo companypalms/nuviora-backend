@@ -18,12 +18,16 @@ describe('Normalización antes de emparejar (§26)', function () {
         expect(ClosureNormalizer::orderKey(' 54566 '))->toBe(['key' => '54566', 'repeat' => false]);
         expect(ClosureNormalizer::orderKey('#4747 (1)'))->toBe(['key' => '4747', 'repeat' => true]);
         expect(ClosureNormalizer::orderKey('man 338'))->toBe(['key' => 'MAN-338', 'repeat' => false]);
+        // .164: los del formulario de la tienda
+        expect(ClosureNormalizer::orderKey('#WEB-12'))->toBe(['key' => 'WEB-12', 'repeat' => false]);
+        expect(ClosureNormalizer::orderKey('web 12'))->toBe(['key' => 'WEB-12', 'repeat' => false]);
         expect(ClosureNormalizer::orderKey('efectivo')['key'])->toBeNull();
     });
 
     it('la orden del sistema se reconoce por su nombre y su número', function () {
         expect(ClosureNormalizer::orderKeysFor('#54340', 54340))->toBe(['54340']);
         expect(ClosureNormalizer::orderKeysFor('MAN-338', 338))->toBe(['MAN-338', '338']);
+        expect(ClosureNormalizer::orderKeysFor('WEB-12', 'WEB-12'))->toBe(['WEB-12']); // .164: su número no choca con uno de Shopify
     });
 
     it('teléfonos venezolanos en cualquier forma', function () {

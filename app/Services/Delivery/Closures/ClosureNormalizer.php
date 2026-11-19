@@ -12,8 +12,9 @@ use Illuminate\Support\Str;
 class ClosureNormalizer
 {
     /**
-     * El número de orden que escribe la agencia: "###54563", "##4617", "#MAN-27114", "54566", "#4747 (1)".
-     * Devuelve la clave ("54563", "MAN-27114") y si la agencia la marcó como repetida con "(1)".
+     * El número de orden que escribe la agencia: "###54563", "##4617", "#MAN-27114", "54566", "#4747 (1)" (`.164`: y los del
+     * formulario de la tienda, "WEB-12"). Devuelve la clave ("54563", "MAN-27114", "WEB-12") y si la agencia la marcó como
+     * repetida con "(1)".
      * @return array{key: ?string, repeat: bool}
      */
     public static function orderKey(?string $raw): array
@@ -22,7 +23,7 @@ class ClosureNormalizer
         $repeat = (bool) preg_match('/\(\s*\d+\s*\)\s*$/', $text);
         $text = preg_replace('/\(\s*\d+\s*\)\s*$/', '', $text);
         $key = strtoupper(preg_replace('/[\s#°º.]+/u', '', $text));
-        $key = preg_replace('/^MAN-?(\d+)$/', 'MAN-$1', $key);
+        $key = preg_replace('/^(MAN|WEB)-?(\d+)$/', '$1-$2', $key);
         if (preg_match('/^\d+\.0+$/', $key)) {
             $key = preg_replace('/\.0+$/', '', $key); // un número de Excel: 54563.0
         }

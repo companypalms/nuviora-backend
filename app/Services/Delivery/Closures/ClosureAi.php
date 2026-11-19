@@ -25,7 +25,7 @@ class ClosureAi
     private const COLUMNS_INSTRUCTIONS = <<<'TXT'
 Recibes las primeras filas de una hoja de cálculo que una agencia de reparto de Venezuela envía cada semana para cobrar sus carreras (entregas) a una tienda. Cada fila de datos es una carrera. Las columnas van con su letra (A, B, C…) y las filas con su número.
 Di cuál es la fila de títulos (o 0 si no hay títulos) y qué columna tiene cada dato:
-- orden: el número o código del pedido de la tienda (por ejemplo "#4617", "##54563", "MAN-27114"). No es el número de fila ni un ID interno de la agencia.
+- orden: el número o código del pedido de la tienda (por ejemplo "#4617", "##54563", "MAN-27114", "WEB-12"). No es el número de fila ni un ID interno de la agencia.
 - cliente: el nombre del cliente que recibe.
 - telefono: el teléfono del cliente.
 - fecha: la fecha de la carrera.

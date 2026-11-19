@@ -69,7 +69,8 @@ class ClosureMatcher
             $byOrder[$row->id] = true;
             $ids = $byOrderKey[$row->order_key] ?? [];
             if (!$ids && preg_match('/^\d+$/', $row->order_key)) {
-                $ids = $byOrderKey['MAN-' . $row->order_key] ?? []; // "27344" escrito sin el MAN-
+                // "27344" escrito sin el MAN- (`.164`: o sin el WEB- del formulario de la tienda)
+                $ids = [...($byOrderKey['MAN-' . $row->order_key] ?? []), ...($byOrderKey['WEB-' . $row->order_key] ?? [])];
             }
             $orders = collect($ids)->map(fn ($id) => $this->trips[$id]->order_id)->unique();
             if ($orders->count() === 1) {
@@ -205,7 +206,7 @@ class ClosureMatcher
     private function outsideWeek(AgencyClosureRow $row, AgencyWeeklyClosure $closure): bool
     {
         $key = $row->order_key;
-        $names = ctype_digit($key) ? [$key, "#{$key}", "MAN-{$key}"] : [$key, "#{$key}"];
+        $names = ctype_digit($key) ? [$key, "#{$key}", "MAN-{$key}", "WEB-{$key}"] : [$key, "#{$key}"];
         $trip = AgencyTrip::with('order:id,name')->where('agency_id', $closure->agency_id)->whereNull('voided_at')
             ->whereHas('order', fn ($q) => $q->where(fn ($w) => $w->whereIn('name', $names)->orWhere('order_number', ctype_digit($key) ? $key : '-')))
             ->orderByDesc('trip_date')->first();

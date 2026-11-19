@@ -29,5 +29,9 @@ class AppServiceProvider extends ServiceProvider
         \App\Services\Finance\FinanceTriggers::register();
         // Paso 6: una cuenta desactivada no entra con ninguna sesión vieja (además, al desactivarla se borran sus sesiones)
         \Laravel\Sanctum\Sanctum::authenticateAccessTokensUsing(fn ($token, bool $isValid) => $isValid && $token->tokenable?->deactivated_at === null);
+        // .164: los topes del formulario de la tienda (público), por IP. Generosos: en Venezuela muchos teléfonos comparten la IP
+        \Illuminate\Support\Facades\RateLimiter::for('tienda-ver', fn (\Illuminate\Http\Request $r) => \Illuminate\Cache\RateLimiting\Limit::perMinute(120)->by($r->ip()));
+        \Illuminate\Support\Facades\RateLimiter::for('tienda-pedidos', fn (\Illuminate\Http\Request $r) => [
+            \Illuminate\Cache\RateLimiting\Limit::perMinute(5)->by('m' . $r->ip()), \Illuminate\Cache\RateLimiting\Limit::perHour(20)->by('h' . $r->ip())]);
     }
 }

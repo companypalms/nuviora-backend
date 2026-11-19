@@ -829,6 +829,14 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::delete('/exam/questions/{question}', [\App\Http\Controllers\StoreChatController::class, 'examDelete'])->whereNumber('question');
     });
 
+    // .164: nuestro formulario de pedido en la landing de la tienda (lo público va en routes/tienda.php). Solo el Admin
+    Route::middleware('role:Admin')->prefix('store-form')->group(function () {
+        Route::get('/', [\App\Http\Controllers\StoreFormController::class, 'index']);
+        Route::put('/settings', [\App\Http\Controllers\StoreFormController::class, 'saveSettings']);
+        Route::put('/products/{product}/offers', [\App\Http\Controllers\StoreFormController::class, 'saveOffers'])->whereNumber('product');
+        Route::put('/products/{product}/design', [\App\Http\Controllers\StoreFormController::class, 'saveDesign'])->whereNumber('product');
+    });
+
     // Calendario del dueño (Etapa 3): sus notas, los recordatorios del sistema y lo que marca como hecho. Solo el Admin
     Route::middleware('role:Admin')->prefix('calendar')->group(function () {
         Route::get('/', [\App\Http\Controllers\CalendarController::class, 'index']);

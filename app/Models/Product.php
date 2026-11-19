@@ -57,6 +57,12 @@ class Product extends Model
         return $this->hasMany(ProductVariant::class)->orderBy('id');
     }
 
+    /** `.164`: sus ofertas por cantidad en nuestro formulario de la tienda, en orden. */
+    public function offers()
+    {
+        return $this->hasMany(ProductOffer::class)->orderBy('position')->orderBy('id');
+    }
+
     public function gallery()
     {
         return $this->hasMany(ProductImage::class);

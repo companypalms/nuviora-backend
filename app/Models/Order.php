@@ -22,6 +22,7 @@ class Order extends Model
         'location_lat'           => 'float', // coordenadas de la ubicación del cliente (Módulo 3, §7)
         'location_lng'           => 'float',
         'courier_shipment'       => 'boolean', // envío por agencia de encomiendas (MRW, Tealca, Zoom…), Fran 2026-10-12
+        'express_fee'            => 'float', // .164: Delivery Express (lo que pagó por él; null = no)
     ];
 
     // Relationship methods follow...
@@ -195,6 +196,7 @@ class Order extends Model
         'courier_recipient_name',
         'courier_recipient_id_number',
         'courier_recipient_phone',
+        'express_fee',
     ];
 
     /**
