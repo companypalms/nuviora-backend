@@ -11,6 +11,7 @@ use App\Services\Meta\Decisions\Rules\AdRules;
 use App\Services\Meta\Decisions\Rules\CampaignRules;
 use App\Services\Meta\Decisions\Rules\PriceRules;
 use App\Services\Meta\Decisions\Rules\ProductWorth;
+use App\Services\Meta\Decisions\Rules\Revival;
 use App\Services\Meta\MetaMetrics;
 use App\Services\Meta\Products\AngleRest;
 use App\Services\Meta\Queue\QueueRules;
@@ -83,7 +84,7 @@ class MetaDecisions
         $out = [];
         foreach ($facts as $pid => $f) {
             $f = self::estimateBe($f, (float) $s['be_estimate_mult']);
-            $out[$pid] = $this->product($f, $rules, $s);
+            $out[$pid] = $this->product($f, $rules, $s, $products[$pid]['dismissed'] ?? []);
             $out[$pid] = $this->plan($f, $out[$pid], $history, $products[$pid] ?? null, new CampaignRules($s), $s, $worth[$pid] ?? null);
         }
 
@@ -237,7 +238,7 @@ class MetaDecisions
             'causes' => [], 'kept' => true];
     }
 
-    private function product(array $f, AdRules $rules, array $s): array
+    private function product(array $f, AdRules $rules, array $s, array $dismissed = []): array
     {
         $campaigns = $f['campaigns'];
         $tracking = $f['tracking']['ratio'] ?? null;
@@ -322,6 +323,14 @@ class MetaDecisions
             }
             $out['ads'][$id] = $v;
         }
+        // .166: los ganadores revividos (un anuncio nuevo después de 14 días sin gastar ahí) y cómo les fue
+        $out['revivals'] = Revival::history($f['ads'], $out['ads'], $history['ad'], (int) $s['revive_rest_days']);
+        $reviving = [];
+        foreach ($out['revivals'] as $r) {
+            if ($r['result'] === 'testing') {
+                $reviving["{$r['creative_id']}|{$r['campaign_meta_id']}"] = $r;
+            }
+        }
         // Un batch que falla o pierde dice qué anuncios de adentro lo tiran abajo (para podar)
         foreach ($out['adsets'] as $setId => $v) {
             $setId = (string) $setId;
@@ -382,6 +391,11 @@ class MetaDecisions
                 // .111: si todos sus anuncios en esta ciudad tienen menos de 24 horas, todavía no se apaga
                 if ($young = $rules->young($states[$cid][$campaignId], self::ageHours($f, $agg[$cid]['ads_by_city'][$campaignId] ?? [], $now))) {
                     $states[$cid][$campaignId] = $young + ['causes' => []];
+                }
+                // .166: revivido y todavía en test: se juzga como un creativo nuevo, con su anuncio nuevo (no con su vida de antes)
+                if ($revived = $reviving["{$cid}|{$campaignId}"] ?? null) {
+                    $states[$cid][$campaignId] = ['revived' => $revived['since'], 'reading' => 'Revivido el ' . date('d/m', strtotime($revived['since']))
+                        . ': se juzga como un creativo nuevo. ' . ($out['ads'][$revived['ad']]['reading'] ?? '')] + $out['ads'][$revived['ad']];
                 }
                 if (in_array($states[$cid][$campaignId]['key'], ['proven', 'promising'], true)) {
                     $pick = $this->window($w);
@@ -457,6 +471,14 @@ class MetaDecisions
                 'gain' => self::creativeGain($agg[$cid]['cities'], $campaigns),
             ];
         }
+        // .166: el ganador que se puede revivir en cada campaña prendida (el plan decide si hoy toca) y cuántos revividos ganaron
+        $today = substr($now, 0, 10);
+        foreach ($campaigns as $id => $c) {
+            if ($c['active'] ?? false) {
+                $out['campaigns'][(string) $id]['revive'] = Revival::candidate($f, $history['ad'], (string) $id, $out['revivals'], $s, $today, $dismissed);
+            }
+        }
+        $out['revival_score'] = Revival::score($out['revivals'], $f['ads'], $out['ads'], $today) + ['measure' => (int) $s['revive_measure']];
 
         return $out;
     }
@@ -613,6 +635,7 @@ class MetaDecisions
                 $out['campaigns'][$id]['notes'][] = ['key' => 'worth_city_ok', 'label' => 'Aquí entrega bien', 'text' => 'Producto Malo, pero aquí entrega bien ('
                     . AdRules::num($delivers['effectiveness']) . " % en {$delivers['orders']} pedidos): reglas de siempre."];
             }
+            $recent = self::recentChange($h, $f, $id, now()->toDateTimeString(), (float) $s['change_wait_hours']);
             $action = $cr->action([
                 'c' => $c['target'], 'be' => $c['break_even'], 'be_estimated' => (bool) ($c['break_even_estimated'] ?? false), 'mode' => $mode, 'budget' => $budget,
                 'spend3' => $w3['totals']['spend'] ?? 0, 'purchases3' => $w3['totals']['purchases'] ?? 0, 'cpa7' => $cpa7, 'freq3' => $w3['metrics']['frequency'] ?? null,
@@ -624,7 +647,7 @@ class MetaDecisions
                 'decreased_since_intervention' => $intervention !== null && collect($h['budget_events'])->contains(fn ($e) => $e['to'] < $e['from'] && $e['date'] >= $intervention),
                 'history_since' => $history['history_since'], 'prune' => $prune,
                 'bank_ready' => array_column($offers, 'code'),
-                'recent_change' => self::recentChange($h, $f, $id, now()->toDateTimeString(), (float) $s['change_wait_hours']),
+                'recent_change' => $recent,
                 // .123: entre C y BE, lo último que se hizo desde que la campaña se pasó de C
                 'band' => self::band($h, $f, $id, $c['target'] ? (float) $c['target'] : null, $budget !== null ? (float) $budget : null, $today, $yesterday, (int) $s['band_undo_days']),
                 // .144: la última subida (o bajada): si todavía se espera, si aguantó o si hay que devolverla
@@ -656,6 +679,9 @@ class MetaDecisions
                 // .87: los batches vivos (contando lo que se apaga hoy) y lo que puede lanzar, en orden
                 'live' => self::live($f, $out, $id, in_array($action['key'], ['hold_prune', 'intervene'], true)), 'offers' => $offers,
                 'mins' => ['off' => $mins['off'], 'keep' => $mins['keep'], 'stays' => $mins['stays']],
+                // .166: el ganador que descansa y se revive hoy: no en un producto que no está normal, sin stock, Malo ni con un
+                // cambio grande en 24 horas (y la lista lo da solo si la ciudad no tiene otro cambio grande hoy)
+                'revive' => $mode === 'normal' && !$noStock && !($worth['stop'] && !$delivers) && $recent === null ? ($out['campaigns'][$id]['revive'] ?? null) : null,
                 // .126: lo que dejó la campaña (compras × BE − gasto) en 3 y en 7 días
                 'gain3' => self::gain((float) ($w3['totals']['spend'] ?? 0), (float) ($w3['totals']['purchases'] ?? 0), $c['break_even']),
                 'gain7' => self::gain((float) ($w7['totals']['spend'] ?? 0), (float) ($w7['totals']['purchases'] ?? 0), $c['break_even'])]

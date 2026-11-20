@@ -65,8 +65,8 @@ final class UrgentList
         'pause_city' => 1, 'not_sold' => 1, 'product_off' => 1, 'stock_out' => 1, 'stock_waiting' => 1, 'stop_creatives' => 1,
         'decrease' => 2, 'undo_raise' => 2, 'intervene' => 2, 'tracking' => 2, 'late_urgent' => 2, 'drop_product' => 2, 'worth_bad' => 2,
         'hold_prune' => 3, 'step_down' => 3, 'few_batches' => 3, 'min_spend' => 3, 'rename' => 3, 'late_batch' => 3, 'launch_ready' => 3, 'no_city' => 3, 'no_be' => 3,
-        'scale' => 4, 'launch_test' => 4, 'relaunch' => 4, 'new_product_late' => 4, 'price_down' => 4,
-        'alarm' => 5, 'names' => 5, 'cooldown' => 5, 'angle_rest' => 5, 'left_city' => 5, 'stale' => 5, 'lesson' => 5, 'watch' => 5,
+        'scale' => 4, 'launch_test' => 4, 'relaunch' => 4, 'new_product_late' => 4, 'price_down' => 4, 'revive' => 4,
+        'revive_score' => 5, 'alarm' => 5, 'names' => 5, 'cooldown' => 5, 'angle_rest' => 5, 'left_city' => 5, 'stale' => 5, 'lesson' => 5, 'watch' => 5,
         'price' => 6,
     ];
 
@@ -75,9 +75,9 @@ final class UrgentList
         'pause_city' => 'frenar', 'not_sold' => 'frenar', 'product_off' => 'frenar', 'drop_product' => 'frenar', 'worth_bad' => 'frenar', 'stop_creatives' => 'frenar', 'decrease' => 'frenar', 'undo_raise' => 'frenar',
         'intervene' => 'arreglar', 'tracking' => 'arreglar', 'hold_prune' => 'arreglar', 'step_down' => 'arreglar', 'few_batches' => 'arreglar', 'min_spend' => 'arreglar', 'rename' => 'arreglar',
         'late_urgent' => 'arreglar', 'late_batch' => 'arreglar', 'launch_ready' => 'arreglar', 'no_city' => 'arreglar', 'no_be' => 'arreglar',
-        'scale' => 'crecer', 'launch_test' => 'crecer', 'relaunch' => 'crecer', 'new_product_late' => 'crecer', 'price_down' => 'crecer',
+        'scale' => 'crecer', 'launch_test' => 'crecer', 'relaunch' => 'crecer', 'new_product_late' => 'crecer', 'price_down' => 'crecer', 'revive' => 'crecer',
         'stock_out' => 'frenar', 'stock_waiting' => 'aviso', 'alarm' => 'aviso', 'price' => 'aviso', 'names' => 'aviso', 'cooldown' => 'aviso', 'angle_rest' => 'aviso', 'left_city' => 'aviso', 'stale' => 'aviso', 'lesson' => 'aviso',
-        'watch' => 'aviso',
+        'watch' => 'aviso', 'revive_score' => 'aviso',
     ];
 
     /** Cuántos nombres de creativos caben en la línea del porqué. */
@@ -161,6 +161,10 @@ final class UrgentList
                 if (($n['mins']['off'] ?? []) && !in_array($kind, ['pause_city', 'not_sold', 'product_off'], true) && !in_array($mode, ['paused', 'abandoned'], true)) {
                     $items[] = $base + self::minSpend((int) $p['product_id'], $c, $n, $short);
                 }
+                // .166: revivir un ganador que descansa, solo si la ciudad no tiene otro cambio grande hoy (mantener o podar, sin lanzar)
+                if (($n['revive'] ?? null) && in_array($kind, ['hold', 'hold_prune'], true) && $need === 0) {
+                    $items[] = $base + self::revive((int) $p['product_id'], $c, $n['revive'], $short);
+                }
                 if (!isset(self::SEVERITY[$kind])) {
                     continue; // mantener, esperar, nada: van en el detalle
                 }
@@ -239,6 +243,10 @@ final class UrgentList
                     'where' => $short, 'title' => $p['price_watch'], 'steps' => [], 'why' => null, 'detail' => []];
             }
         }
+        // .166: cómo van los ganadores revividos, contra los creativos nuevos (un aviso; a los 10 juzgados, si conviene)
+        if ($score = self::reviveScore($facts)) {
+            $items[] = $score;
+        }
         foreach ($items as &$i) {
             // .87: una misión que hoy no se puede hacer es un aviso, y va con los avisos (no entre lo más urgente)
             $i['severity'] = isset($i['group']) && self::GROUP[$i['kind']] !== 'aviso' ? self::SEVERITY['alarm'] : self::SEVERITY[$i['kind']];
@@ -252,6 +260,78 @@ final class UrgentList
         // .89: los testeos listos para lanzar (TestingLaunch), al final: van en "Crecer"
         return [...array_map(fn ($i) => array_diff_key($i, ['_level' => 1, '_risk' => 1, '_gain' => 1]), $items), ...array_map(fn ($t) => self::testLaunch($t), $tests),
             ...array_map(fn ($n) => self::names($n), $names), ...array_map(fn ($w) => self::rename($w), $wrong)];
+    }
+
+    /**
+     * `.166` (dueño, 2026-11-20: "en dos semanas les hacemos una copia y los volvemos a activar a ver si vuelven a ser buenos"):
+     * revivir un ganador que descansa en esta ciudad. En su mismo conjunto si ahí ya no queda nada prendido; si no, en un
+     * conjunto nuevo (dueño: "Mixto"). Se juzga como un creativo nuevo; si vuelve a perder, ahí no se revive más.
+     *
+     * @param array $r Revival::candidate
+     */
+    private static function revive(int $productId, array $c, array $r, string $short): array
+    {
+        $same = $r['where'] === 'same';
+        $title = "Revive {$r['label']}: lleva {$r['rest_days']} días descansando";
+        $why = 'Fue ganador aquí: ' . AdRules::num($r['purchases']) . ' compras a ' . AdRules::money($r['cpa']) . ', debajo de ' . AdRules::money($r['limit'])
+            . ' (la mitad entre tu C de ' . AdRules::money($r['c']) . ' y tu BE de ' . AdRules::money($r['be']) . ')';
+
+        return ['key' => "{$productId}:{$c['campaign_meta_id']}:c{$r['creative_id']}:revive", 'city' => $c['city'], 'kind' => 'revive', 'label' => 'Revivir', 'tone' => 'success',
+            'text' => "{$title}. {$why}.", 'where' => $short . ($c['city'] ? " · {$c['city']}" : ''), 'title' => $title,
+            'steps' => [
+                self::open($c['campaign'] ?? null, $short, $c['city']),
+                'En «Anuncios», busca ' . self::q($r['ad']) . ($r['adset'] ? ' del conjunto ' . self::q($r['adset']) : '') . ': está apagado.',
+                $same ? 'Duplícalo en su mismo conjunto («Duplicar» › «Conjunto de anuncios original»): ahí ya no queda nada prendido.'
+                    : 'Duplícalo en un conjunto nuevo («Duplicar» › «Nuevo conjunto de anuncios»): en su conjunto hay otros anuncios prendidos y no conviene moverles el aprendizaje.',
+                'En la copia, en «Configuración del anuncio», elige «Usar publicación existente» y escoge la del anuncio original: así conserva sus comentarios y sus «me gusta».',
+                $same ? 'Prende la copia' . ($r['adset_active'] ? '' : ' y el conjunto, que está apagado') . ', y publica.' : 'Prende el conjunto nuevo y la copia, y publica.',
+                'No toques el presupuesto: se juzga como un creativo nuevo, con las reglas de siempre.',
+            ],
+            'why' => $why,
+            'detail' => [
+                'En su vida aquí gastó ' . AdRules::money($r['spend']) . ' y dejó ' . AdRules::money($r['gain']) . '. Su último gasto fue el ' . date('d/m', strtotime($r['last_spend'])) . '.',
+                'Si vuelve a perder, aquí no se revive más. Con «No estoy de acuerdo», este creativo no se vuelve a proponer en esta ciudad.',
+            ]];
+    }
+
+    /**
+     * `.166`: cómo van los ganadores revividos de todos los productos, contra los creativos nuevos de los últimos 60 días. Sale
+     * cuando ya hay uno juzgado; con los juzgados que pide la regla (10), dice si conviene seguir.
+     */
+    private static function reviveScore(array $facts): ?array
+    {
+        $t = ['won' => 0, 'lost' => 0, 'testing' => 0, 'new_won' => 0, 'new_lost' => 0];
+        $measure = 10;
+        $lines = [];
+        foreach ($facts as $p) {
+            foreach (array_keys($t) as $k) {
+                $t[$k] += (int) ($p['revival_score'][$k] ?? 0);
+            }
+            $measure = (int) ($p['revival_score']['measure'] ?? $measure);
+            foreach ($p['revivals'] ?? [] as $r) {
+                $lines[] = self::short($p['product']) . ' · ' . $r['label'] . ($r['city'] ? " en {$r['city']}" : '') . ', revivido el ' . date('d/m', strtotime($r['since'])) . ': '
+                    . ['won' => 'volvió a ganar', 'lost' => 'no volvió a ganar', 'testing' => 'todavía en test'][$r['result']] . '.';
+            }
+        }
+        $done = $t['won'] + $t['lost'];
+        if ($done === 0) {
+            return null;
+        }
+        $rate = (int) round($t['won'] * 100 / $done);
+        $newDone = $t['new_won'] + $t['new_lost'];
+        $newRate = $newDone > 0 ? (int) round($t['new_won'] * 100 / $newDone) : null;
+        $title = "Revividos: {$t['won']} de {$done} volvieron a ganar ({$rate} %)";
+        $verdict = null;
+        if ($done >= $measure && $newRate !== null) {
+            $verdict = $rate >= $newRate ? 'conviene seguir reviviendo' : 'los creativos nuevos ganan más: revivir no conviene, dime si lo quitamos';
+            $title .= ": {$verdict}";
+        }
+
+        return ['key' => 'revive_score', 'product_id' => 0, 'product' => 'Meta', 'urgency' => null, '_level' => 9, '_risk' => 0.0, 'city' => null,
+            'kind' => 'revive_score', 'label' => 'Revividos', 'tone' => $verdict === null ? 'info' : ($rate >= $newRate ? 'success' : 'warning'),
+            'text' => "{$title}.", 'where' => 'Meta', 'title' => $title, 'steps' => [],
+            'why' => $newRate !== null ? "Creativos nuevos de los últimos 60 días: {$t['new_won']} de {$newDone} ganaron ({$newRate} %)" : null,
+            'detail' => [...$lines, $done < $measure ? "Se decide con {$measure} revividos juzgados (van {$done})." : "Ya van {$done} juzgados."]];
     }
 
     /**

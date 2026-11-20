@@ -140,6 +140,10 @@ final class AnalysisFacts
                 'worth_bad' => $plan['worth_bad'] ?? null,
                 // .140: bajar el precio un escalón (producto Bueno con mucho espacio debajo de su C)
                 'price_down' => $plan['price_down'] ?? null,
+                // .166: los ganadores revividos y cómo les fue (para medir si conviene, contra los creativos nuevos)
+                'revivals' => array_map(fn ($r) => ['label' => $p['creatives'][$r['creative_id']]['label'] ?? null, 'city' => $p['campaigns'][$r['campaign_meta_id']]['city'] ?? null,
+                    'since' => $r['since'], 'result' => $r['result']], $p['revivals'] ?? []),
+                'revival_score' => $p['revival_score'] ?? null,
                 // .137: las campañas prendidas en una ciudad sin unidades
                 'stock_out' => $plan['stock_out'] ?? [],
                 // .126: lo que dejó el producto en 3 y en 7 días

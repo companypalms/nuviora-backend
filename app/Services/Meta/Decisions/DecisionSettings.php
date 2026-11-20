@@ -122,6 +122,11 @@ class DecisionSettings
         // .116: con 3 batches perdidos seguidos un ángulo (o un creativo, con sus iteraciones) descansa 14 días
         'angle_rest_batches' => [3, 1, 20],
         'angle_rest_days' => [14, 1, 365],
+        // .166 (dueño, 2026-11-20): un ganador apagado descansa 14 días y se revive con una copia, si en esa ciudad tuvo 20+
+        // compras y su CPA de toda su vida quedó debajo del punto medio entre la C y el BE; a los 10 revividos juzgados se decide
+        'revive_rest_days' => [14, 1, 365],
+        'revive_min_purchases' => [20, 1, 1000],
+        'revive_measure' => [10, 1, 100],
         // .139 (dueño, 2026-11-12: "los recursos son finitos… determinar si un producto es bueno, regular… o malo y no vale la
         // pena seguir renovando creativos"): la etiqueta de cada producto por su efectividad, con sus pedidos maduros sin los
         // que esperaron stock. Eligió Bueno desde 55 % y Malo debajo de 45 % (Solo Brillo no cuenta: es la excepción). `.147`

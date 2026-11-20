@@ -111,8 +111,8 @@ class MetaAnalysisController extends Controller
         $analysis->forceFill(['marks' => $marks ?: null])->save();
         // .117: con "No estoy de acuerdo", prender esa ciudad no se vuelve a sugerir (si lo deshace, sí). .125: y "decide si
         // sueltas el producto" no se vuelve a preguntar en 14 días. .139: y un producto Malo sigue con sus encargos 14 días. .140: y
-        // "baja el precio" no se vuelve a proponer en 14 días
-        if (preg_match('/:(relaunch|no_city|drop_product|worth_bad|price_down)$/', $data['key'])) {
+        // "baja el precio" no se vuelve a proponer en 14 días. .166: y ese creativo no se vuelve a proponer para revivir en esa ciudad
+        if (preg_match('/:(relaunch|no_city|drop_product|worth_bad|price_down|revive)$/', $data['key'])) {
             $dismissed = (array) Setting::get(OpsFacts::DISMISSED, []);
             if (($data['status'] ?? null) === 'disagree') {
                 $dismissed[$data['key']] = now(config('app.timezone'))->toDateString();
