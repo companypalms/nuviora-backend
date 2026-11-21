@@ -18,7 +18,7 @@ final class CourierZone
 {
     public const NAME = 'Resto de Venezuela';
 
-    public const FEE_MISSING = 'Falta el costo de la encomienda: ponlo en Formulario de la tienda › Encomiendas.';
+    public const FEE_MISSING = 'Falta el costo de la encomienda: ponlo en Formulario de la tienda › Pago anticipado, asesora y encomiendas.';
 
     /** La ciudad con la que cuenta un pedido en los números: la encomienda, en la zona; los demás, en la suya. */
     public static function financeCity(bool $courier, ?int $cityId, ?int $zoneId): ?int
