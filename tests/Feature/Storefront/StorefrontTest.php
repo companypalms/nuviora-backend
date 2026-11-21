@@ -534,8 +534,8 @@ describe('.168: pagar por adelantado con pago móvil', function () {
         enviar164($this, ['payment' => 'pago_movil', 'receipt' => RECIBO168])->assertOk();
 
         expect(Order::first()->prepaid_at)->not->toBeNull();
-        // check-window toma prepaid_at como la confirmación (ver ExternalWhatsAppController)
-        expect(file_get_contents(app_path('Http/Controllers/External/ExternalWhatsAppController.php')))->toContain("\$prepaidAt?->toDateTimeString()");
+        // check-window toma prepaid_at como la confirmación (ver ExternalWhatsAppController; .173: también la encomienda por pagar)
+        expect(file_get_contents(app_path('Http/Controllers/External/ExternalWhatsAppController.php')))->toContain('$noConfirmationSince = $prepaidAt ??');
     });
 });
 

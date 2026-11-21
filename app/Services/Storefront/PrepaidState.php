@@ -12,14 +12,19 @@ use App\Models\StorefrontOrder;
  */
 final class PrepaidState
 {
-    /** @return ?array{at: string, state: string, confirm_sent_at: ?string} */
+    /** @return ?array{at: string, state: string, confirm_sent_at: ?string, source: string} */
     public static function of(Order $order): ?array
     {
         if (!$order->prepaid_at) {
             return null;
         }
-        $front = StorefrontOrder::where('order_id', $order->id)->first(['confirm_status', 'confirm_sent_at']);
+        $front = StorefrontOrder::where('order_id', $order->id)->first(['payment', 'confirm_status', 'confirm_sent_at']);
         $receipt = PrepaidMessages::state($order->id);
+        // .173: la encomienda que cobró la vendedora (no fue el pago móvil del formulario): el sistema no le escribe al cliente
+        if ($front?->payment !== StorefrontOrder::PREPAID) {
+            return ['at' => $order->prepaid_at->toDateTimeString(), 'state' => $receipt === 'review' ? 'review' : 'registered',
+                'confirm_sent_at' => null, 'source' => 'seller'];
+        }
         $state = match (true) {
             $front?->confirm_status === 'sent' => 'confirmed',  // ya se le avisó por WhatsApp
             $front?->confirm_status === 'seller', $receipt === 'manual' => 'seller', // validado sin poder avisarle, o sin revisión automática
@@ -28,6 +33,7 @@ final class PrepaidState
             default => 'validating',
         };
 
-        return ['at' => $order->prepaid_at->toDateTimeString(), 'state' => $state, 'confirm_sent_at' => $front?->confirm_sent_at?->toDateTimeString()];
+        return ['at' => $order->prepaid_at->toDateTimeString(), 'state' => $state, 'confirm_sent_at' => $front?->confirm_sent_at?->toDateTimeString(),
+            'source' => 'form'];
     }
 }

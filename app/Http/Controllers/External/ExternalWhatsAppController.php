@@ -14,6 +14,7 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Services\Agencies\AgencyRouter;
 use App\Services\Agencies\WorkingHours;
+use App\Services\Orders\DeliveryCase;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
@@ -524,7 +525,10 @@ class ExternalWhatsAppController extends Controller
         // hubiera mandado la confirmación: así no le llega "Confirma tu pedido… 💳 Pago al recibir" ni los recordatorios.
         // Los mensajes de ese cliente los manda el sistema (tienda:confirmar-pagos).
         $prepaidAt = $order?->prepaid_at;
-        if ($prepaidAt) {
+        // .173: una encomienda nunca se paga al recibir: si todavía no pagó, la atiende la vendedora (la asesora). No le
+        // llega "Confirma tu pedido… 💳 Pago al recibir" ni los recordatorios
+        $noConfirmationSince = $prepaidAt ?? ($order?->courier_shipment ? $order->created_at : null);
+        if ($noConfirmationSince) {
             $shouldSendNextTemplate = false;
         }
 
@@ -567,7 +571,9 @@ class ExternalWhatsAppController extends Controller
                 'store_is_open' => $order->is_store_open,
                 // Las plantillas que ya se le mandaron a esta orden: n8n no repite "Sin Stock" (dueño, 2026-11-02)
                 'sent_templates' => WhatsappMessage::templatesSentToOrder($order->id),
-            ] : null,
+                // .173: su caso (domicilio_al_recibir, domicilio_pagado, encomienda_pagada, encomienda_por_pagar), si se le
+                // cobra al entregar y la encomienda (empresa, oficina donde retira, quien retira y el número de guía)
+            ] + DeliveryCase::forOrder($order) : null,
             'agency' => $agency ? [
                 'id' => $agency->id,
                 'name' => $agency->names,
@@ -594,7 +600,7 @@ class ExternalWhatsAppController extends Controller
             'template_tracking' => [
                 'last_template_sent' => $lastAutomated ? $lastAutomated->body : null,
                 'last_template_sent_at' => $lastAutomated ? $lastAutomated->sent_at?->toDateTimeString() : null,
-                'confirmation_sent_at' => $confirmationMessage ? $confirmationMessage->sent_at?->toDateTimeString() : $prepaidAt?->toDateTimeString(),
+                'confirmation_sent_at' => $confirmationMessage ? $confirmationMessage->sent_at?->toDateTimeString() : $noConfirmationSince?->toDateTimeString(),
                 'has_client_responded_since' => $hasClientResponseSinceLastAutomated,
                 'should_send_next_template' => $shouldSendNextTemplate
             ],

@@ -24,6 +24,7 @@ class Order extends Model
         'courier_shipment'       => 'boolean', // envío por agencia de encomiendas (MRW, Tealca, Zoom…), Fran 2026-10-12
         'express_fee'            => 'float', // .164: Delivery Express (lo que pagó por él; null = no)
         'prepaid_at'             => 'datetime', // .168: pagó por adelantado (pago móvil del formulario): no se le cobra
+        'courier_guide_at'       => 'datetime', // .173: cuándo se escribió el número de guía de la encomienda
     ];
 
     // Relationship methods follow...
@@ -201,6 +202,8 @@ class Order extends Model
         'prepaid_at',
         'courier_company',
         'courier_office',
+        'courier_guide',
+        'courier_guide_at',
     ];
 
     /**

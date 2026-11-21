@@ -84,6 +84,9 @@ class OrderController extends Controller
         // Con los pagos nuevos, quién da el vuelto y cuánto (si ya no hay vuelto, la agencia no pone nada)
         ChangeRules::normalize($order);
         $order->save();
+        // .173: una encomienda que la vendedora cobró completa queda "✅ Ya pagó" sola (dueño, 21/11): la agencia no cobra y n8n
+        // sabe que ya pagó. Si los pagos dejan de cubrir el total, se le quita
+        $prepaid = \App\Services\Orders\DeliveryCase::syncPrepaid($order, $totalPaid);
         // .60: con un pago por pago móvil, la orden recibe su cuenta (la que menos Bs lleva hoy). Si falla, los pagos
         // igual quedan guardados: la cuenta se pide otra vez al volver a guardarlos
         try {
@@ -94,7 +97,11 @@ class OrderController extends Controller
         // Los comprobantes ya leídos se comparan otra vez con los pagos nuevos (sin volver a llamar a la IA)
         app(\App\Services\Payments\ReceiptChecker::class)->evaluateOrder($order);
 
-        return response()->json(['status' => true, 'order' => $order->fresh('payments')]);
+        return response()->json(['status' => true, 'order' => $order->fresh('payments')] + match ($prepaid) {
+            true => ['message' => 'Pagos guardados. La encomienda quedó «✅ Ya pagó»: la agencia no cobra.'],
+            false => ['message' => 'Pagos guardados. Ya no cubren el total: la encomienda dejó de estar «Ya pagó».'],
+            null => [],
+        });
     }
 
     /** .60: el Admin cambia a mano la cuenta de pago móvil de una orden (por ejemplo, si el banco le bloqueó una). */
@@ -279,6 +286,9 @@ class OrderController extends Controller
                 // .168: la empresa y la oficina donde retira (formulario de la tienda o la vendedora), y si ya pagó
                 'courier_company'             => $order->courier_company,
                 'courier_office'              => $order->courier_office,
+                // .173: el número de guía de MRW o Zoom (lo escribe la vendedora)
+                'courier_guide'               => $order->courier_guide,
+                'courier_guide_at'            => $order->courier_guide_at?->toDateTimeString(),
                 'prepaid'                     => \App\Services\Storefront\PrepaidState::of($order),
                 'cash_received'        => $order->cash_received,
                 'change_amount'        => $order->change_amount,
@@ -1295,6 +1305,47 @@ class OrderController extends Controller
         return response()->json([
             'status' => true,
             'message' => $order->courier_shipment ? 'Datos de la encomienda guardados.' : 'Ya no es envío por encomienda.',
+            'order' => $order->fresh(['client', 'agent', 'status']),
+        ]);
+    }
+
+    /**
+     * `.173` (dueño, 2026-11-21: el número de guía lo escribe la vendedora): el número de guía de MRW o Zoom de una encomienda.
+     * Llega después de que el motorizado deja el paquete en la oficina, así que se puede escribir con el pedido Entregado.
+     * Cada guía nueva le avisa a n8n (evento `order.courier_guide`), que le escribe al cliente.
+     */
+    public function updateCourierGuide(Request $request, Order $order, \App\Services\WebhookService $webhooks)
+    {
+        if (!in_array(Auth::user()->role?->description, ['Vendedor', 'Gerente', 'Admin'], true)) {
+            return response()->json(['status' => false], 403);
+        }
+        if (!$order->courier_shipment) {
+            return response()->json(['status' => false, 'message' => 'Esta orden no es una encomienda.'], 422);
+        }
+        $request->merge(['courier_guide' => \App\Services\Orders\DeliveryCase::normalizeGuide($request->input('courier_guide'))]);
+        $request->validate(['courier_guide' => ['nullable', 'string', 'regex:' . \App\Services\Orders\DeliveryCase::GUIDE_PATTERN]],
+            ['courier_guide.regex' => 'El número de guía lleva solo letras y números (de 4 a 40).']);
+        $guide = $request->input('courier_guide');
+        $before = $order->courier_guide;
+        if ($guide === $before) {
+            return response()->json(['status' => true, 'message' => 'Ese número de guía ya estaba guardado.', 'order' => $order->fresh(['client', 'agent', 'status'])]);
+        }
+        $order->forceFill(['courier_guide' => $guide, 'courier_guide_at' => $guide ? now() : null])->save();
+        \App\Models\OrderActivityLog::create([
+            'order_id' => $order->id,
+            'user_id' => Auth::id(),
+            'action' => 'courier_guide',
+            'description' => $guide
+                ? ($before ? "Corrigió el número de guía de la encomienda: {$guide} (antes {$before})" : "Escribió el número de guía de la encomienda: {$guide}")
+                : "Borró el número de guía de la encomienda (era {$before})",
+        ]);
+        if ($guide) {
+            $webhooks->trigger('order.courier_guide', $order->fresh(['status']));
+        }
+
+        return response()->json([
+            'status' => true,
+            'message' => $guide ? 'Número de guía guardado.' : 'Número de guía borrado.',
             'order' => $order->fresh(['client', 'agent', 'status']),
         ]);
     }
