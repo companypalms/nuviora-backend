@@ -26,7 +26,7 @@ class StorefrontController extends Controller
     /** Los pasos del embudo que se cuentan (sin datos personales). */
     private const EVENTS = ['view', 'start', 'submit', 'error', 'fallback', 'whatsapp'];
 
-    private const FIELDS = ['offer', 'size', 'name', 'phone', 'city', 'address', 'reference', 'express', 'pay', 'receipt', 'company', 'state', 'office', 'id_number'];
+    private const FIELDS = ['offer', 'size', 'name', 'phone', 'city', 'address', 'reference', 'express', 'pay', 'receipt', 'company', 'state', 'office', 'id_number', 'where'];
 
     /** `.168`: la foto del comprobante (ya comprimida en el navegador). */
     private const RECEIPT_MAX_BYTES = 3 * 1024 * 1024;
@@ -76,12 +76,15 @@ class StorefrontController extends Controller
         }
         $s = StorefrontCatalog::settings();
         $cities = array_column(StorefrontCatalog::codCities((int) $product->id), 'id');
-        // .168: la encomienda (otra ciudad del país) se paga siempre por adelantado; la asesora puede no dar la dirección
+        // .168: la encomienda (otra ciudad del país) se paga por adelantado; la asesora puede no dar la dirección. .169: en la
+        // encomienda, el pago es ahora con pago móvil o con una asesora (llena sus datos y paga por WhatsApp)
         $c = is_array($in['courier'] ?? null) && StorefrontCatalog::courierOn($s) ? $in['courier'] : null;
-        $payment = $c ? StorefrontOrder::PREPAID : (string) ($in['payment'] ?? StorefrontOrder::COD);
-        $allowed = [StorefrontOrder::COD, ...($s['prepaid_enabled'] ? [StorefrontOrder::PREPAID] : []), ...($s['advisor_enabled'] ? [StorefrontOrder::ADVISOR] : [])];
+        $payment = (string) ($in['payment'] ?? ($c ? StorefrontOrder::PREPAID : StorefrontOrder::COD));
+        $advisor = $s['advisor_enabled'] ? [StorefrontOrder::ADVISOR] : [];
+        $allowed = $c ? [StorefrontOrder::PREPAID, ...$advisor]
+            : [StorefrontOrder::COD, ...($s['prepaid_enabled'] ? [StorefrontOrder::PREPAID] : []), ...$advisor];
         $fields = [];
-        if (!$c && !in_array($payment, $allowed, true)) {
+        if (!in_array($payment, $allowed, true)) {
             $fields[] = 'pay';
         }
         $v = Validator::make($in, [

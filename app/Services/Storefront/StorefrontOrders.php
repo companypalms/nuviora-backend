@@ -97,7 +97,8 @@ class StorefrontOrders
     private function create(Product $product, array $in, array $meta, array $s, string $phone, string $last10, string $mode, bool $closed): array
     {
         $courier = $in['courier'] ?? null;
-        $payment = $courier ? StorefrontOrder::PREPAID : ($in['payment'] ?? StorefrontOrder::COD);
+        // .169: una encomienda se paga ahora (pago móvil) o con una asesora
+        $payment = $in['payment'] ?? ($courier ? StorefrontOrder::PREPAID : StorefrontOrder::COD);
         $prepaid = $payment === StorefrontOrder::PREPAID;
         // Una encomienda sale de la ciudad que eligió el dueño (su agencia y su stock); el cliente retira en su oficina
         $city = City::findOrFail($courier ? $s['courier_origin_city_id'] : $in['city']);
@@ -171,8 +172,9 @@ class StorefrontOrders
                 'description' => "Encomienda por {$courier['company']}: retira en {$office}. Sale de {$city->name}."]);
         }
         if ($payment === StorefrontOrder::ADVISOR) {
-            OrderActivityLog::create(['order_id' => $order->id, 'action' => 'storefront_advisor',
-                'description' => 'El cliente quiere hablar con una asesora antes de confirmar su pedido.']);
+            OrderActivityLog::create(['order_id' => $order->id, 'action' => 'storefront_advisor', 'description' => $courier
+                ? 'Encomienda: el cliente quiere hacer el pago móvil con una asesora. Escríbele para cobrarle y confirmar el envío.'
+                : 'El cliente quiere hablar con una asesora antes de confirmar su pedido.']);
         }
         $front->forceFill(['order_id' => $order->id])->save();
 

@@ -577,6 +577,37 @@ describe('.168: la encomienda a otra ciudad del país (MRW y Zoom)', function ()
     });
 });
 
+describe('.169: la encomienda pagada con una asesora', function () {
+    beforeEach(function () {
+        tablas168();
+        StorefrontCatalog::saveSettings(['courier_enabled' => true, 'courier_origin_city_id' => 2, 'advisor_enabled' => true]);
+        $this->sources->shouldReceive('record');
+        $this->intake->shouldReceive('finish');
+    });
+
+    it('llena sus datos y la agencia, sin foto: no queda pagada y la vendedora sabe que tiene que cobrarle', function () {
+        $r = enviar164($this, ['city' => null, 'address' => null, 'payment' => 'asesora',
+            'courier' => ['company' => 'MRW', 'office_id' => 70, 'state' => 'Barinas', 'id_number' => '12345678']])->assertOk();
+        $order = Order::first();
+
+        expect($r->json('payment'))->toBe('asesora')
+            ->and((bool) $order->courier_shipment)->toBeTrue()->and($order->courier_company)->toBe('MRW')
+            ->and((int) $order->city_id)->toBe(2)
+            ->and($order->prepaid_at)->toBeNull()
+            ->and(DB::table('order_payments')->count())->toBe(0)
+            ->and(DB::table('order_activity_logs')->where('action', 'storefront_advisor')->value('description'))->toContain('pago móvil con una asesora')
+            ->and(urldecode($r->json('whatsapp')))->toContain('quiero hablar con una asesora');
+    });
+
+    it('sin la asesora prendida, la encomienda solo se paga ahora; y "al recibir" no vale en una encomienda', function () {
+        expect(enviar164($this, ['city' => null, 'payment' => 'cod', 'courier' => ['company' => 'MRW', 'office_id' => 70, 'id_number' => '12345678']])
+            ->assertStatus(422)->json('fields'))->toContain('pay');
+        StorefrontCatalog::saveSettings(['advisor_enabled' => false]);
+        expect(enviar164($this, ['city' => null, 'payment' => 'asesora', 'courier' => ['company' => 'MRW', 'office_id' => 70, 'id_number' => '12345678']])
+            ->assertStatus(422)->json('fields'))->toContain('pay');
+    });
+});
+
 describe('.168: hablar con una asesora antes', function () {
     beforeEach(function () {
         tablas168();

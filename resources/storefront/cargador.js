@@ -10,6 +10,7 @@
  * de una lista) y "hablar con una asesora". A Meta, siempre el "pedido hecho" (AddPaymentInfo); el Purchase, cuando lo
  * dice el servidor (en las campañas "al entregar" sale al entregar, salvo si ya pagó). Nada de lo que ve el cliente
  * nombra a una IA: el pago "lo valida nuestro equipo".
+ * .169: en pasos numerados; primero sus datos y su estado o ciudad, y según eso la entrega y el pago.
  */
 (function () {
   'use strict';
@@ -276,6 +277,19 @@
       '#nuviora-pedido .nvf-pm-note{font-size:12.5px;color:var(--nvf-label);margin-top:8px}' +
       '#nuviora-pedido .nvf-pm .nvf-err{grid-column:auto;margin-top:6px}' +
       '#nuviora-pedido [hidden]{display:none!important}' +
+      /* .169: los pasos numerados, el aviso de cómo le llega y lo que falta elegir */
+      '#nuviora-pedido .nvf-step{display:flex;align-items:center;gap:10px;font-weight:800;font-size:16px;color:var(--nvf-title);margin:22px 0 12px}' +
+      '#nuviora-pedido .nvf-title+.nvf-step{margin-top:6px}' +
+      '#nuviora-pedido .nvf-step-n{width:28px;height:28px;border-radius:50%;background:var(--nvf-btn);color:var(--nvf-btn-text);display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;flex:none}' +
+      '#nuviora-pedido .nvf-wait{border:1.5px dashed var(--nvf-border);border-radius:var(--nvf-radius);padding:16px;color:var(--nvf-label);font-size:14px;text-align:center}' +
+      '#nuviora-pedido .nvf-notice{border-radius:var(--nvf-radius);background:var(--nvf-sum);border-left:4px solid var(--nvf-btn);padding:12px 14px;font-size:14px;line-height:1.45;margin-bottom:14px}' +
+      '#nuviora-pedido .nvf-notice-ok{border-left-color:var(--nvf-on)}' +
+      '#nuviora-pedido .nvf-links{display:flex;flex-wrap:wrap;gap:4px 16px;margin-bottom:10px}' +
+      '#nuviora-pedido .nvf-links .nvf-link{margin:0}' +
+      '#nuviora-pedido .nvf-link{min-height:32px}' +
+      '#nuviora-pedido .nvf-upload svg{width:20px;height:20px}' +
+      /* los "Paso 1, 2, 3" que ponía el CSS de cada landing ya los pone el formulario */
+      '#nuviora-pedido form.nvf .nvf-offers::before,#nuviora-pedido form.nvf .nvf-label::before,#nuviora-pedido form.nvf .nvf-sum::before{content:none!important;display:none!important}' +
       '@media (max-width:340px){#nuviora-pedido .nvf-row{grid-template-columns:1fr}#nuviora-pedido .nvf-err{grid-column:1}}' +
       (c.css || '');
   }
@@ -284,25 +298,36 @@
     phone: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2c-1.6 0-3.1-.4-4.4-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.9c-.2-.5-.4-.4-.6-.4h-.5c-.2 0-.5.1-.7.3-.2.3-.9.9-.9 2.2s.9 2.5 1 2.7c.1.2 1.8 2.8 4.4 3.9 1.6.7 2.3.8 3.1.6.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2-.1-.2-.3-.2-.5-.3z"/></svg>',
     pin: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>',
     id: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zm5 3.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4 17h8c0-2-1.8-3-4-3s-4 1-4 3zm10-7v2h6v-2h-6zm0 4v2h4v-2h-4z"/></svg>',
+    camera: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>',
     truck: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h11v9H3zM14 9h4l3 3v3h-7"/><circle cx="7" cy="17" r="1.8"/><circle cx="17" cy="17" r="1.8"/></svg>'
   };
 
   /* ---------- el formulario ---------- */
+  // .169 (dueño, 2026-11-21: "primero coloque su nombre y apellido, su número de contacto y después… su estado… y
+  // dependiendo del estado… si es en Caracas, Valencia y Maracay, le aparecen dos opciones… al resto del país solo pagar
+  // anticipado"): pasos numerados (la oferta solo si hay para elegir); sus datos con su estado o ciudad; y según eso, la
+  // entrega y el pago: a domicilio (al recibir o ahora) o por encomienda (ahora o con una asesora).
   function render(mount) {
     var t = cfg.texts;
     var pay = cfg.pay || {};
     var courierCfg = cfg.courier && cfg.courier.companies && cfg.courier.companies.length ? cfg.courier : null;
-    // .168: ship = delivery (pagar al recibir en tus ciudades) o courier (encomienda); payment = cod, pago_movil o asesora
-    var state = { offer: 0, express: false, ship: 'delivery', payment: 'cod', company: null, receipt: null, account: null };
+    // where = { kind: 'cod', id, name } (delivery) o { kind: 'courier', state } (encomienda); payment = cod, pago_movil o asesora
+    var state = { offer: 0, express: false, where: null, payment: 'cod', company: null, receipt: null, account: null };
     cfg.offers.forEach(function (o, i) { if (o.is_default) state.offer = i; });
     if (cfg.font) document.head.appendChild(el('link', { rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=' + encodeURIComponent(cfg.font) + ':wght@400;600;700;800&display=swap' }));
     document.head.appendChild(el('style', { id: 'nvf-style', text: css(cfg) }));
 
     var form = el('form', { class: 'nvf', novalidate: true, 'aria-label': t.title });
     form.appendChild(el('div', { class: 'nvf-title', text: t.title }));
+    var stepN = 0;
+    function step(text) {
+      stepN++;
+      return form.appendChild(el('div', { class: 'nvf-step' }, [el('span', { class: 'nvf-step-n', 'aria-hidden': 'true', text: String(stepN) }), el('span', { text: text })]));
+    }
+    var expBox = null;
 
-    // Las ofertas
-    var offers = el('div', { class: 'nvf-offers', role: 'radiogroup' });
+    // Paso: la oferta (solo si hay para elegir) y la talla
+    var offers = el('div', { class: 'nvf-offers', role: 'radiogroup', 'aria-label': t.step_offer });
     var offerNodes = cfg.offers.map(function (o, i) {
       var input = el('input', { type: 'radio', name: 'nvf-offer', value: String(i), 'aria-label': o.title });
       var node = el('label', { class: 'nvf-offer' }, [
@@ -315,62 +340,82 @@
       offers.appendChild(node);
       return { node: node, input: input };
     });
-    if (cfg.offers.length > 1) form.appendChild(offers);
-
-    // La talla
     var size = null;
     if (cfg.variants.length) {
       size = el('select', { name: 'size', 'aria-label': t.size_label }, [el('option', { value: '', text: t.size_label })].concat(cfg.variants.map(function (v) {
         return el('option', { value: String(v.id), text: v.title });
       })));
-      form.appendChild(row('size', t.size_label, null, size, true));
+    }
+    var manyOffers = cfg.offers.length > 1;
+    if (manyOffers) {
+      step(t.step_offer);
+      form.appendChild(offers);
+      if (size) form.appendChild(row('size', t.size_label, null, size, true));
     }
 
-    // El envío (.168: con encomiendas, se elige entre el delivery y el envío por MRW o Zoom)
-    form.appendChild(el('div', { class: 'nvf-label', text: t.shipping_label }));
-    var shipNodes = [];
-    function choice(group, value, title, note, price, onPick) {
-      var input = el('input', { type: 'radio', name: 'nvf-' + group, value: value });
-      // el radio va al final: el texto tiene que ser el segundo hijo, como en la caja de envío de siempre
-      var node = el('label', { class: 'nvf-ship', 'data-choice': group + ':' + value }, [el('span', { class: 'nvf-dot' }),
-        el('span', null, [title, note ? el('small', { text: note }) : null]), price ? el('b', { text: price }) : null, input]);
-      input.addEventListener('change', function () { onPick(value); touched(group === 'ship' ? 'city' : 'pay'); update(); });
-      return { node: node, input: input, value: value };
-    }
-    if (courierCfg) {
-      var ships = el('div', { class: 'nvf-ships', role: 'radiogroup', 'aria-label': t.shipping_label });
-      shipNodes = [choice('ship', 'delivery', t.shipping_option, null, t.shipping_price, function (v) { state.ship = v; }),
-        choice('ship', 'courier', t.courier_option, t.courier_note, t.courier_free, function (v) { state.ship = v; })];
-      shipNodes.forEach(function (n) { ships.appendChild(n.node); });
-      form.appendChild(ships);
-    } else {
-      form.appendChild(el('div', { class: 'nvf-ship' }, [el('span', { class: 'nvf-dot' }), el('span', { text: t.shipping_option }), el('b', { text: t.shipping_price })]));
-    }
-
-    var expBox = null;
-
-    // Los datos
+    // Paso: sus datos, con su estado o ciudad (de ahí sale cómo le llega)
+    step(t.step_data);
+    if (size && !manyOffers) form.appendChild(row('size', t.size_label, null, size, true));
+    var codNames = cfg.cities.map(function (x) { return x.name; });
+    var codOptions = cfg.cities.map(function (x) { return el('option', { value: 'c:' + x.id, text: x.name }); });
     var f = {
       name: el('input', { name: 'name', autocomplete: 'name', placeholder: t.name_placeholder, maxlength: '80' }),
       phone: el('input', { name: 'phone', type: 'tel', inputmode: 'tel', autocomplete: 'tel', placeholder: t.phone_placeholder, maxlength: '20' }),
-      city: el('select', { name: 'city' }, [el('option', { value: '', text: t.city_placeholder })].concat(cfg.cities.map(function (c) {
-        return el('option', { value: String(c.id), text: c.name });
-      }))),
+      where: el('select', { name: 'where' }, [el('option', { value: '', text: t.where_placeholder })].concat(courierCfg
+        ? [el('optgroup', { label: t.where_group_cod }, codOptions),
+          el('optgroup', { label: t.where_group_courier }, STATES.map(function (x) { return el('option', { value: 's:' + x, text: x }); }))]
+        : codOptions)),
       address: el('input', { name: 'address', autocomplete: 'street-address', placeholder: t.address_placeholder, maxlength: '250' }),
       reference: el('input', { name: 'reference', placeholder: t.reference_placeholder, maxlength: '250' })
     };
     form.appendChild(row('name', t.name_label, 'name', f.name, true));
     form.appendChild(row('phone', t.phone_label, 'phone', f.phone, true));
-    var cityRow = form.appendChild(row('city', t.city_label, null, f.city, true));
-    var addressRow = form.appendChild(row('address', t.address_label, 'pin', f.address, true));
-    var referenceRow = form.appendChild(row('reference', null, 'pin', f.reference, false));
+    form.appendChild(row('where', t.where_label, 'pin', f.where, true));
+    var hp = el('input', { name: 'website', tabindex: '-1', autocomplete: 'off' });
+    form.appendChild(el('div', { class: 'nvf-hp', 'aria-hidden': 'true' }, [hp]));
 
-    // .168: la encomienda: la empresa, la oficina donde retira (de la lista o escrita) y la cédula de quien retira
-    var courierBox = null, c = {};
+    // Paso: la entrega y el pago (aparece cuando elige su estado o ciudad)
+    step(t.step_delivery);
+    var waitBox = form.appendChild(el('div', { class: 'nvf-wait', text: t.delivery_wait }));
+    function choice(group, value, title, note) {
+      var input = el('input', { type: 'radio', name: 'nvf-' + group, value: value });
+      // el radio va al final: el texto tiene que ser el segundo hijo (la caja de siempre le da el ancho)
+      var node = el('label', { class: 'nvf-ship', 'data-choice': group + ':' + value }, [el('span', { class: 'nvf-dot' }),
+        el('span', null, [title, note ? el('small', { text: note }) : null]), input]);
+      input.addEventListener('change', function () { state.payment = value; touched('pay'); update(); });
+      return { node: node, input: input, value: value };
+    }
+    function choices(parent, list) {
+      var box = parent.appendChild(el('div', { 'data-field': 'pay' }, [el('div', { class: 'nvf-sub', text: t.pay_label })]));
+      var group = box.appendChild(el('div', { class: 'nvf-ships', role: 'radiogroup', 'aria-label': t.pay_label }));
+      list.forEach(function (n) { group.appendChild(n.node); });
+      return list;
+    }
+
+    // A domicilio (en tus ciudades): la dirección, y pagar al recibir o ahora
+    var codBox = form.appendChild(el('div', { class: 'nvf-branch', hidden: true }));
+    var codNotice = codBox.appendChild(el('div', { class: 'nvf-notice nvf-notice-ok' }));
+    codBox.appendChild(row('address', t.address_label, 'pin', f.address, true));
+    codBox.appendChild(row('reference', null, 'pin', f.reference, false));
+    var codPay = pay.prepaid ? choices(codBox, [choice('pay', 'cod', t.pay_cod, t.pay_cod_note), choice('pay', 'pago_movil', t.pay_now, t.pay_now_note)]) : [];
+    var codPmSlot = codBox.appendChild(el('div'));
+    if (cfg.express) {
+      var expInput = el('input', { type: 'checkbox', name: 'express' });
+      expBox = el('label', { class: 'nvf-express' }, [expInput, el('div', null, [
+        el('div', { html: escapeHtml(fill(t.express_title, { precio: bs(cfg.express.bs) })).replace(/(Delivery Express)/, '<b>$1</b>') }),
+        el('small', { text: t.express_note })
+      ])]);
+      expInput.addEventListener('change', function () { state.express = expInput.checked; touched('express'); update(); });
+      codBox.appendChild(expBox);
+    }
+
+    // Por encomienda (el resto del país): la empresa, la agencia de su estado, quien retira, y pagar ahora o con una asesora
+    var courierBox = null, c = {}, courierPay = [], courierPmSlot = null;
     if (courierCfg) {
-      courierBox = el('div', { class: 'nvf-courier', hidden: true });
+      courierBox = form.appendChild(el('div', { class: 'nvf-branch', hidden: true }));
+      c.notice = courierBox.appendChild(el('div', { class: 'nvf-notice' }));
       courierBox.appendChild(el('div', { class: 'nvf-sub', text: t.courier_company_label }));
-      var companies = el('div', { class: 'nvf-companies', role: 'radiogroup', 'aria-label': t.courier_company_label, 'data-field': 'company' });
+      var companies = courierBox.appendChild(el('div', { class: 'nvf-companies', role: 'radiogroup', 'aria-label': t.courier_company_label, 'data-field': 'company' }));
       c.companyNodes = courierCfg.companies.map(function (name) {
         var input = el('input', { type: 'radio', name: 'nvf-company', value: name });
         var node = el('label', { class: 'nvf-company' }, [input, el('span', { html: ICONS.truck }), el('b', { text: name }), el('small', { text: t.courier_free })]);
@@ -378,51 +423,44 @@
         companies.appendChild(node);
         return { node: node, input: input, name: name };
       });
-      courierBox.appendChild(companies);
       c.office = el('select', { name: 'office', disabled: true }, [el('option', { value: '', text: t.courier_office_placeholder })]);
-      c.officeRow = row('office', fill(t.courier_office_label, { empresa: '' }), 'pin', c.office, true);
+      c.officeRow = courierBox.appendChild(row('office', fill(t.courier_office_label, { empresa: '' }), 'pin', c.office, true));
       c.officeRow.hidden = true;
-      courierBox.appendChild(c.officeRow);
-      c.hint = el('div', { class: 'nvf-hint', text: t.courier_office_hint, hidden: true });
-      c.addr = el('div', { class: 'nvf-office-addr', hidden: true });
-      c.missingBtn = el('button', { type: 'button', class: 'nvf-link', text: t.courier_office_missing, hidden: true });
-      courierBox.appendChild(c.hint);
-      courierBox.appendChild(c.addr);
-      courierBox.appendChild(c.missingBtn);
-      c.state = el('select', { name: 'state' }, [el('option', { value: '', text: t.courier_state_placeholder })].concat(STATES.map(function (x) { return el('option', { value: x, text: x }); })));
+      c.hint = courierBox.appendChild(el('div', { class: 'nvf-hint', hidden: true }));
+      c.addr = courierBox.appendChild(el('div', { class: 'nvf-office-addr', hidden: true }));
+      c.links = courierBox.appendChild(el('div', { class: 'nvf-links', hidden: true }));
+      c.allBtn = c.links.appendChild(el('button', { type: 'button', class: 'nvf-link', text: t.courier_office_all }));
+      c.missingBtn = c.links.appendChild(el('button', { type: 'button', class: 'nvf-link', text: t.courier_office_missing }));
       c.officeText = el('input', { name: 'office_text', placeholder: t.courier_office_text_placeholder, maxlength: '200' });
-      c.stateRow = row('state', t.courier_state_label, null, c.state, true);
-      c.textRow = row('office_text', null, 'pin', c.officeText, true);
-      c.stateRow.hidden = true;
+      c.textRow = courierBox.appendChild(row('office_text', fill(t.courier_office_label, { empresa: '' }), 'pin', c.officeText, true));
       c.textRow.hidden = true;
-      courierBox.appendChild(c.stateRow);
-      courierBox.appendChild(c.textRow);
       c.id = el('input', { name: 'id_number', inputmode: 'text', placeholder: t.courier_id_placeholder, maxlength: '14', autocomplete: 'off' });
       courierBox.appendChild(row('id_number', t.courier_id_label, 'id', c.id, true));
-      c.otherBtn = el('button', { type: 'button', class: 'nvf-link', text: t.courier_other });
-      courierBox.appendChild(c.otherBtn);
+      c.otherBtn = courierBox.appendChild(el('button', { type: 'button', class: 'nvf-link', text: t.courier_other }));
       c.rName = el('input', { name: 'recipient_name', placeholder: t.name_placeholder, maxlength: '80' });
       c.rPhone = el('input', { name: 'recipient_phone', type: 'tel', inputmode: 'tel', placeholder: t.phone_placeholder, maxlength: '20' });
-      c.rNameRow = row('recipient_name', t.courier_name_label, 'name', c.rName, false);
-      c.rPhoneRow = row('recipient_phone', t.courier_phone_label, 'phone', c.rPhone, false);
+      c.rNameRow = courierBox.appendChild(row('recipient_name', t.courier_name_label, 'name', c.rName, false));
+      c.rPhoneRow = courierBox.appendChild(row('recipient_phone', t.courier_phone_label, 'phone', c.rPhone, false));
       c.rNameRow.hidden = true;
       c.rPhoneRow.hidden = true;
-      courierBox.appendChild(c.rNameRow);
-      courierBox.appendChild(c.rPhoneRow);
-      form.appendChild(courierBox);
+      courierPay = choices(courierBox, [choice('cpay', 'pago_movil', t.pay_courier_now, t.pay_courier_now_note)].concat(pay.advisor
+        ? [choice('cpay', 'asesora', t.pay_advisor, t.pay_advisor_note)] : []));
+      courierPmSlot = courierBox.appendChild(el('div'));
       c.offices = {};
       c.missing = false;
+      c.showAll = false;
       c.office.addEventListener('change', showAddress);
+      c.allBtn.addEventListener('click', function () { c.showAll = true; fillOffices(c.offices[state.company] || []); c.office.focus(); });
       c.missingBtn.addEventListener('click', function () { setMissing(!c.missing); });
       c.otherBtn.addEventListener('click', function () { c.rNameRow.hidden = false; c.rPhoneRow.hidden = false; c.otherBtn.hidden = true; c.rName.focus(); });
     }
     function pickCompany(name) {
       state.company = name;
+      c.showAll = false;
       c.companyNodes.forEach(function (n) { n.node.classList.toggle('is-on', n.name === name); n.input.checked = n.name === name; });
-      c.officeRow.querySelector('label').firstChild.textContent = fill(t.courier_office_label, { empresa: name }) + ' ';
+      [c.officeRow, c.textRow].forEach(function (r) { r.querySelector('label').firstChild.textContent = fill(t.courier_office_label, { empresa: name }) + ' '; });
       c.officeRow.hidden = c.missing;
-      c.hint.hidden = c.missing;
-      c.missingBtn.hidden = false;
+      c.links.hidden = false;
       clearErr(c.officeRow._box, c.officeRow._err);
       var cached = c.offices[name];
       if (cached) return fillOffices(cached);
@@ -433,15 +471,29 @@
         .then(function (j) { c.offices[name] = (j && j.offices) || []; if (state.company === name) fillOffices(c.offices[name]); })
         .catch(function () { c.offices[name] = []; if (state.company === name) fillOffices([]); });
     }
+    // Primero las agencias de su estado; las demás, por estado, si pide verlas (o si en su estado no hay)
     function fillOffices(list) {
+      var where = state.where && state.where.kind === 'courier' ? state.where.state : null;
+      var local = list.filter(function (o) { return o.state === where; });
+      var all = c.showAll || !local.length;
+      var before = c.office.value;
       c.office.innerHTML = '';
       c.office.appendChild(el('option', { value: '', text: t.courier_office_placeholder }));
-      var groups = {};
-      list.forEach(function (o) {
-        if (!groups[o.state]) { groups[o.state] = el('optgroup', { label: o.state }); c.office.appendChild(groups[o.state]); }
-        groups[o.state].appendChild(el('option', { value: String(o.id), text: o.name + (o.city && o.city !== o.name ? ' (' + o.city + ')' : '') }));
-      });
+      var option = function (o) { return el('option', { value: String(o.id), text: o.name + (o.city && o.city !== o.name ? ' (' + o.city + ')' : '') }); };
+      if (all) {
+        var groups = {};
+        list.forEach(function (o) {
+          if (!groups[o.state]) { groups[o.state] = el('optgroup', { label: o.state }); c.office.appendChild(groups[o.state]); }
+          groups[o.state].appendChild(option(o));
+        });
+      } else {
+        local.forEach(function (o) { c.office.appendChild(option(o)); });
+      }
+      if (before && c.office.querySelector('option[value="' + before + '"]')) c.office.value = before;
       c.office.disabled = false;
+      c.allBtn.hidden = all;
+      c.hint.textContent = where && !local.length && list.length ? fill(t.courier_office_none, { empresa: state.company, estado: where }) : t.courier_office_hint;
+      c.hint.hidden = c.missing;
       if (!list.length) setMissing(true);
       showAddress();
     }
@@ -456,48 +508,29 @@
       c.missing = on;
       c.officeRow.hidden = on;
       c.hint.hidden = on;
-      c.stateRow.hidden = !on;
       c.textRow.hidden = !on;
+      c.allBtn.hidden = on || c.showAll;
       c.missingBtn.textContent = on ? t.courier_office_placeholder : t.courier_office_missing;
       showAddress();
-      if (on) c.state.focus();
+      if (on) c.officeText.focus();
     }
 
-    // .168: cómo paga (en tus ciudades): al recibir, ahora con pago móvil o hablar antes con una asesora
-    var payNodes = [];
-    var payBox = null;
-    if (pay.prepaid || pay.advisor) {
-      payBox = el('div', { 'data-field': 'pay' }, [el('div', { class: 'nvf-sub', text: t.pay_label })]);
-      var payList = el('div', { class: 'nvf-ships', role: 'radiogroup', 'aria-label': t.pay_label });
-      payNodes = [choice('pay', 'cod', t.pay_cod, t.pay_cod_note, null, function (v) { state.payment = v; })];
-      if (pay.prepaid) payNodes.push(choice('pay', 'pago_movil', t.pay_now, t.pay_now_note, null, function (v) { state.payment = v; }));
-      if (pay.advisor) payNodes.push(choice('pay', 'asesora', t.pay_advisor, t.pay_advisor_note, null, function (v) { state.payment = v; }));
-      payNodes.forEach(function (n) { payList.appendChild(n.node); });
-      payBox.appendChild(payList);
-      form.appendChild(payBox);
-    }
-
-    // .168: el pago móvil: la cuenta del día, el monto exacto y la foto del comprobante
+    // El pago móvil: la cuenta del día, el monto exacto y la foto del comprobante (va donde haga falta)
     var pm = null;
     if (pay.prepaid || courierCfg) {
       pm = { box: el('div', { class: 'nvf-pm', hidden: true, 'data-field': 'receipt' }) };
       pm.box.appendChild(el('div', { class: 'nvf-pm-title', text: t.pm_title }));
-      pm.rows = el('div', null, [el('div', { class: 'nvf-pm-note', text: t.pm_loading })]);
-      pm.box.appendChild(pm.rows);
+      pm.rows = pm.box.appendChild(el('div', null, [el('div', { class: 'nvf-pm-note', text: t.pm_loading })]));
       pm.amount = el('b');
       pm.amountCopy = el('button', { type: 'button', class: 'nvf-copy', text: t.pm_copy });
       pm.box.appendChild(el('div', { class: 'nvf-pm-row nvf-pm-amount' }, [el('span', null, [el('small', { text: t.pm_amount }), pm.amount]), pm.amountCopy]));
       pm.amountCopy.addEventListener('click', function () { copy(String(totals().total || ''), pm.amountCopy, [t.pm_copy, t.pm_copied]); });
       pm.file = el('input', { type: 'file', accept: 'image/*', name: 'receipt', 'aria-label': t.receipt_label });
       pm.uploadText = el('span', { text: t.receipt_button });
-      pm.upload = el('label', { class: 'nvf-upload' }, [pm.file, el('span', { 'aria-hidden': 'true', text: '📎' }), pm.uploadText]);
-      pm.box.appendChild(pm.upload);
-      pm.preview = el('div', { class: 'nvf-preview', hidden: true });
-      pm.box.appendChild(pm.preview);
-      pm.err = el('div', { class: 'nvf-err', role: 'alert' });
-      pm.box.appendChild(pm.err);
+      pm.upload = pm.box.appendChild(el('label', { class: 'nvf-upload' }, [pm.file, el('span', { 'aria-hidden': 'true', html: ICONS.camera }), pm.uploadText]));
+      pm.preview = pm.box.appendChild(el('div', { class: 'nvf-preview', hidden: true }));
+      pm.err = pm.box.appendChild(el('div', { class: 'nvf-err', role: 'alert' }));
       pm.box.appendChild(el('div', { class: 'nvf-pm-note', text: t.receipt_note }));
-      form.appendChild(pm.box);
       pm.file.addEventListener('change', function () {
         var file = pm.file.files && pm.file.files[0];
         touched('receipt');
@@ -534,29 +567,15 @@
         })
         .catch(function () { pm.loading = false; pm.rows.innerHTML = ''; pm.rows.appendChild(el('div', { class: 'nvf-pm-note', text: t.pm_error })); });
     }
-    var hp = el('input', { name: 'website', tabindex: '-1', autocomplete: 'off' });
-    form.appendChild(el('div', { class: 'nvf-hp', 'aria-hidden': 'true' }, [hp]));
 
-    // El resumen
-    var sub = el('b'), exp = el('b'), total = el('b');
+    // Paso: confirmar (el resumen y el botón)
+    step(t.step_confirm);
+    var sub = el('b'), exp = el('b'), total = el('b'), shipLabel = el('span', { text: t.delivery });
     var expRow = el('div', null, ['Delivery Express', exp]);
     form.appendChild(el('div', { class: 'nvf-sum' }, [
-      el('div', null, [t.subtotal, sub]), el('div', null, [t.delivery, el('b', { text: t.shipping_price })]), expRow,
+      el('div', null, [t.subtotal, sub]), el('div', null, [shipLabel, el('b', { text: t.shipping_price })]), expRow,
       el('div', { class: 'nvf-total' }, [t.total, total])
     ]));
-
-    // El Delivery Express (no va en una encomienda)
-    if (cfg.express) {
-      var expInput = el('input', { type: 'checkbox', name: 'express' });
-      expBox = el('label', { class: 'nvf-express' }, [expInput, el('div', null, [
-        el('div', { html: escapeHtml(fill(t.express_title, { precio: bs(cfg.express.bs) })).replace(/(Delivery Express)/, '<b>$1</b>') }),
-        el('small', { text: t.express_note })
-      ])]);
-      expInput.addEventListener('change', function () { state.express = expInput.checked; touched('express'); update(); });
-      form.appendChild(expBox);
-    }
-
-    // El botón
     var btnTotal = el('span');
     var btnNote = el('small', { text: t.button_note });
     var btn = el('button', { type: 'submit', class: 'nvf-btn' }, [el('span', null, [el('b', null, [t.button + ' · ', btnTotal]), btnNote]),
@@ -565,6 +584,18 @@
     var msg = el('div', { class: 'nvf-msg', role: 'alert' });
     form.appendChild(msg);
     form.appendChild(el('div', { class: 'nvf-foot', text: t.footnote }));
+
+    f.where.addEventListener('change', function () {
+      var v = f.where.value;
+      if (!v) state.where = null;
+      else if (v.charAt(0) === 'c') state.where = { kind: 'cod', id: Number(v.slice(2)), name: f.where.options[f.where.selectedIndex].text };
+      else state.where = { kind: 'courier', state: v.slice(2) };
+      // a domicilio se paga al recibir o ahora; por encomienda, ahora o con una asesora
+      if (state.where && state.where.kind === 'cod' && state.payment === 'asesora') state.payment = 'cod';
+      if (state.where && state.where.kind === 'courier' && state.payment === 'cod') state.payment = 'pago_movil';
+      if (state.where && state.where.kind === 'courier' && state.company) { c.showAll = false; fillOffices(c.offices[state.company] || []); }
+      update();
+    });
 
     function row(key, label, icon, input, required) {
       var id = 'nvf-' + key;
@@ -590,10 +621,12 @@
         pm.err.classList.add('is-on');
         return;
       }
-      if (key === 'company' && courierBox) {
+      if ((key === 'company' && courierBox) || key === 'pay') {
         msg.textContent = text;
         return;
       }
+      if (key === 'city' || key === 'state') key = 'where';
+      if (key === 'office' && c.missing) key = 'office_text';
       var r = form.querySelector('[data-field="' + key + '"]');
       if (!r || !r._box) return;
       r._box.classList.add('is-bad');
@@ -603,7 +636,7 @@
     }
     // .165 (dueño: "con solo darle clic puede ser una equivocación"): tocar un campo, cambiar de oferta o marcar el express
     // solo cuenta en qué campos estuvo; "empezaron" y el InitiateCheckout salen la primera vez que escribe algo en un campo
-    // (o elige su ciudad o talla), también con el autocompletar del teléfono.
+    // (o elige su estado o talla), también con el autocompletar del teléfono.
     function touched(key) {
       if (key !== 'submit' && !seenFields[key]) { seenFields[key] = true; track('field:' + key); }
     }
@@ -617,37 +650,42 @@
         pixel('InitiateCheckout', content(o.units, o.price_usd));
       }
     }
+    function kind() { return state.where ? state.where.kind : null; }
     function totals() {
       var o = cfg.offers[state.offer];
-      var expBs = state.express && cfg.express ? cfg.express.bs : 0;
+      var withExp = state.express && kind() === 'cod' && cfg.express;
+      var expBs = withExp ? cfg.express.bs : 0;
       return { offer: o, sub: o.price_bs, exp: expBs, total: o.price_bs === null ? null : o.price_bs + (expBs || 0),
-        usd: Math.round((o.price_usd + (state.express && cfg.express ? cfg.express.usd : 0)) * 100) / 100 };
+        usd: Math.round((o.price_usd + (withExp ? cfg.express.usd : 0)) * 100) / 100 };
     }
-    function paying() { return state.ship === 'courier' ? 'pago_movil' : state.payment; }
+    function paying() {
+      if (kind() === 'courier') return state.payment === 'asesora' && pay.advisor ? 'asesora' : 'pago_movil';
+      return state.payment === 'pago_movil' && pay.prepaid ? 'pago_movil' : 'cod';
+    }
+    function list(names) { return names.length > 1 ? names.slice(0, -1).join(', ') + ' y ' + names[names.length - 1] : names.join(''); }
     function update() {
       offerNodes.forEach(function (n, i) { n.node.classList.toggle('is-on', i === state.offer); n.input.checked = i === state.offer; });
-      // .168: lo que se ve según el envío y el pago
-      var courier = state.ship === 'courier';
-      if (courier) state.express = false;
-      shipNodes.forEach(function (n) { n.node.classList.toggle('is-on', n.value === state.ship); n.input.checked = n.value === state.ship; });
-      payNodes.forEach(function (n) { n.node.classList.toggle('is-on', n.value === state.payment); n.input.checked = n.value === state.payment; });
-      cityRow.hidden = courier;
-      addressRow.hidden = courier;
-      referenceRow.hidden = courier;
-      if (courierBox) courierBox.hidden = !courier;
-      if (payBox) payBox.hidden = courier;
-      if (expBox) { expBox.hidden = courier; if (courier) expBox.querySelector('input').checked = false; }
-      var asesora = paying() === 'asesora';
-      addressRow.querySelector('.nvf-req') && (addressRow.querySelector('.nvf-req').hidden = asesora);
+      var k = kind();
+      var p = paying();
+      waitBox.hidden = !!k;
+      codBox.hidden = k !== 'cod';
+      if (courierBox) courierBox.hidden = k !== 'courier';
+      if (k === 'cod') codNotice.textContent = fill(t.cod_notice, { ciudad: state.where.name });
+      if (k === 'courier') c.notice.textContent = fill(t.courier_notice, { estado: state.where.state, ciudades: list(codNames) });
+      codPay.concat(courierPay).forEach(function (n) { n.node.classList.toggle('is-on', n.value === p); n.input.checked = n.value === p; });
       if (pm) {
-        pm.box.hidden = paying() !== 'pago_movil';
-        if (!pm.box.hidden) loadAccount();
+        var show = p === 'pago_movil' && !!k;
+        var slot = k === 'courier' ? courierPmSlot : codPmSlot;
+        if (show && pm.box.parentNode !== slot) slot.appendChild(pm.box);
+        pm.box.hidden = !show;
+        if (show) loadAccount();
       }
-      btnNote.textContent = paying() === 'pago_movil' ? t.button_note_prepaid : (asesora ? t.button_note_advisor : t.button_note);
+      btnNote.textContent = p === 'pago_movil' ? t.button_note_prepaid : p === 'asesora' ? t.button_note_advisor : t.button_note;
+      shipLabel.textContent = k === 'courier' ? t.courier_shipping : t.delivery;
       var x = totals();
       sub.textContent = bs(x.sub);
       exp.textContent = bs(x.exp);
-      expRow.style.display = state.express ? '' : 'none';
+      expRow.style.display = x.exp ? '' : 'none';
       total.textContent = bs(x.total);
       btnTotal.textContent = bs(x.total);
       if (pm) pm.amount.textContent = bs(x.total);
@@ -658,20 +696,19 @@
       e.preventDefault();
       msg.textContent = '';
       var errors = [];
+      var k = kind();
       if (size && !size.value) errors.push(['size', t.error_required]);
       if (f.name.value.trim().length < 3) errors.push(['name', t.error_required]);
       if (!phoneOk(f.phone.value)) errors.push(['phone', f.phone.value.trim() ? t.error_phone : t.error_required]);
-      var courier = state.ship === 'courier';
-      if (!courier && !f.city.value) errors.push(['city', t.error_required]);
-      if (!courier && paying() !== 'asesora' && f.address.value.trim().length < 5) errors.push(['address', t.error_required]);
-      if (courier) {
+      if (!k) errors.push(['where', t.error_where]);
+      if (k === 'cod' && f.address.value.trim().length < 5) errors.push(['address', t.error_required]);
+      if (k === 'courier') {
         if (!state.company) errors.push(['company', t.error_office]);
         else if (!c.missing && !c.office.value) errors.push(['office', t.error_office]);
-        if (courier && c.missing && !c.state.value) errors.push(['state', t.error_required]);
-        if (courier && c.missing && c.officeText.value.trim().length < 4) errors.push(['office_text', t.error_office]);
+        if (c.missing && c.officeText.value.trim().length < 4) errors.push(['office_text', t.error_office]);
         if (!idOk(c.id.value)) errors.push(['id_number', c.id.value.trim() ? t.error_id : t.error_required]);
       }
-      if (paying() === 'pago_movil' && !state.receipt) errors.push(['receipt', t.error_receipt]);
+      if (k && paying() === 'pago_movil' && !state.receipt) errors.push(['receipt', t.error_receipt]);
       if (errors.length) {
         errors.forEach(function (x) { bad(x[0], x[1]); });
         track('error');
@@ -687,13 +724,14 @@
         return;
       }
       btn.disabled = true;
+      var courier = k === 'courier';
       var body = JSON.stringify({
         p: P, offer: x.offer.id, variant: size ? Number(size.value) : null, name: f.name.value.trim(), phone: f.phone.value.trim(),
-        city: courier ? null : Number(f.city.value), address: courier ? null : f.address.value.trim(), reference: courier ? null : f.reference.value.trim(),
+        city: courier ? null : state.where.id, address: courier ? null : f.address.value.trim(), reference: courier ? null : f.reference.value.trim(),
         express: !courier && state.express, payment: paying(), account: state.account ? state.account.id : null,
         receipt: paying() === 'pago_movil' ? state.receipt : null,
         courier: courier ? { company: state.company, office_id: c.missing ? null : Number(c.office.value) || null, office_text: c.missing ? c.officeText.value.trim() : null,
-          state: c.missing ? c.state.value : null, id_number: c.id.value.trim(), recipient_name: c.rName.value.trim() || null,
+          state: state.where.state, id_number: c.id.value.trim(), recipient_name: c.rName.value.trim() || null,
           recipient_phone: c.rPhone.value.trim() || null } : null,
         rate: cfg.rate, visitor: visitor, landing: first && first.landing, referrer: first && first.referrer, page: location.href,
         fbp: cookie('_fbp'), fbc: fbc(), hp: hp.value, ts: cfg.ts, sig: cfg.sig
@@ -708,7 +746,7 @@
           btn.disabled = false;
           if (r.status === 422 && r.j.fields) {
             r.j.fields.forEach(function (k) {
-              bad(k, ({ phone: t.error_phone, receipt: t.error_receipt, id_number: t.error_id, office: t.error_office, company: t.error_office })[k] || t.error_required);
+              bad(k, ({ phone: t.error_phone, receipt: t.error_receipt, id_number: t.error_id, office: t.error_office, company: t.error_office, city: t.error_where, state: t.error_where })[k] || t.error_required);
             });
             track('error');
             return;
