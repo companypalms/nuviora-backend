@@ -229,22 +229,23 @@ class StorefrontKpis
     }
 
     /**
-     * `.171`: el experimento del producto con "Purchase según cómo paga" prendido (el primero de los del formulario), con
-     * los días ya cerrados, contra el mismo producto antes (sus últimos 14 días con gasto en Meta, si entregó al menos 10) o
+     * `.171`: el experimento del producto con "Purchase según cómo paga" prendido (el primero de los del formulario), desde
+     * la última vez que lo prendió y con los días ya cerrados, contra el mismo producto antes (sus últimos 14 días con gasto en Meta, si entregó al menos 10) o
      * contra el arranque de los demás productos.
      */
     public function experiment(array $productIds): array
     {
-        $modes = DB::table('meta_purchase_modes')->whereIn('product_id', $productIds ?: [0])->whereNull('campaign_meta_id')->orderBy('starts_on')->get();
-        if ($modes->isEmpty()) {
+        $first = DB::table('meta_purchase_modes')->whereIn('product_id', $productIds ?: [0])->whereNull('campaign_meta_id')->orderBy('starts_on')->first();
+        if (!$first) {
             return ['active' => false];
         }
-        $productId = (int) $modes->first()->product_id;
-        $mine = $modes->where('product_id', $productId);
-        $from = Carbon::parse($mine->min('starts_on'))->startOfDay();
+        $productId = (int) $first->product_id;
+        // desde la última vez que lo prendió (prenderlo para una prueba y apagarlo no cuenta)
+        $mode = DB::table('meta_purchase_modes')->where('product_id', $productId)->whereNull('campaign_meta_id')->orderByDesc('starts_on')->orderByDesc('id')->first();
+        $from = Carbon::parse($mode->starts_on)->startOfDay();
         $to = today()->subDays(self::MATURE_DAYS);
-        if ($mine->whereNull('ends_on')->isEmpty()) {
-            $to = $to->min(Carbon::parse($mine->max('ends_on')));
+        if ($mode->ends_on !== null) {
+            $to = $to->min(Carbon::parse($mode->ends_on));
         }
         $days = $to->gte($from) ? (int) $from->diffInDays($to) + 1 : 0;
         $campaigns = DB::table('meta_campaigns')->where('product_id', $productId)->pluck('meta_id')->map(fn ($v) => (string) $v)->all();

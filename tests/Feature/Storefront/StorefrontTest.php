@@ -814,7 +814,9 @@ describe('.171: Purchase según cómo paga, por producto', function () {
         DB::table('statuses')->insert([['id' => 30, 'description' => 'Entregado'], ['id' => 31, 'description' => 'Cancelado']]);
         DB::table('meta_campaigns')->insert(['meta_id' => '555', 'product_id' => 7]);
         $start = today()->subDays(20);
-        DB::table('meta_purchase_modes')->insert(['product_id' => 7, 'campaign_meta_id' => null, 'starts_on' => $start->toDateString()]);
+        // prendido un día para probar los eventos y apagado: no cuenta; cuenta desde que lo volvió a prender
+        DB::table('meta_purchase_modes')->insert([['product_id' => 7, 'campaign_meta_id' => null, 'starts_on' => today()->subDays(25)->toDateString(),
+            'ends_on' => today()->subDays(25)->toDateString()], ['product_id' => 7, 'campaign_meta_id' => null, 'starts_on' => $start->toDateString(), 'ends_on' => null]]);
         // antes (mayo): 12 entregados de 15 cerrados, $360 vendidos, $90 de publicidad
         $order = function (Carbon\Carbon $at, int $status, float $total) {
             static $n = 0;
