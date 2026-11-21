@@ -5,11 +5,13 @@ namespace App\Http\Controllers;
 use App\Models\City;
 use App\Models\CourierOffice;
 use App\Models\MetaPurchaseMode;
+use App\Models\OrderActivityLog;
 use App\Models\Product;
 use App\Models\ProductOffer;
 use App\Models\Shop;
 use App\Models\StorefrontDesign;
 use App\Models\StorefrontOrder;
+use App\Services\Storefront\MetaCapi;
 use App\Services\Storefront\StorefrontCatalog;
 use App\Services\Storefront\PurchaseModes;
 use App\Services\Storefront\StorefrontKpis;
@@ -183,6 +185,35 @@ class StoreFormController extends Controller
             'product' => $this->selected($product->fresh())]);
     }
 
+    /**
+     * `.170` (dueño, 2026-11-21: "quiero probar que podamos enviar bien los eventos de meta de purchase… antes de prender
+     * campañas"): el Purchase de un pedido de prueba de una campaña "al entregar", como si ya se hubiera entregado (con su
+     * hora y su total, por el mismo camino), sin cambiarle nada al pedido. Solo con el código de prueba de eventos puesto.
+     */
+    public function testPurchase(StorefrontOrder $front)
+    {
+        $s = StorefrontCatalog::settings();
+        $why = match (true) {
+            $s['capi_test_code'] === '' => 'Primero pon el «Código de prueba de eventos» de Meta y guarda.',
+            StorefrontCatalog::capiToken() === null || $s['pixel_id'] === '' => 'Falta el número del píxel o la clave de la API de conversiones.',
+            $front->purchase_mode !== 'delivery' || $front->payment === StorefrontOrder::PREPAID
+                => 'Este pedido no espera la entrega: su Purchase salió al pedir.',
+            $front->capi_status === 'sent' => 'Meta ya recibió el Purchase de este pedido.',
+            default => null,
+        };
+        if ($why) {
+            return response()->json(['message' => $why], 422);
+        }
+        $status = app(MetaCapi::class)->send($front, MetaCapi::PURCHASE, StorefrontRules::deliveredTime($front->created_at?->timestamp ?? time(), time()));
+        if ($status !== 'sent') {
+            return response()->json(['message' => 'Meta no recibió el Purchase: ' . rtrim((string) ($front->fresh()->capi_error ?: 'no respondió'), '. ') . '.'], 422);
+        }
+        OrderActivityLog::create(['order_id' => $front->order_id, 'action' => 'storefront_test_purchase',
+            'description' => 'Purchase de prueba mandado a Meta como si el pedido se hubiera entregado (con el código de prueba de eventos). El pedido no cambió.']);
+
+        return response()->json(['message' => 'Meta recibió el Purchase de prueba: míralo en «Probar eventos».', 'orders' => $this->orders($s['product_ids'])]);
+    }
+
     /** `.168`: las oficinas de encomienda de una empresa (para buscarlas, apagarlas o agregar una). */
     public function offices(Request $request)
     {
@@ -233,11 +264,14 @@ class StoreFormController extends Controller
             'design' => ['texts' => (object) ($design?->texts ?? []), 'colors' => (object) ($design?->colors ?? []), 'font' => $design?->font, 'radius' => $design?->radius,
                 'custom_css' => $design?->custom_css],
             'cities' => StorefrontCatalog::codCities($p->id),
+            // .170: su landing (la página del último pedido del formulario, sin parámetros), para el link de prueba de cada campaña
+            'page' => preg_replace('/[?#].*$/s', '', (string) StorefrontOrder::where('product_id', $p->id)->whereNotNull('page_url')->latest('id')->value('page_url')) ?: null,
             // .168: sus campañas y cuáles mandan el Purchase al entregar
             'campaigns' => DB::table('meta_campaigns')->where('product_id', $p->id)->orderByDesc('id')->get(['meta_id', 'name', 'effective_status'])
                 ->map(fn ($c) => ['id' => (string) $c->meta_id, 'name' => (string) $c->name, 'status' => $c->effective_status,
                     'delivery' => in_array((string) $c->meta_id, PurchaseModes::markedNow(), true),
-                    'since' => MetaPurchaseMode::where('campaign_meta_id', (string) $c->meta_id)->whereNull('ends_on')->value('starts_on')])->values()];
+                    // .170: la fecha sola (antes salía con la hora: "21T04:00:00.000000Z/11/2026")
+                    'since' => MetaPurchaseMode::where('campaign_meta_id', (string) $c->meta_id)->whereNull('ends_on')->first()?->starts_on?->toDateString()])->values()];
     }
 
     /** Los últimos 30 pedidos del formulario. */

@@ -840,6 +840,8 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::get('/courier-offices', [\App\Http\Controllers\StoreFormController::class, 'offices']);
         Route::post('/courier-offices', [\App\Http\Controllers\StoreFormController::class, 'addOffice']);
         Route::put('/courier-offices/{office}', [\App\Http\Controllers\StoreFormController::class, 'updateOffice'])->whereNumber('office');
+        // .170: el Purchase "al entregar" de un pedido de prueba, sin entregarlo
+        Route::post('/orders/{front}/test-purchase', [\App\Http\Controllers\StoreFormController::class, 'testPurchase'])->whereNumber('front');
     });
 
     // Calendario del dueño (Etapa 3): sus notas, los recordatorios del sistema y lo que marca como hecho. Solo el Admin

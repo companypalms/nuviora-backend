@@ -106,7 +106,8 @@ beforeEach(function () {
     });
     (require database_path('migrations/2026_11_19_100000_create_storefront_tables.php'))->up();
     // los KPIs: las visitas de Meta, de dónde vino cada pedido y sus cancelaciones
-    Schema::create('meta_campaigns', fn ($t) => [$t->id(), $t->string('meta_id'), $t->unsignedBigInteger('product_id')->nullable(), $t->timestamps()]);
+    Schema::create('meta_campaigns', fn ($t) => [$t->id(), $t->string('meta_id'), $t->string('name')->nullable(), $t->string('effective_status')->nullable(),
+        $t->unsignedBigInteger('product_id')->nullable(), $t->timestamps()]);
     Schema::create('meta_insights_daily', fn ($t) => [$t->id(), $t->date('date'), $t->string('level'), $t->string('meta_id'), $t->decimal('landing_page_views', 12, 2)->nullable(),
         $t->decimal('purchases', 12, 2)->nullable()]);
     Schema::create('order_sources', fn ($t) => [$t->id(), $t->unsignedBigInteger('order_id'), $t->string('ad_meta_id')->nullable(), $t->timestamps()]);
@@ -694,6 +695,85 @@ describe('.168: el Purchase al entregar (solo en las campañas marcadas)', funct
             ->and([$sent[1]['event_name'], $sent[1]['event_id'], $sent[1]['event_time'], $sent[1]['custom_data']['value']])->toBe(['Purchase', 'nuv-web-1', 1_800_000_000, 47.5])
             ->and($front->fresh()->placed_capi_status)->toBe('sent')
             ->and($front->fresh()->purchase_sent_at)->not->toBeNull();
+    });
+});
+
+// ───────────────────────────── .170 ─────────────────────────────
+// Dueño (21/11): "quiero probar que podamos enviar bien los eventos de meta de purchase… me gustaría probarlo antes de prender
+// campañas": el Purchase al entregar de un pedido de prueba, sin entregarlo, y el link de prueba de cada campaña.
+
+describe('.170: probar el Purchase al entregar sin entregar el pedido', function () {
+    beforeEach(function () {
+        tablas168();
+        Illuminate\Support\Facades\Storage::fake('public');
+        StorefrontCatalog::saveSettings(['prepaid_enabled' => true, 'pixel_id' => '1802353243804', 'capi_token' => 'EAAprueba']);
+        DB::table('meta_purchase_modes')->insert(['product_id' => 7, 'campaign_meta_id' => '120210000000555', 'starts_on' => today()->toDateString()]);
+        $this->sources->shouldReceive('record');
+        $this->intake->shouldReceive('finish');
+        Illuminate\Support\Facades\Bus::fake();
+        Sanctum::actingAs(User::find(1));
+    });
+
+    it('solo con el código de prueba: sale por el mismo camino (la hora del pedido, su total y el código) y el pedido no cambia', function () {
+        enviar164($this, ['landing' => 'https://solobrillo.com/products/solo-brillo?utm_campaign=120210000000555'])->assertOk();
+        $front = StorefrontOrder::first();
+        $status = Order::first()->status_id;
+        Order::first()->forceFill(['current_total_price' => 47.5])->saveQuietly();
+        Http::fake(['graph.facebook.com/*' => Http::response(['events_received' => 1])]);
+
+        $this->postJson("/api/store-form/orders/{$front->id}/test-purchase")->assertStatus(422)
+            ->assertJsonPath('message', 'Primero pon el «Código de prueba de eventos» de Meta y guarda.');
+        Http::assertNothingSent();
+
+        StorefrontCatalog::saveSettings(['capi_test_code' => 'TEST123']);
+        $r = $this->postJson("/api/store-form/orders/{$front->id}/test-purchase")->assertOk();
+        Http::assertSent(fn ($x) => $x['data'][0]['event_name'] === 'Purchase' && $x['data'][0]['event_id'] === 'nuv-web-1'
+            && $x['data'][0]['event_time'] === $front->created_at->timestamp && $x['data'][0]['custom_data']['value'] === 47.5
+            && $x['test_event_code'] === 'TEST123');
+        expect($r->json('orders.0.capi'))->toBe('sent')
+            ->and($r->json('orders.0.purchase_sent_at'))->not->toBeNull()
+            ->and(Order::first()->status_id)->toBe($status)
+            ->and(DB::table('order_activity_logs')->where('action', 'storefront_test_purchase')->count())->toBe(1);
+
+        // ya salió: no se repite (tampoco al entregarlo de verdad)
+        $this->postJson("/api/store-form/orders/{$front->id}/test-purchase")->assertStatus(422)
+            ->assertJsonPath('message', 'Meta ya recibió el Purchase de este pedido.');
+        App\Services\Storefront\StorefrontDelivered::handle(Order::first());
+        Http::assertSentCount(1);
+        Illuminate\Support\Facades\Bus::assertNotDispatched(App\Jobs\SendStorefrontEvent::class, fn ($j) => $j->event === 'Purchase');
+    });
+
+    it('no vale en un pedido que no espera la entrega ni para otro que no sea el Admin; si Meta lo rechaza, dice por qué', function () {
+        StorefrontCatalog::saveSettings(['capi_test_code' => 'TEST123']);
+        enviar164($this, ['landing' => 'https://solobrillo.com/products/solo-brillo?utm_campaign=120210000000777'])->assertOk();
+        enviar164($this, ['phone' => '04241234567', 'landing' => 'https://solobrillo.com/products/solo-brillo?utm_campaign=120210000000555'])->assertOk();
+        [$normal, $marked] = StorefrontOrder::orderBy('id')->get()->all();
+        Http::fake(['graph.facebook.com/*' => Http::response(['error' => ['message' => 'Invalid OAuth access token.']], 400)]);
+
+        $this->postJson("/api/store-form/orders/{$normal->id}/test-purchase")->assertStatus(422)
+            ->assertJsonPath('message', 'Este pedido no espera la entrega: su Purchase salió al pedir.');
+        Sanctum::actingAs(User::find(2));
+        $this->postJson("/api/store-form/orders/{$marked->id}/test-purchase")->assertForbidden();
+        Http::assertNothingSent();
+
+        Sanctum::actingAs(User::find(1));
+        $this->postJson("/api/store-form/orders/{$marked->id}/test-purchase")->assertStatus(422)
+            ->assertJsonPath('message', 'Meta no recibió el Purchase: Invalid OAuth access token.');
+    });
+
+    it('cada producto trae su landing sin parámetros, para el link de prueba de cada campaña', function () {
+        $page = fn () => $this->putJson('/api/store-form/products/7/purchase-modes', ['campaigns' => []])->assertOk()->json('product.page');
+        expect($page())->toBeNull();
+        enviar164($this, ['page' => 'https://solobrillo.com/products/solo-brillo?variant=4521&utm_campaign=1#pedido'])->assertOk();
+
+        expect($page())->toBe('https://solobrillo.com/products/solo-brillo');
+    });
+
+    it('la campaña marcada dice desde qué día, con la fecha sola', function () {
+        DB::table('meta_campaigns')->insert(['meta_id' => '120210000000555', 'name' => 'Cerofrizz Caracas copia', 'effective_status' => 'PAUSED', 'product_id' => 7]);
+        $c = $this->putJson('/api/store-form/products/7/purchase-modes', ['campaigns' => ['120210000000555']])->assertOk()->json('product.campaigns.0');
+
+        expect([$c['id'], $c['delivery'], $c['since']])->toBe(['120210000000555', true, today()->toDateString()]);
     });
 });
 
