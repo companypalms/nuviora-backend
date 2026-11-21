@@ -32,7 +32,7 @@ class StoreChatFacts
         $rateAt = is_string($rateAt) && $rateAt !== '' ? $rateAt : null;
         $fresh = StoreChatRules::rateFresh($rateAt, $now);
         $off = ProductCityAvailability::where('product_id', $product->id)->where('is_available', false)->pluck('city_id')->all();
-        $cities = City::orderBy('name')->get(['id', 'name']);
+        $cities = City::operational()->orderBy('name')->get(['id', 'name']); // .174: la zona no es una ciudad para el cliente
         $settings = StoreChatRules::settings(Setting::get(StoreChatRules::SETTING));
 
         return [

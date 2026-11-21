@@ -20,6 +20,15 @@ class City extends Model
         'is_working' => 'boolean',
     ];
 
+    /**
+     * `.174`: las ciudades donde se opera (con agencias, rutas, stock…), sin la zona "Resto de Venezuela", que es solo para
+     * los números y Meta Ads (App\Services\Orders\CourierZone).
+     */
+    public function scopeOperational($query)
+    {
+        return $query->where('name', '!=', \App\Services\Orders\CourierZone::NAME);
+    }
+
     /** Agencia principal (la primera del reparto). El reparto usa agencies(). */
     public function agency()
     {

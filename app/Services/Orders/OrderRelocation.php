@@ -132,7 +132,7 @@ final class OrderRelocation
 
         $hours = app(WorkingHours::class);
         $centers = app(Centers::class);
-        $base['cities'] = City::orderBy('name')->get()->map(function (City $city) use ($order, $hours, $centers, $current) {
+        $base['cities'] = City::operational()->orderBy('name')->get()->map(function (City $city) use ($order, $hours, $centers, $current) {
             $agencies = $this->agenciesOf($city);
             $center = $centers->forCity($city->id);
             if ($agencies->isEmpty() && !$center && $city->id !== $current?->id) {

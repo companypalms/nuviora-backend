@@ -30,7 +30,7 @@ class RoutingOverview
         $pending = $pendingId
             ? Order::where('status_id', $pendingId)->groupBy('city_id')->selectRaw('city_id, COUNT(*) as c')->pluck('c', 'city_id')
             : collect();
-        $cities = City::with('agencies:id,names,color,max_active_orders')->orderBy('name')->get();
+        $cities = City::operational()->with('agencies:id,names,color,max_active_orders')->orderBy('name')->get(); // .174: sin la zona
         $citiesByAgency = [];
         foreach ($cities as $city) {
             foreach ($city->agencies as $a) {

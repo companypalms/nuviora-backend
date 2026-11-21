@@ -9,7 +9,8 @@ class CityController extends Controller
 {
     public function index()
     {
-        return response()->json(City::with('agency')->get());
+        // .174: sin la zona "Resto de Venezuela" (solo para los números y Meta Ads: no se opera ahí)
+        return response()->json(City::operational()->with('agency')->get());
     }
 
     public function store(Request $request)

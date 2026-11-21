@@ -146,6 +146,10 @@ class OpsFacts
             ->groupBy('product_id', 'city_id')->selectRaw('product_id, city_id, COUNT(*) n, SUM(units_main) units')->get()
             ->mapWithKeys(fn ($r) => ["{$r->product_id}|{$r->city_id}" => ['orders' => (int) $r->n, 'units' => (float) $r->units]]);
         $warehouses = $this->stock->warehousesByCity();
+        // .174: la zona "Resto de Venezuela" tiene el stock de la ciudad de donde salen las encomiendas
+        if (($zone = \App\Services\Orders\CourierZone::id()) !== null) {
+            $warehouses = \App\Services\Orders\CourierZone::withWarehouses($warehouses, $zone, \App\Services\Orders\CourierZone::originId());
+        }
         // .101: los pedidos que esperan stock ("Sin Stock") de los últimos 14 días, por producto y ciudad, y desde cuándo
         $waiting = DB::table('order_financials')->where('kind', 'normal')->whereIn('product_id', $productIds)
             ->where('status_id', (int) Status::where('description', OrderStatus::SIN_STOCK)->value('id'))

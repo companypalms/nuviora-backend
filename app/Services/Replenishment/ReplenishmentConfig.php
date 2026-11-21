@@ -104,7 +104,7 @@ class ReplenishmentConfig
     {
         $settings = ProductInventorySetting::get()->keyBy('product_id');
         $availability = ProductCityAvailability::get()->groupBy('product_id');
-        $cities = City::orderBy('name')->pluck('id');
+        $cities = City::operational()->orderBy('name')->pluck('id'); // .174: sin la zona
         $stock = DB::table('inventories')->where('warehouse_id', '<>', Warehouse::transitId())->groupBy('product_id')
             ->selectRaw('product_id, SUM(quantity) AS qty')->pluck('qty', 'product_id');
         $suppliers = SupplierProduct::where('is_active', true)->groupBy('product_id')->selectRaw('product_id, COUNT(*) AS n')->pluck('n', 'product_id');

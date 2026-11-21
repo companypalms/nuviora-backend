@@ -36,7 +36,7 @@ class ReplenishmentConfigController extends Controller
             'statuses' => ProductInventorySetting::STATUSES,
             'days' => ReplenishmentRoute::DAYS,
             'products' => $this->config->products(),
-            'cities' => City::orderBy('name')->get(['id', 'name']),
+            'cities' => City::operational()->orderBy('name')->get(['id', 'name']), // .174: sin la zona
             'warehouses' => Warehouse::where('id', '<>', $transit)->where('is_active', true)->orderBy('name')->get(['id', 'name', 'city_id']),
             'suppliers' => Supplier::orderBy('name')->get(['id', 'name', 'is_active']),
             'supplier_products' => SupplierProduct::with(['supplier:id,name', 'product:id,title,showable_name', 'city:id,name', 'receivingWarehouse:id,name'])

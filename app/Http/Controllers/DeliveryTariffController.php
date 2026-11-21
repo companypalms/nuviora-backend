@@ -37,7 +37,7 @@ class DeliveryTariffController extends Controller
                 'cities' => collect($agencyCities->get($a->id, []))->pluck('city_id')->unique()->map(fn ($id) => ['id' => $id, 'name' => $cityNames[$id] ?? "#{$id}"])->values(),
                 'warehouses' => collect($warehouses->get($a->id, []))->map(fn (Warehouse $w) => $this->presentWarehouse($w, $cityNames))->values(),
             ]),
-            'cities' => City::orderBy('name')->get(['id', 'name']),
+            'cities' => City::operational()->orderBy('name')->get(['id', 'name']), // .174: sin la zona
             // R11 (Módulo 4): los repartidores propios también pueden tener tarifario (salen del almacén que elige el Admin en Finanzas)
             'deliverers' => User::whereHas('role', fn ($q) => $q->where('description', 'Repartidor'))->orderBy('names')->get(['id', 'names'])
                 ->map(fn ($u) => ['id' => $u->id, 'name' => $u->names, 'cities' => [], 'warehouses' => []])->values(),

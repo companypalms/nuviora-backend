@@ -9,6 +9,7 @@ use App\Models\InventoryLot;
 use App\Models\OrderDeliveryRoute;
 use App\Models\OrderFinancial;
 use App\Models\Setting;
+use App\Services\Orders\CourierZone;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -32,10 +33,16 @@ use Illuminate\Support\Facades\DB;
  *   Módulo 3 no había carreras: se toma lo que se le pagaba a la agencia por esa orden (earnings "agencia").
  * - Comisiones (§22, §23, R9): las de la vendedora, el upsell, la líder y el repartidor propio, solo si se entregó. Las de
  *   cualquier otro rol (los que vengan) van juntas en commission_other, para que el CPA real las cuente solas.
+ * - `.174` (dueño, 2026-11-21): toda encomienda cuenta en la zona "Resto de Venezuela" (city_id de los números; la orden
+ *   sigue en su ciudad de origen para operar) y lo que cobra MRW o Zoom (el promedio del dueño) va en su delivery_cost.
  */
 class OrderEconomics
 {
     private const CHUNK = 500;
+
+    /** `.174`: la zona "Resto de Venezuela" y lo que cobra MRW o Zoom por envío (se leen una vez por lote). */
+    private ?int $zoneId = null;
+    private ?float $courierFee = null;
 
     /** Los roles de earnings que tienen su propia columna; "agencia" es el envío de antes del Módulo 3. */
     private const OWN_COLUMN_ROLES = ['vendedor', 'upsell', 'repartidor', 'agencia'];
@@ -194,8 +201,10 @@ class OrderEconomics
         $st = $this->statusIds();
         $orders = DB::table('orders')->whereIn('id', $ids)->get([
             'id', 'status_id', 'created_at', 'delivered_at', 'updated_at', 'current_total_price', 'refunded_usd', 'city_id',
-            'agency_id', 'is_exchange', 'is_return', 'parent_order_id', 'was_shipped',
+            'agency_id', 'is_exchange', 'is_return', 'parent_order_id', 'was_shipped', 'courier_shipment',
         ])->keyBy('id');
+        $this->zoneId = CourierZone::id();
+        $this->courierFee = $this->zoneId !== null ? CourierZone::feeUsd() : null;
         if ($orders->isEmpty()) {
             return [];
         }
@@ -309,7 +318,8 @@ class OrderEconomics
             'outcome' => $outcome,
             'status_id' => $o->status_id,
             'product_id' => $main?->product_id,
-            'city_id' => $o->city_id,
+            // .174: la encomienda cuenta en la zona "Resto de Venezuela"
+            'city_id' => CourierZone::financeCity((bool) $o->courier_shipment, $o->city_id !== null ? (int) $o->city_id : null, $this->zoneId),
             'agency_id' => $o->agency_id,
             'units_main' => (int) $lines->where('is_upsell', false)->sum('quantity'),
             'units_upsell' => (int) $upsellLines->sum('quantity'),
@@ -322,7 +332,7 @@ class OrderEconomics
             'cogs_is_provisional' => $cogs['provisional'],
             'cogs_source' => $cogs['source'],
             'cogs_missing_lines' => $cogs['missing'],
-            'delivery_cost' => round($delivery + $legacy, 2),
+            'delivery_cost' => round($delivery + $legacy + CourierZone::fee((bool) $o->courier_shipment, $delivered, $this->courierFee), 2),
             'delivery_trips' => $trips->count() + $legacyTrips,
             'delivery_final_trips' => $final + $legacyTrips, // lo pagado antes del Módulo 3 también es definitivo
             'delivery_missing_trips' => $noCost,

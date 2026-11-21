@@ -28,6 +28,8 @@ class CampaignSuggester
         'distrito capital' => ['caracas', 'ccs'],
         'carabobo' => ['cbobo', 'valencia', 'vln', 'vlc'],
         'aragua' => ['mcay', 'maracay', 'mcy'],
+        // .174: la 4.ª campaña, la del resto del país ("CEROFRIZZ | RDV | …")
+        'resto de venezuela' => ['rdv', 'resto', 'nacional'],
     ];
 
     /** @var array<string, array<int, true>> palabra clave => productos */

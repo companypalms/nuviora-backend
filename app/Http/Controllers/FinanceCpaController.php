@@ -55,6 +55,9 @@ class FinanceCpaController extends Controller
             'fixed' => $cpa->fixedShare(),
             'city_min_purchases' => FinancialCpa::minClosedOrders(),
             'sin_stock_hours' => FinancialCpa::sinStockHours(),
+            // .174: la zona "Resto de Venezuela" (todas las encomiendas) y si falta lo que cobra MRW o Zoom
+            'courier_zone' => ['id' => $zone = \App\Services\Orders\CourierZone::id(), 'fee_missing' => $zone !== null && \App\Services\Orders\CourierZone::feeUsd() === null,
+                'fee_missing_text' => \App\Services\Orders\CourierZone::FEE_MISSING],
             'last_computed_at' => $latest->max(fn ($v) => $v->computed_at)?->format('Y-m-d H:i'),
             'rows' => $latest->sortBy(fn ($v) => [$v->product_id, $v->city_id === null ? 0 : 1, $cities[$v->city_id] ?? ''])->values()
                 ->map(fn (TargetCpaVersion $v) => $v->toPayload() + [

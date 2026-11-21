@@ -20,7 +20,8 @@ class CityStock
     /** @return array<int, int[]>  city_id => almacenes activos de sus agencias activas. */
     public function warehousesByCity(?int $cityId = null): array
     {
-        $cities = City::with(['agencies' => fn ($q) => $q->wherePivot('is_active', true)])
+        // .174: sin la zona "Resto de Venezuela" (no tiene agencias; Meta Ads le pone el stock de donde salen las encomiendas)
+        $cities = City::operational()->with(['agencies' => fn ($q) => $q->wherePivot('is_active', true)])
             ->when($cityId, fn ($q) => $q->whereKey($cityId))
             ->get();
         $warehouses = Warehouse::where('is_active', true)->whereNotNull('user_id')->pluck('id', 'user_id');

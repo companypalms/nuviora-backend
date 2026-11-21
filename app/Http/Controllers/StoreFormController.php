@@ -94,6 +94,7 @@ class StoreFormController extends Controller
             'courier_origin_city_id' => 'nullable|integer|exists:cities,id',
             'courier_dropoff' => 'sometimes|array',
             'courier_dropoff.*' => 'nullable|string|max:500',
+            'courier_fee_usd' => 'sometimes|nullable|numeric|min:0|max:100', // .174
             'whatsapp_message_prepaid' => 'sometimes|nullable|string|max:1000',
             'whatsapp_message_advisor' => 'sometimes|nullable|string|max:1000',
             'whatsapp_message_courier' => 'sometimes|nullable|string|max:1000',

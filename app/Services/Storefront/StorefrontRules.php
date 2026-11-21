@@ -53,7 +53,7 @@ final class StorefrontRules
         'daily_max' => 500, 'prepaid_enabled' => false, 'advisor_enabled' => false, 'courier_enabled' => false, 'courier_companies' => self::COURIERS,
         'courier_origin_city_id' => null, 'courier_dropoff' => ['MRW' => '', 'Zoom' => ''], 'whatsapp_message_prepaid' => self::WHATSAPP_PREPAID,
         'whatsapp_message_advisor' => self::WHATSAPP_ADVISOR, 'whatsapp_message_courier' => self::WHATSAPP_COURIER, 'confirm_message' => self::CONFIRM_MESSAGE,
-        'confirm_message_courier' => self::CONFIRM_COURIER, 'ack_message' => self::ACK_MESSAGE];
+        'confirm_message_courier' => self::CONFIRM_COURIER, 'ack_message' => self::ACK_MESSAGE, 'courier_fee_usd' => null];
 
     /** Los celulares de Venezuela (Movilnet, Movistar y Digitel). */
     public const MOBILE = ['412', '414', '416', '422', '424', '426'];
@@ -198,6 +198,9 @@ final class StorefrontRules
             'courier_companies' => array_values(array_intersect(self::COURIERS, (array) ($raw['courier_companies'] ?? $d['courier_companies']))) ?: self::COURIERS,
             'courier_origin_city_id' => isset($raw['courier_origin_city_id']) && (int) $raw['courier_origin_city_id'] > 0 ? (int) $raw['courier_origin_city_id'] : null,
             'courier_dropoff' => array_combine(self::COURIERS, array_map(fn ($c) => mb_substr(trim((string) (((array) ($raw['courier_dropoff'] ?? []))[$c] ?? '')), 0, 500), self::COURIERS)),
+            // .174: lo que cobra MRW o Zoom por envío, en promedio (null = el dueño todavía no lo puso)
+            'courier_fee_usd' => isset($raw['courier_fee_usd']) && is_numeric($raw['courier_fee_usd']) && (float) $raw['courier_fee_usd'] >= 0
+                ? round(min(100, (float) $raw['courier_fee_usd']), 2) : null,
             ...array_combine(['whatsapp_message_prepaid', 'whatsapp_message_advisor', 'whatsapp_message_courier', 'confirm_message', 'confirm_message_courier', 'ack_message'],
                 array_map(fn ($k) => mb_substr(trim((string) ($raw[$k] ?? '')) ?: $d[$k], 0, 1000),
                     ['whatsapp_message_prepaid', 'whatsapp_message_advisor', 'whatsapp_message_courier', 'confirm_message', 'confirm_message_courier', 'ack_message'])),
