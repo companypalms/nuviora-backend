@@ -1,0 +1,5337 @@
+{
+  "generated_at": "2026-11-21",
+  "sources": {
+    "MRW": "https://mrwve.com/mi-envio#agencias (data: https://mrwve.com/api/agencias)",
+    "Zoom": "https://zoom.red/consulta-de-oficinas-personas/ (data: https://zoom.red/wp-admin/admin-ajax.php?action=asl_load_stores&load_all=1); state per office from Zoom public API https://sandbox.zoom.red/baaszoom/public/canguroazul/getOficinaEstadoWs?codestado=N (documented at https://zoom.red/api-documentacion-zoom-envios/)"
+  },
+  "offices": [
+    {
+      "company": "MRW",
+      "state": "Amazonas",
+      "city": "Puerto Ayacucho",
+      "name": "Puerto Ayacucho",
+      "address": "CALLE PRINCIPAL LOCAL S/N BARRIO UNION, ZONA CENTROPUERTO AYACUCHO AMAZONAS ZONA POSTAL.",
+      "code": "0200000"
+    },
+    {
+      "company": "MRW",
+      "state": "Anzoátegui",
+      "city": "Anaco",
+      "name": "Anaco",
+      "address": "AV. JOSÉ ANTONIO ANZOÁTEGUI, CRUCE CON AV. LOS PILONES LOCAL NO. 02 ANACO, EDO. ANZOÁTEGUI.",
+      "code": "0301000"
+    },
+    {
+      "company": "MRW",
+      "state": "Anzoátegui",
+      "city": "Barcelona",
+      "name": "Barcelona",
+      "address": "AV. FUERZAS ARMADAS. ESQUINA CALLE EULALIA BUROZ, EDIF AZGAN PISO PB LOCAL 02 SECTOR CENTRO, BARCELONA. GPS: 10.1373363,-64.6829436",
+      "code": "0300000"
+    },
+    {
+      "company": "MRW",
+      "state": "Anzoátegui",
+      "city": "Barcelona",
+      "name": "Nueva Barcelona",
+      "address": "CALLE URDANETA CON CARRERA 24, C.C. GOLD COUNTRY, LOCAL P.B. 07, SECTOR NUEVA BARCELONA, ESTADO ANZOÁTEGUI",
+      "code": "0310000"
+    },
+    {
+      "company": "MRW",
+      "state": "Anzoátegui",
+      "city": "Cantaura",
+      "name": "Cantaura",
+      "address": "CALLE GUEVARA ROJAS ENTRE CALLE GIRALDOT Y CALLE SUCRE SECTOR CASCO CENTRAL CANTAURA EDO. ANZOÁTEGUI",
+      "code": "0301100"
+    },
+    {
+      "company": "MRW",
+      "state": "Anzoátegui",
+      "city": "Clarines",
+      "name": "Clarines",
+      "address": "AV. FERNANDEZ PADILLA, MINI C.C. LOS COCOS. C.C. \"MTC\". LOCAL 5 P.B. CLARINES 9.943983711041437, -65.16311529674937 ...",
+      "code": "0311000"
+    },
+    {
+      "company": "MRW",
+      "state": "Anzoátegui",
+      "city": "El Tigre",
+      "name": "El Tigre",
+      "address": "AV. FCO. DE MIRANDA CON CALLE 18 SUR. EDIF. LOS GERANIOS # 2 Y 3 FRENTE A LA PANADERIA SIRIA. GPS: 8.8943036,-64.2369862",
+      "code": "0302000"
+    },
+    {
+      "company": "MRW",
+      "state": "Anzoátegui",
+      "city": "El Tigre",
+      "name": "El Tigre Centro",
+      "address": "CARRERA 2 SUR, ENTRE CALLES 2 Y 3, EDIFICIO HANA, PISO 1,. LOCAL Nº 1, SECTOR PUEBLO NUEVO SUR. EL TIGRE-ESTADO ANZOATEGUI. GPS:8.8869825,-64.2571774",
+      "code": "0313000"
+    },
+    {
+      "company": "MRW",
+      "state": "Anzoátegui",
+      "city": "El Tigrito",
+      "name": "El Tigrito",
+      "address": "CENTRO COMERCIAL DECA, PB, LOCAL NRO. 2, AV. FERNÁNDEZ PADILLA, MUNICIPIO SAN JOSÉ DE GUANIPA, ESTADO ANZOÁTEGUI.",
+      "code": "0307000"
+    },
+    {
+      "company": "MRW",
+      "state": "Anzoátegui",
+      "city": "Lechería",
+      "name": "Las Garzas",
+      "address": "AV JORGE RODRIGUEZ, LOCAL MRW 1, SECTOR LAS GARZAS LECHERIA, ANZOATEGUI. GPS: 10.1815638,-64.6686459",
+      "code": "0303000"
+    },
+    {
+      "company": "MRW",
+      "state": "Anzoátegui",
+      "city": "Lechería",
+      "name": "Lecheria",
+      "address": "AV. PRINCIPAL DE LECHERÍA, MINI CENTRO PRINCIPAL, LOCAL 02, AL LADO DE PANADERÍA LA PRINCIPAL. LECHERÍA. ESTADO ANZOÁTEGUI. GPS: 10.1828176,-64.6893312",
+      "code": "0312000"
+    },
+    {
+      "company": "MRW",
+      "state": "Anzoátegui",
+      "city": "Pariaguán",
+      "name": "Pariaguan",
+      "address": "CALLE BOLÍVAR CRUCE CON COLOMBIA, SECTOR CENTRO FRENTE COOPERATIVA DE TRANSPORTE PARIAGUAN EXPRESS A POCOS MTS DE FARMACIA CONTINENTAL.8.84156581686022, -64.72001416185448",
+      "code": "0308000"
+    },
+    {
+      "company": "MRW",
+      "state": "Anzoátegui",
+      "city": "Puerto La Cruz",
+      "name": "Pto La Cruz",
+      "address": "CALLE MIRANDA, CRUCE CON CALLE BOLIVAR, EDIF. HOTEL SENADOR, PISO PB, ZONA CENTRO, PUERTO LA CRUZ",
+      "code": "0309000"
+    },
+    {
+      "company": "MRW",
+      "state": "Anzoátegui",
+      "city": "Puerto La Cruz",
+      "name": "Puerto La Cruz Centro",
+      "address": "AV. MUNICIPAL, CON CALLE BOLIVAR DE PUEBLO NUEVO, C.C. MADEIRENSE, PB, LOCAL 24 , MUNICIPIO JUAN ANTONIO SOTILLO, PUERTO LA CRUZ, ESTADO ANZOÁTEGUI",
+      "code": "0304000"
+    },
+    {
+      "company": "MRW",
+      "state": "Anzoátegui",
+      "city": "Puerto Píritu",
+      "name": "Piritu",
+      "address": "C.C. ROYAL PLAZA, CALLE ARISMENDI, AL LADO DE BANESCO, PUERTO PÍRITU, ESTADO ANZOATEGUI",
+      "code": "0305000"
+    },
+    {
+      "company": "MRW",
+      "state": "Apure",
+      "city": "Guasdualito",
+      "name": "Guasdualito",
+      "address": "CALLE SUCRE ENTRE CARRERA MARIÑO Y SIMÓN RODRÍGUEZ, A CUADRA Y MEDIA DE LA SANTÍSIMA TRINIDAD, GUASDUALITO ESTADO APURE. 7.244789042820635, -70.72687547535314",
+      "code": "0401000"
+    },
+    {
+      "company": "MRW",
+      "state": "Apure",
+      "city": "San Fernando de Apure",
+      "name": "Av. Intercomunal San Fernando",
+      "address": "CENTRO COMERCIAL MERCATRADONA PLUS AVENIDA INTERCOMUNAL SAN FERNANDO-BIRUACA LOCAL 2, SAN FERNANDO, ESTADO APURE",
+      "code": "0400100"
+    },
+    {
+      "company": "MRW",
+      "state": "Apure",
+      "city": "San Fernando de Apure",
+      "name": "San Fernando",
+      "address": "CALLE BOLIVAR ENTRE CALLE PIAR Y GIRARDOT, LOCAL NRO S/N SECTOR CENTRO, SAN FERNANDO DE APURE GPS: 7.887714, -67.475549",
+      "code": "0400000"
+    },
+    {
+      "company": "MRW",
+      "state": "Apure",
+      "city": "San Fernando de Apure",
+      "name": "San Fernando Centro",
+      "address": "AV CARACAS A 50 MTRS DEL PASEO LIBERTADOR, CENTRO EMPRESARIAL GENESIS, PB LOCAL 1, SECTOR CENTRO SAN FERNANDO DE APURE. GPS: 7.8834063,-67.4716484",
+      "code": "0402000"
+    },
+    {
+      "company": "MRW",
+      "state": "Aragua",
+      "city": "Cagua",
+      "name": "Cagua",
+      "address": "CALLE SABANA LARGA, LOCAL NRO. 3, SECTOR CENTRO, NRO. 49-01, CAGUA, ESTADO ARAGUA",
+      "code": "0502000"
+    },
+    {
+      "company": "MRW",
+      "state": "Aragua",
+      "city": "La Victoria",
+      "name": "La Victoria",
+      "address": "URBANIZACIÓN BOLIVAR SUR, AV. VICTORIA # 44-2, LOCAL A-2, LA VICTORIA, ARAGUA. GPS: 10.2265456,-67.3315944",
+      "code": "0503000"
+    },
+    {
+      "company": "MRW",
+      "state": "Aragua",
+      "city": "Maracay",
+      "name": "Los Cedros",
+      "address": "CALLE 5 DE JULIO, CRUCE CON CJN \"B\" LOCAL NRO. 116 BARRIO LIBERTAD MARACAY ESTADO ARAGUA",
+      "code": "0518000"
+    },
+    {
+      "company": "MRW",
+      "state": "Aragua",
+      "city": "Maracay",
+      "name": "Maracay 5 de Julio",
+      "address": "CALLE 5 DE JULIO, ENTRE PAEZ Y MIRANDA. EDIF SANTIMONE. P.B.B LOCAL 3, ZONA CENTRO, DIAGONAL A IMGEVE, MARACAY ESTADO ARAGUA. GPS: 10.2497141,-67.5991998",
+      "code": "0504000"
+    },
+    {
+      "company": "MRW",
+      "state": "Aragua",
+      "city": "Maracay",
+      "name": "Maracay Base Aragua",
+      "address": "AV. LAS DELICIAS C.C. HOTEL PASEO LAS DELICIAS II NIVEL PB LOCAL 12 URB BASE ARAGUA MARACAY. GPS: 10.2557458,-67.5919065",
+      "code": "0513000"
+    },
+    {
+      "company": "MRW",
+      "state": "Aragua",
+      "city": "Maracay",
+      "name": "Maracay Centro",
+      "address": "AVENIDA FUERZAS AÉREAS, LOCAL 91-B, SECTOR MARIO BRICEÑO IRAGORRY, MARACAY ESTADO ARAGUA",
+      "code": "0500000"
+    },
+    {
+      "company": "MRW",
+      "state": "Aragua",
+      "city": "Maracay",
+      "name": "Maracay La Cooperativa",
+      "address": "AV. RAFAEL URDANETA, LOCAL NRO. PB-3, URB. ANDRES BELLO, MARACAY, ESTADO ARAGUA.",
+      "code": "0514000"
+    },
+    {
+      "company": "MRW",
+      "state": "Aragua",
+      "city": "Maracay",
+      "name": "Maracay La Democracia",
+      "address": "AV AYACUCHO NORTE NRO 83, BARRIO LA DEMOCRACIA, MARACAY EDO ARAGUA. GPS: 10.2576291,-67.6096241",
+      "code": "0510000"
+    },
+    {
+      "company": "MRW",
+      "state": "Aragua",
+      "city": "Maracay",
+      "name": "Maracay La Romana",
+      "address": "CENTRO COMERCIAL TIUNA, AV. BOLÍVAR OESTE NRO. 198, SECTOR LA ROMANA, MUNICIPIO GIRARDOT, ESTADO ARAGUA. GPS: 10.2543384,-67.6136697",
+      "code": "0517000"
+    },
+    {
+      "company": "MRW",
+      "state": "Aragua",
+      "city": "Maracay",
+      "name": "Maracay Santa Rosa",
+      "address": "CALLE CARABOBO, Nº 75-A, SECTOR SANTA ROSA. MARACAY, ESTADO ARAGUA. GPS: 10.2466199,-67.6097298",
+      "code": "0516000"
+    },
+    {
+      "company": "MRW",
+      "state": "Aragua",
+      "city": "Maracay",
+      "name": "Maracay Zona Ind.",
+      "address": "AV BERMUDEZ CC MARACAY PLAZA NIVEL PB LOCAL PB-82F URB CENTRO MARACAY ARAGUA 10.23335936240899, -67.59657221951802.",
+      "code": "0501000"
+    },
+    {
+      "company": "MRW",
+      "state": "Aragua",
+      "city": "San Sebastián de los Reyes",
+      "name": "S.Sebastian D Los Reyes",
+      "address": "CALLE LA PISTA, LOCAL NRO 03, SECTOR EL POLVERO, SAN SEBASTIAN DE LOS REYES ARAGUA. GPS: 9.9460006,-67.1795018",
+      "code": "0509000"
+    },
+    {
+      "company": "MRW",
+      "state": "Aragua",
+      "city": "Santa Rita",
+      "name": "Maracay Santa Rita",
+      "address": "AV. GENERALÍSIMO FRANCISCO DE MIRANDA, ENTRE PROLONGACIÓN Y ANDRÉS BELLO, CALLE ANDRÉS BELLO, LOCAL NRO. 75, SECTOR GUARUTO, SANTA RITA, ESTADO ARAGUA 10.234873030073881, -67.5923007253661.",
+      "code": "0511100"
+    },
+    {
+      "company": "MRW",
+      "state": "Aragua",
+      "city": "Turmero",
+      "name": "La Encrucijada",
+      "address": "AV. PRINCIPAL, C.C. LOS LAURELES, NIVEL P.B, LOCAL 12, SECTOR LA ENCRUCIJADA DE TURMERO. ESTADO ARAGUA. GPS: 10.2025453,-67.4714206",
+      "code": "0512000"
+    },
+    {
+      "company": "MRW",
+      "state": "Aragua",
+      "city": "Turmero",
+      "name": "Turmero",
+      "address": "CALLE MARIÑO C/C CALLE PEÑALVER C.C MARIÑO PLAZA P.B LOCAL 02, TURMERO EDO. ARAGUA. GPS: 10.2290922,-67.4778999",
+      "code": "0506000"
+    },
+    {
+      "company": "MRW",
+      "state": "Aragua",
+      "city": "Turmero",
+      "name": "Turmero Zona Industrial",
+      "address": "AV. INTERCOMUNAL MARACAY-TURMERO, CENTRO COMERCIAL INTERCOMUNAL CENTER, LOCAL NRO. PB 6, SECTOR LA MORITA, TURMERO, ESTADO ARAGUA. 10.231931328877549, -67.54792062508638",
+      "code": "0511000"
+    },
+    {
+      "company": "MRW",
+      "state": "Aragua",
+      "city": "Villa de Cura",
+      "name": "Villa de Cura",
+      "address": "CALLE BOLIVAR Y VILLEGAS LOCAL NRO 54/A SECTOR CENTRO VILLA DE CURA, ESTADO ARAGUA 10.033978725869476, -67.48539854649998",
+      "code": "0507000"
+    },
+    {
+      "company": "MRW",
+      "state": "Barinas",
+      "city": "Barinas",
+      "name": "Alto Barinas",
+      "address": "URB ALTO BARINAS NORTE, AV FRANCIA CON AV PIE DE MONTE Y TACHIRA, LOCAL 135, BARINAS.",
+      "code": "0605000"
+    },
+    {
+      "company": "MRW",
+      "state": "Barinas",
+      "city": "Barinas",
+      "name": "Av Sucre Barinas",
+      "address": "AV. SUCRE, EDIFICIO RESIDENCIAS KARO, LOCAL N° 1, PB",
+      "code": "0600100"
+    },
+    {
+      "company": "MRW",
+      "state": "Barinas",
+      "city": "Barinas",
+      "name": "Barinas",
+      "address": "CALLE CEDEÑO, C.C. GIAMMA, LOCAL 6. DIAGONAL AL HOSPITAL LUIS RAZZETTI",
+      "code": "0600000"
+    },
+    {
+      "company": "MRW",
+      "state": "Barinas",
+      "city": "Barinas",
+      "name": "Barinas 23 de Enero",
+      "address": "AVENIDA 23 DE ENERO, EDIFICIO LA FONTANA, LOCAL Nº 3. A 50 METROS DEL REGISTRO INMOBILIARIO.",
+      "code": "0606000"
+    },
+    {
+      "company": "MRW",
+      "state": "Barinas",
+      "city": "Barinas",
+      "name": "Barinas Zona Ind.",
+      "address": "AV. ELIAS CORDERO ENTRE AV. SAN LUIS Y ESCOBAR, LOCAL L, DIAGONAL DE REPUESTOS MARA.",
+      "code": "0602000"
+    },
+    {
+      "company": "MRW",
+      "state": "Barinas",
+      "city": "Barinas",
+      "name": "Forum",
+      "address": "AV 23 DE ENERO CON AV GUAIPURO, CENTRO COMERCIAL FORUM, PB, LOCAL Nº52. BARINAS.",
+      "code": "0605100"
+    },
+    {
+      "company": "MRW",
+      "state": "Barinas",
+      "city": "Sabaneta",
+      "name": "Barinas Sabaneta",
+      "address": "CALLE 1 ENTRE AV. OBISPOS Y AV. ANTONIO MARIA BAYON, SECTOR 9 DE DICIEMBRE. C.C. TRICOLOR, P.B. LOCAL 2.",
+      "code": "0604000"
+    },
+    {
+      "company": "MRW",
+      "state": "Barinas",
+      "city": "Santa Bárbara de Barinas",
+      "name": "Sta Barbara de Barinas",
+      "address": "CALLE 12 ENTRE CARRERAS 0 Y 00 ( PUNTO DE REFERENCIA 2 CUADRAS Y MEDIA DE CORPOELEC",
+      "code": "0603000"
+    },
+    {
+      "company": "MRW",
+      "state": "Barinas",
+      "city": "Socopó",
+      "name": "Socopo",
+      "address": "CALLE 1 ENTRE CARRERAS 6 Y 7, BARRIO EL CARMEN, DIAGONAL AL COMERCIAL LA ESTRELLA ORIENTAL DE LOS CHINOS",
+      "code": "0601000"
+    },
+    {
+      "company": "MRW",
+      "state": "Bolívar",
+      "city": "Caicara del Orinoco",
+      "name": "Caicara del Orinoco",
+      "address": "CARRETERA TRONCAL 19 LOCAL NRO. S/N, SECTOR SAN RAFAEL, CAICARA DEL ORINOCO, ESTADO BOLÍVAR",
+      "code": "0702000"
+    },
+    {
+      "company": "MRW",
+      "state": "Bolívar",
+      "city": "Ciudad Bolívar",
+      "name": "Cdad Bolivar Zona Ind.",
+      "address": "AV. NUEVA GRANADA. EDIF. GRAN SABANA. P.B., LOCAL 1 CIUDAD BOLIVAR. EDO. BOLIVA. GPS: 8.1121051,-63.5426025",
+      "code": "0708000"
+    },
+    {
+      "company": "MRW",
+      "state": "Bolívar",
+      "city": "Ciudad Bolívar",
+      "name": "Ciudad Bolivar",
+      "address": "AVENIDA REPUBLICA. EDIF. FRANCO, PB LOCALES 1 Y 2, AL LADO DE BANESCO. CIUDAD BOLIVAR. GPS: 8.1243327,-63.548044",
+      "code": "0700000"
+    },
+    {
+      "company": "MRW",
+      "state": "Bolívar",
+      "city": "Maripa",
+      "name": "Maripa",
+      "address": "CALLE ESPAÑA, CRUCE CON CALLE PIAR S/N, SECTOR MARIPA, ESTADO BOLÍVAR.",
+      "code": "0702100"
+    },
+    {
+      "company": "MRW",
+      "state": "Bolívar",
+      "city": "Puerto Ordaz",
+      "name": "Alta Vista",
+      "address": "C.C. ZULIA, EN LA ENTRADA FRENTE AL SUPERMERCADO RÍO, LOCAL 3 Y 4, ALTA VISTA - PUERTO ORDAZ",
+      "code": "0701000"
+    },
+    {
+      "company": "MRW",
+      "state": "Bolívar",
+      "city": "Puerto Ordaz",
+      "name": "Av Las Americas",
+      "address": "AV. BRASIL, URB. VILLA BRASIL, MANZANA 142, LOCAL N°2, A 200MTS DEL ABASTO LA ESPAÑOLA, SECTOR VILLA ANTILLANA, PUERTO ORDAZ. GPS 8.312743079567095, -62.73015092522482",
+      "code": "0709000"
+    },
+    {
+      "company": "MRW",
+      "state": "Bolívar",
+      "city": "Puerto Ordaz",
+      "name": "Plaza Atlántico",
+      "address": "AV. ATLANTICO, C.C PLAZA ATLANTICO, NIVEL ATLANTICO, LOCAL PB-12, URB. LOMAS DEL CARONI, CIUDAD GUAYANA, ESTADO BOLÍVAR.",
+      "code": "0711000"
+    },
+    {
+      "company": "MRW",
+      "state": "Bolívar",
+      "city": "Santa Elena de Uairén",
+      "name": "Santa Elena de Uairen",
+      "address": "CALLE IKABARÚ, TRONCAL 10. CASCO CENTRAL, LOCAL S/N, A 100 MTRS. DEL HOSPITAL ROSARIO VERA ZURITA, SANTA ELENA DE UAIREN, EDO. BOLIVAR. CÓDIGO POSTAL 8011. GPS: 4.5988806,-61.1098221,17",
+      "code": "0704000"
+    },
+    {
+      "company": "MRW",
+      "state": "Carabobo",
+      "city": "Bejuma",
+      "name": "Bejuma",
+      "address": "CALLE URDANETA, C.C. ENMANUEL, PISO PB, LOCAL 5, BEJUMA, ESTADO CARABOBO",
+      "code": "0809000"
+    },
+    {
+      "company": "MRW",
+      "state": "Carabobo",
+      "city": "Guacara",
+      "name": "Guacara",
+      "address": "CALLE PIAR, CRUCE CON JACINTO LARA, C.C SAN PEDRO, NIVEL PB, LOCAL 8, GUACARA, ESTADO CARABOBO",
+      "code": "0802000"
+    },
+    {
+      "company": "MRW",
+      "state": "Carabobo",
+      "city": "Los Guayos",
+      "name": "Los Guayos Zona Ind.",
+      "address": "LOS GUAYOS CALLE NEGRO PRIMERO CC LAS DELICIAS LOCAL. VALENCIA -EDO CARABOBO 10.184388886833883, -67.96016545998904",
+      "code": "0802500"
+    },
+    {
+      "company": "MRW",
+      "state": "Carabobo",
+      "city": "Los Guayos",
+      "name": "Paraparal",
+      "address": "CENTRO COMERCIAL GALERÍAS PARAPARAL, LOCAL B-22 . AV. PRINCIPAL DE PARAPARAL, ESTADO CARABOBO.",
+      "code": "0826000"
+    },
+    {
+      "company": "MRW",
+      "state": "Carabobo",
+      "city": "Mariara",
+      "name": "Mariara",
+      "address": "AVENIDA BOLÍVAR, SECTOR GUAMACHO NÚMERO 51, MARIARA ESTADO CARABOBO",
+      "code": "0807000"
+    },
+    {
+      "company": "MRW",
+      "state": "Carabobo",
+      "city": "Morón",
+      "name": "Moron",
+      "address": "AVDA. YARACUY - Nª 52, FRENTE AL BANCO BANESCO, AL LADO DEL BANCO BOD. MORON ESTADO CARABOBO. GPS: 10,3365,-68,7902",
+      "code": "0803500"
+    },
+    {
+      "company": "MRW",
+      "state": "Carabobo",
+      "city": "Naguanagua",
+      "name": "Naguanagua",
+      "address": "AV. 96-B, C.C. CRSTAL, PB. LOCAL B-06 A DOS LOCALES DEL BANCO BICENTENARIO, POR LA ENTRADA PRINCIPAL. NAGUANAGUA, EDO. CARABOBO 10.242749899854418, -68.00661230788387",
+      "code": "0806000"
+    },
+    {
+      "company": "MRW",
+      "state": "Carabobo",
+      "city": "Puerto Cabello",
+      "name": "Puerto Cabello",
+      "address": "CALLE RONDON EDIFICIO EL NARANJAL LOCAL N° 2 FRENTE AL TEMPLO EL REFUGIO, AL LADO DE LA CLINICA SAN AGUSTIN. PUERTO CABELLO EDO. CARABOBO GPS 10.467739247357235, -68.00847609018656",
+      "code": "0803000"
+    },
+    {
+      "company": "MRW",
+      "state": "Carabobo",
+      "city": "San Diego",
+      "name": "La Esmeralda San Diego",
+      "address": "AV. INTERCOMUNAL DON JULIO CENTENO C.C LA ESMERALDA LOCAL 13. 10.231411363382831, -67.96611163115217",
+      "code": "0815100"
+    },
+    {
+      "company": "MRW",
+      "state": "Carabobo",
+      "city": "San Diego",
+      "name": "San Diego Boulevard Castillito",
+      "address": "CENTRO COMERCIAL BOULEVARD CENTER, LOCAL L-03 FRENTE A POLLOS ARTUROS, DIAGONAL A TERMINAL DE PASAJEROS BIG LOW CENTER, SAN DIEGO-EDO. CARABOBO.",
+      "code": "0818000"
+    },
+    {
+      "company": "MRW",
+      "state": "Carabobo",
+      "city": "San Diego",
+      "name": "Valencia San Diego",
+      "address": "AV. DON JULIO CENTENO C.C. METRO PLAZA P.B LOCAL 33 SAN DIEGO EDO. CARABOBO. GPS: 10.207965724456,-67.96278714390199,17",
+      "code": "0815000"
+    },
+    {
+      "company": "MRW",
+      "state": "Carabobo",
+      "city": "Tocuyito",
+      "name": "Tocuyito",
+      "address": "CALLE ARVELO, LOCAL NRO. A-01, SECTOR CASCO CENTRAL DE TOCUYITO, EDIF. SAN JOSE, TOCUYITO, ESTADO CARABOBO.",
+      "code": "0821000"
+    },
+    {
+      "company": "MRW",
+      "state": "Carabobo",
+      "city": "Valencia",
+      "name": "Alianza Mall",
+      "address": "CARRETERA NACIONAL GUACARA, URB CIUDAD ALIANZA, C.C. CENTRAL GUACARA, LOCAL 27, FRENTE AL SUPERMERCADO CENTRAL MADEIRENSE. VALENCIA. 10.214366295492411, -67.89425738511322 .",
+      "code": "0802100"
+    },
+    {
+      "company": "MRW",
+      "state": "Carabobo",
+      "city": "Valencia",
+      "name": "Av. Las Ferias",
+      "address": "AV. LAS FERIAS, ENTRE CALLES SILVA Y RANGEL, CC ISORA, LOCAL NA-21. VALENCIA ESTADO CARABOBO.VALENCIA, ESTADO CARABOBO.GPS 10.179644277519218, -68.00105393259143",
+      "code": "0810100"
+    },
+    {
+      "company": "MRW",
+      "state": "Carabobo",
+      "city": "Valencia",
+      "name": "Flor Amarillo",
+      "address": "AV. LAS INDUSTRIAS, CRUCE CON AV. PRINCIPAL, URB. PARQUE VALENCIA, C.C. MEGA MERCADO, PB , LOCAL 8C1.VALENCIA EDO CARABOBO. GPS: 10.1549212,-67.9575439",
+      "code": "0804000"
+    },
+    {
+      "company": "MRW",
+      "state": "Carabobo",
+      "city": "Valencia",
+      "name": "La Isabelica",
+      "address": "AV. 04 SECTOR 10, VEREDA 14, LOCAL 01, URB. LA ISABELICA. VALENCIA - CARABOBO. GPS: 10.1609746,-67.9705846",
+      "code": "0812000"
+    },
+    {
+      "company": "MRW",
+      "state": "Carabobo",
+      "city": "Valencia",
+      "name": "Valencia Av. Lara",
+      "address": "AV. LARA CON CALLE USLAR, LOCAL 87-107. FRENTE A MOLINARI CACCIA GUERRA, VALENCIA CARABOBO. 10.1794327,-67.994418,17",
+      "code": "0823000"
+    },
+    {
+      "company": "MRW",
+      "state": "Carabobo",
+      "city": "Valencia",
+      "name": "Valencia Big Low",
+      "address": "CALLE 97, C.C. CIUDAD VALENCIA, PB, LOCAL B4. URB. ZONA INDUSTRIAL CASTILLITO. VALENCIA, ESTADO CARABOBO. GPS: 10.1855496,-67.9630739",
+      "code": "0801000"
+    },
+    {
+      "company": "MRW",
+      "state": "Carabobo",
+      "city": "Valencia",
+      "name": "Valencia Centro",
+      "address": "AV. MIRANDA LOCAL 118-31 MRW DIAGONAL A DAMASCO, AV. ROJAS QUEIPO, SECTOR SAN JOSE VALENCIA-CARABOBO. GPS: 10.197811126708984,-68.00529479980469",
+      "code": "0800000"
+    },
+    {
+      "company": "MRW",
+      "state": "Carabobo",
+      "city": "Valencia",
+      "name": "Valencia El Parral",
+      "address": "LAS 4 AVENIDAS, C.C. PROFESIONAL CERAVICA PB, LOCAL 2, URB. EL PARRAL - EDO. CARABOBO. GPS: 10.206328648925,-68.027472897835,17",
+      "code": "0814000"
+    },
+    {
+      "company": "MRW",
+      "state": "Carabobo",
+      "city": "Valencia",
+      "name": "Valencia El Trigal",
+      "address": "AV. PRINCIPAL DE MAÑONGO, C.C. PATIO TRIGAL. NIVEL PB LOCAL 208 A URB TRIGAL NORTE, VALENCIA CARABOBO ZONA POSTAL 2001. GPS: 10.2262077,-67.9973322",
+      "code": "0805000"
+    },
+    {
+      "company": "MRW",
+      "state": "Carabobo",
+      "city": "Valencia",
+      "name": "Valencia Gobernación",
+      "address": "CALLE PAEZ ENTRE MONTES DE OCA Y CARABOBO C.C. PAPIN PB LOCAL NRO 1, CENTRO DE VALENCIA ( CERCA DEL CAPITOLIO). EDO CARABOBO. 10.1809602,-68.0084552,17",
+      "code": "0820000"
+    },
+    {
+      "company": "MRW",
+      "state": "Carabobo",
+      "city": "Valencia",
+      "name": "Valencia Los Guajiros",
+      "address": "CALLE 73, NRO. CIVICO 90-27,, LOCAL S/N, BARRIO LA ISABELA, VALENCIA ESTADO CARABOBO",
+      "code": "0817000"
+    },
+    {
+      "company": "MRW",
+      "state": "Carabobo",
+      "city": "Valencia",
+      "name": "Valencia Norte",
+      "address": "AV. BOLIVAR NORTE, SECTOR MAJAY, LOCAL Nº 151-54, , FRENTE A LA TORRE PRINCIAPAL (BANCO BNC). VALENCIA, EDO. CARABOBO. GPS: 10.2208278,-68.0094254",
+      "code": "0816000"
+    },
+    {
+      "company": "MRW",
+      "state": "Carabobo",
+      "city": "Valencia",
+      "name": "Valencia Palacio de Justicia",
+      "address": "AV. ARANZAZU, EDIFICIO VORMA, PISO P.B., LOCAL PB-3, LA CANDELARIA. VALENCIA EDO. CARABOBO. GPS: 10.1735768,-68.0113902",
+      "code": "0810000"
+    },
+    {
+      "company": "MRW",
+      "state": "Carabobo",
+      "city": "Valencia",
+      "name": "Valencia Sur",
+      "address": "AUTOPISTA VALENCIA - CAMPO CARABOBO. CENTRO COMERCIAL EL PRADO, PLANTA BAJA LOCAL B 6. LOS CAOBOS, VALENCIA-EDO.CARABOBO. GPS:10.1590111,-68.024857",
+      "code": "0808000"
+    },
+    {
+      "company": "MRW",
+      "state": "Carabobo",
+      "city": "Valencia",
+      "name": "Valencia Zona Ind.",
+      "address": "AV.PROLONGACION MICHELENA C.C. MYCRA LOCAL 10 ZONA INDUSTRIAL VALENCIA. GPS. 10.1744565,-67.9743876",
+      "code": "0811000"
+    },
+    {
+      "company": "MRW",
+      "state": "Cojedes",
+      "city": "San Carlos",
+      "name": "San Carlos",
+      "address": "CALLE MANRIQUE, ENTRE AV. BOLIVAR Y CALLE ALEGRÍA, SECTOR CENTRO, SAN CARLOS, EDO. COJEDES",
+      "code": "0900000"
+    },
+    {
+      "company": "MRW",
+      "state": "Cojedes",
+      "city": "Tinaquillo",
+      "name": "Tinaquillo",
+      "address": "AV. MADARIAGA, ENTRE CALLE CEDEÑO Y CALLE NEGRO PRIMERO, TINAQUILLO - ESTADO COJEDES 9.917399229094885, -68.30170553115445",
+      "code": "0901000"
+    },
+    {
+      "company": "MRW",
+      "state": "Delta Amacuro",
+      "city": "Tucupita",
+      "name": "Tucupita",
+      "address": "CALLE DALLA COSTA # 22, LOCAL 1, EDF. CIARCIA FRENTE A LA PLAZA BOLIVAR, PQ. SAN JOSE, MNCP: TUCUPITA, CD: TUCUPITA EDO: DELTA AMACURO. GPS: 9.0572867,-62.050785",
+      "code": "1000000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Altamira",
+      "address": "AV SAN JUAN BOSCO CON 1ERA TRANSVERSAL EDIFICIO EXCELSIOR PB LOCAL 2 AL LADO DE ORGANIGO. GPS:10.496381, -66.849539",
+      "code": "0115000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Andres Bello",
+      "address": "AV ANDRÉS BELLO COLEGIO NACIONAL DE PERIODISTA PB LOCAL B- 01 URBANIZACIÓN LOS CAOBOS CARACAS",
+      "code": "0143000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Antimano/ La Yaguara",
+      "address": "CALLE REAL BOULEVARD DE ANTIMANO ENTRE LA JEFATURA Y LA PLAZA BOLIVAR ANTIMANO LOCAL MRW",
+      "code": "0146000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Av. Casanova",
+      "address": "AV. CASANOVA ENTRE CALLE SAN ANTONIO Y CALLE EL COLEGIO, C.C. DEL ESTE, Nº 21. DIAGONAL AL HOTEL KURSSAL",
+      "code": "0141000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Baruta",
+      "address": "AV. SAN SEBASTIAN , CENTRO COMERCIAL LOS GONZALEZ , LOCAL MRW , AL LADO DE LA COPA CREMA BARUTA",
+      "code": "0117000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Bello Monte",
+      "address": "AVENIDA MIGUELANGEL, EDIFICIO OBERON, LOCAL E, FRENTE A LA PASTELERÍA LA SABRINA, AL LADO DE PINTA CASA, COLINAS DE BELLO MONTE 10°29'10.3\"N 66°52'23.7\"W",
+      "code": "0102000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Boleita",
+      "address": "AV. LAS PALMAS, EDIF. TORRE DON LEONARDO, PISO PB, LOCAL 6, URB. BOLEITA SUR, CARACAS (PETARE), ZONA POSTAL 1071",
+      "code": "0127000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Campo Claro",
+      "address": "AV.FRANCISCO DE MIRANDA EDF. VALENCIA 1 CAMPO CLARO LOS DOS CAMINOS. GPS: 10.4933241,-66.8308808",
+      "code": "0109000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Capitolio",
+      "address": "AV CONDE A PIÑANGO (AV OESTE 0), CASONA Nº 11, ENTRE AV BARALT Y AV SUR 4, PARROQUIA ALTAGRACIA, AL LADO DE LA JEFATURA CATEDRAL.",
+      "code": "0145000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Caricuao",
+      "address": "CENTRO COMERCIAL CARICUAO PLAZA NIVEL MEZANINA LOCAL 8. GPS: 10.434337,-67.0000542",
+      "code": "0132000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Catia",
+      "address": "AV. SUCRE CC. OESTE NIVEL 3 LOCAL 3 SECTOR CATIA, CARACAS, FRENTE A LA CLINICA POPULAR CATIA. GPS: 10.5149652,-66.9332887.",
+      "code": "0128000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Centro",
+      "address": "AV. UNIVERSIDAD, ESQ. DE SOCIEDAD A GRADILLAS, EDIF. HUMBOLT P.B. LOCAL MRW. 10.504785537719727,-66.91412353515625",
+      "code": "0104000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Chacaito",
+      "address": "CENTRO COMERCIAL UNICO PB LOCAL 5 URB EL ROSAL AV PICHINCHA ENTRE LA SALIDA DEL METRO Y AV TAMANACO",
+      "code": "0148000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Chacao El Muñeco",
+      "address": "CALLE EL MUÑECO ENTRE AV. LIBERTADOR Y AV FRANCISCO DE MIRANDA EDIF GUAN PB LOCAL 7 10.49131,-66.8581542",
+      "code": "0105000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Chuao",
+      "address": "C.C.C.T, PB. SECTOR EL PUEBLO. LOCAL F. SALIDA AL ESTACIONAMIENTO DE LA TORRE A. CHUAO. GPS: 10.484559,-66.8564348,17",
+      "code": "0106000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "El Bosque",
+      "address": "CALLE EL EMPALME CON PRINCIPAL DEL BOSQUE QUINTA TORRE DE LA VEGA LOCAL 6 MRW",
+      "code": "0131000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "El Cementerio",
+      "address": "CALLE TERCERA TRANSVERSAL SAMANES Y LOS TOTUMOS CASA NRO 3 URB. EL CEMEN TERIO",
+      "code": "0126000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "El Hatillo",
+      "address": "CALLE LA PAZ, CASA NRO. 16 DIAGONAL A BNC, EL HATILLO",
+      "code": "0125000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "El Junquito",
+      "address": "URBANIZACIÓN EL JUNKO, CARRETERA CARACAS EL JUNQUITO, KILÓMETRO 15, C.C EL JUNKO, NIVEL PLANTA BAJA, LOCAL 04-C, PARROQUIA EL JUNQUITO MUNICIPIO LIBERTADOR, CARACAS, VENEZUELA",
+      "code": "0129000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "El Llanito",
+      "address": "AV. PRINCIPAL TAMANACO, EL LLANITO, QTA. CELIA, FRENTE AL SUPERMERCADO ACUARIO, PISO: MEZZANINA, LOCAL 5 GPS: 10.4716649,-66.8066276",
+      "code": "0103000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "El Paraiso",
+      "address": "URBANIZACION EL PARAISO, ENTRE AVENIDA BOLIVAR Y AVENIDAS LAS FUENTES A 20 MTS DE LA PLAZA WASHINGTON, QUINTA FRANCELIS PB LOCAL 1, EL PARAISO CARACAS.",
+      "code": "0107000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "El Valle",
+      "address": "AV. INTERVECINAL EL VALLE. RESIDENCIAS DON PEDRO. TORRE B. LOCAL 1. P.B.",
+      "code": "0142000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "La California",
+      "address": "AV. FCO. DE MIRANDA CON AV. MADRID C.C. PUERTAS DEL ESTE, LOCAL 5 LA CALIFORNIA NORTE.",
+      "code": "0149000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "La Candelaria",
+      "address": "PUENTE YANEZ A PERICO EDF. SERRANO PB LOCAL 3 LA CANDELARIA. GPS: 10.5038406,-66.9082209.",
+      "code": "0140000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "La Castellana",
+      "address": "CALLE URDANETA, QUINTA AURANA, P.B. A MEDIA CUADRA DEL RESTAURANT LA ESTANCIA. LA CASTELLANA.",
+      "code": "0147000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "La Florida",
+      "address": "AV. LOS CHAGUARAMOS. QTA. COROLI. PB. LA FLORIDA. DIAGONAL A HIDROCAPITAL.. GPS. 10.5068807,-66.8732728",
+      "code": "0133000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "La Trinidad",
+      "address": "CALLE DEL ARENAL, CASA LAURA, Nº 15-14, A DOS CUADRAS DEL FARMATODO DE LA ZONA INDUSTRIAL DE LA TRINIDAD. GPS:10.4363249,-66.8612064",
+      "code": "0110000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "La Urbina",
+      "address": "AV. PPAL. LA URBINA. EDIF. APULIA. P.B. CERCA A LA PANADERÍA TULIPÁN. LA URBINA",
+      "code": "0120000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Las Acacias",
+      "address": "AVENIDA PRESIDENTE MEDINA ANGARITA (AV. VICTORIA), EDIFICIO \"BETANIA\", PLANTA BAJA, LOCAL MRW. URB. LAS ACACIAS. PUNTO DE REFERENCIA: FRENTE A REPUESTOS PAMACA DE LA FORD.",
+      "code": "0119000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Las Mercedes",
+      "address": "AV. VERACRUZ. EDIF. MATISCO. P.B. DIAGONAL A CONATEL LAS MERCEDES GPS: 10.4798852,-66.855312",
+      "code": "0123000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Las Minas",
+      "address": "CARRETERA CARACAS- BARUTA, CENTRO COMERCIAL LAS DANIELAS, DIAGONAL AL AMBULATORIO DE LAS MINAS DE BARUTA O CENTRO ASTURIANO DE CCS, LOCAL 2-3, SECTOR LAS MINAS DE BARUTA.",
+      "code": "0138000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Lebrun Petare",
+      "address": "CALLE LOS NARANJOS EDF. LEBRUN PISO P.B LOCAL 19 , URB LEBRUN.",
+      "code": "0113000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Lecuna",
+      "address": "CALLE SUR 3, DE ZAMURO A MISERIA, EDIF. INDUCENTRO LOCAL 1 PB, A 20 MTS DE LA AV. LECUNA. SANTA ROSALIA",
+      "code": "0135000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Los Caobos",
+      "address": "AV PANAM- AV LIBERTADOR QUINTA MRW, AL LADO DE AUVISIÓN C.A. DETRAS DEL RESTAURANT GRAN YEN, SUBIENDO POR LA TORRE POLAR. LOS CAOBOS.",
+      "code": "0101000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Los Chaguaramos",
+      "address": "AV. UNIVERSIDAD, URB. LOS CHAGUARAMOS, EDF. MAURICA, PB, LOCAL G, SE ENCUENTRA UBICADO FRENTE A LA IGLESIA SAN PEDRO, CARACAS. GPS: 10.484966,-66.8922411",
+      "code": "0111000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Los Chorros",
+      "address": "AV. PINCIPAL LA CARLOTA ENTRE AV. FRANCISCO DE MIRANDA Y ROMULO GALLEGOS, EDF. BERTHA, LOCAL 05 PUNTO DE REFERENCIA FRENTE A LA ZONA DE CARGA DEL MILLENIUM, LOS DOS CAMINOS 10.4977255,-66.8265758",
+      "code": "0116000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Los Palos Grandes",
+      "address": "AV. ANDES BELLO CON 2¬ TRANSVERSAL, EDIFICIO VISTA HERMOSA, LOCAL C, URBANIZACIÓN LOS PALOS GRANDES.",
+      "code": "0150000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Los Rosales",
+      "address": "AV. LOS LAURELES CON AV. ROOSEVELT, RES. TIUNA LOCAL E. PB FRENTE A PLAZA TIUNA LOS ROSALES. GPS: 10.4809693,-66.900801",
+      "code": "0122000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Montalban",
+      "address": "MONTALBAN II. 2DA TRANSVERSAL CENTRO COMERCIAL LA VILLA. GPS: 10.473580360412598,-66.95611572265625",
+      "code": "0132100"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Palo Verde",
+      "address": "CENTRO COMERCIAL PALO VERDE, NIVEL II, LOCAL N 2-27D, AL LADO DE LA PIÑATERIA BEHIRAS SHOP",
+      "code": "0113200"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Pantin",
+      "address": "CALLE PANTIN, GALPON MRW. AL FRENTE DE LA POLICIA DE CHACAO.URBANIZACIÓN ESTADO LEAL. CHACAO",
+      "code": "0137000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Parque Naciones Unidas",
+      "address": "AV. JOSÉ ANTONIO PÁEZ, ENTRE AV. LOS PINOS Y PARQUE NACIONES UNIDAS, RESIDENCIA CITY PARK, PB - EL PARAISO",
+      "code": "0107100"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Perez Bonalde",
+      "address": "CATIA ENTRÉ CALLE COLOMBIA Y ATLÁNTICO EDIFICIO LAZIO PB PÉREZ BONALDEZ CARACAS",
+      "code": "0128100"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Plaza Estrella",
+      "address": "PLAZA ESTRELLA A SAN FELIPE, RES. DORABEL, PB LOCAL 3. A MEDIA CUADRA DEL PASAJE ANAUCO. SAN BERNARDINO. GPS: 10.5082611,-66.9029304.",
+      "code": "0108000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Plaza Las Americas",
+      "address": "CENTRO COMERCIAL PLAZA LAS AMERICAS. NIVEL ORO. LOCAL 107-A. EL CAFETAL GPS: 10.458950, -66.828896",
+      "code": "0103100"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Prados del Este",
+      "address": "URB. CENTRO RESIDENCIAL PARQUE HUMBOLDT , AV. RIO PARAGUA, EDIF. LA PIRÁMIDE, LOCAL C (18-C) PB, PRADOS DEL ESTE, ESTADO MIRANDA.",
+      "code": "0118000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Quinta Crespo",
+      "address": "EDIFICIO DOLORES, AVENIDA OESTE 18A, BÁRCENAS, LOCAL NÚMERO 3, PARROQUIA SANTA TERESA, CARACAS, DISTRITO CAPITA",
+      "code": "0139000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Sabana Grande",
+      "address": "AV. ORINOCO, ENTRE CALLES 2DA Y CARON-, QUINTA ISM+NIA, P.B. SECTOR SABANA GRANDE - BELLO MONTE NORTE. GPS: 10.4889629,-66.8748077",
+      "code": "0114000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "San Martin",
+      "address": "AV SAN MARTIN, AV SANTANDER CRUCE CON AV. SAN MARTIN, C.C MARACAIBO NIVEL MEZZ LOCAL NRO 12.",
+      "code": "0134000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Santa Fe",
+      "address": "AV. JOSÉ MARÍA VARGAS CON CALLE SANTA ISABEL, EDIFICIO RESIDENCIAS CODICA II NO 8 URBANIZACIÓN SAN JUAN SANTA FE NORTE, MUNICIPIO BARUTA DEL ESTADO MIRANDA.",
+      "code": "0121000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Santa Monica",
+      "address": "AV. ARTURO MICHELENA C/C AGUSIN CODAZZI, LOCAL 5-B MRW URB. SANTA MONICA GPS: 10.4776992,-66.8910918",
+      "code": "0130000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Santa Sofia",
+      "address": "AV. PRINCIPAL DE SANTA SOFIA, C.C. SANTA SOFIA, LOCAL Z-3. P.B. GPS: 10.47158,-66.84261",
+      "code": "0124000"
+    },
+    {
+      "company": "MRW",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Sebucan",
+      "address": "AV. ROMULO GALLEGOS, ENTRE AV. PRINCIPAL DE SEBUCAN Y AV. SUCRE DE LOS DOS CAMINOS",
+      "code": "0144000"
+    },
+    {
+      "company": "MRW",
+      "state": "Falcón",
+      "city": "Coro",
+      "name": "Coro",
+      "address": "CALLE ZAMORA. ESQUINA CALLEJON LAS FLORES E ITURBE LOCAL S/N SECTOR CHIMPIRE CORO MCIPIO MIRANDA EDO FALCON SANTA ANA DE CORO. GPS: 11.4108253,-69.6709781",
+      "code": "1100000"
+    },
+    {
+      "company": "MRW",
+      "state": "Falcón",
+      "city": "Coro",
+      "name": "El Castillo",
+      "address": "AVENIDA MANAURE, ESQUINA CON CALLE MONZON . C.C. EL CASTILLO DON LEONCIO, PB, LOCAL Nº 10. CORO. GPS: 11.402398864692,-69.6721584",
+      "code": "1105000"
+    },
+    {
+      "company": "MRW",
+      "state": "Falcón",
+      "city": "Punto Fijo",
+      "name": "Caja de Agua",
+      "address": "CALLE MANUELITA SÁENZ ENTRE CALLE COMERCIO Y PROVIDENCIA SECTOR, SECTOR CAJA DE AGUA, DIAGONAL A LA IGLESIA LOS MORMONES, LOCAL NRO. 01, EDO. FALCÓN. GPS 11.7124573,-70.1915814",
+      "code": "1103000"
+    },
+    {
+      "company": "MRW",
+      "state": "Falcón",
+      "city": "Punto Fijo",
+      "name": "Puerta Maraven",
+      "address": "CALLE SAN ROMÁN ENTRE AV GENERAL PELAYO Y AV. OLLARVIDES, DIAGONAL A RÍAS ALTAS. 10.792441,-68.3196871",
+      "code": "1104000"
+    },
+    {
+      "company": "MRW",
+      "state": "Falcón",
+      "city": "Punto Fijo",
+      "name": "Punto Fijo Av.Monagas",
+      "address": "CALLE MONAGAS ENTRE GARCES Y ZAMORA EDIF. LUCRISCAR PLANTA BAJA, PUNTO FIJO-EDO.FALCON. GPS: 11.6910626,-70.2002248",
+      "code": "1106000"
+    },
+    {
+      "company": "MRW",
+      "state": "Falcón",
+      "city": "Punto Fijo",
+      "name": "Punto Fijo Centro",
+      "address": "AV. COLOMBIA, ENTRE AYACUCHO Y PENINSULAR, C.C. DON JOSE LAY, NIVEL PB, LOCAL 5B, SECTOR CENTRO, PUNTO FIJO FALCON.",
+      "code": "1101000"
+    },
+    {
+      "company": "MRW",
+      "state": "Falcón",
+      "city": "Tucacas",
+      "name": "Tucacas",
+      "address": "CALLÉ BERMÚDEZ C/CALLÉ 5 DE JULIO DIAGONAL A LA AV. PRINCIPAL DE TUCACAS, ESTADO FALCÓN",
+      "code": "1102000"
+    },
+    {
+      "company": "MRW",
+      "state": "Guárico",
+      "city": "Altagracia de Orituco",
+      "name": "Altagracia de Orituco",
+      "address": "CALLE HURTADO ASCANIO CRUCE CON VUELVAN CARA. EDF. RESIDENCIAS LA PAZ, PB, LOCAL 2, SECTOR LAS BRISAS DEL ESTE ALTAGRACIA DE ORITUCO. EDO. GUARICO. GPS: 9.8554654,-66.3795806",
+      "code": "1205000"
+    },
+    {
+      "company": "MRW",
+      "state": "Guárico",
+      "city": "Calabozo",
+      "name": "Calabozo",
+      "address": "CARRETERA 13, ENTRE CALLES 13 Y 14, LOCAL NRO S/N, SECTOR CASCO CENTRAL CALABOZO, ESTADO GUÁRICO",
+      "code": "1201000"
+    },
+    {
+      "company": "MRW",
+      "state": "Guárico",
+      "city": "Las Mercedes del Llano",
+      "name": "Las Mercedes del Llano",
+      "address": "CALLE DOÑA BÁRBARA. CENTRO COMERCIAL MERCEDES PLAZA, PB, LOCAL 5A. LAS MERCEDES DEL LLANO - EDO GUÁRICO.",
+      "code": "1202100"
+    },
+    {
+      "company": "MRW",
+      "state": "Guárico",
+      "city": "San Juan de los Morros",
+      "name": "S. Juan de los Morros",
+      "address": "CALLE EL CARMEN, EDF. RAUSEO, LOCAL 2 BAJANDO POR LA GOBERNACIÓN, DIAGONAL A LA CANTV. GPS: 9.9151168,-67.3552737",
+      "code": "1200000"
+    },
+    {
+      "company": "MRW",
+      "state": "Guárico",
+      "city": "Tucupido",
+      "name": "Tucupido",
+      "address": "CALLE SALOM NRO 24 DIAGONAL A LA ALCALDIA, ENTRE SAN PABLO Y ZARAZA, LOCAL MRW PB. GPS: 10.4347,-66.8747",
+      "code": "1204000"
+    },
+    {
+      "company": "MRW",
+      "state": "Guárico",
+      "city": "Valle de la Pascua",
+      "name": "Valle de la Pascua",
+      "address": "CALLE BOLIVAR ENTRE AV. LIBERTADOR Y CALLE DELEITE, LOCAL N° 58-1 SECTOR CENTRO, DIAGONAL A POLIGUARICO, VALLE DE LA PASCUA.",
+      "code": "1202000"
+    },
+    {
+      "company": "MRW",
+      "state": "Guárico",
+      "city": "Valle de la Pascua",
+      "name": "Valle de la Pascua Norte",
+      "address": "CALLE RETUMBO ENTRE CALLE PARAISO Y AV. RÓMULO GALLEGOS, C.C. CENTRO NORTE, LOCAL 1A, AL LADO DE OXILA 5000, ESTADO GUARICO.",
+      "code": "1207000"
+    },
+    {
+      "company": "MRW",
+      "state": "Guárico",
+      "city": "Zaraza",
+      "name": "Zaraza",
+      "address": "CALLE BOLIVAR, ENTRE AYACUCHO Y SUCRE , LOCAL MRW, PB, A 100 MTS DEL SAIME, SECTOR CENTRO, ZARAZA, ESTADO GUARICO. GPS: 9.3474244,-65.3244822",
+      "code": "1203000"
+    },
+    {
+      "company": "MRW",
+      "state": "La Guaira",
+      "city": "Catia La Mar",
+      "name": "Catia La Mar",
+      "address": "CALLE ALFARERÍA, URB. WEEK-END, FRENTE A TU SALUD VARGAS, AL LADO DE LA UNIDAD DE RADIOLOGÍA SAN ANTONIO",
+      "code": "2201000"
+    },
+    {
+      "company": "MRW",
+      "state": "La Guaira",
+      "city": "Maiquetía",
+      "name": "La Guaira",
+      "address": "CALLE LOTE DE TERRENO DE LA MANZANA E LOCAL 94 SECTOR MIRAMAR, AL LADO DEL C.C. BAHIA SUPERMARKET, MAIQUETIA LA GUAIRA ZONA POSTAL 1161",
+      "code": "2200000"
+    },
+    {
+      "company": "MRW",
+      "state": "Lara",
+      "city": "Barquisimeto",
+      "name": "Altagracia",
+      "address": "CARRERA 21, ENTRE CALLE 20 Y 21, LOCAL COMERCIAL S/N, EDIFICIO NRO. 20 – 81, BARQUISIMETO .",
+      "code": "1303200"
+    },
+    {
+      "company": "MRW",
+      "state": "Lara",
+      "city": "Barquisimeto",
+      "name": "Andres Bello",
+      "address": "AV. ANDRES BELLO, ENTRE CARRERA 22 Y 23, EDF. PULCA 2, LOCALES 2 Y 3. BARQUISIMETO. GPS 10.0696841,-69.3132541",
+      "code": "1300300"
+    },
+    {
+      "company": "MRW",
+      "state": "Lara",
+      "city": "Barquisimeto",
+      "name": "Av Venezuela Este",
+      "address": "AV. VENEZUELA CON CALLES 8 Y 9, BARQUISIMETO, ESTADO LARA.",
+      "code": "1310100"
+    },
+    {
+      "company": "MRW",
+      "state": "Lara",
+      "city": "Barquisimeto",
+      "name": "Av. Moran",
+      "address": "CARRERA 21 CON CALLE 9, BARQUISIMETO, ESTADO LARA GPS 10.0691719,-69.2989034",
+      "code": "1303100"
+    },
+    {
+      "company": "MRW",
+      "state": "Lara",
+      "city": "Barquisimeto",
+      "name": "Av. Venezuela",
+      "address": "AV VENEZUELA CON CALLE 21, EDIFICIO LAZIO, LOCAL NRO. 02, BQTO. EDO. LARA. C GPS 10.0735602,-69.3125445",
+      "code": "1310000"
+    },
+    {
+      "company": "MRW",
+      "state": "Lara",
+      "city": "Barquisimeto",
+      "name": "Babilom",
+      "address": "CALLE 19 CON AV LIBERTADOR ZONA INDUSTRIAL I C.C LIBERTADOR LOCAL 13-B. GPS: 10.0638548,-69.3612843",
+      "code": "1308000"
+    },
+    {
+      "company": "MRW",
+      "state": "Lara",
+      "city": "Barquisimeto",
+      "name": "Barquisimeto Nueva Segovia",
+      "address": "CALLE 3 ENTRE CARRERA 1 Y AV LARA, CASA NRO AL-99 URB NUEVA SEGOVIA BARQUISIMETO EDO LARA GPS: 10.064689636230469,-69.29549407958984",
+      "code": "1307000"
+    },
+    {
+      "company": "MRW",
+      "state": "Lara",
+      "city": "Barquisimeto",
+      "name": "Bqmeto Este",
+      "address": "CALLE 15, ENTRE CARRERAS 20 Y 21, LOCAL NO. 5, DIAGONAL A LA CLINICA SAN FRANCISCO. BARQUISIMETO,ESTADO LARA. GPS: 10.068597793579102,-69.30667877197266",
+      "code": "1303000"
+    },
+    {
+      "company": "MRW",
+      "state": "Lara",
+      "city": "Barquisimeto",
+      "name": "Bqmeto Oeste",
+      "address": "AV. FLORENCIO JIMENEZ, C.C. ARCOIRIS, LOCAL 5, P.B., FRENTE AL DECANATO DE LA UCLA, BARQUISIMETO, EDO. LARA. GPS: 10.0709,-69.3556",
+      "code": "1301000"
+    },
+    {
+      "company": "MRW",
+      "state": "Lara",
+      "city": "Barquisimeto",
+      "name": "Bqto Centro",
+      "address": "AV. VENEZUELA ENTRE CALLES 39 Y 40, NÚMERO 39-55, SENTIDO OESTE-ESTE. BARQUISIMETO. GPS: 10.0715248,-69.3309241",
+      "code": "1300000"
+    },
+    {
+      "company": "MRW",
+      "state": "Lara",
+      "city": "Barquisimeto",
+      "name": "Canaima",
+      "address": "CALLE 55 ENTRE AV. PEDRO LEON TORRES Y CARRERA 19, C.C. CANAIMA, LOCAL F-02. ZONA ESTE BARQUISIMETO. GPS 10.0640084,-69.3466274",
+      "code": "1300200"
+    },
+    {
+      "company": "MRW",
+      "state": "Lara",
+      "city": "Barquisimeto",
+      "name": "El Recreo",
+      "address": "AV. LIBERTADOR. C.C. EL ROSARIO. LOCAL 5. FRENTE AL IPASME GPS 10.0831128,-69.3233322",
+      "code": "1308100"
+    },
+    {
+      "company": "MRW",
+      "state": "Lara",
+      "city": "Barquisimeto",
+      "name": "Patarata",
+      "address": "AV. LIBERTADOR ENTRE AV. ARGEMIRO BRACAMONTE Y AV. LOPEZ CONTRERA, SECTOR PATARATA, CENTRO RECREACIONAL PARQUE JARDIN, LOCAL 04, BARQUISIMETO EDO. LARA. GPS 10.0799945,-69.2939417",
+      "code": "1307100"
+    },
+    {
+      "company": "MRW",
+      "state": "Lara",
+      "city": "Barquisimeto",
+      "name": "Valle Lindo",
+      "address": "AUTOPISTA VIA DUACA KM 10 SECTOR SABANA GRANDE AL LADO DE LA FARMACIA SAN IGNACIO, ZONA NORTE, BQTO. GPS: 10.1691728,-69.3130929",
+      "code": "1306000"
+    },
+    {
+      "company": "MRW",
+      "state": "Lara",
+      "city": "Cabudare",
+      "name": "Cabudare",
+      "address": "AV. SANTA BARBARA, ENTRE CALLES GUILLERMO ALVIZU Y LA CRUZ, C.C. STA. BARBARA, LOCAL 2, DETRAS FERRETERIA TABURE. CÓDIGO POSTAL 3023 GPS: 10.0339,-69.2635",
+      "code": "1304000"
+    },
+    {
+      "company": "MRW",
+      "state": "Lara",
+      "city": "Cabudare",
+      "name": "Cabudare Sur",
+      "address": "AV EL PLACER LOCAL TRIGALPA NRO 7 URB EL TRIGAL LOS RASTROJOS LARA, GP 10.0340094,-69.2378423",
+      "code": "1309000"
+    },
+    {
+      "company": "MRW",
+      "state": "Lara",
+      "city": "Carora",
+      "name": "Carora",
+      "address": "AV FCO DE MIRANDA / CLLS 15A Y 16 CASA NRO 15 SECTOR EGIDIO MONTESINO-CARORA A 50 MTS DE LA PLAZA CHIO ZUBILLAGA. GPS: 10.1731161,-70.0812122",
+      "code": "1302000"
+    },
+    {
+      "company": "MRW",
+      "state": "Lara",
+      "city": "Quíbor",
+      "name": "Quibor",
+      "address": "CALLE 8 ENTRE AVENIDA 8 Y 9 A 200MTS DEL SUPERMERCADO LA PALMA. GPS 9.9275333,-69.6190894",
+      "code": "1305000"
+    },
+    {
+      "company": "MRW",
+      "state": "Miranda",
+      "city": "Carrizal",
+      "name": "Carrizal",
+      "address": "KILÓMETRO 21 DE LA CARRETERA PANAMERICANA, INGRESANDO POR LA URBANIZACIÓN MONTAÑA ALTA, LOCAL S-1, CENTRO COMERCIAL COLINAS DE CARRIZAL, FRENTE AL CENTRO COMERCIAL LA CASCADA, CARRIZAL ESTADO MIRANDA",
+      "code": "1500100"
+    },
+    {
+      "company": "MRW",
+      "state": "Miranda",
+      "city": "Charallave",
+      "name": "Charallave",
+      "address": "CALLE 9, AVENIDA JOSE GREGORIO HERNANDEZ CON AVENIDA BOLIVAR EDF. LOS SAMANES NRO 03 SECTOR CASCO CENTRAL CHARALLAVE MIRANDA. GPS: 10.2403277,-66.8578658",
+      "code": "1501000"
+    },
+    {
+      "company": "MRW",
+      "state": "Miranda",
+      "city": "Cúa",
+      "name": "Cua",
+      "address": "URBANIZACION JARDINES DE SANTA ROSA, C. C. EL COLONIAL, LOCAL 26-A, CÚA, MIRANDA. GPS: 10.1691341,-66.8886829",
+      "code": "1509000"
+    },
+    {
+      "company": "MRW",
+      "state": "Miranda",
+      "city": "Guarenas",
+      "name": "Guarenas",
+      "address": "C.C LA CANDELARIA, NIVEL PLANTA BAJA, LOCAL 01, ESTADO MIRANDA. GPS 10.4696896,-66.6216372",
+      "code": "1503000"
+    },
+    {
+      "company": "MRW",
+      "state": "Miranda",
+      "city": "Guatire",
+      "name": "Guatire",
+      "address": "GUATIRE, CALLE ZAMORA NUMERO 47, LOCAL PB-1, EDIFICIO QUINTA ARELIS. GPS: 10.4759,-66.5454",
+      "code": "1504000"
+    },
+    {
+      "company": "MRW",
+      "state": "Miranda",
+      "city": "Guatire",
+      "name": "Guatire Oasis",
+      "address": "AV INTERCOMUNAL GUARENAS - GUATIRE , CENTRO COMERCIAL OASIS CENTER, PB LOCAL 24, GPS 10.465076,-66.5711214",
+      "code": "1510000"
+    },
+    {
+      "company": "MRW",
+      "state": "Miranda",
+      "city": "Higuerote",
+      "name": "Higuerote",
+      "address": "CALLE EL RÍO, CC MARTÍ PLAZA, LOCAL 1, HIGUEROTE EDO. MIRANDA, GPS 10.485067,-66.100898",
+      "code": "1506000"
+    },
+    {
+      "company": "MRW",
+      "state": "Miranda",
+      "city": "Los Teques",
+      "name": "Los Teques",
+      "address": "CALLE SUCRE NORTE, LOCALES NRO. 2 Y 15-1, SECTOR EL PUEBLO, LOS TEQUES, MIRANDA GPS - 10.349844, -67.043481",
+      "code": "1500000"
+    },
+    {
+      "company": "MRW",
+      "state": "Miranda",
+      "city": "Ocumare del Tuy",
+      "name": "Ocumare del Tuy",
+      "address": "AVENIDA MIRANDA CON CALLE TORIBIO MOTA, EDIF. TELEVISA, PB. FRENTE A LA PARADA DE PAROSCA.. GPS: 10.117089966358561,-66.77527175651109",
+      "code": "1501500"
+    },
+    {
+      "company": "MRW",
+      "state": "Miranda",
+      "city": "Río Chico",
+      "name": "Rio Chico",
+      "address": "CALLE COMERCIO, LOCAL MRW. AL LADO DE LA FARMACIA LAS MERCEDES, RÍO CHICO- MUNICIPIO PÁEZ- EDO. MIRANDA. GPS: 10.3164736,-65.9778191",
+      "code": "1507000"
+    },
+    {
+      "company": "MRW",
+      "state": "Miranda",
+      "city": "San Antonio de los Altos",
+      "name": "San Antonio de los Altos",
+      "address": "CARRETA PANAMERICANA, KILOMETRO 16, C.C. LA CASONA II, PISO 1, LOCAL #2-17 AL LADO DE CINEX, GPS 10.3697786,-66.9827115",
+      "code": "1505000"
+    },
+    {
+      "company": "MRW",
+      "state": "Miranda",
+      "city": "Santa Teresa del Tuy",
+      "name": "Sta Teresa del Tuy",
+      "address": "CALLE AYACUCHO EDIF DON GUILLERMO PISO 1 OF 2 ZONA CENTRO SANTA TERESA DEL TUY MIRANDA. GPS: 10.2336028,-66.6645992",
+      "code": "1508000"
+    },
+    {
+      "company": "MRW",
+      "state": "Monagas",
+      "city": "Maturín",
+      "name": "Maturin Av. Raul Leoni",
+      "address": "AV. RAUL LEONI ENTRE CARRERA 3 (ANTIGUA AV. RIVAS) Y CARRERA 4 (ANTIGUA PROLONGACION CEDEÑO) FRENTE AL POLIDEPORTIVO, MATURIN EDO. MONAGAS",
+      "code": "1608000"
+    },
+    {
+      "company": "MRW",
+      "state": "Monagas",
+      "city": "Maturín",
+      "name": "Maturin Centro",
+      "address": "AV ROJAS EDIF BRAVO PISO P.B LOCAL 01 SECTOR CENTRO MATURIN MONAGAS",
+      "code": "1603000"
+    },
+    {
+      "company": "MRW",
+      "state": "Monagas",
+      "city": "Maturín",
+      "name": "Maturin La Floresta",
+      "address": "CR 1 Nº 4 C.C LA REDOMA NIVEL PB LOCAL 5 SECTOR BRISAS DEL AEROPUETO MATURIN MONAGAS ZONA POSTAL 6201",
+      "code": "1609000"
+    },
+    {
+      "company": "MRW",
+      "state": "Monagas",
+      "city": "Maturín",
+      "name": "Maturin Norte",
+      "address": "AV. PPAL VIA VIBORAL, CENTRO COMERCIAL LAS COLINAS B, P.B. LOCAL 09",
+      "code": "1606000"
+    },
+    {
+      "company": "MRW",
+      "state": "Monagas",
+      "city": "Maturín",
+      "name": "Maturin Plaza El Indio",
+      "address": "AV. BICENTENARIO EDIF. ZAMORA, P.B. DIAGONAL AL HOSPITAL CENTRAL DE MATURIN",
+      "code": "1610000"
+    },
+    {
+      "company": "MRW",
+      "state": "Monagas",
+      "city": "Maturín",
+      "name": "Maturin Zona Industrial",
+      "address": "AV. PRINCIPAL DE LA CRUZ, C.C MACARENAS, LOCAL # 23 PB",
+      "code": "1607000"
+    },
+    {
+      "company": "MRW",
+      "state": "Monagas",
+      "city": "Punta de Mata",
+      "name": "Punta de Mata",
+      "address": "CALLE 5 DE JULIO CRUCE CON CALLE NUEVA, LOCAL MRW, DETRÁS DEL BANCO CARONI W3W DESPACHO.ASPIRA.IMPUESTOS",
+      "code": "1602000"
+    },
+    {
+      "company": "MRW",
+      "state": "Monagas",
+      "city": "Temblador",
+      "name": "Temblador",
+      "address": "CALLE BOLIVAR. NO 70-A. DIAGONAL A LA LINEA DE TAXI EJECUTIVO DEL SUR.",
+      "code": "1605000"
+    },
+    {
+      "company": "MRW",
+      "state": "Mérida",
+      "city": "Ejido",
+      "name": "Ejido",
+      "address": "AV. FERNANDEZ PEÑA CASA PLANTA BAJA NRO 133-C SECTOR MONTALBAN, A 100 MTS DEL DIARIO FRONTERA. CENTRO EJIDO MERIDA. GPS: 8.5489483,-71.2383251",
+      "code": "1404000"
+    },
+    {
+      "company": "MRW",
+      "state": "Mérida",
+      "city": "El Vigía",
+      "name": "El Vigia",
+      "address": "AV. 11, LOCAL 2, NUMERO 6-21, SECTOR LA IMAGULADA EL VIGÍA EN EL ESTADO MÉRIDA. GPS: 8.616976, -71.645681",
+      "code": "1402000"
+    },
+    {
+      "company": "MRW",
+      "state": "Mérida",
+      "city": "Mérida",
+      "name": "Mda Los Proceres",
+      "address": "AV LOS PROCERES, CALLE LA ORQUÍDEA , MINICENTRO COMERCIAL , DON LUIS, LOCAL 2B O MRW GPS 8.577718,-71.1863891",
+      "code": "1406000"
+    },
+    {
+      "company": "MRW",
+      "state": "Mérida",
+      "city": "Mérida",
+      "name": "Merida Cubo Rojo",
+      "address": "AV GONZALO PICON CON VIADUCTO MIRANDA, CC CUBO ROJO NIVEL PB LOCAL 2,4,6,7,8 SECTOR GLORIAS PATRIAS MERIDA. GPS: 8.5879926,-71.1545853",
+      "code": "1400000"
+    },
+    {
+      "company": "MRW",
+      "state": "Mérida",
+      "city": "Mérida",
+      "name": "Merida Milla",
+      "address": "AV. DOS LORA, CENTRO PROFESIONAL MOLI-ROD, PB, LOCAL 4, DIAGONAL A LA PLAZA DE MILLACÓN, MÉRIDA.",
+      "code": "1405000"
+    },
+    {
+      "company": "MRW",
+      "state": "Mérida",
+      "city": "Mérida",
+      "name": "Merida Paseo de la Feria",
+      "address": "AV. DON TULIO FEBRES CORDERO, CON CALLE 29, DETRÁS DEL EDF. ADMINISTRATIVO DE LA ULA, EDF. EL PASEO PB, LOCAL ÚNICO. GPS: 8.59251880645752,-71.14743041992188",
+      "code": "1401000"
+    },
+    {
+      "company": "MRW",
+      "state": "Mérida",
+      "city": "Tovar",
+      "name": "Tovar",
+      "address": "CARRETERA 4TA. CC EL LLANO NIVEL PB LOCAL 4 SECTOR EL LLANO TOVAR, EDO.MERIDA, GPS: 8.3291184,-71.7561206",
+      "code": "1403000"
+    },
+    {
+      "company": "MRW",
+      "state": "Mérida",
+      "city": "Tucanizón",
+      "name": "Tucanizon",
+      "address": "CARRETERA PANAMERICANA , SECTOR EL CARMEN,GALPON 1, AL LADO DE LA ESTACION DE SERVICIO EL INDIO.TUCANIZON EDO MERIDA. GPS: 8.9661928,-71.2757046",
+      "code": "1407000"
+    },
+    {
+      "company": "MRW",
+      "state": "Nueva Esparta",
+      "city": "El Espinal",
+      "name": "El Espinal",
+      "address": "AV. JUAN BAUTISTA ARISMENDI, SECTOR LA ENCRUCIJADA DEL ESPINAL VIA SAN JUAN BAUTISTA. A 100 METROS DE LA REGIONAL. EL ESPINAL",
+      "code": "1702100"
+    },
+    {
+      "company": "MRW",
+      "state": "Nueva Esparta",
+      "city": "Juan Griego",
+      "name": "Juan Griego",
+      "address": "CALLE GUEVARA, Nº 12 B, ENTRE CALLES LA MARINA Y MARCANO, DIAGONAL A COMERCIAL JUAN GRIEGO.",
+      "code": "1702000"
+    },
+    {
+      "company": "MRW",
+      "state": "Nueva Esparta",
+      "city": "Pampatar",
+      "name": "Jovito Villalba",
+      "address": "AV. JOVITO VILLALBA, LOCAL ESTACION DE SERVICIO MANEIRO, NRO 9493, URB SAN LORENZO, AL LADO DEL SAMBIL. PAMPATAR EDO. NUEVA ESPARTA.",
+      "code": "1704000"
+    },
+    {
+      "company": "MRW",
+      "state": "Nueva Esparta",
+      "city": "Porlamar",
+      "name": "Porlamar",
+      "address": "CALLE CEDEÑO CRUCE CON CALLE NARVAEZ, EDIFICIO R. AMAYA & CIA , PLANTA BAJA, LOCAL S/N, SECTOR TACHIRA, PORLAMAR, MUNICIPIO MARIÑO DEL ESTADO NUEVA ESPARTA.",
+      "code": "1701000"
+    },
+    {
+      "company": "MRW",
+      "state": "Nueva Esparta",
+      "city": "Porlamar",
+      "name": "Porlamar Centro",
+      "address": "CALLE VELAZQUEZ CON ESQUINA FAJARDO, CASA S/N, SECTOR CENTRO PORLAMAR, NUEVA ESPARTA.",
+      "code": "1706000"
+    },
+    {
+      "company": "MRW",
+      "state": "Nueva Esparta",
+      "city": "Porlamar",
+      "name": "Villa Rosa",
+      "address": "AV JUAN BAUTISTA ARISMENDI LOCAL GALPON SEVEN-ART NRO PLANTA BAJA SECTOR SAN ANTONIO NORTE VILLA ROSA NUEVA ESPARTA",
+      "code": "1707000"
+    },
+    {
+      "company": "MRW",
+      "state": "Portuguesa",
+      "city": "Acarigua",
+      "name": "Acarigua",
+      "address": "CALLE 22. ENTRE AVENIDAS LIBERTADOR Y ALIANZA DIAGONAL A LA PANADERIA TREBOL, ACARIGUA CENTRO. EDO. PORTUGUESA. GPS: 9.5585801,-69.212533",
+      "code": "1801000"
+    },
+    {
+      "company": "MRW",
+      "state": "Portuguesa",
+      "city": "Acarigua",
+      "name": "Centro Los Llanos",
+      "address": "CALLE 31 CON AV 28 C.C LOS LLANOS LOCAL 5 PLANTA BAJA. GPS: 9.560776,-69.2045441",
+      "code": "1804000"
+    },
+    {
+      "company": "MRW",
+      "state": "Portuguesa",
+      "city": "Guanare",
+      "name": "Guanare",
+      "address": "AV. PRINCIPAL JOSE MARIA VARGAS CON AV. SIMON BOLIVAR CENTRO COMERCIAL REVICA GALPON N. 4 GPS: 9.0332177,-69.7401574",
+      "code": "1800000"
+    },
+    {
+      "company": "MRW",
+      "state": "Portuguesa",
+      "city": "Turén",
+      "name": "Turen",
+      "address": "AVENIDA 6, ENTRE CALLE 8 Y 9, TURÉN PORTUGUESA. GPS 9.3329354,-69.1236159",
+      "code": "1802000"
+    },
+    {
+      "company": "MRW",
+      "state": "Sucre",
+      "city": "Carúpano",
+      "name": "Carupano",
+      "address": "AV UNIVERSITARIA EDIF PROSSEIN PISO MEZANINA LOCAL B SECTOR LOS MOLINOS CARUPANO SUCRE",
+      "code": "1901000"
+    },
+    {
+      "company": "MRW",
+      "state": "Sucre",
+      "city": "Cumaná",
+      "name": "Cumana",
+      "address": "CALLE MARIÑO, EDIF TURIMIQUIRE , FRENTE A LA CRUZ ROJA DE CUMANA.",
+      "code": "1900000"
+    },
+    {
+      "company": "MRW",
+      "state": "Sucre",
+      "city": "Cumaná",
+      "name": "Cumana Urdaneta",
+      "address": "4TA TRANSVERSAL DE LA AVENIDA GRAN MARISCAL. EDIFICIO CEU, P.B. LOCAL 2 MRW",
+      "code": "1902000"
+    },
+    {
+      "company": "MRW",
+      "state": "Trujillo",
+      "city": "Boconó",
+      "name": "Bocono",
+      "address": "AV. MIRANDA C/C C. ANDRES BELLO. LOCAL 2",
+      "code": "2103000"
+    },
+    {
+      "company": "MRW",
+      "state": "Trujillo",
+      "city": "Carache",
+      "name": "Carache",
+      "address": "AV. PRINCIPAL CASA S/N SECTOR PALO NEGRO, CARACHE ESTADO TRUJILLO",
+      "code": "2102000"
+    },
+    {
+      "company": "MRW",
+      "state": "Trujillo",
+      "city": "Sabana de Mendoza",
+      "name": "Sabana de Mendoza",
+      "address": "C.C. SABANA MALL, AV. BOLIVAR CON CALLE BERMUDEZ DE SABANA DE MENDOZA, MUNICIPIO SUCRE, EDO. TRUJILLO,",
+      "code": "2106000"
+    },
+    {
+      "company": "MRW",
+      "state": "Trujillo",
+      "city": "Trujillo",
+      "name": "Trujillo",
+      "address": "AV. INDEPENDENCIA CENTRO COMERCIAL LOS TORRES LOCAL 02, TRUJILLO ESTADO TRUJILLO.",
+      "code": "2100000"
+    },
+    {
+      "company": "MRW",
+      "state": "Trujillo",
+      "city": "Valera",
+      "name": "Valera",
+      "address": "CALLE 5 ENTRE AV. BOLIVAR Y 9. EDIF. DON PEPE. P.B. AL LADO DE LA ANTIGUA SEDE.",
+      "code": "2101000"
+    },
+    {
+      "company": "MRW",
+      "state": "Trujillo",
+      "city": "Valera",
+      "name": "Valera Centro",
+      "address": "AV. 12 ENTRE CALLES 8 Y 9, EDIF. BEATRIZ, P.B., LOCAL 1, A UNA CUADRA DE LA PLAZA BOLÍVAR. GPS: 9.3149416,-70.6091462",
+      "code": "2105000"
+    },
+    {
+      "company": "MRW",
+      "state": "Trujillo",
+      "city": "Valera",
+      "name": "Valera Los Limoncitos",
+      "address": "AV. BOLIVAR, ENTRE CALLE 22 Y 23, CENTRO COMERCIAL ARICHUNA, NIVEL PB, LOCAL 14, SECTOR LOS LIMONCITOS, MUNICIPIO VALERA, ESTADO TRUJILLO.",
+      "code": "2104000"
+    },
+    {
+      "company": "MRW",
+      "state": "Táchira",
+      "city": "El Piñal",
+      "name": "El Piñal",
+      "address": "CALLE 1 CON CARRERA 3, LOCAL NO. 1. ZONA COMERCIAL EL MIRADOR. VIA LA MORITA. CERCA DE LA E/S EL PIÑAL",
+      "code": "2006000"
+    },
+    {
+      "company": "MRW",
+      "state": "Táchira",
+      "city": "La Fría",
+      "name": "La Fria",
+      "address": "CARRERA 11 ENTRE CALLES 4 Y 5 AL LADO DE RAMINI LA FRIA EDO. TACHIRA",
+      "code": "2003000"
+    },
+    {
+      "company": "MRW",
+      "state": "Táchira",
+      "city": "La Grita",
+      "name": "La Grita",
+      "address": "AV FCO DE CACERES DIAGONAL AL COLEGIO STA ROSA DE LIMA , LA GRITA EDO. TACHIRA",
+      "code": "2004000"
+    },
+    {
+      "company": "MRW",
+      "state": "Táchira",
+      "city": "Rubio",
+      "name": "Rubio",
+      "address": "CENTRO COMERCIAL VENEZIA FRENTE A LA PLAZA BOLIVAR DE RUBIO SECTOR CENTR0O LOCALES 6 Y 7, ESTADO TACHIRA.",
+      "code": "2005000"
+    },
+    {
+      "company": "MRW",
+      "state": "Táchira",
+      "city": "San Antonio del Táchira",
+      "name": "S. Antonio del Tachira",
+      "address": "CALLE 4 ESQUINA CARRERA 13, LOCAL PB. #12-62, BARRIO MIRANDA, FRENTE A LA PLAZA MIRANDA, SAN ANTONIO DEL TÁCHIRA",
+      "code": "2002000"
+    },
+    {
+      "company": "MRW",
+      "state": "Táchira",
+      "city": "San Cristóbal",
+      "name": "Barrio Obrero",
+      "address": "BARRIO OBRERO, CARRERA 22, ESQUINA CALLE 12, DIAGONAL A LA PLAZA LOS MANGOS, AL LADO DE LA CAPILLA DE LOS AHORCADOS, N° 22-9 SAN CRISTOBAL EDO. TÁCHIRA",
+      "code": "2008000"
+    },
+    {
+      "company": "MRW",
+      "state": "Táchira",
+      "city": "San Cristóbal",
+      "name": "Barrio Obrero Carrera 20",
+      "address": "BARRIO OBRERO CALLE 10 CARRERA 20 NO. 9-108, LOCAL 6 FRENTE LICORERÍA 9 CON 19. SAN CRISTÓBAL ESTADO TACHIRA",
+      "code": "2000000"
+    },
+    {
+      "company": "MRW",
+      "state": "Táchira",
+      "city": "San Cristóbal",
+      "name": "Paramillo",
+      "address": "BARRIO EL LOBO, CALLE 1 FRENTE A LA MANGA DE COLEO DE ASOGATA, A 100 MTS DE LA AV. LOS AGUSTINOS, RESIDENCIAS MARSEE, PISO PB, SECTOR PARAMILLO.",
+      "code": "2011000"
+    },
+    {
+      "company": "MRW",
+      "state": "Táchira",
+      "city": "San Cristóbal",
+      "name": "San Cristobal Centro",
+      "address": "7MA AV ENTRE CALLE 5 Y 6 C.C. PARTENÓN , NIVEL P.B LOCAL Nº 3 DIAGONAL A LA TORRE UNIÓN, A CUADRA Y MEDIA DE LA PLAZA BOLIVAR, SECTOR CENTRO, SAN CRISTOBAL ESTADO TACHIRA.",
+      "code": "2010000"
+    },
+    {
+      "company": "MRW",
+      "state": "Táchira",
+      "city": "San Cristóbal",
+      "name": "San Cristobal Concordia",
+      "address": "CALLE 4 C/C CARRERAS 6 Y 7 EDF. RAMÍREZ PB LOCAL 1, DETRÁS DEL DIARIO LA NACIÓN. LA CONCORDIA. SAN CRISTÓBAL, ESTADO TACHIRA..",
+      "code": "2001000"
+    },
+    {
+      "company": "MRW",
+      "state": "Táchira",
+      "city": "San Juan de Colón",
+      "name": "San Juan de Colon",
+      "address": "C. 7 ESQUINA CARRERA 5. NO 4-79. SAN JUAN DE COLON.",
+      "code": "2012000"
+    },
+    {
+      "company": "MRW",
+      "state": "Táchira",
+      "city": "Táriba",
+      "name": "Tariba",
+      "address": "CALLE 8 CON CARRERA 8 CASA NRO 7-87 LOCAL 3, 4 CUADRAS SUBIENDO DE LA PLAZUELA DE TARIBA. SECTOR TARIBA, TACHIRA",
+      "code": "2007000"
+    },
+    {
+      "company": "MRW",
+      "state": "Táchira",
+      "city": "Ureña",
+      "name": "Ureña",
+      "address": "CALLE 5 CON ESQUINA CARRERA 6, EDIF. SOFI, LOCAL 106, BARRIO LA GUAJIRA. UREÑA",
+      "code": "2009000"
+    },
+    {
+      "company": "MRW",
+      "state": "Yaracuy",
+      "city": "Nirgua",
+      "name": "Nirgua",
+      "address": "AV. 5 ENTRE CALLES 4 Y 5. EDIF. MURCIA, LOCAL 3. DIAGONAL AL BANCO PROVINCIAL, SECTOR PLAZA SUCRE. NIRGUA. GPS: 10.1498921,-68.5658553",
+      "code": "2301000"
+    },
+    {
+      "company": "MRW",
+      "state": "Yaracuy",
+      "city": "San Felipe",
+      "name": "San Felipe",
+      "address": "CALLE 9 ENTRE AVENIDAS 8 Y 9, BAJANDO POR EL CONSCRIPTO, DETRÁS DE LA CURIA. SAN FELIPE, ESTADO YARACUY",
+      "code": "2300000"
+    },
+    {
+      "company": "MRW",
+      "state": "Yaracuy",
+      "city": "Yaritagua",
+      "name": "Yaritagua",
+      "address": "CALLE 17 ENTRE CARRERAS 7 Y 8 LOCAL S/N, DIAGONAL AL REGISTRO CIVIL. SECTOR CENTRO YARITAGUA - YARACUY. GPS: 10.0783462,-69.1288746",
+      "code": "2303000"
+    },
+    {
+      "company": "MRW",
+      "state": "Zulia",
+      "city": "Cabimas",
+      "name": "Cabimas",
+      "address": "AV INTERCOMUNAL, ESQUINA CUMANA EDIF INTERCUMANA LOCAL N 02 PB CABIMAS EDO ZULIA.",
+      "code": "2412000"
+    },
+    {
+      "company": "MRW",
+      "state": "Zulia",
+      "city": "Caja Seca",
+      "name": "Caja Seca",
+      "address": "CTRA. PANAMERICANA, C.C. SAGRADO CORAZON DE JESUS, NIVEL PB, LOCAL 1, SECTOR EL LATINO. NUEVA BOLIVIA, EDO. MERIDA , ZONA POSTAL 5115.",
+      "code": "2424000"
+    },
+    {
+      "company": "MRW",
+      "state": "Zulia",
+      "city": "Ciudad Ojeda",
+      "name": "Ciudad Ojeda",
+      "address": "AV. INTERCOMUNAL. SECTOR LAS MOROCHAS. FRENTE A LA ESTACION DE SERVICIO CENTRAL SECTOR LAS MOROCHAS",
+      "code": "2404000"
+    },
+    {
+      "company": "MRW",
+      "state": "Zulia",
+      "city": "Ciudad Ojeda",
+      "name": "Ciudad Ojeda Centro",
+      "address": "C.C. BARI, CARRETERA “N”, ENTRE CALLES 34 Y SANTA MONICA, CIUDAD OJEDA, ESTADO ZULIA",
+      "code": "2417000"
+    },
+    {
+      "company": "MRW",
+      "state": "Zulia",
+      "city": "Machiques",
+      "name": "Machiques",
+      "address": "CALLE UNION, ENTRE AVENIDAS UDON PEREZ Y VALLE FRIO, CASA S/N, SECTOR VALLE FRIO. MACHIQUES",
+      "code": "2408000"
+    },
+    {
+      "company": "MRW",
+      "state": "Zulia",
+      "city": "Maracaibo",
+      "name": "Circunvalacion 2",
+      "address": "PARROQUIA CECILIO ACOSTA, MUNICIPIO MARACAIBO, AV. 58 CIRCUNVALACION N° 2 EDIF, CASA SAAS PISO: PB, LOCAL 98E-164 BARRIO ENTRE CALLES 98E Y 99, BARRIO ANDRES ELOY BLANCO",
+      "code": "2400100"
+    },
+    {
+      "company": "MRW",
+      "state": "Zulia",
+      "city": "Maracaibo",
+      "name": "Coromoto",
+      "address": "URBANIZACIÓN COROMOTO, AVENIDA 40, C.C. VILLA MALL, PB. 4.",
+      "code": "2406200"
+    },
+    {
+      "company": "MRW",
+      "state": "Zulia",
+      "city": "Maracaibo",
+      "name": "Curva de Molina",
+      "address": "CALLE 79 NRO 92-58 FRENTE AL MODULO LIBERTADOR, AL LADO DE LA FERRETERIA RAYEN.",
+      "code": "2425000"
+    },
+    {
+      "company": "MRW",
+      "state": "Zulia",
+      "city": "Maracaibo",
+      "name": "La Chinita",
+      "address": "AV.19 CON CALLE 93, EDIFICO PADILLA, PB, LOCAL 33, AL LADO DEL CENTRO DE LITERATURA CRISTIANA, CASCO CENTRAL, MARACAIBO",
+      "code": "2413000"
+    },
+    {
+      "company": "MRW",
+      "state": "Zulia",
+      "city": "Maracaibo",
+      "name": "Los Olivos",
+      "address": "AV 28 LA LIMPIA CON AVENIDA 69A LOCAL #69B-09 SECTOR LOS ACEITUNOS, AL LADO DE LA E/S LOS ACEITUNOS",
+      "code": "2400500"
+    },
+    {
+      "company": "MRW",
+      "state": "Zulia",
+      "city": "Maracaibo",
+      "name": "Manzanillo",
+      "address": "CALLE UNION (10A) CON AV. 24, SECTOR MANZANILLO, LOCAL Nº2.",
+      "code": "2406000"
+    },
+    {
+      "company": "MRW",
+      "state": "Zulia",
+      "city": "Maracaibo",
+      "name": "Maracaibo Juana de Avila",
+      "address": "AVENIDA 15 DELICIAS ENTRE CALLE 59 Y 60, EDIF RESIDENCIAS KARINA PB LOCAL 2 , MARACAIBO, ESTADO ZULIA",
+      "code": "2400700"
+    },
+    {
+      "company": "MRW",
+      "state": "Zulia",
+      "city": "Maracaibo",
+      "name": "Maracaibo Norte",
+      "address": "AV. PAUL MORENO, ANTIGUA FUERZAS ARMADAS CON CALLE 20, EDIF. MILENIUM FARMACIA YA!, MARCAIBO EDO-ZULIA",
+      "code": "2400600"
+    },
+    {
+      "company": "MRW",
+      "state": "Zulia",
+      "city": "Maracaibo",
+      "name": "Mbo Indio Mara",
+      "address": "CALLE 78 DR PORTILLO ENTRE AV. 17 Y 18 NO 17-35, C.C. DON JULIO, DIAGONAL AL BANCO PROVINCIAL, SECTOR EL PARAISO.",
+      "code": "2401000"
+    },
+    {
+      "company": "MRW",
+      "state": "Zulia",
+      "city": "Maracaibo",
+      "name": "Mbo Irama",
+      "address": "C.C. LA PARAGUA, PLANTA BAJA, LOCAL 5, AL LADO DE AMERICAN IMPORT, EDO. ZULIA.",
+      "code": "2414000"
+    },
+    {
+      "company": "MRW",
+      "state": "Zulia",
+      "city": "Maracaibo",
+      "name": "Mbo La Lago",
+      "address": "AV. 3E ENTRE CALLE 72 Y 73 EDIF. ASOCIACIÓN ZULIANA DE CIEGOS, LOCAL 3",
+      "code": "2423000"
+    },
+    {
+      "company": "MRW",
+      "state": "Zulia",
+      "city": "Maracaibo",
+      "name": "Mbo La Limpia",
+      "address": "AV. 28 (LA LIMPIA) Nº 14-54. EDIF. RODRÍGUEZ Y BARBOZA, DIAGONAL AL HOTEL MARACAIBO SUITE. PB",
+      "code": "2400000"
+    },
+    {
+      "company": "MRW",
+      "state": "Zulia",
+      "city": "Maracaibo",
+      "name": "Tierra Negra",
+      "address": "AV. SANTA RITA ENTRE CALLE 72Y73 DIAGONAL A PASTELITOS SUPER DRUPPER",
+      "code": "2428000"
+    },
+    {
+      "company": "MRW",
+      "state": "Zulia",
+      "city": "Mene Grande",
+      "name": "El Venado",
+      "address": "AV. INDEPENDENCIA, CENTRO COMERCIAL SAN ANTONIO (LOS DUARTES), LOCAL #01, MENE GRANDE; MUNICIPIO BARALT DEL ESTADO ZULIA, CODIGO POSTAL 4015",
+      "code": "2416000"
+    },
+    {
+      "company": "MRW",
+      "state": "Zulia",
+      "city": "Santa Bárbara del Zulia",
+      "name": "Santa Barbara del Zulia",
+      "address": "AV 8 CASA Nº 5-117 SECTOR BOLIVAR, SANTA BARBARA ZULIA.",
+      "code": "2415000"
+    },
+    {
+      "company": "MRW",
+      "state": "Zulia",
+      "city": "Tía Juana",
+      "name": "Tia Juana",
+      "address": "AVENIDA INTERCOMUNAL DE TIA JUANA, SECTOR EZEQUIEL ZAMORA, LOCAL # 1. FRENTE A PRODATA WIRE - LINE. TIA JUANA",
+      "code": "2420000"
+    },
+    {
+      "company": "MRW",
+      "state": "Zulia",
+      "city": "Villa del Rosario",
+      "name": "Villa del Rosario",
+      "address": "AV. 20 MUNICIPAL CON CALLE 15 PÁEZ, C.C. INNOVACIÓN, LOCAL NO. 8, FRENTE AL CLUB DE MARIACHIS, VILLA DEL ROSARIO, ZULIA.",
+      "code": "2429000"
+    },
+    {
+      "company": "Zoom",
+      "state": "Amazonas",
+      "city": "Puerto Ayacucho",
+      "name": "Av Orinoco",
+      "address": "AV. ORINOCO EDIF. EL REY P.B LOCAL 02, ZONA CENTRO",
+      "code": "4070"
+    },
+    {
+      "company": "Zoom",
+      "state": "Amazonas",
+      "city": "Puerto Ayacucho",
+      "name": "Puerto Ayacucho",
+      "address": "AV. RIO NEGRO, CENTRO COMERCIAL JUNCOSA, LOCAL 2-A.",
+      "code": "100"
+    },
+    {
+      "company": "Zoom",
+      "state": "Anzoátegui",
+      "city": "Anaco",
+      "name": "Anaco",
+      "address": "CALLE 5 DE JULIO, EDF. SAN ELIAS NRO 3-23B P.B.",
+      "code": "3"
+    },
+    {
+      "company": "Zoom",
+      "state": "Anzoátegui",
+      "city": "Anaco",
+      "name": "Anaco Center",
+      "address": "AV. JOSE ANTONIO ANZOATEGUI, C.C. ANACO CENTER PISO 1 LOCAL 75-S.A",
+      "code": "4135"
+    },
+    {
+      "company": "Zoom",
+      "state": "Anzoátegui",
+      "city": "Anaco",
+      "name": "Centro Anaco",
+      "address": "CALLE MONAGAS CASA NRO 1-16, SECTOR LAS PARCELAS.",
+      "code": "4179"
+    },
+    {
+      "company": "Zoom",
+      "state": "Anzoátegui",
+      "city": "Barcelona",
+      "name": "Barcelona",
+      "address": "AV. INTERCOMUNAL JORGE RODRIGUEZ, C.C. BRISAS DEL NEVERI, LOCAL 04. P.REF. FRENTE A LA ESCUELA DE INGENIERIA UGMA.",
+      "code": "106"
+    },
+    {
+      "company": "Zoom",
+      "state": "Anzoátegui",
+      "city": "Barcelona",
+      "name": "Barrio Sucre",
+      "address": "CALLE GUAYAQUIL, LOCAL NRO. 46, LOCAL 1 Y 2, SECTOR BARRIO SUCRE.",
+      "code": "4214"
+    },
+    {
+      "company": "Zoom",
+      "state": "Anzoátegui",
+      "city": "Barcelona",
+      "name": "Camino Real",
+      "address": "AV COSTANERA CON AV FUERZAS ARMADAS C.C CAMINO REAL NIVEL PLAZA PB LOCAL C11, SECTOR NUEVA BARCELONA",
+      "code": "4058"
+    },
+    {
+      "company": "Zoom",
+      "state": "Anzoátegui",
+      "city": "Barcelona",
+      "name": "Colina del Neveri",
+      "address": "CALLE RUIZ PINEDA EDIF. VELASQUEZ PISO PB-02, URB COLINAS DEL NEVERI.",
+      "code": "4184"
+    },
+    {
+      "company": "Zoom",
+      "state": "Anzoátegui",
+      "city": "Barcelona",
+      "name": "Cumanagoto",
+      "address": "AV.CUMANAGOTO CON CALLE ASILO LOCAL NRO S/N,SECTOR CUMANAGOTO",
+      "code": "4224"
+    },
+    {
+      "company": "Zoom",
+      "state": "Anzoátegui",
+      "city": "Barcelona",
+      "name": "Pedro Maria Freites",
+      "address": "AV. PEDRO MARIA FREITES LOCAL 1,URB CAMINO NUEVO II.",
+      "code": "4213"
+    },
+    {
+      "company": "Zoom",
+      "state": "Anzoátegui",
+      "city": "Barcelona",
+      "name": "Valle Alto",
+      "address": "AV. PRINCIPAL DEL SAMÁN, C.C. VALLE ALTO, NIVEL P.B, LOCAL NRO. 12, SECTOR EL SAMÁN",
+      "code": "4188"
+    },
+    {
+      "company": "Zoom",
+      "state": "Anzoátegui",
+      "city": "Barcelona",
+      "name": "Venecia",
+      "address": "AV. NUEVA ESPARTA C.C NASCAR NIVEL P.B LOCAL 06, SECTOR VENECIA",
+      "code": "4090"
+    },
+    {
+      "company": "Zoom",
+      "state": "Anzoátegui",
+      "city": "Cantaura",
+      "name": "Cantaura Centro",
+      "address": "CALLE ARISMENDI EDIF. ERYMAR PISO PB LOCAL S/N, SECTOR CENTRO CANTAURA",
+      "code": "2262"
+    },
+    {
+      "company": "Zoom",
+      "state": "Anzoátegui",
+      "city": "El Tigre",
+      "name": "C.C Alba",
+      "address": "AV. FRANCISCO DE MIRANDA C.C. ALBA NIVEL BAJO LOCAL 8.",
+      "code": "4094"
+    },
+    {
+      "company": "Zoom",
+      "state": "Anzoátegui",
+      "city": "El Tigre",
+      "name": "Calle 20 Sur",
+      "address": "CALLE 20 SUR, CRUCE CON 5TA CARRERA BIS.",
+      "code": "2345"
+    },
+    {
+      "company": "Zoom",
+      "state": "Anzoátegui",
+      "city": "El Tigre",
+      "name": "Centro El Tigre",
+      "address": "AV. FCO. DE MIRANDA, CENTRO COMERCIAL FLAMINGO, P.B. LOCALES A-07 Y A-08.",
+      "code": "4222"
+    },
+    {
+      "company": "Zoom",
+      "state": "Anzoátegui",
+      "city": "El Tigre",
+      "name": "El Tigre",
+      "address": "AV. FRANCISCO DE MIRANDA CRUCE CON 6TA CALLE SUR Y SEGUNDA CARRERA SUR LOCAL 96",
+      "code": "62"
+    },
+    {
+      "company": "Zoom",
+      "state": "Anzoátegui",
+      "city": "El Tigre",
+      "name": "Pueblo Nuevo Norte",
+      "address": "CALLE 18 NORTE, LOCAL 04, SECTOR PUEBLO NUEVO NORTE.",
+      "code": "2251"
+    },
+    {
+      "company": "Zoom",
+      "state": "Anzoátegui",
+      "city": "El Tigrito",
+      "name": "El Tigrito",
+      "address": "AV. FERNÁNDEZ PADILLA, C.C. DECA, LOCAL 3, SECTOR SAN JOSÉ DE GUANIPA.",
+      "code": "4146"
+    },
+    {
+      "company": "Zoom",
+      "state": "Anzoátegui",
+      "city": "Lechería",
+      "name": "Casco Central Lecheria",
+      "address": "CARRERA 5, CENTRO EMPRESARIAL 17-11, P.B.LOCAL 1, SECTOR CASCO CENTRAL.",
+      "code": "2051"
+    },
+    {
+      "company": "Zoom",
+      "state": "Anzoátegui",
+      "city": "Lechería",
+      "name": "La Concha Lecheria",
+      "address": "AV. PRINCIPAL C.C. LA CONCHA NIVEL S/N LOCAL 17, SECTOR CIUDAD DE LECHERIAS.",
+      "code": "4021"
+    },
+    {
+      "company": "Zoom",
+      "state": "Anzoátegui",
+      "city": "Puerto La Cruz",
+      "name": "Amana",
+      "address": "CALLE BOLIVAR CRUCE CON CALLE MANEIRO. CENTRO COMERCIAL AMANA LOCAL PB A-6",
+      "code": "919"
+    },
+    {
+      "company": "Zoom",
+      "state": "Anzoátegui",
+      "city": "Puerto La Cruz",
+      "name": "C.C Judibana",
+      "address": "AV. STADIUM C.C JUDIBANA, NIVEL P.B LOCAL,SECTOR CHUPARIN",
+      "code": "4161"
+    },
+    {
+      "company": "Zoom",
+      "state": "Anzoátegui",
+      "city": "Puerto La Cruz",
+      "name": "Calle Guaraguao",
+      "address": "CALLE LAS FLORES, C.C. CARABEL, P.B, LOCAL 2.",
+      "code": "694"
+    },
+    {
+      "company": "Zoom",
+      "state": "Anzoátegui",
+      "city": "Puerto La Cruz",
+      "name": "Central Madeirense",
+      "address": "AV MUNICIPAL CC CENTRAL MADEIRENSE NIVEL PB LOCAL 17,SECTOR PUEBLO NUEVO",
+      "code": "4023"
+    },
+    {
+      "company": "Zoom",
+      "state": "Anzoátegui",
+      "city": "Puerto La Cruz",
+      "name": "Hotel Rasil",
+      "address": "AV. PASEO COLON, EDIF. HOTEL RASIL, PISO 1, LOCAL NRO 02, SECTOR PUERTO LA CRUZ.",
+      "code": "3107"
+    },
+    {
+      "company": "Zoom",
+      "state": "Anzoátegui",
+      "city": "Puerto La Cruz",
+      "name": "Terminal Pasajeros",
+      "address": "CALLE DEMOCRACIA, CRUCE CON CALLE JUNCAL, TERMINAL DE PASAJEROS DE PUERTO LA CRUZ, PASILLO 6,LOCAL 71. PASILLO 6.",
+      "code": "4120"
+    },
+    {
+      "company": "Zoom",
+      "state": "Anzoátegui",
+      "city": "Puerto Píritu",
+      "name": "Puerto Piritu",
+      "address": "CALLE BOLIVAR, C.C. ZEGHEN INVERSIONES GEORGINA P.B. LOCAL 06, 08 Y 10,SECTOR CENTRO.",
+      "code": "4077"
+    },
+    {
+      "company": "Zoom",
+      "state": "Apure",
+      "city": "Achaguas",
+      "name": "Achaguas",
+      "address": "AV.BOLIVAR EDIF.SAAB P.B LOCAL S/N,SECTOR CENTRO.",
+      "code": "4219"
+    },
+    {
+      "company": "Zoom",
+      "state": "Apure",
+      "city": "Biruaca",
+      "name": "Biruaca",
+      "address": "AV. LAS ACACIAS, LOCAL NRO. 2, SECTOR ENCRUCIJADA DE BIRUACA.",
+      "code": "2714"
+    },
+    {
+      "company": "Zoom",
+      "state": "Apure",
+      "city": "San Fernando de Apure",
+      "name": "Avenida Paseo Libertador",
+      "address": "AV. PASEO LIBERTADOR, EDIF. DOÑA ISABEL, PISO S/N, LOCAL S/N.",
+      "code": "4148"
+    },
+    {
+      "company": "Zoom",
+      "state": "Apure",
+      "city": "San Fernando de Apure",
+      "name": "San Fernando de Apure",
+      "address": "CALLE BOLÍVAR, CRUCE CON CALLE 24 DE JULIO, EDIF.LARA P.B.",
+      "code": "871"
+    },
+    {
+      "company": "Zoom",
+      "state": "Aragua",
+      "city": "Cagua",
+      "name": "Amani Calle Comercio",
+      "address": "CALLE COMERCIO CRUCE CON CALLE SUCRE, EDIF AMANI P.B LOCAL 104-70-17,SECTOR CENTRO CAGUA",
+      "code": "3460"
+    },
+    {
+      "company": "Zoom",
+      "state": "Aragua",
+      "city": "Cagua",
+      "name": "Cagua",
+      "address": "SECTOR CENTRO, CALLE RONDON C/C CALLE BERMUDEZ NRO 104-03-07, LOCAL L-3.",
+      "code": "1266"
+    },
+    {
+      "company": "Zoom",
+      "state": "Aragua",
+      "city": "Colonia Tovar",
+      "name": "Colonia Tovar",
+      "address": "CARRETERA PRINCIPAL PLAN DE MORENO, C.C. PARQUE MORITZ, NIVEL 1, LOCAL N1-3,SECTOR PLAN DE MORENO.",
+      "code": "1843"
+    },
+    {
+      "company": "Zoom",
+      "state": "Aragua",
+      "city": "El Limón",
+      "name": "El Limon",
+      "address": "AV. UNIVERSIDAD,C.C. EL LIMON, NIVEL P.B, LOCAL NRO. 03,SECTOR EL LIMóN.",
+      "code": "1195"
+    },
+    {
+      "company": "Zoom",
+      "state": "Aragua",
+      "city": "La Victoria",
+      "name": "La Victoria",
+      "address": "CALLE RIVAS DAVILA, C.C. VICTORIA CENTER, PRIMERA ETAPA, NIVEL PLANTA BAJA, LOCAL A-6.",
+      "code": "1556"
+    },
+    {
+      "company": "Zoom",
+      "state": "Aragua",
+      "city": "Maracay",
+      "name": "Aragua",
+      "address": "EDIFICIO TORRE SINDONI, ENTRE LAS AV. MIRANDA Y BOLIVAR LOCALES NRO PB-19-A, PB-19-D, M1-18-D Y M1-18-B",
+      "code": "4132"
+    },
+    {
+      "company": "Zoom",
+      "state": "Aragua",
+      "city": "Maracay",
+      "name": "Av. Bermudez Tacita de Plata",
+      "address": "AV. BERMUDEZ CRUCE CON AV. 10 DE DICIEMBRE, EDIF DEL PINTO LOCAL B,BARRIO EL CARMEN.",
+      "code": "4140"
+    },
+    {
+      "company": "Zoom",
+      "state": "Aragua",
+      "city": "Maracay",
+      "name": "Avenida 19 de Abril",
+      "address": "AV. 19 DE ABRIL, C.C. MERCADO ATENEO, PASILLO F, LOCAL F-08, SECTOR CENTRO.",
+      "code": "2396"
+    },
+    {
+      "company": "Zoom",
+      "state": "Aragua",
+      "city": "Maracay",
+      "name": "Base Aragua",
+      "address": "AV. LAS DELICIAS, C.C. Y HOTEL PASEO LAS DELICIAS, NIVEL PB, LOCAL 2-PB-22, URB. BASE ARAGUA.",
+      "code": "702"
+    },
+    {
+      "company": "Zoom",
+      "state": "Aragua",
+      "city": "Maracay",
+      "name": "C.C IPSFA-Maracay",
+      "address": "AV.BOLIVAR ESTE C.C. LOS PROCERES, NIVEL P.B LOCAL PCB-15",
+      "code": "4111"
+    },
+    {
+      "company": "Zoom",
+      "state": "Aragua",
+      "city": "Maracay",
+      "name": "C.C Las Americas",
+      "address": "AV. LAS DELICIAS, C.C. LAS AMERICAS LOCALES NROS M1-428 Y M1-428A MEZZANINA UNO (M1)",
+      "code": "4126"
+    },
+    {
+      "company": "Zoom",
+      "state": "Aragua",
+      "city": "Maracay",
+      "name": "C.C Maracay Plaza",
+      "address": "AV. BERMUDEZ, CRUCE CON AV. ARAGUA, C.C. MARACAY PLAZA, NIVEL P.B, LOCAL 61-D.",
+      "code": "1703"
+    },
+    {
+      "company": "Zoom",
+      "state": "Aragua",
+      "city": "Maracay",
+      "name": "C.C Obelisco San Jacinto",
+      "address": "AV. PRINCIPAL, C.C. EL OBELISCO NIVEL 1 LOCAL 1-11,ZONA SAN JACINTO.",
+      "code": "4209"
+    },
+    {
+      "company": "Zoom",
+      "state": "Aragua",
+      "city": "Maracay",
+      "name": "CDO MYC",
+      "address": "AV.ANTHON PHILLIPS, ZONA INDUSTRIAL SAN VICENTE, GRUPO EMPRESARIAL SAN VICENTE, LOCAL 2, AL LADO DE EMPRESAS SAVIRAN.",
+      "code": "1252"
+    },
+    {
+      "company": "Zoom",
+      "state": "Aragua",
+      "city": "Maracay",
+      "name": "Centro Calle Paez",
+      "address": "CALLE PÁEZ OESTE, C.C RES. CENTRO COLONIAL LOCAL MINI NRO 1-B-PB,SECTOR CENTRO SUR OESTE III",
+      "code": "4193"
+    },
+    {
+      "company": "Zoom",
+      "state": "Aragua",
+      "city": "Maracay",
+      "name": "Fuerzas Aéreas-Las Acacias",
+      "address": "AV. FUERZAS AEREAS, URB MARIO BRICEÑO IRAGORRI, NRO 93",
+      "code": "881"
+    },
+    {
+      "company": "Zoom",
+      "state": "Aragua",
+      "city": "Maracay",
+      "name": "La Cooperativa",
+      "address": "AV. PPAL. LA COOPERATIVA, C/C CALLE URDANETA, CASA NRO. 7, LOCAL 4, ZONA LA COOPERATIVA.",
+      "code": "2588"
+    },
+    {
+      "company": "Zoom",
+      "state": "Aragua",
+      "city": "Maracay",
+      "name": "Los Aviadores",
+      "address": "CALLE OESTE DEL PARCELAMIENTO CIUDAD LIBERTADOR, FRENTE A LA AVENIDA LOS AVIADORES CENTRO COMERCIAL PARQUE LOS AVIADORES, PARCELA 2-A1 LOCAL COMERCIAL L-218, SECTOR NORTE",
+      "code": "4127"
+    },
+    {
+      "company": "Zoom",
+      "state": "Aragua",
+      "city": "Maracay",
+      "name": "Maracay Av. Miranda",
+      "address": "AV. MIRANDA OESTE, CRUCE CON CALLE CAMPO ELIAS NRO 165.",
+      "code": "805"
+    },
+    {
+      "company": "Zoom",
+      "state": "Aragua",
+      "city": "Maracay",
+      "name": "Santa Rosa Maracay",
+      "address": "CALLE SAN MIGUEL LOCAL NRO 59-A, BARRIO SANTA ROSA",
+      "code": "4228"
+    },
+    {
+      "company": "Zoom",
+      "state": "Aragua",
+      "city": "Maracay",
+      "name": "Sector San Miguel",
+      "address": "AV. MARINO SUR, CENTRO EMPRESARIAL UNIARAGUA, PLANTA BAJA, LOCAL 1.",
+      "code": "720"
+    },
+    {
+      "company": "Zoom",
+      "state": "Aragua",
+      "city": "Santa Cruz de Aragua",
+      "name": "Santa Cruz de Aragua",
+      "address": "AV. 02, PARCELAS B-17-A Y B-17-B, ZONA INDUSTRIAL SANTA CRUZ.",
+      "code": "3966"
+    },
+    {
+      "company": "Zoom",
+      "state": "Aragua",
+      "city": "Santa Rita",
+      "name": "La Morita",
+      "address": "CALLE LEONARDO RUIZ PINEDA, BARRIO MOREAN SOTO, LOCAL 11, SANTA RITA.",
+      "code": "4196"
+    },
+    {
+      "company": "Zoom",
+      "state": "Aragua",
+      "city": "Santa Rita",
+      "name": "Santa Rita Aragua",
+      "address": "AV. FRANCISCO DE MIRANDA, NRO. 75, C.C. ACCA, LOCAL 02, SECTOR GUARUTO 2, SANTA RITA DE ARAGUA.",
+      "code": "4199"
+    },
+    {
+      "company": "Zoom",
+      "state": "Aragua",
+      "city": "Turmero",
+      "name": "Turmero Centro",
+      "address": "CALLE URDANETA CASA NRO.16 Y NRO.1,SECTOR CENTRO TURMERO.",
+      "code": "2351"
+    },
+    {
+      "company": "Zoom",
+      "state": "Aragua",
+      "city": "Turmero",
+      "name": "Turmero Encrucijada",
+      "address": "CARRETERA NACIONAL TURMERO - CAGUA C.C. PASEO LOS LAURELES NIVEL P.B LOCAL 4, URB.LA ENCRUCIJADA.",
+      "code": "1221"
+    },
+    {
+      "company": "Zoom",
+      "state": "Aragua",
+      "city": "Turmero",
+      "name": "Turmero Intercomunal",
+      "address": "AV. INTERCOMUNAL MARACAY-TURMERO, C.C. INTERCOMUNAL CENTER NIVEL LOCAL 1-7,SECTOR LA MORITA",
+      "code": "2485"
+    },
+    {
+      "company": "Zoom",
+      "state": "Aragua",
+      "city": "Villa de Cura",
+      "name": "Villa de Cura",
+      "address": "CALLE SUCRE CON ADUANA, C.C. VILLA HERMOSA, LOCAL 39.",
+      "code": "1638"
+    },
+    {
+      "company": "Zoom",
+      "state": "Barinas",
+      "city": "Barinas",
+      "name": "Alto Barinas Norte",
+      "address": "AV. COLOMBIA, LOCAL 80-C, ALTO BARINAS NORTE",
+      "code": "1753"
+    },
+    {
+      "company": "Zoom",
+      "state": "Barinas",
+      "city": "Barinas",
+      "name": "Alto Barinas Sur",
+      "address": "AV. LOS LLANOS, C.C. SION, PLANTA BAJA, LOCAL 5, ALTO BARINAS SUR.",
+      "code": "3465"
+    },
+    {
+      "company": "Zoom",
+      "state": "Barinas",
+      "city": "Barinas",
+      "name": "Barinas",
+      "address": "AV. ELIAS CORDERO, N° 1- 120. P.REF. FRENTE A SUELAPIEL.",
+      "code": "6"
+    },
+    {
+      "company": "Zoom",
+      "state": "Barinas",
+      "city": "Barinas",
+      "name": "Barinas Centro",
+      "address": "SECTOR BARRIO OBRERO, CALLE CAMEJO ENTRE AVENIDAS MONTILLA Y OLMEDILLA, EDIFICIO LOS HERMANOS.",
+      "code": "1543"
+    },
+    {
+      "company": "Zoom",
+      "state": "Barinas",
+      "city": "Barinas",
+      "name": "La Carolina",
+      "address": "AV. ANDRÉS VARELA, ESTADIO AGUSTÍN TOVAR, LOCAL NRO. A1, SECTOR LA CAROLINA.",
+      "code": "4143"
+    },
+    {
+      "company": "Zoom",
+      "state": "Barinas",
+      "city": "Barinas",
+      "name": "Varyna Alto Barinas Sur",
+      "address": "AV. VENEZUELA CON CALLE JUSTICIA LOCAL, NRO. 127 B-3, URB. ALTO BARINAS SUR",
+      "code": "1904"
+    },
+    {
+      "company": "Zoom",
+      "state": "Barinas",
+      "city": "Barinitas",
+      "name": "Barinitas",
+      "address": "AV. INTERCOMUNAL,C.C LA GRAN PARADA LOCAL 01, SECTOR PARAPARO, BARINITAS",
+      "code": "4309"
+    },
+    {
+      "company": "Zoom",
+      "state": "Barinas",
+      "city": "Ciudad Bolivia",
+      "name": "Ciudad Bolivia-Pedraza",
+      "address": "CALLE 4 PROLONGACION 1 LOCAL DON PANCHO NRO S/N, SECTOR VISTA HERMOSA II PARTE ALTA, CARRETERA VIA MIJAGUAS.",
+      "code": "4156"
+    },
+    {
+      "company": "Zoom",
+      "state": "Barinas",
+      "city": "Santa Bárbara de Barinas",
+      "name": "Santa Barbara",
+      "address": "CARRERA 5, ENTRE CALLES 9 Y 10, SECTOR PUEBLO VIEJO.",
+      "code": "1169"
+    },
+    {
+      "company": "Zoom",
+      "state": "Barinas",
+      "city": "Socopó",
+      "name": "Socopo",
+      "address": "CR 9 ENTRE CALLES 3 Y 4, C.C. GALERIAS NIVEL P.B LOCAL NRO 2, SECTOR CENTRO SOCOPO",
+      "code": "3096"
+    },
+    {
+      "company": "Zoom",
+      "state": "Bolívar",
+      "city": "Ciudad Bolívar",
+      "name": "Av Germania",
+      "address": "AV. GERMANIA, C.C. LOS PROCERES NIVEL PB, LOCAL ANEXO ESTACIONAMIENTO,SECTOR GERMANIA.",
+      "code": "1810"
+    },
+    {
+      "company": "Zoom",
+      "state": "Bolívar",
+      "city": "Ciudad Bolívar",
+      "name": "Av Republica",
+      "address": "AV. SIEGART CON AV. REPÚBLICA, EDIF. IVANNA, PISO P.B, LOCAL 1, SECTOR AV. REPÚBLICA.",
+      "code": "4123"
+    },
+    {
+      "company": "Zoom",
+      "state": "Bolívar",
+      "city": "Ciudad Bolívar",
+      "name": "Av. Paseo Meneses",
+      "address": "PASEO MENESES, EDIF. H-BOCCARDO, LOCAL 3, SECTOR MERCADO PERIFÉRICO.",
+      "code": "4124"
+    },
+    {
+      "company": "Zoom",
+      "state": "Bolívar",
+      "city": "Ciudad Bolívar",
+      "name": "Ciudad Bolivar",
+      "address": "AV. JESUS SOTO CON CALLE CAURA, C.C. TEPUY, LOCAL 1 Y 2, PB.",
+      "code": "56"
+    },
+    {
+      "company": "Zoom",
+      "state": "Bolívar",
+      "city": "Ciudad Bolívar",
+      "name": "Hangar Distribuidora",
+      "address": "AV. JESUS SOTO, LOCAL HANGAR DISTRIBUIDORA TOMS, C.A, NRO S/N, SECTOR AEROPUERTO.",
+      "code": "4071"
+    },
+    {
+      "company": "Zoom",
+      "state": "Bolívar",
+      "city": "El Callao",
+      "name": "El Callao Charito",
+      "address": "VDA CALLEJON GAZZANEO ENTRE CALLE BOLIVAR Y CALLE RICAURTE, LOCAL NRO 1.",
+      "code": "4175"
+    },
+    {
+      "company": "Zoom",
+      "state": "Bolívar",
+      "city": "El Callao",
+      "name": "El Callao La Hormiga",
+      "address": "CALLE BOLÍVAR, DIAGONAL A LA POLICÍA, LOCAL S/N, EL CALLAO.",
+      "code": "2586"
+    },
+    {
+      "company": "Zoom",
+      "state": "Bolívar",
+      "city": "Guasipati",
+      "name": "Guasipati",
+      "address": "CALLE MERIDA, C.C. CLEMENT NIVEL 1 LOCAL NRO 5-6, SECTOR LAS GRACIAS.",
+      "code": "4068"
+    },
+    {
+      "company": "Zoom",
+      "state": "Bolívar",
+      "city": "Puerto Ordaz",
+      "name": "Av Venezuela Centro",
+      "address": "AV. VENEZUELA CON CIUDAD BOLÍVAR, EDIF CENTRO RESIDENCIAL Y EMPRESARIAL PARQUE DEL CENTRO PB LOCAL 5-L2, ZONA CENTRO.",
+      "code": "775"
+    },
+    {
+      "company": "Zoom",
+      "state": "Bolívar",
+      "city": "Puerto Ordaz",
+      "name": "C.C Gran Sabana",
+      "address": "AV. PASEO CARONÍ, C.C. GRAN SABANA, PLANTA BAJA, LOCAL 07, SECTOR UD-305.",
+      "code": "4194"
+    },
+    {
+      "company": "Zoom",
+      "state": "Bolívar",
+      "city": "Puerto Ordaz",
+      "name": "C.C Plaza Atlantico",
+      "address": "AV. ATLÁNTICO, C.C PLAZA ATLÁNTICO, NIVEL ATLÁNTICO, LOCAL PB-48-B, URB LOMAS DEL CARONÍ",
+      "code": "4170"
+    },
+    {
+      "company": "Zoom",
+      "state": "Bolívar",
+      "city": "Puerto Ordaz",
+      "name": "C.C. Zulia",
+      "address": "CALLE CUCHIVERO, C.C. ZULIA, NIVEL PB, LOCAL 53 URB. ALTA VISTA.",
+      "code": "1739"
+    },
+    {
+      "company": "Zoom",
+      "state": "Bolívar",
+      "city": "Puerto Ordaz",
+      "name": "Los Olivos",
+      "address": "CENTRO COMERCIAL SANTO TOME III, PLANTA BAJA, LOCAL PB-05, PUERTO ORDAZ",
+      "code": "4151"
+    },
+    {
+      "company": "Zoom",
+      "state": "Bolívar",
+      "city": "Puerto Ordaz",
+      "name": "Orinokia Mall",
+      "address": "AV. PROLONGACIÓN, CON AV. LAS AMÉRICAS, CENTRO COMERCIAL ORINOKIA MALL, NIVEL PLAZA, SANTO TOMÉ, LOCAL PB-04, URB. ALTA VISTA.",
+      "code": "1809"
+    },
+    {
+      "company": "Zoom",
+      "state": "Bolívar",
+      "city": "Puerto Ordaz",
+      "name": "Puerto Ordaz",
+      "address": "SECTOR UNARE, ZONA INDUSTRIAL I, CALLE TUNAPUY, P.REF. DIAGONAL AL TIGASCO.",
+      "code": "109"
+    },
+    {
+      "company": "Zoom",
+      "state": "Bolívar",
+      "city": "Puerto Ordaz",
+      "name": "Taquilla CC Artica",
+      "address": "CENTRO COMERCIAL ARTICA, CARRERA GUASIPATI, LOCALES 5 Y 6. CENTRO DE PUERTO ORDAZ.",
+      "code": "1206"
+    },
+    {
+      "company": "Zoom",
+      "state": "Bolívar",
+      "city": "Puerto Ordaz",
+      "name": "Torre Caura",
+      "address": "CTRA TOCOMA, CON CALLE CAURA CC C.C TORRE CAURA NIVEL SÓTANO LOCAL 4, SECTOR ALTA VISTA",
+      "code": "3171"
+    },
+    {
+      "company": "Zoom",
+      "state": "Bolívar",
+      "city": "Puerto Ordaz",
+      "name": "Unare Biblos Center",
+      "address": "CALLE UCHIRE, C.C BIBLOS CENTER NIVEL 54 B LOCAL 54,UNARE II.",
+      "code": "4155"
+    },
+    {
+      "company": "Zoom",
+      "state": "Bolívar",
+      "city": "Puerto Ordaz",
+      "name": "Villa Africana",
+      "address": "C.C GIGIA, LOCAL 1 URB.VILLA AFRICANA, ENTRE VIA ITALIA Y CALLE EGIPTO",
+      "code": "705"
+    },
+    {
+      "company": "Zoom",
+      "state": "Bolívar",
+      "city": "San Félix",
+      "name": "San Felix",
+      "address": "SECTOR EL ROBLE, AV. MORENA MENDOZA, CENTRO COMERCIAL LA CARIÑOSA, LOCAL C.",
+      "code": "1207"
+    },
+    {
+      "company": "Zoom",
+      "state": "Bolívar",
+      "city": "Tumeremo",
+      "name": "Tumeremo Calle Bolivar",
+      "address": "CALLE SUR ESTE, CON CALLE ZEA CRUCE CON CALLE MARTÍ, LOCAL NÚMERO 01, SECTOR LA ANDINITA",
+      "code": "4096"
+    },
+    {
+      "company": "Zoom",
+      "state": "Bolívar",
+      "city": "Upata",
+      "name": "C.C La Favorita",
+      "address": "AV. BICENTENARIO, CENTRO DE INVERSIONES LA FAVORITA, P.B, LOCAL 2.",
+      "code": "4165"
+    },
+    {
+      "company": "Zoom",
+      "state": "Bolívar",
+      "city": "Upata",
+      "name": "Upata C.C Datil",
+      "address": "AV. BICENTENARIO, DIAGONAL A CALLE 19 DE ABRIL, C.C. EL DATIL, NIVEL P.B, LOCAL S/N, SECTOR CENTRO.",
+      "code": "4015"
+    },
+    {
+      "company": "Zoom",
+      "state": "Carabobo",
+      "city": "Bejuma",
+      "name": "Bejuma",
+      "address": "AV. SUCRE C/C CALLE HERES LOCAL S/N, SECTOR PUEBLO NUEVO LA UNIÓN.",
+      "code": "4112"
+    },
+    {
+      "company": "Zoom",
+      "state": "Carabobo",
+      "city": "Guacara",
+      "name": "C.C Central Guacara",
+      "address": "CTRA. NACIONAL GUACARA-LOS GUAYOS, C.C. CENTRAL GUACARA, PB, LOCAL 18 Y 20.",
+      "code": "1624"
+    },
+    {
+      "company": "Zoom",
+      "state": "Carabobo",
+      "city": "Guacara",
+      "name": "C.C Guacara Plaza",
+      "address": "CALLE PIAR, C.C GUACARA PLAZA NIVEL P.B. LOCAL PB-09.",
+      "code": "1663"
+    },
+    {
+      "company": "Zoom",
+      "state": "Carabobo",
+      "city": "Los Guayos",
+      "name": "C.C Paraparal",
+      "address": "AV. PRINCIPAL DE PARAPARAL, C.C. GALERIAS, P.B NIVEL A LOCAL A-6, URB PARAPARAL",
+      "code": "4178"
+    },
+    {
+      "company": "Zoom",
+      "state": "Carabobo",
+      "city": "Los Guayos",
+      "name": "Los Guayos",
+      "address": "CALLE PAEZ ENTRE BRUZUAL Y NEGRO PRIMERO, LOCAL A-01.LOS GUAYOS VIEJOS.",
+      "code": "1250"
+    },
+    {
+      "company": "Zoom",
+      "state": "Carabobo",
+      "city": "Montalbán",
+      "name": "Montalban Carabobo",
+      "address": "AV. BOLIVAR LOCAL NRO. 2, SECTOR CENTRO MONTALBAN.",
+      "code": "1826"
+    },
+    {
+      "company": "Zoom",
+      "state": "Carabobo",
+      "city": "Puerto Cabello",
+      "name": "Puerto Cabello",
+      "address": "PRIMERA CALLE SEGRESTAA, EDIFICIO ENNA, PB., LOCAL 26 Y 27.P.REF. DIAGONAL A LA CRUZ ROJA.",
+      "code": "101"
+    },
+    {
+      "company": "Zoom",
+      "state": "Carabobo",
+      "city": "Valencia",
+      "name": "Av Lisandro Alvarado",
+      "address": "AV. LISANDRO ALVARADO CON CALLE PADRE BEGERETTI, C.C.TORINOCO 83-19 NIVEL PB LOCAL 12,SECTOR CANDELARIA",
+      "code": "4133"
+    },
+    {
+      "company": "Zoom",
+      "state": "Carabobo",
+      "city": "Valencia",
+      "name": "Av Michelena",
+      "address": "CALLE 91 CASA NRO 90-63, URB MICHELENA, SAN BLAS",
+      "code": "2176"
+    },
+    {
+      "company": "Zoom",
+      "state": "Carabobo",
+      "city": "Valencia",
+      "name": "Av Montes de Oca Centro",
+      "address": "AV. 102 MONTE DE OCA CALLE 24 DE JUNIO Y CALLE GIRARDOT, NRO CIVICO 96-24 CASA 5-A.",
+      "code": "4038"
+    },
+    {
+      "company": "Zoom",
+      "state": "Carabobo",
+      "city": "Valencia",
+      "name": "Av. Bolivar Norte",
+      "address": "AV. BOLIVAR NORTE, EDF. DON ENRIQUE PB. P.REF. FRENTE A LA FUNERARIA LA SUPERIOR A 100 MTS DEL ATENEO DE VALENCIA.",
+      "code": "137"
+    },
+    {
+      "company": "Zoom",
+      "state": "Carabobo",
+      "city": "Valencia",
+      "name": "Big Low San Diego",
+      "address": "AV. BOULEVARD NORTE 102, C.C. BOULEVARD NORTE, LOCAL 3, URB. SAN DIEGO.",
+      "code": "361"
+    },
+    {
+      "company": "Zoom",
+      "state": "Carabobo",
+      "city": "Valencia",
+      "name": "C.C Aerocentro",
+      "address": "AV. LUIS ERNESTO BRANGER, CONJUNTO EMPRESARIAL, ENTRADA F, P.B LOCAL 5, ZONA INDUSTRIAL MUNICIPAL SUR.",
+      "code": "699"
+    },
+    {
+      "company": "Zoom",
+      "state": "Carabobo",
+      "city": "Valencia",
+      "name": "C.C Caribean Plaza",
+      "address": "CALLE SAN JORGE, C.C. CARIBBEAN PLAZA, MODULO 8, LOCAL 171, P.B, SECTOR CAMORUCO.",
+      "code": "1106"
+    },
+    {
+      "company": "Zoom",
+      "state": "Carabobo",
+      "city": "Valencia",
+      "name": "C.C Fin de Siglo",
+      "address": "AV. DON JULIO CENTENO, C.C. SAN DIEGO (FIN DE SIGLO), NIVEL GALERÍA, LOCAL 1 Y 2, SECTOR SAN DIEGO.",
+      "code": "2342"
+    },
+    {
+      "company": "Zoom",
+      "state": "Carabobo",
+      "city": "Valencia",
+      "name": "C.C La Galeria",
+      "address": "CALLE 137, C.C. LA GALERIA, NAVE A, NIVEL P.B., LOCAL 1-A6, URB. CAMORUCO.",
+      "code": "4046"
+    },
+    {
+      "company": "Zoom",
+      "state": "Carabobo",
+      "city": "Valencia",
+      "name": "C.C Metropolis",
+      "address": "AUTOPISTA REGIONAL DEL CENTRO. ENTRADA DE VALENCIA, AL LADO DE MAKRO.CENTRO COMERCIAL METROPOLIS NIVEL CIELO, LOCAL A1-300B",
+      "code": "4061"
+    },
+    {
+      "company": "Zoom",
+      "state": "Carabobo",
+      "city": "Valencia",
+      "name": "C.C Naguanagua",
+      "address": "AV. UNIVERSIDAD, C.C. NAGUANAGUA NIVEL PB LOCAL 28, SECTOR LA CAMPIÑA",
+      "code": "4125"
+    },
+    {
+      "company": "Zoom",
+      "state": "Carabobo",
+      "city": "Valencia",
+      "name": "C.C Paseo Las Industrias",
+      "address": "AV. HENRY FORD, C.C. PASEO LAS INDUCTRIAS NIVEL PB LOCAL 7,ZONA INDUSTRIAL SUR",
+      "code": "2216"
+    },
+    {
+      "company": "Zoom",
+      "state": "Carabobo",
+      "city": "Valencia",
+      "name": "C.C Patio Trigal",
+      "address": "CALLE NEPTUNO CON AVENIDA 90, MAÑONGO,C.C PATIO TRIGAL LOCAL 411-A,URB PATIO TRIGAL.",
+      "code": "4204"
+    },
+    {
+      "company": "Zoom",
+      "state": "Carabobo",
+      "city": "Valencia",
+      "name": "C.C. Cristal Naguanagua",
+      "address": "AV. FEO LA CRUZ, C.C. CRISTAL, PB, LOCAL PBA08, URB. LAS QUINTAS.",
+      "code": "2723"
+    },
+    {
+      "company": "Zoom",
+      "state": "Carabobo",
+      "city": "Valencia",
+      "name": "El Remanso",
+      "address": "CONJUNTO RESIDENCIAL EL REMANSO, LOTE 23 C, CASA NRO 24.SAN DIEGO",
+      "code": "4203"
+    },
+    {
+      "company": "Zoom",
+      "state": "Carabobo",
+      "city": "Valencia",
+      "name": "Flor Amarillo",
+      "address": "AV. NRO. 107-C, LOCAL C.C. LA FUNDACION NRO. 1, SECTOR FLOR AMARILLO.",
+      "code": "1905"
+    },
+    {
+      "company": "Zoom",
+      "state": "Carabobo",
+      "city": "Valencia",
+      "name": "La Candelaria Valencia",
+      "address": "AV. ENTRE AVENIDAS 104 Y 105 Y LAS CALLES 93 Y 94 C.C. PROFESIONAL VALENCIA CENTER P.B LOCAL 38 B-S.",
+      "code": "1419"
+    },
+    {
+      "company": "Zoom",
+      "state": "Carabobo",
+      "city": "Valencia",
+      "name": "La Isabelica",
+      "address": "AV. 73 HUMBERTO CELLI, NRO. 84-50, C.C. METRO SUR, ZONA INDUSTRIAL MUNICIPAL NORTE, LOCAL 17.",
+      "code": "3462"
+    },
+    {
+      "company": "Zoom",
+      "state": "Carabobo",
+      "city": "Valencia",
+      "name": "Los Goajiros",
+      "address": "CALLE 62 (PRINCIPAL), BARRIO LA PLANTA ENTRE LAS AVENIDAS 92 Y 93 NRO CIVICO 92-40.",
+      "code": "4223"
+    },
+    {
+      "company": "Zoom",
+      "state": "Carabobo",
+      "city": "Valencia",
+      "name": "Sector Rojas Queipo",
+      "address": "CALLE ROJAS QUEIPO, C.C. PARQUE SAN JOSÉ, LOCAL NRO. 02.",
+      "code": "1050"
+    },
+    {
+      "company": "Zoom",
+      "state": "Carabobo",
+      "city": "Valencia",
+      "name": "Teatro Municipal de Valencia",
+      "address": "CALLE COLOMBIA CON SOUBLETTE, C.C. FIERA MOSCA, NIVEL PB, LOCAL 2.",
+      "code": "1319"
+    },
+    {
+      "company": "Zoom",
+      "state": "Carabobo",
+      "city": "Valencia",
+      "name": "Urb. La Alegria",
+      "address": "CALLE 153, NUMERO CÍVICO 100-85 LOCAL NRO A,URB. LA ALEGRÍA",
+      "code": "4245"
+    },
+    {
+      "company": "Zoom",
+      "state": "Carabobo",
+      "city": "Valencia",
+      "name": "Valencia",
+      "address": "AVENIDA ESTE OESTE CON CALLE 97, URB. SAN DIEGO, PARQUE COMERCIAL INDUSTRIAL CASTILLITO PARCELA L-70 Y L-78.",
+      "code": "136"
+    },
+    {
+      "company": "Zoom",
+      "state": "Cojedes",
+      "city": "San Carlos",
+      "name": "San Carlos",
+      "address": "AV. BOLIVAR CRUCE CON CALLE SILVA, CENTRO COMERCIAL COLAVITA, PLANTA BAJA, LOCALES L1 Y L2.",
+      "code": "939"
+    },
+    {
+      "company": "Zoom",
+      "state": "Delta Amacuro",
+      "city": "Tucupita",
+      "name": "Tucupita Centro",
+      "address": "CALLE DELTA LOCAL NRO 42, SECTOR CENTRO TUCUPITA",
+      "code": "1159"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Altamira",
+      "address": "AV. DEL AVILA, RES. BELMONT, PB, LOCAL 01, ALTAMIRA SUR.",
+      "code": "651"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Av Francisco Solano",
+      "address": "AV. FRANCISCO SOLANO LOPEZ, ENTRE CALLE EL CRISTO Y LOS MANGUITOS, EDIF. TORRE OASIS PB LOCAL 9, URB LAS DELICIAS.",
+      "code": "4075"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Av Fuerzas Armadas",
+      "address": "AV. FUERZAS ARMADAS NORTE, ESQ. SAN JOSE A SAN LUIS, EDF. RESIDENCIA SAN JOSE.",
+      "code": "1382"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Av Lecuna",
+      "address": "CALLE MIRACIELO, NRO 83-2, PARROQUIA SANTA TERESA",
+      "code": "1220"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Av Libertador",
+      "address": "AV. LIBERTADOR CON CALLE NEGRIN , C.C. LIBERTADOR, LOCAL NRO. 13, URB LA FLORIDA",
+      "code": "2768"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Av Victoria",
+      "address": "AV. VICTORIA, EDF. MERIDIONAL P.B, ENTRE CALLE CUBA Y AV. CENTRO AMÉRICA, LAS ACACIAS",
+      "code": "725"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Av. Ppal La Urbina",
+      "address": "AV. PRINCIPAL DE LA URBINA EDIF. EL SAMAN PISO P.B LOCAL 1 URB. LA URBINA",
+      "code": "4300"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Av. Urdaneta CCS",
+      "address": "AV. URDANETA, ESQUINA PLATANAL, EDIF. GRANOR, PISO P.B., LOCAL C, URB. LA CANDELARIA.",
+      "code": "4299"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Baruta",
+      "address": "CALLE PÁEZ, LOCAL 4, DIAGONAL A LA AV. RICAURTE, PUEBLO DE BARUTA.",
+      "code": "4035"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Bellas Artes",
+      "address": "AV. ESTE 2, ENTRE SUR 25 Y BLVD. AMADOR BENDAYÁN, EDIF. MAYA, P.B, URB. LA CANDELARIA.",
+      "code": "4078"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Bello Monte",
+      "address": "AV. BEETHOVEN, EDIF. IBAIZABAL, LOCAL F, URB. COLINAS DE BELLO MONTE.",
+      "code": "1192"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Boleita",
+      "address": "CALLE SEGUNDA DE BOLEÍTA SUR, LOCAL NRO. 6, ZONA INDUSTRIAL BOLEÍTA SUR.",
+      "code": "3045"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "C.C Galerias El Recreo",
+      "address": "AV. VENEZUELA, C.C. GALERÍAS EL RECREO, NIVEL AVENIDA, LOCAL AV-1C.",
+      "code": "249"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "C.C Los Samanes",
+      "address": "AV. 1, C.C. LOS SAMANES, NIVEL SUPERMERCADO, LOCAL 5, URB. LOS SAMANES.",
+      "code": "4174"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "C.C Merpoeste",
+      "address": "CALLE ALFONZO CHICO CARRASQUEL ENTRE CALLE PATIN Y LOS ANGELES C.C MERPOESTE NIVEL ORIENTE LOCAL 24 Y 25",
+      "code": "4241"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "C.C. Bello Campo",
+      "address": "CENTRO COMERCIAL BELLO CAMPO, ENTRE LA AV. COROMOTO, JOSÉ FELIX SOSA Y LA PRINCIPAL DE LA URB. BELLO CAMPO, LOCALES 27, 28 Y 29",
+      "code": "4067"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "C.C. El Recreo",
+      "address": "AV. CASANOVA, C.C. EL RECREO, NIVEL C1, LOCAL LC1-C29-30, URB. SABANA GRANDE.",
+      "code": "684"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "C.C. Millennium",
+      "address": "C.C.MILLENNIUM, NIVEL PLAZA (PL), LOCAL PL-19, LOS DOS CAMINOS",
+      "code": "4236"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "C.C. Palo Verde",
+      "address": "CALLE COMERCIO, C.C. PALO VERDE PLAZA NIVEL 3 LOCAL 3-03,URB. PALO VERDE.",
+      "code": "4218"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "C.C.C.T",
+      "address": "AV LA ESTANCIA ENTRE CALLE BLOHM Y DISTRIBUIDOR CIEMPIÉS C.C CIUDAD TAMANACO NIVEL 1ERA ETAPA LOCAL 43-R2 URB CHUAO",
+      "code": "4044"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "CDO Catia",
+      "address": "AV.PPAL DE ALTAVISTA, A 50 METROS DE LA TEXTILERIA OVEJITA, GALPON GRUPO ZOOM.",
+      "code": "48"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Calle Colombia",
+      "address": "CALLE COLOMBIA, EDIF. S/N, P.B, LOCAL ÚNICO, URB. NUEVA CARACAS, CATIA.",
+      "code": "1485"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Calle Garcilaso",
+      "address": "CALLE GARCILASO, EDIF. PERSEO, P.B, LOCAL A, URB. COLINAS DE BELLO MONTE.",
+      "code": "4043"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Caracas Campus",
+      "address": "CALLE ALTAGRACIA EDIF. CARACAS CAMPUS PISO NIVEL CALLE LOCAL NC-L-011,URB LA TRINIDAD",
+      "code": "4239"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Caricuao Plaza",
+      "address": "AV.PRINCIPAL DE RUIZ PINEDA C.C. CARICUAO PLAZA NIVEL 2 LOCAL 126 Y 127,URB UD-7.",
+      "code": "4158"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Centro",
+      "address": "CALLE NORTE 2, ENTRE ESQUINAS SANTA CAPILLA Y MIJARES, EDIF. SAN SEBASTIÁN, PISO P.B, LOCAL 5, ZONA CATEDRAL.",
+      "code": "2435"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Centro Comercial Bello Monte",
+      "address": "AV. PRINCIPAL DE BELLO MONTE, ENTRE AV. LEONARDO DA VINCI Y AV. LINCOLN. C.C. BELLO MONTE P.B LOCAL NRO. 10,BELLO MONTE.",
+      "code": "728"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Centro Plaza",
+      "address": "AV. FRANCISCO DE MIRANDA, C.C. CENTRO PLAZA NIVEL 4, LOCAL CC4-25.",
+      "code": "4202"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Chacaito I",
+      "address": "AV. TAMANACO, URBANIZACION EL ROSAL, CENTRO COMERCIAL ARTA, PISO 1, LOCAL 1-3.",
+      "code": "825"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Chacao, C.A",
+      "address": "CALLE 3, MONSEÑOR JUAN GRILC REZMAN, QTA. SILVIA, N. 309, LOCAL 5.CHACAO",
+      "code": "1623"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Circulo Militar La Rinconada",
+      "address": "AV. INTERCOMUNAL VALLE COCHE LOCAL NRO 01-B, SECTOR LAS MAYAS, CIRCULO MILITAR LA RINCONADA.",
+      "code": "4211"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Coche",
+      "address": "AV. INTERCOMUNAL VALLE COCHE C.C COCHE NIVEL P.B LOCAL 25, URB. DELGADO CHALBAUD.",
+      "code": "1194"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Don Bosco",
+      "address": "AV. SAN JUAN BOSCO, ENTRE 1.ª TRANSVERSAL Y AV. FRANCISCO DE MIRANDA EDIF. MAY FLOWER, PISO PB, LOCAL B, ALTAMIRA.",
+      "code": "4085"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "El Cementerio",
+      "address": "AV. PRINCIPAL DEL CEMENTERIO, CALLE EL DEGREDO, MERCAPOP, PASILLO 6, GRAN MAYOR, LOCAL 12, EL CEMENTERIO.",
+      "code": "4098"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "El Hatillo",
+      "address": "CALLE INSTRUCCIÓN CASA SAN JUDAS NRO P.B,URB EL HATILLO",
+      "code": "4301"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "El Marques",
+      "address": "AV. SANZ, ENTRE AV. RÓMULO GALLEGOS Y CALLE NAIGUATÁ,C.C. EL MARQUÉS, LOCALES 2 - 3 -9 10",
+      "code": "4103"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "El Valle",
+      "address": "CALLE CAJIGAL C.C. EL VALLE NIVEL 3 LOCAL M27, URB EL VALLE",
+      "code": "4177"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Forum IPSFA",
+      "address": "CENTRO COMERCIAL LOS PRóCERES (IPSFA), PASEO LOS ILUSTRES, CARACAS",
+      "code": "4150"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Jardines del Valle",
+      "address": "URB. EL VALLE, CALLE 14, LOCAL 14 TALLER RANI, JARDINES DEL VALLE.",
+      "code": "4145"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "La Boyera",
+      "address": "C.C LOS GERANIOS NIVEL TERCERO LOCAL C-11, URB. LA BOYERA.",
+      "code": "4237"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "La California",
+      "address": "AV FRANCISCO DE MIRANDA, RESIDENCIAS MÓNACO LOCAL B, URB LA CALIFORNIA NORTE",
+      "code": "1257"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "La Candelaria",
+      "address": "AV. ESTE 2. TRACABORDO A PUENTE YANEZ, EDIF. RES. YANORAL, P.B. LA CANDELARIA.",
+      "code": "510"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "La Florida",
+      "address": "AV. JUAN BAUTISTA ARISMENDI, C/C CALLE PEDROZA Y AV. DON BOSCO, URB LA FLORIDA",
+      "code": "2706"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "La Hoyada",
+      "address": "AV. FUERZAS ARMADAS ENTRE ESQUINAS DE SOCARRAS Y CORAZÓN DE JESUS EDIF. LA GALERIA P.B LOCAL 8, LA HOYADA.",
+      "code": "4040"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "La Urbina",
+      "address": "SECTOR SUR, CALLE 7, URB LA URBINA, EDIFICIO GRUPO ZOOM.",
+      "code": "46"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Las Mercedes",
+      "address": "CALLE VERACRUZ, EDIF. TORREON, P.B LOCAL 4, LAS MERCEDES",
+      "code": "685"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Las Palmas",
+      "address": "AV. LAS PALMAS, EDF. PALMA ALTA, TORRE A, LOCAL 4, P.B,URB LAS PALMAS.",
+      "code": "1625"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Los Chaguaramos",
+      "address": "CALLE RAZETTI QTA. CENTRO PROFESIONAL LOS CHAGUARAMOS P.B, URB.LOS CHAGUARAMOS.",
+      "code": "1127"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Los Cortijos",
+      "address": "AV. FRANCISCO DE MIRANDA EDIF. CENTRO EMPRESARIAL DON BOSCO P.B LOCAL 2, URB. LOS CORTIJOS DE LOURDES.",
+      "code": "1193"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Los Dos Caminos",
+      "address": "AV. SUCRE, ENTRE 4TA Y 5TA TRANSVERSAL, C.C. CENTRO PARQUE BOYACÁ, P.B., LOCAL 11, URB. LOS DOS CAMINOS.",
+      "code": "4122"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Los Naranjos",
+      "address": "AV. EL PAUJI, C.C. GALERIAS LOS NARANJOS, PISO 2, LOCAL C2-53.URB.LOS NARANJOS.",
+      "code": "779"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Los Ruices",
+      "address": "AV. FRANCISCO DE MIRANDA, ENTRE CALLE C Y CALLE GUANCHEZ. C.C LOS RUICES, NIVEL PB, LOCAL 11, URB. LOS RUICES.",
+      "code": "4134"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Makro La Yaguara",
+      "address": "AV. INTERCOMUNAL DE ANTIMANO CRUCE CON AV. PRINCIPAL DE LA YAGUARA.",
+      "code": "1372"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Manzanares",
+      "address": "AV. PRINCIPAL, C.C MANZANARES II NIVEL MIRADOR LOCAL M104,URB MANZANARES.",
+      "code": "1313"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Metrocenter Capitolio",
+      "address": "AVENIDA UNIVERSIDAD CON AVENIDA BARALT Y SUR 4, ENTRE LAS ESQUINA LA BOLSA Y PEDRERA.",
+      "code": "4172"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Montalban I",
+      "address": "AV. NRO. 2, AV. MONTALBAN I, C.C. USLAR NIVEL MIRADOR, LOCAL 03 NRO. 21, URB. MONTALBAN I.",
+      "code": "1885"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Montalban III",
+      "address": "AV. TRANSVERSAL 3-E, C. C GALERÍAS MAGIC CENTER (MINITIENDAS), NIVEL PISO 1, LOCAL 01-15, URB. MONTALBÁN III.",
+      "code": "4139"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Multicentro Empresarial del Este",
+      "address": "AV. FRANCISCO DE MIRANDA MULTICENTRO EMPRESARIAL DEL ESTE, P.B TORRE MIRANDA. LOCAL PB 04.",
+      "code": "730"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Multiplaza Paraiso",
+      "address": "AV. JOSÉ ANTONIO PÁEZ, C.C MULTIPLAZA EL PARAÍSO, NIVEL 4 O NIVEL GALERÍA, LOCAL G-04",
+      "code": "4314"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Parque Caracas-La Candelaria",
+      "address": "AV. ESTE NRO.2, CRUCE CON CALLE SUR NRO. 21,CENTRO COMERCIAL PARQUE CARACAS, PB, LOCAL 36.URB LA CANDELARIA.",
+      "code": "2402"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Parque Humboldt",
+      "address": "CENTRO COMERCIAL PARQUE HUMBOLDT, LOCAL 10, URB. PRADOS DEL ESTE",
+      "code": "1214"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Pasaje Zingg",
+      "address": "AV. UNIVERSIDAD, EDIF. PASAJE ZINGG P.B LOCAL 32, ZONA CENTRO.",
+      "code": "4181"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Plaza Las Americas",
+      "address": "AV. RAUL LEONI, C.C. PLAZA LAS AMERICAS NIVEL P.B LOCAL 2 URB EL CAFETAL.",
+      "code": "4152"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Plaza Madariaga",
+      "address": "AV. LOS SAMANES, C.C. EURO, NIVEL PB, LOCAL 12,URB. EL PARAISO.",
+      "code": "2704"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Prados del Este",
+      "address": "AV. PPAL. DE PRADOS DEL ESTE. C.C. GALERIAS PRADOS DEL ESTE, NIVEL P.A LOCAL 39.",
+      "code": "238"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Propatria",
+      "address": "AV. SIMÓN BOLIVAR, C.C. PROPATRIA NIVEL 1 LOCAL A9, URB PROPATRIA.",
+      "code": "3952"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Quinta Crespo",
+      "address": "AV. BARALT, ESQ EL CARMEN C.C. DORAL BARALT NIVEL 1 LOCAL 30. QUINTA CRESPO.",
+      "code": "1108"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Sambil La Candelaria",
+      "address": "44 AV. ESTE 0, C.C SAMBIL LA CANDELARIA, LOCAL NO. E-04, NIVEL SÓTANO 1",
+      "code": "4131"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Sambil Petare",
+      "address": "AV. PRINCIPAL PETARE, C.C SUPER PETARE, LOCAL A-18.",
+      "code": "4186"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "San Martin",
+      "address": "AV. SAN MARTIN, ENTRE LA 2DA Y 3ERA CALLE LOS MOLINOS, EDIF. KOMPLOT PB, URB. LOS MOLINOS.",
+      "code": "50"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Santa Fe",
+      "address": "AV. JOSE MARIA VARGAS. C.C. SANTA FE. NIVEL C-3. LOCAL 68, URB SANTA FE NORTE.",
+      "code": "142"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Santa Rosalia",
+      "address": "ESQUINA MUERTO A PELAEZ, CASA NRO. 116, ZONA PARROQUIA SANTA ROSALIA.",
+      "code": "2984"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Telares Los Andes",
+      "address": "AV. PRINCIPAL DEL CEMENTERIO, C.C TELARES LOS ANDES LOCAL NRO 38, SECTOR AZUL.",
+      "code": "4171"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Terrazas del Avila",
+      "address": "AV. PRINCIPAL TERRAZAS DEL AVILA C.C EL AVILA NIVEL C-3 LOCAL N C-3-06, URB TERRAZAS DEL AVILA.",
+      "code": "4173"
+    },
+    {
+      "company": "Zoom",
+      "state": "Distrito Capital",
+      "city": "Caracas",
+      "name": "Torre Exa",
+      "address": "AV.LIBERTADOR C.C. EXA NIVEL PB LOCAL 17,URB EL ROSAL",
+      "code": "4003"
+    },
+    {
+      "company": "Zoom",
+      "state": "Falcón",
+      "city": "Coro",
+      "name": "Av. Manaure",
+      "address": "AV. MANAURE CON CALLE EL SOL, C.C. SAN ANTONIO PLAZA P.B LOCAL 08.",
+      "code": "3953"
+    },
+    {
+      "company": "Zoom",
+      "state": "Falcón",
+      "city": "Coro",
+      "name": "Coro",
+      "address": "SECTOR LOS TRES PLATOS, AV. LOS MEDANOS CRUCE CON AV. INDEPENDENCIA, EDIFICIO AREF, PB., LOCAL 1.",
+      "code": "59"
+    },
+    {
+      "company": "Zoom",
+      "state": "Falcón",
+      "city": "Dabajuro",
+      "name": "Dabajuro",
+      "address": "AV. BOLIVAR LOCAL S/N, SECTOR EL CERRO DABAJURO.",
+      "code": "3540"
+    },
+    {
+      "company": "Zoom",
+      "state": "Falcón",
+      "city": "Mene de Mauroa",
+      "name": "Mene de Mauroa",
+      "address": "CALLE PRINCIPAL LA PLANTA LOCAL NRO S/N,SECTOR CENTRO MENE DE MAUROA.",
+      "code": "4217"
+    },
+    {
+      "company": "Zoom",
+      "state": "Falcón",
+      "city": "Puerto Cumarebo",
+      "name": "Puerto Cumarebo",
+      "address": "CALLE LA PAZ, LOCAL COMERCIAL CALLEJA, SIN NÚMERO, SECTOR CENTRO.",
+      "code": "4180"
+    },
+    {
+      "company": "Zoom",
+      "state": "Falcón",
+      "city": "Punto Fijo",
+      "name": "Calle Argentina",
+      "address": "CALLE FALCÓN ESQUINA CALLE ARGENTINA, C.C. EMPRESARIAL CADERCO P.B LOCAL A, SECTOR CENTRO.",
+      "code": "1799"
+    },
+    {
+      "company": "Zoom",
+      "state": "Falcón",
+      "city": "Punto Fijo",
+      "name": "La Pumarosa",
+      "address": "AV. RAFAEL GONZALEZ, CRUCE CON AV JOFFE PAUL JATEM, EDIF. BRISANCA.",
+      "code": "709"
+    },
+    {
+      "company": "Zoom",
+      "state": "Falcón",
+      "city": "Punto Fijo",
+      "name": "Las Margaritas",
+      "address": "AV. CORO, C/C AV. FRANCISCO DE MIRANDA Y MORUY, LOCAL CENTRAL, SECTOR LAS MARGARITAS.",
+      "code": "4117"
+    },
+    {
+      "company": "Zoom",
+      "state": "Falcón",
+      "city": "Punto Fijo",
+      "name": "Puerta Maraven",
+      "address": "AV. OLLARVIDES, LOCAL NRO. 264.URB. PUERTA MARAVEN.",
+      "code": "1688"
+    },
+    {
+      "company": "Zoom",
+      "state": "Falcón",
+      "city": "Punto Fijo",
+      "name": "Punto Fijo",
+      "address": "SECTOR CENTRO, CALLE ARISMENDI, ENTRE TALAVERA Y LAS PALMAS, LOCAL 203.",
+      "code": "110"
+    },
+    {
+      "company": "Zoom",
+      "state": "Guárico",
+      "city": "Calabozo",
+      "name": "Calabozo",
+      "address": "CALLE 5 ENTRE CARRERAS 9 Y 10, EDIFICIO VILLAVICENCIO, P.B LOCALES 5 Y 6. P.REF. A 50 MTS DEL MUSEO DE CALABOZO.",
+      "code": "872"
+    },
+    {
+      "company": "Zoom",
+      "state": "Guárico",
+      "city": "El Sombrero",
+      "name": "El Sombrero",
+      "address": "CALLE FRATERNIDAD CRUCE CON CALLE LOS ESTUDIANTES LOCAL NRO S/N.",
+      "code": "2982"
+    },
+    {
+      "company": "Zoom",
+      "state": "Guárico",
+      "city": "San Juan de los Morros",
+      "name": "Pueblo Nuevo",
+      "address": "AV. BOLIVAR CRUCE CON 1RO DE MAYO NRO. 41-D,SECTOR PUEBLO NUEVO.",
+      "code": "2590"
+    },
+    {
+      "company": "Zoom",
+      "state": "Guárico",
+      "city": "San Juan de los Morros",
+      "name": "San Juan de los Morros",
+      "address": "AVENIDA BOLÍVAR, TORRE TAURO, PLANTA BAJA",
+      "code": "945"
+    },
+    {
+      "company": "Zoom",
+      "state": "Guárico",
+      "city": "Valle de la Pascua",
+      "name": "Avenida Romulo Gallegos",
+      "address": "AV. RÓMULO GALLEGOS, EDIF. ADRIÁTICO, PISO P.B, LOCAL NRO. 03, SECTOR CENTRO.",
+      "code": "4153"
+    },
+    {
+      "company": "Zoom",
+      "state": "Guárico",
+      "city": "Valle de la Pascua",
+      "name": "Valle de la Pascua",
+      "address": "AVENIDA LAS INDUSTRIAS CRUCE CON CALLE LOS PARAMOS C.C. LA PASCUA CENTER LOCAL NRO 2.",
+      "code": "889"
+    },
+    {
+      "company": "Zoom",
+      "state": "La Guaira",
+      "city": "Caraballeda",
+      "name": "Caraballeda",
+      "address": "AV. LA COSTANERA CON COPACABANA, C.C. MARGARITA, NIVEL S/N, LOCAL S/N, URB. PALMAR ESTE.",
+      "code": "1451"
+    },
+    {
+      "company": "Zoom",
+      "state": "La Guaira",
+      "city": "Carayaca",
+      "name": "Carayaca",
+      "address": "CALLE REAL DE CARAYACA, LOCAL S/N, SECTOR PUEBLO ARRIBA, CARAYACA.",
+      "code": "4169"
+    },
+    {
+      "company": "Zoom",
+      "state": "La Guaira",
+      "city": "Maiquetía",
+      "name": "El Consul",
+      "address": "CALLE LOS PIPOTES, ENTRE ESQUINA EL BRILLANTE Y LOS PIPOTES, CASA N.º 129, NIVEL PB.",
+      "code": "3917"
+    },
+    {
+      "company": "Zoom",
+      "state": "La Guaira",
+      "city": "Maiquetía",
+      "name": "Maiquetia",
+      "address": "AV.SOUBLETTE, C.C LITORAL NIVEL COMERCIO 1, LOCAL 12.",
+      "code": "4137"
+    },
+    {
+      "company": "Zoom",
+      "state": "Lara",
+      "city": "Barquisimeto",
+      "name": "Aeropuerto Jacinto Lara",
+      "address": "AV. VICENTE LANDAETA GIL CON AV. LA SALLE, AEROPUERTO GENERAL JACINTO LARA P.B,LOCAL A-6",
+      "code": "612"
+    },
+    {
+      "company": "Zoom",
+      "state": "Lara",
+      "city": "Barquisimeto",
+      "name": "Av Libertador La Fundacion",
+      "address": "AV. LIBERTADOR EDIF. LA FUNDACIÓN PISO P.B LOCAL 03, URB. LA FUNDACIÓN",
+      "code": "4243"
+    },
+    {
+      "company": "Zoom",
+      "state": "Lara",
+      "city": "Barquisimeto",
+      "name": "Avenida Libertador Calle 29",
+      "address": "AV. LIBERTADOR, ENTRE CALLES 29 Y 30, LOCAL 29-71, EDIF. VERGARA, ZONA CENTRO.",
+      "code": "4157"
+    },
+    {
+      "company": "Zoom",
+      "state": "Lara",
+      "city": "Barquisimeto",
+      "name": "Barquisimeto",
+      "address": "CARRERA 24, ENTRE CALLES 23 Y 24, NRO. 23-69. P.REF. FRENTE A LA PLAZA MORA, DIAGONAL AL IUTIRLA.",
+      "code": "15"
+    },
+    {
+      "company": "Zoom",
+      "state": "Lara",
+      "city": "Barquisimeto",
+      "name": "Barrio San Francisco",
+      "address": "CR 6 ESQUINA CALLE 10 LOCAL NRO 2,BARRIO SAN FRANCISCO",
+      "code": "4244"
+    },
+    {
+      "company": "Zoom",
+      "state": "Lara",
+      "city": "Barquisimeto",
+      "name": "C.C Alfa Este",
+      "address": "AV. MADRID, URB. EL PARQUE, C.C. ALFA, NIVEL P.B. LOCAL 6.",
+      "code": "1520"
+    },
+    {
+      "company": "Zoom",
+      "state": "Lara",
+      "city": "Barquisimeto",
+      "name": "C.C Madetor Este",
+      "address": "AV. VENEZUELA, ENTRE AV. BRACAMONTE Y AV. LOS LEONES, CENTRO COMERCIAL IMECA, PISO 1, LOCAL 1-H Y 1-G",
+      "code": "703"
+    },
+    {
+      "company": "Zoom",
+      "state": "Lara",
+      "city": "Barquisimeto",
+      "name": "C.C Metropolis BRM",
+      "address": "AV. FLORENCIO JIMENEZ CON AV. LA SALLE C.C. METROPOLI NIVEL SOL LOCAL L-204-205-206.",
+      "code": "4095"
+    },
+    {
+      "company": "Zoom",
+      "state": "Lara",
+      "city": "Barquisimeto",
+      "name": "C.C Parque Real",
+      "address": "AV. LARA CON CRUCE AV. LOS LEONES, C.C. PARQUE REAL NIVEL P-AL LOCAL 10,ZONA ESTE",
+      "code": "4076"
+    },
+    {
+      "company": "Zoom",
+      "state": "Lara",
+      "city": "Barquisimeto",
+      "name": "Calle 14 Centro-Este",
+      "address": "CALLE 14, ENTRE CARRERAS 18 Y 19, QUINTA NELLY, LOCAL NRO. 3,SECTOR CENTRO.",
+      "code": "956"
+    },
+    {
+      "company": "Zoom",
+      "state": "Lara",
+      "city": "Barquisimeto",
+      "name": "Carrera 15 Calle 46 Oeste",
+      "address": "CARRERA 15 CON CALLE 46, LOCAL S/N, ZONA CENTRO.",
+      "code": "4192"
+    },
+    {
+      "company": "Zoom",
+      "state": "Lara",
+      "city": "Barquisimeto",
+      "name": "Carrera 19 con 34",
+      "address": "CARRERA 19 CON CALLES 33 Y 34, NRO 33-68, SECTOR CENTRO.",
+      "code": "1695"
+    },
+    {
+      "company": "Zoom",
+      "state": "Lara",
+      "city": "Barquisimeto",
+      "name": "Carrera 25 Calle 41",
+      "address": "CARRERA 25 CON CALLE 41, EDIF. COSTA ESMERALDA, LOCAL 2.",
+      "code": "1069"
+    },
+    {
+      "company": "Zoom",
+      "state": "Lara",
+      "city": "Barquisimeto",
+      "name": "El Cuji",
+      "address": "AV. INTERCOMUNAL VÍA DUACA, KM 7, CON AV. BOLÍVAR Y CALLE LA CRUZ, LOCAL 2, SECTOR EL CUJÍ.",
+      "code": "4190"
+    },
+    {
+      "company": "Zoom",
+      "state": "Lara",
+      "city": "Barquisimeto",
+      "name": "Fin de Siglo Barquisimeto",
+      "address": "CALLE 20, ENTRE CARRERAS 31 Y 32, EDF. FIN DE SIGLO PISO 2. P.REF. DETRAS DEL CENTRO COMERCIAL ARCA.",
+      "code": "149"
+    },
+    {
+      "company": "Zoom",
+      "state": "Lara",
+      "city": "Barquisimeto",
+      "name": "Lara Palace",
+      "address": "CARRERA 23, ENTRE CALLES 52 Y 54, URB. SANTA EDUVIGIS, CONJUNTO RESIDENCIAL LARA PALACE. 1-06.",
+      "code": "1669"
+    },
+    {
+      "company": "Zoom",
+      "state": "Lara",
+      "city": "Barquisimeto",
+      "name": "Las Industrias",
+      "address": "AV. LAS INDUSTRIAS, EDIF. SEDE DE INDUSTRIALES DEL ESTADO LARA, URB. RAFAEL CALDERA.",
+      "code": "964"
+    },
+    {
+      "company": "Zoom",
+      "state": "Lara",
+      "city": "Cabudare",
+      "name": "C.C Almarriera",
+      "address": "AV. LA MONTANITA C.C.ALMARRIERA PLANTA BAJA ALTA. LOCAL L-29. URB.ALMARRIERA. LOS RASTROJOS.CABUDARE.",
+      "code": "2489"
+    },
+    {
+      "company": "Zoom",
+      "state": "Lara",
+      "city": "Cabudare",
+      "name": "C.C La Estancia",
+      "address": "AV. INTERCOMUNAL BARQUISIMETO-CABUDARE, C.C. LA ESTANCIA, LOCAL 20.",
+      "code": "4147"
+    },
+    {
+      "company": "Zoom",
+      "state": "Lara",
+      "city": "Cabudare",
+      "name": "Cabudare",
+      "address": "AVENIDA LIBERTADOR ENTRE CALLES MIGUEL BERNAL Y JUAREZ, CENTRO COMERCIAL LIBERTADOR, LOCALES PB-02 Y PB-03.",
+      "code": "873"
+    },
+    {
+      "company": "Zoom",
+      "state": "Lara",
+      "city": "Carora",
+      "name": "Carora",
+      "address": "AV FCO DE MIRANDA E/CALLE LISBOS Y COROMOTO LOCAL TIENDAS MONTANA, SECTOR FCO DE MIRANDA",
+      "code": "4057"
+    },
+    {
+      "company": "Zoom",
+      "state": "Lara",
+      "city": "El Tocuyo",
+      "name": "El Tocuyo",
+      "address": "CALLE 20 ENTRE 7 Y 8 CRUCE FINAL AV. FRATERNIDAD URB. CORPAHUAICO.",
+      "code": "1668"
+    },
+    {
+      "company": "Zoom",
+      "state": "Lara",
+      "city": "La Pastora",
+      "name": "La Pastora",
+      "address": "CALLE PRINCIPAL LOCAL NRO 02 SECTOR EL CENTRO, LA PASTORA",
+      "code": "2274"
+    },
+    {
+      "company": "Zoom",
+      "state": "Lara",
+      "city": "Quíbor",
+      "name": "Quibor",
+      "address": "AV. 5 ENTRE CALLES 12 Y 13, LOCAL NRO S/N,SECTOR CENTRO",
+      "code": "4118"
+    },
+    {
+      "company": "Zoom",
+      "state": "Miranda",
+      "city": "Carrizal",
+      "name": "La Cascada",
+      "address": "CARRETERA PANAMERICANA KM 21, C.C. LA CASCADA NIVEL PLANTA BAJA LOCAL PB-43,SECTOR CORRALITO",
+      "code": "4106"
+    },
+    {
+      "company": "Zoom",
+      "state": "Miranda",
+      "city": "Carrizal",
+      "name": "Pueblo Carrizal",
+      "address": "CALLE EL PARQUE EDIF. CLEMENTINA UNO PISO P.B LOCAL 2,ZONA CASCO CENTRAL DE CARRIZAL",
+      "code": "4235"
+    },
+    {
+      "company": "Zoom",
+      "state": "Miranda",
+      "city": "Charallave",
+      "name": "Charallave Ciudad Concordia",
+      "address": "AV. TOSTA GARCIA, CENTRO COMERCIAL CIUDAD CONCORDIA, PISO NRO. 1, LOCALES 8, 9 Y 10.",
+      "code": "54"
+    },
+    {
+      "company": "Zoom",
+      "state": "Miranda",
+      "city": "Charallave",
+      "name": "Charallave II",
+      "address": "FINAL AV TOSTA EDIF BOAL, LOCAL B-1 PB",
+      "code": "2570"
+    },
+    {
+      "company": "Zoom",
+      "state": "Miranda",
+      "city": "Cúa",
+      "name": "C.C Betania",
+      "address": "CTRA. NACIONAL CÚA-CHARALLAVE, C.C. BETANIA, NIVEL P.A, LOCAL MINILOCAL 12, SECTOR CIUDAD ZAMORA.",
+      "code": "4187"
+    },
+    {
+      "company": "Zoom",
+      "state": "Miranda",
+      "city": "Cúa",
+      "name": "Cua",
+      "address": "CALLE JOSE MARIA CARREÑO, LOCAL MINICOZZI P.B, SECTOR CASCO CENTRAL CUA.",
+      "code": "3312"
+    },
+    {
+      "company": "Zoom",
+      "state": "Miranda",
+      "city": "Guarenas",
+      "name": "27 de Febrero",
+      "address": "URB. NRO 27 DE FEBRERO, CTRA NACIONAL, LOCAL ESTACIONAMIENTO Y MULTISERVICIOS SOUTO NRO. S/N.",
+      "code": "2945"
+    },
+    {
+      "company": "Zoom",
+      "state": "Miranda",
+      "city": "Guarenas",
+      "name": "C.C Miranda",
+      "address": "AV. INTERCOMUNAL MENCA DE LEONI, C.C. MIRANDA, LOCAL 30-22. P.REF. AREA DE MINITIENDAS, PARTE ALTA DE GUARENAS.",
+      "code": "163"
+    },
+    {
+      "company": "Zoom",
+      "state": "Miranda",
+      "city": "Guarenas",
+      "name": "Guarenas",
+      "address": "ZONA INDUSTRIAL SANTA CRUZ, URB. LOS NARANJOS, P.REF. PASANDO LOS BOMBEROS ENTRANDO POR LA LEVIS AL LADO DE PANDOK.",
+      "code": "67"
+    },
+    {
+      "company": "Zoom",
+      "state": "Miranda",
+      "city": "Guarenas",
+      "name": "Palma Real",
+      "address": "CALLE PRINCIPAL, C.C PALMA REAL NIVEL-LOCAL 25,URB. NUEVA CASARAPA",
+      "code": "4210"
+    },
+    {
+      "company": "Zoom",
+      "state": "Miranda",
+      "city": "Guatire",
+      "name": "C.C. Buenaventura Vista Place",
+      "address": "AV. INTERCOMUNAL GUARENAS-GUATIRE, C.C. BUENAVENTURA VISTA PLACE, NIVEL PLAZA LOCALES PL-94 Y PL-95.",
+      "code": "1452"
+    },
+    {
+      "company": "Zoom",
+      "state": "Miranda",
+      "city": "Guatire",
+      "name": "Calle Rivas",
+      "address": "CALLE RIVAS, LOCAL NRO 15,SECTOR CASCO CENTRAL",
+      "code": "4080"
+    },
+    {
+      "company": "Zoom",
+      "state": "Miranda",
+      "city": "Guatire",
+      "name": "Castillejo",
+      "address": "AV. PRINCIPAL, C.C. CASTILLEJO, NIVEL 1, LOCAL 02-14, URB. CASTILLEJO.",
+      "code": "4033"
+    },
+    {
+      "company": "Zoom",
+      "state": "Miranda",
+      "city": "Higuerote",
+      "name": "Higuerote",
+      "address": "AV. ANDRÉS BELLO, C.C. ANJULICAR, P.B LOCAL 3, SECTOR TOCORÓN.",
+      "code": "1886"
+    },
+    {
+      "company": "Zoom",
+      "state": "Miranda",
+      "city": "Los Teques",
+      "name": "Av. Bermudez Los Teques",
+      "address": "AV.BERMUDEZ EDIF. EL PARQUE PISO P.B LOCAL C,SECTOR EL LLANO",
+      "code": "4297"
+    },
+    {
+      "company": "Zoom",
+      "state": "Miranda",
+      "city": "Los Teques",
+      "name": "C.C La Hoyada",
+      "address": "CALLE PIAR, C.C. LA HOYADA, NIVEL SEGUNDA PLANTA, LOCAL 328, SECTOR LA HOYADA.",
+      "code": "4142"
+    },
+    {
+      "company": "Zoom",
+      "state": "Miranda",
+      "city": "Los Teques",
+      "name": "Calle Miranda",
+      "address": "CALLE MIRANDA CON GUAICAIPURO NORTE, C.C ORIENTE, SECTOR CUATRO ESQUINAS",
+      "code": "4053"
+    },
+    {
+      "company": "Zoom",
+      "state": "Miranda",
+      "city": "Los Teques",
+      "name": "Los Nuevos Teques",
+      "address": "AV.PPAL LOS NUEVOS TEQUES C.C.LOS NUEVOS TEQUES, NIVEL LOCAL 11.",
+      "code": "4221"
+    },
+    {
+      "company": "Zoom",
+      "state": "Miranda",
+      "city": "Los Teques",
+      "name": "Los Teques",
+      "address": "AV. PEDRO RUFFO FERRER, C.C. LOS TEQUES LOCAL A5.SECTOR EL TAMBOR.",
+      "code": "73"
+    },
+    {
+      "company": "Zoom",
+      "state": "Miranda",
+      "city": "Ocumare del Tuy",
+      "name": "Ocumare del Tuy",
+      "address": "CALLE PRINCIPAL LA ACEQUIA, C.C. RES LA ACEQUIA NIVEL P.B LOCAL NRO 7.",
+      "code": "4091"
+    },
+    {
+      "company": "Zoom",
+      "state": "Miranda",
+      "city": "Río Chico",
+      "name": "Rio Chico",
+      "address": "CALLE MIRANDA CON CALLE NUEVA, EDIF. FERRARA PISO P.B LOCAL 2,URB RIO CHICO",
+      "code": "4298"
+    },
+    {
+      "company": "Zoom",
+      "state": "Miranda",
+      "city": "San Antonio de los Altos",
+      "name": "Galerias Las Americas",
+      "address": "CARRETERA PANAMERICANA, KM 15, SECTOR LAS MINAS, C.C. GALERÍA LAS AMÉRICAS, NIVEL 1, LOCAL N1-40",
+      "code": "1197"
+    },
+    {
+      "company": "Zoom",
+      "state": "Miranda",
+      "city": "San Antonio de los Altos",
+      "name": "Pueblo San Antonio",
+      "address": "CALLE BOLÍVAR CON CRUCE CALLE LAS FLORES, EDIF. BELLO, PISO 1, APTO. 16,SECTOR CASCO CENTRAL.",
+      "code": "4207"
+    },
+    {
+      "company": "Zoom",
+      "state": "Miranda",
+      "city": "San Antonio de los Altos",
+      "name": "San Antonio",
+      "address": "CARRETERA PANAMERICANA, KM 16, SECTOR LA ROSALEDA.",
+      "code": "1020"
+    },
+    {
+      "company": "Zoom",
+      "state": "Miranda",
+      "city": "Santa Teresa del Tuy",
+      "name": "Calle Sucre",
+      "address": "CALLE SUCRE, AV. AYACUCHO, LOCAL C, NRO 3.",
+      "code": "1247"
+    },
+    {
+      "company": "Zoom",
+      "state": "Miranda",
+      "city": "Santa Teresa del Tuy",
+      "name": "Farmacia Xana Santa Teresa del Tuy",
+      "address": "CARRETERA NACIONAL LA RAISA, FRENTE A DISTRIBUIDOR LA GUIALIANA.",
+      "code": "4303"
+    },
+    {
+      "company": "Zoom",
+      "state": "Miranda",
+      "city": "Santa Teresa del Tuy",
+      "name": "Santa Teresa del Tuy",
+      "address": "AVENIDA ALI PRIMERA, CENTRO COMERCIAL PASEO TUY, LOCALES 135-135-136, PISO 1",
+      "code": "4198"
+    },
+    {
+      "company": "Zoom",
+      "state": "Monagas",
+      "city": "Maturín",
+      "name": "Av Raul Leoni",
+      "address": "AV. RAÚL LEONI, CRUCE CON PROLONGACIÓN BOYACÁ, EDIF. NAR-OLY, TORRE A, P. PB, LOCAL A SUR, SECTOR CENTRO.",
+      "code": "1830"
+    },
+    {
+      "company": "Zoom",
+      "state": "Monagas",
+      "city": "Maturín",
+      "name": "C.C Multicentro Las Avenidas",
+      "address": "AV. LUIS DEL VALLE GARCÍA, C.C. MULTICENTRO LAS AVENIDAS, SECTOR CENTRO.",
+      "code": "4232"
+    },
+    {
+      "company": "Zoom",
+      "state": "Monagas",
+      "city": "Maturín",
+      "name": "C.C Petro Oriente",
+      "address": "AV. ALIRIO UGARTE PELAYO C.C PETRORIENTE, NIVEL P.B LOCAL PB-S05, ZONA TIPURO",
+      "code": "4227"
+    },
+    {
+      "company": "Zoom",
+      "state": "Monagas",
+      "city": "Maturín",
+      "name": "Casco Central I",
+      "address": "AV. AZCUE CON AVENIDA ROJAS, SECTOR CENTRO, LOCAL 1, SECTOR CENTRO.",
+      "code": "4167"
+    },
+    {
+      "company": "Zoom",
+      "state": "Monagas",
+      "city": "Maturín",
+      "name": "Elarba I",
+      "address": "AV. BOLIVAR, EDIF. ELARBA, PISO P.B, LOCAL 133, SECTOR CENTRO.",
+      "code": "3417"
+    },
+    {
+      "company": "Zoom",
+      "state": "Monagas",
+      "city": "Maturín",
+      "name": "Los Guaritos",
+      "address": "AV. 1 CON CALLE 3, C.C LOS GUARITOS NIVEL P.B LOCAL 01 Y 02,SECTOR LOS GUARITOS IV",
+      "code": "4225"
+    },
+    {
+      "company": "Zoom",
+      "state": "Monagas",
+      "city": "Maturín",
+      "name": "Los Samanes Maturin",
+      "address": "CALLE PRINCIPAL LAS CAROLINAS, C.C. LOS SAMANES, LOCAL 1 P.B, SECTOR LOS SAMANES.",
+      "code": "1580"
+    },
+    {
+      "company": "Zoom",
+      "state": "Monagas",
+      "city": "Maturín",
+      "name": "Maturin",
+      "address": "AV. BICENTENARIO EDIFICIO CONGESA, LOCAL I Y II PUNTO DE REFERENCIA: FRENTE PLAZA EL INDIO",
+      "code": "89"
+    },
+    {
+      "company": "Zoom",
+      "state": "Monagas",
+      "city": "Maturín",
+      "name": "Tipuro",
+      "address": "CTRA. VÍA VIBORAL, C.C. VIRGEN DEL VALLE, NIVEL PLANTA ALTA, LOCAL 58-A, SECTOR TIPURO",
+      "code": "2944"
+    },
+    {
+      "company": "Zoom",
+      "state": "Monagas",
+      "city": "Maturín",
+      "name": "Ugarte Pelayo",
+      "address": "AV. ALIRIO UGARTE PELAYO, EDIF. VESPA, LOCAL 6, SECTOR BAJO GUARAPICHE.",
+      "code": "696"
+    },
+    {
+      "company": "Zoom",
+      "state": "Monagas",
+      "city": "Punta de Mata",
+      "name": "Punta de Mata",
+      "address": "AV. BOLIVAR C.C. JUPITER CENTER P.B LOCAL 10,SECTOR CENTRO PUNTA DE MATA.",
+      "code": "1581"
+    },
+    {
+      "company": "Zoom",
+      "state": "Monagas",
+      "city": "Temblador",
+      "name": "Temblador",
+      "address": "CALLE SUCRE CASA NRO S/N, SECTOR LA PLAZA TEMBLADOR",
+      "code": "4119"
+    },
+    {
+      "company": "Zoom",
+      "state": "Mérida",
+      "city": "Ejido",
+      "name": "Centro Ejido",
+      "address": "CALLE SUCRE, FRENTE A LA PLAZA BOLIVAR DE EJIDO, CON AV.BOLIVAR C.C. EJIDO PB, LOCAL 1-C",
+      "code": "3749"
+    },
+    {
+      "company": "Zoom",
+      "state": "Mérida",
+      "city": "Ejido",
+      "name": "Ejido Mall",
+      "address": "CALLE EL COBRE MUNICIPIO CAMPO ELÍAS, PARROQUIA MATRIZ, LOCAL PB-B-17/PB-B-18,C.C. EJIDO MALL, SECTOR POZO HONDO.",
+      "code": "4105"
+    },
+    {
+      "company": "Zoom",
+      "state": "Mérida",
+      "city": "El Vigía",
+      "name": "Centro Vigia",
+      "address": "CALLE 3 LOCAL S/N, PARROQUIA PRESIDENTE BETANCOURT,SECTOR CENTRO.",
+      "code": "4083"
+    },
+    {
+      "company": "Zoom",
+      "state": "Mérida",
+      "city": "El Vigía",
+      "name": "El Vigia",
+      "address": "AV. 3 NRO 3-88, BARRIO PANAMERICANO, ENTRE AV. BOLIVAR Y DON PEPE ROJAS, P.REF. DIAGONAL AL DISTRIBUIDOR CARRERO MENDEZ.",
+      "code": "745"
+    },
+    {
+      "company": "Zoom",
+      "state": "Mérida",
+      "city": "Lagunillas",
+      "name": "Lagunillas",
+      "address": "AV. 6, AGUA DE URAO LOCAL S/N, SECTOR PUEBLO VIEJO.",
+      "code": "4034"
+    },
+    {
+      "company": "Zoom",
+      "state": "Mérida",
+      "city": "Mucuchíes",
+      "name": "Mucuchies",
+      "address": "AV. INDEPENDENCIA ESQUINA CALLE SUCRE NRO 69, CENTRO MUCUCHIES.",
+      "code": "4104"
+    },
+    {
+      "company": "Zoom",
+      "state": "Mérida",
+      "city": "Mérida",
+      "name": "Av Miranda",
+      "address": "AV. MIRANDA, C.C. DOÑA HERACLITA LOCAL 2.",
+      "code": "382"
+    },
+    {
+      "company": "Zoom",
+      "state": "Mérida",
+      "city": "Mérida",
+      "name": "Av Urdaneta",
+      "address": "AV. URDANETA, C.C. LAS MARGARITAS, NIVEL PB, LOCAL PB-9, SECTOR URDANETA.",
+      "code": "3148"
+    },
+    {
+      "company": "Zoom",
+      "state": "Mérida",
+      "city": "Mérida",
+      "name": "Centro Merida",
+      "address": "AV. 3 INDEPENDENCIA ESQUINA CALLE 21 LASO C.C. LA ROSALERA NIVEL 03 OF 01, SECTOR CENTRO.",
+      "code": "3151"
+    },
+    {
+      "company": "Zoom",
+      "state": "Mérida",
+      "city": "Mérida",
+      "name": "La Parroquia",
+      "address": "CALLE PÁEZ CASA NRO 2-35 LOCAL A, SECTOR LA PARROQUIA.",
+      "code": "4100"
+    },
+    {
+      "company": "Zoom",
+      "state": "Mérida",
+      "city": "Mérida",
+      "name": "Las Tapias",
+      "address": "AV. ANDRÉS BELLO C.C LAS TAPIAS NIVEL PISO 1 LOCAL 65,URB LAS TAPIAS",
+      "code": "4240"
+    },
+    {
+      "company": "Zoom",
+      "state": "Mérida",
+      "city": "Mérida",
+      "name": "Los Proceres",
+      "address": "AV. LOS PRÓCERES EDIF. LONGIMAR P.B LOCAL 2 Y 3, SECTOR ALDEA SANTA BARBARA.",
+      "code": "4059"
+    },
+    {
+      "company": "Zoom",
+      "state": "Mérida",
+      "city": "Mérida",
+      "name": "Mercado Murachi",
+      "address": "AV.LAS AMERICAS, C.C MERCADO MURACHI, NIVEL UNICO LOCAL 44, SECTOR LOS SAUZALES.",
+      "code": "1475"
+    },
+    {
+      "company": "Zoom",
+      "state": "Mérida",
+      "city": "Mérida",
+      "name": "Merida",
+      "address": "CALLE 36 ENTRE AVENIDAS 2 Y 3, EDIFICIO EL PARQUE PISO PB LOCAL 35-65, SECTOR CENTRO EL LLANO",
+      "code": "95"
+    },
+    {
+      "company": "Zoom",
+      "state": "Mérida",
+      "city": "Santa Elena de Arenales",
+      "name": "Santa Elena de Arenales",
+      "address": "CARRETERA PANAMERICANA, CASA SN7, PISO 2, LOCAL 2.",
+      "code": "4166"
+    },
+    {
+      "company": "Zoom",
+      "state": "Mérida",
+      "city": "Santo Domingo",
+      "name": "Santo Domingo",
+      "address": "CARRETERA NACIONAL BARINAS-MÉRIDA, C,C IBIZA P.B LOCAL NRO 5, PARROQUIA SANTO DOMINGO MUN. CARDENAL QUINTERO",
+      "code": "4310"
+    },
+    {
+      "company": "Zoom",
+      "state": "Mérida",
+      "city": "Tovar",
+      "name": "Tovar",
+      "address": "AV. CRISTOBAL MENDOZA EDIF. ECHEVERRIA PISO 1 LOCAL 3 Y 4,SECTOR AL AÑIL.",
+      "code": "4017"
+    },
+    {
+      "company": "Zoom",
+      "state": "Nueva Esparta",
+      "city": "Juan Griego",
+      "name": "Juan Griego",
+      "address": "AV. 3 DE MAYO, C.C. LA ESTANCIA, LOCAL L23.",
+      "code": "1702"
+    },
+    {
+      "company": "Zoom",
+      "state": "Nueva Esparta",
+      "city": "La Asunción",
+      "name": "La Asuncion",
+      "address": "AV. INTERSECCIÓN DE LAS CALLES GIRARDOT Y SANTA ISABEL, EDIF. CENTRO EMPRESARIAL LA ASUNCIÓN, P.B, URB. LA ASUNCIÓN.",
+      "code": "4197"
+    },
+    {
+      "company": "Zoom",
+      "state": "Nueva Esparta",
+      "city": "Pampatar",
+      "name": "C.C La Redoma",
+      "address": "CALLE LIBERTAD, C.C. LA REDOMA, NIVEL 1, LOCAL 42, SECTOR LOS ROBLES, EL PILAR.",
+      "code": "4136"
+    },
+    {
+      "company": "Zoom",
+      "state": "Nueva Esparta",
+      "city": "Pampatar",
+      "name": "Los Robles",
+      "address": "AV. JOVITO VILLALBA, C.C. CENTRO ARTESANAL LOS ROBLES NIVEL P.B.",
+      "code": "1555"
+    },
+    {
+      "company": "Zoom",
+      "state": "Nueva Esparta",
+      "city": "Pampatar",
+      "name": "Rattan Plaza",
+      "address": "AV. JOVITO VILLALBA, C.C. RATTAN HYPERPLAZA, NIVEL MEZZANINA LOCAL E-43,SECTOR PLAYA EL ANGEL.",
+      "code": "1527"
+    },
+    {
+      "company": "Zoom",
+      "state": "Nueva Esparta",
+      "city": "Pampatar",
+      "name": "Sambil Margarita",
+      "address": "AVENIDA JÓVITO VILLALBA, SECTOR SAN LORENZO, SAMBIL MARGARITA, LOCALES T01A Y T01B, AL LADO DE LA SALIDA PLAYA GUACUCO",
+      "code": "4128"
+    },
+    {
+      "company": "Zoom",
+      "state": "Nueva Esparta",
+      "city": "Porlamar",
+      "name": "C.C Mercado La Isla",
+      "address": "AV. LLANO ADENTRO C.C. MERCADO LA ISLA NIVEL 01 LOCAL L-336,SECTOR LLANO ADENTRO",
+      "code": "4191"
+    },
+    {
+      "company": "Zoom",
+      "state": "Nueva Esparta",
+      "city": "Porlamar",
+      "name": "Calle Campos",
+      "address": "CALLE CAMPOS EDIFICIO JUAMO PB.",
+      "code": "1554"
+    },
+    {
+      "company": "Zoom",
+      "state": "Nueva Esparta",
+      "city": "Porlamar",
+      "name": "Porlamar",
+      "address": "AV. 4 DE MAYO, RESIDENCIAS PANERCO, PLANTA BAJA, LOCAL 1.",
+      "code": "99"
+    },
+    {
+      "company": "Zoom",
+      "state": "Nueva Esparta",
+      "city": "Porlamar",
+      "name": "Porlamar Centro",
+      "address": "CALLE VELÁSQUEZ CON CALLE DÍAZ, CENTRO COMERCIAL CONCORD, LOCAL #100. PASILLO CENTRAL",
+      "code": "235"
+    },
+    {
+      "company": "Zoom",
+      "state": "Nueva Esparta",
+      "city": "Porlamar",
+      "name": "Villa Rosa",
+      "address": "AV. JUAN BAUTISTA ARISMENDI, LOCAL 01,SECTOR SANTA ROSA",
+      "code": "4238"
+    },
+    {
+      "company": "Zoom",
+      "state": "Portuguesa",
+      "city": "Acarigua",
+      "name": "Acarigua",
+      "address": "CALLE 30 CON AV. 35, CENTRO COMERCIAL PÁEZ, PLANTA BAJA, LOCAL 02.",
+      "code": "2"
+    },
+    {
+      "company": "Zoom",
+      "state": "Portuguesa",
+      "city": "Acarigua",
+      "name": "C.C. Sol de Curpa",
+      "address": "AV. LIBERTADOR, E/ CALLES 32 Y 33 C.C. SOL DE CURPA NIVEL P.B LOCAL 7, SECTOR CENTRO.",
+      "code": "2252"
+    },
+    {
+      "company": "Zoom",
+      "state": "Portuguesa",
+      "city": "Guanare",
+      "name": "Corredor Vial Tomas Montilla",
+      "address": "CR 7 ENTRE AV. UNDA Y CORREDOR VIAL TOMAS MONTILLA EDIF. FORUM PISO 1 LOCAL 2, BARRIO MATURIN.",
+      "code": "4144"
+    },
+    {
+      "company": "Zoom",
+      "state": "Portuguesa",
+      "city": "Guanare",
+      "name": "Guanare",
+      "address": "AV. SIMON BOLIVAR ENTRE AV. UNDA Y CALLE 9, CENTRO COMERCIAL AUTOCENTRO, PB. LOCAL ZOOM.",
+      "code": "875"
+    },
+    {
+      "company": "Zoom",
+      "state": "Portuguesa",
+      "city": "Turén",
+      "name": "Turen",
+      "address": "AV. RICARDO PEREZ ZAMBRANO, EDIF. AGOSI. LOCAL NRO. 1,VILLA BRUZUAL.",
+      "code": "274"
+    },
+    {
+      "company": "Zoom",
+      "state": "Sucre",
+      "city": "Carúpano",
+      "name": "Carupano",
+      "address": "AV.LIBERTAD CON CALLE MONAGAS, EDIFICIO TURBO ORIENTE PB",
+      "code": "744"
+    },
+    {
+      "company": "Zoom",
+      "state": "Sucre",
+      "city": "Carúpano",
+      "name": "Carupano Centro",
+      "address": "CALLE JUNCAL CON CALLE BOLÍVAR, LOCAL 258, SECTOR CENTRO.",
+      "code": "4082"
+    },
+    {
+      "company": "Zoom",
+      "state": "Sucre",
+      "city": "Carúpano",
+      "name": "Los Molinos",
+      "address": "AV. CIRCUNVALACIÓN SUR 1RA TRANSVERSAL CASA NRO SN,SECTOR LOS MOLINOS",
+      "code": "4242"
+    },
+    {
+      "company": "Zoom",
+      "state": "Sucre",
+      "city": "Cumaná",
+      "name": "Av.Cancamure",
+      "address": "AV. CANCAMURE, URB. SUCRE LOCAL C.",
+      "code": "4201"
+    },
+    {
+      "company": "Zoom",
+      "state": "Sucre",
+      "city": "Cumaná",
+      "name": "C.C Arboleda Country",
+      "address": "AV. CANCAMURE, C.C. ARBOLEDA COUNTRY, NIVEL PB, LOCAL C-5, SECTOR ARBOLEDA.",
+      "code": "4212"
+    },
+    {
+      "company": "Zoom",
+      "state": "Sucre",
+      "city": "Cumaná",
+      "name": "C.C Marina Plaza",
+      "address": "AV.CRISTOBAL COLON PERIMETAL, SEC. EL DIQUI, C.C. MARINA PLAZA, EDIF. D-3, LOCAL P.B.-4",
+      "code": "1115"
+    },
+    {
+      "company": "Zoom",
+      "state": "Sucre",
+      "city": "Cumaná",
+      "name": "C.C San Onofre",
+      "address": "AV. HUMBOLDT C.C. SAN ONOFRE NIVEL P.B LOCAL NRO 13, SECTOR SANTA CATALINA",
+      "code": "4055"
+    },
+    {
+      "company": "Zoom",
+      "state": "Sucre",
+      "city": "Cumaná",
+      "name": "Casco Historico",
+      "address": "CALLE SUCRE, C.C. CUMANá, NIVEL ÚNICO, OFICINA 8, SECTOR CASCO HISTóRICO.",
+      "code": "4081"
+    },
+    {
+      "company": "Zoom",
+      "state": "Sucre",
+      "city": "Cumaná",
+      "name": "Costo Supermercado",
+      "address": "AV. ARISTIDES ROJAS CON CALLE BERMUDEZ, C.C. PERMAGAS NIVEL P.B LOCAL I,SECTOR CENTRO.",
+      "code": "4101"
+    },
+    {
+      "company": "Zoom",
+      "state": "Sucre",
+      "city": "Cumaná",
+      "name": "Cumana",
+      "address": "AV. SANTA ROSA, EDIFICIO GRUPO PROFESIONAL SANTA ROSA P.B LOCAL 2.",
+      "code": "60"
+    },
+    {
+      "company": "Zoom",
+      "state": "Sucre",
+      "city": "Cumaná",
+      "name": "Parada Bolivariano",
+      "address": "CALLE MARIÑO, C.C. JUNIOR P.B LOCAL 1,SECTOR BOULEVARD URDANETA.",
+      "code": "4205"
+    },
+    {
+      "company": "Zoom",
+      "state": "Sucre",
+      "city": "Cumaná",
+      "name": "Santa Rosa",
+      "address": "AV. SANTA ROSA, C.C. SANTA ROSA, NIVEL PB, LOCAL 06, SECTOR SANTA ROSA.",
+      "code": "2177"
+    },
+    {
+      "company": "Zoom",
+      "state": "Trujillo",
+      "city": "Boconó",
+      "name": "Bocono",
+      "address": "AV. CARABOBO, ENTRE CALLE MONSEÑOR JÁUREGUI Y ANDRÉS BELLO, CASA NRO. 6-22, SECTOR CENTRO, BOCONÓ.",
+      "code": "1755"
+    },
+    {
+      "company": "Zoom",
+      "state": "Trujillo",
+      "city": "Carvajal",
+      "name": "Carvajal",
+      "address": "AV PRINCIPAL EL AMPARO, C.C. VISTA PARK LOCAL NRO 1-04",
+      "code": "4233"
+    },
+    {
+      "company": "Zoom",
+      "state": "Trujillo",
+      "city": "Sabana de Mendoza",
+      "name": "Sabana de Mendoza",
+      "address": "AV.BOLÍVAR DIAGONAL A LA PLAZA BOLÍVAR C.C SABANA MALL P.B LOCAL 03, SABANA DE MENDOZA",
+      "code": "4313"
+    },
+    {
+      "company": "Zoom",
+      "state": "Trujillo",
+      "city": "Trujillo",
+      "name": "Trujillo",
+      "address": "AV. BOLIVAR C.C. COMERCIAL SOLUNTO, NIVEL 1 LOCAL 1, CENTRO DE TRUJILLO.",
+      "code": "4115"
+    },
+    {
+      "company": "Zoom",
+      "state": "Trujillo",
+      "city": "Valera",
+      "name": "Valera",
+      "address": "AVENIDA BOLÍVAR EDIF. GALOTTA II P.B, URB LAS ACACIAS.",
+      "code": "139"
+    },
+    {
+      "company": "Zoom",
+      "state": "Trujillo",
+      "city": "Valera",
+      "name": "Valera Centro",
+      "address": "CALLE 6 ENTRE AVENIDAS 10 Y 11, C.C. CANAIMA, NIVEL P.B, LOCAL L-20, SECTOR CENTRO.",
+      "code": "4079"
+    },
+    {
+      "company": "Zoom",
+      "state": "Táchira",
+      "city": "Abejales",
+      "name": "Abejales",
+      "address": "CARRERA 1 CON CALLE 1 LOCAL S/N, SECTOR CENTRO II",
+      "code": "4304"
+    },
+    {
+      "company": "Zoom",
+      "state": "Táchira",
+      "city": "Capacho",
+      "name": "Capacho",
+      "address": "CARRERA 5, C.C. CAPIN TIENDAS, LOCAL 12, BARRIO CENTRO.",
+      "code": "4168"
+    },
+    {
+      "company": "Zoom",
+      "state": "Táchira",
+      "city": "Coloncito",
+      "name": "Coloncito",
+      "address": "CR. NRO. 04, CASA NRO. 3-47,SECTOR CASCO CENTRAL COLONCITO.",
+      "code": "2587"
+    },
+    {
+      "company": "Zoom",
+      "state": "Táchira",
+      "city": "El Piñal",
+      "name": "El Piñal",
+      "address": "CALLE NRO 1, ENTRE CARRERA NRO 3 Y 4, CASA NRO 3-19, SECTOR EL PIÑAL, SAN RAFAEL DEL PIÑAL.",
+      "code": "2703"
+    },
+    {
+      "company": "Zoom",
+      "state": "Táchira",
+      "city": "La Fría",
+      "name": "La Fria",
+      "address": "CALLE 2, ENTRE CARRERAS 18 Y 19, SECTOR TERMINAL DE PASAJEROS LA FRÍA, LOCAL 25.",
+      "code": "1723"
+    },
+    {
+      "company": "Zoom",
+      "state": "Táchira",
+      "city": "La Grita",
+      "name": "La Grita C.A",
+      "address": "CALLE 2, ENTRE CARRERAS 11 Y 12, SECTOR CASCO CENTRAL, CASA 11-86.",
+      "code": "3654"
+    },
+    {
+      "company": "Zoom",
+      "state": "Táchira",
+      "city": "La Pedrera",
+      "name": "La Pedrera",
+      "address": "CTRA NACIONAL LOCAL NRO S/N,SECTOR LA PEDRERA",
+      "code": "4302"
+    },
+    {
+      "company": "Zoom",
+      "state": "Táchira",
+      "city": "La Tendida",
+      "name": "La Tendida",
+      "address": "AV. 3 BOLIVAR LOCAL NRO 1-71,SECTOR PARTE ALTA LA TENDIDA.",
+      "code": "4220"
+    },
+    {
+      "company": "Zoom",
+      "state": "Táchira",
+      "city": "Palmira",
+      "name": "Palmira",
+      "address": "CARRETERA 5, LOCAL NRO. 2,SECTOR PALMIRA",
+      "code": "1757"
+    },
+    {
+      "company": "Zoom",
+      "state": "Táchira",
+      "city": "Rubio",
+      "name": "Rubio",
+      "address": "CALLE 14 ENTRE AV. 8 Y 9, C.C DOñA IVONNE, P.B. LOCAL 6 Y 7.",
+      "code": "1104"
+    },
+    {
+      "company": "Zoom",
+      "state": "Táchira",
+      "city": "San Antonio del Táchira",
+      "name": "Av Venezuela",
+      "address": "AV. VENEZUELA, CARRERA 6, LOCAL NRO. 6-02, SECTOR BOLÍVAR.",
+      "code": "3562"
+    },
+    {
+      "company": "Zoom",
+      "state": "Táchira",
+      "city": "San Antonio del Táchira",
+      "name": "San Antonio",
+      "address": "CALLE 9 ENTRE CARRERAS 10 Y 11 NúMERO 10-44 BARRIO LA POPA SAN ANTONIO DEL TáCHIRA.",
+      "code": "112"
+    },
+    {
+      "company": "Zoom",
+      "state": "Táchira",
+      "city": "San Cristóbal",
+      "name": "5ta Avenida I",
+      "address": "AV. 5TA ENTRE CALLES 3 Y 4 LOCAL EDIF. A.C NRO 8,SECTOR CENTRO",
+      "code": "4183"
+    },
+    {
+      "company": "Zoom",
+      "state": "Táchira",
+      "city": "San Cristóbal",
+      "name": "7ma Avenida",
+      "address": "CR 7 EDIF. CLARET PISO P.B LOCAL 9-78 Y 9-84,SECTOR CENTRO",
+      "code": "4234"
+    },
+    {
+      "company": "Zoom",
+      "state": "Táchira",
+      "city": "San Cristóbal",
+      "name": "Av Ferrero Tamayo",
+      "address": "AV. FERRERO TAMAYO, CRUCE AV. LAS PILAS C.C BARATA, LOCAL P.B-03.",
+      "code": "1163"
+    },
+    {
+      "company": "Zoom",
+      "state": "Táchira",
+      "city": "San Cristóbal",
+      "name": "Av Rotaria",
+      "address": "VDA. 8 Y 9, CASA NRO. 2-24, SECTOR PROLONGACIÓN DE LA UNIDAD VECINAL.",
+      "code": "3149"
+    },
+    {
+      "company": "Zoom",
+      "state": "Táchira",
+      "city": "San Cristóbal",
+      "name": "Barrio El Carmen",
+      "address": "CALLE 2, NRO. 10-45, BARRIO EL CARMEN, LA CONCORDIA.",
+      "code": "1225"
+    },
+    {
+      "company": "Zoom",
+      "state": "Táchira",
+      "city": "San Cristóbal",
+      "name": "Calle 12",
+      "address": "CALLE 12, ENTRE CARRERA 4 Y 5TA AVENIDA, NRO. 4-35, SECTOR LA ERMITA.",
+      "code": "1121"
+    },
+    {
+      "company": "Zoom",
+      "state": "Táchira",
+      "city": "San Cristóbal",
+      "name": "Calle 15",
+      "address": "CALLE 15 CON CARRERA 22, EDIF. APOLO, LOCAL 3, BARRIO OBRERO.",
+      "code": "780"
+    },
+    {
+      "company": "Zoom",
+      "state": "Táchira",
+      "city": "San Cristóbal",
+      "name": "Carrera 19",
+      "address": "CARRERA 19, ENTRE CALLE 15 Y 16, LOCAL 15-15, BARRIO OBRERO.",
+      "code": "4060"
+    },
+    {
+      "company": "Zoom",
+      "state": "Táchira",
+      "city": "San Cristóbal",
+      "name": "La Concordia",
+      "address": "AV. 19 DE ABRIL, NRO. 9-29, ENTRE CARRERAS 9 Y 10, SECTOR LA CONCORDIA.",
+      "code": "764"
+    },
+    {
+      "company": "Zoom",
+      "state": "Táchira",
+      "city": "San Cristóbal",
+      "name": "Multiservicios Barrio Obrero",
+      "address": "CALLE 11 ENTRE CARRERAS 18 Y 19 NRO 19-59, CALLE 11 ENTRE CARRERAS 18 Y 19 NRO 19-59.",
+      "code": "1280"
+    },
+    {
+      "company": "Zoom",
+      "state": "Táchira",
+      "city": "San Cristóbal",
+      "name": "Paramillo",
+      "address": "AV. 4, EDIF. MINICENTRO PARAMILLO, PISO 3, LOCAL 1, ZONA INDUSTRIAL PARAMILLO.",
+      "code": "3464"
+    },
+    {
+      "company": "Zoom",
+      "state": "Táchira",
+      "city": "San Cristóbal",
+      "name": "San Cristobal",
+      "address": "AV. LIBERTADOR, EDIFICIO EL MARACUCHO PB. LOCAL A-56. P.REF. FRENTE AL HOTEL HAMBURGO.",
+      "code": "117"
+    },
+    {
+      "company": "Zoom",
+      "state": "Táchira",
+      "city": "San Cristóbal",
+      "name": "Santa Teresa",
+      "address": "CALLE PRINCIPAL, C.C. CASA GRANDE, NIVEL P.B, LOCAL S/N, SECTOR SANTA TERESA.",
+      "code": "4069"
+    },
+    {
+      "company": "Zoom",
+      "state": "Táchira",
+      "city": "San Juan de Colón",
+      "name": "Colon",
+      "address": "CTRA NRO. 7, CON CALLE NRO. 3, CASA NRO. 6-81. SECTOR CENTRO COLON TACHIRA.",
+      "code": "1898"
+    },
+    {
+      "company": "Zoom",
+      "state": "Táchira",
+      "city": "Táriba",
+      "name": "Tariba",
+      "address": "CALLE 6 CON CARRERA 6 CASA NRO 5-70, SECTOR TARIBA",
+      "code": "4020"
+    },
+    {
+      "company": "Zoom",
+      "state": "Táchira",
+      "city": "Ureña",
+      "name": "Ureña",
+      "address": "CARRETERA 5 CALLE 5, LOCAL 01, BARRIO LA GOAJIRA.",
+      "code": "914"
+    },
+    {
+      "company": "Zoom",
+      "state": "Yaracuy",
+      "city": "San Felipe",
+      "name": "Av 6 C.C Don Antonio",
+      "address": "AV. 6 ENTRE CALLE 16 Y AVENIDA LA PATRIA, C.C DON ANTONIO NIVEL PB LOCAL 5, SECTOR CENTRO.",
+      "code": "4062"
+    },
+    {
+      "company": "Zoom",
+      "state": "Yaracuy",
+      "city": "San Felipe",
+      "name": "San Felipe",
+      "address": "AV. LA PATRIA CON AV. 19 DE ABRIL, C.C. ARACOI, LOCAL C-5.",
+      "code": "874"
+    },
+    {
+      "company": "Zoom",
+      "state": "Yaracuy",
+      "city": "Yaritagua",
+      "name": "Yaritagua",
+      "address": "AV. PADRE TORRES. CALLE 19 ENTRE CARRETERA 11 Y 12.",
+      "code": "308"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "Bachaquero",
+      "name": "Bachaquero",
+      "address": "AV. BOLÍVAR, C.C. BOLÍVAR CENTER, NIVEL 2, LOCAL 2, SECTOR EL MURO.",
+      "code": "4141"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "Cabimas",
+      "name": "C.C Mared La Chile",
+      "address": "CALLE CHILE C.C MARED NIVEL P.B LOCAL 2, SECTOR DELICIAS NUEVAS CABIMAS.",
+      "code": "4230"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "Cabimas",
+      "name": "Cabimas",
+      "address": "CARRETERA H CENTRO COMERCIAL BORJAS LOCAL 6 Y 7",
+      "code": "4113"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "Cabimas",
+      "name": "Edificio D Maio",
+      "address": "AV. INTERCOMUNAL, EDIF. HOTEL D MAIO, NIVEL PB, LOCAL N.º 1, SECTOR EL DIVIDIVE.",
+      "code": "4154"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "Caja Seca",
+      "name": "Caja Seca",
+      "address": "AV. PRIMERA TRANSVERSAL, CORREDOR VIAL AL TERMINAL DE PASAJEROS, C.C. FARMACIA SUR DEL LAGO, NIVEL PB, LOCAL 2, SECTOR CASCO CENTRAL.",
+      "code": "4054"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "Ciudad Ojeda",
+      "name": "Av. Alonso de Ojeda",
+      "address": "AV. ALONSO DE OJEDA, EDIF. TIBIDABO, PB LOCAL 2, SECTOR CASCO CENTRAL.",
+      "code": "706"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "Ciudad Ojeda",
+      "name": "Calle Vargas",
+      "address": "CALLE VARGAS CON CALLE CAMPO ELÍAS, C.C NOCCIANO, P.B, LOCAL 2, SECTOR CASCO CENTRAL.",
+      "code": "3895"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "Ciudad Ojeda",
+      "name": "Ciudad Ojeda",
+      "address": "SECTOR LAS MOROCHAS, AV. INTERCOMUNAL CALLE CARDON, EDIFICIO OJEDA. PB., LOCALES 6 Y 7.",
+      "code": "57"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "Ciudad Ojeda",
+      "name": "La Arterial Ciudad Ojeda",
+      "address": "CTRA K CON ESQUINA AV. CRISTÓBAL COLÓN C.C. RIJER NIVEL P.B LOCAL NRO 7,SECTOR ARTERIAL 7.",
+      "code": "4206"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "El Venado",
+      "name": "El Venado",
+      "address": "CARRETERA LARA –ZULIA, C.C. DE DOS PLANTAS VERA CRUZ LOCAL S/N P.B. PASILLO PRINCIPAL NRO. 06, SECTOR CASCO CENTRAL",
+      "code": "4056"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "La Concepción",
+      "name": "La Concepcion",
+      "address": "AV. PRINCIPAL, SECTOR LOS LIRIOS, LA CONCEPCIÓN LOS TEQUES, LOCAL S/N",
+      "code": "2350"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "Los Puertos de Altagracia",
+      "name": "Los Puertos de Altagracia",
+      "address": "AV. 3 NRO 10-98, ESQUINA 11 C.C. LAS AURORAS, NIVEL P.B LOCAL 9.",
+      "code": "4208"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "Machiques",
+      "name": "Machiques",
+      "address": "AV. ARTES, ENTRE CALLE LA MARINA Y CALLE EL CARMEN, CASA S/N, MACHIQUES.",
+      "code": "4025"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "Maracaibo",
+      "name": "18 de Octubre",
+      "address": "CALLE K, CON AV. 5 EDIF SALADILLO PISO P.B LOCAL 5 , SECTOR 18 DE OCTUBRE",
+      "code": "4215"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "Maracaibo",
+      "name": "3Y San Martin",
+      "address": "CALLE NRO. 74,CON AV.NRO.3Y, LOCAL CANDELORO NRO.5-A.SECTOR BELLA VISTA.",
+      "code": "2253"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "Maracaibo",
+      "name": "Amparo",
+      "address": "AV.58 C.C CIRCUNVALACION NIVEL P.B LOCAL 9,SECTOR AMPARO",
+      "code": "4164"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "Maracaibo",
+      "name": "Av 10 Cecilio Acosta",
+      "address": "AV. 10 ENTRE CALLES 66 Y 66A CASA NRO 66-48 LOCAL 2,ZONA ESTRELLA.",
+      "code": "4163"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "Maracaibo",
+      "name": "Av Libertador Centro",
+      "address": "AV. 100 C.C. SAN ANDRESITO NIVEL P.B. LOCAL 8-54, SECTOR CASCO CENTRAL",
+      "code": "4189"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "Maracaibo",
+      "name": "Av. 4 Bella Vista",
+      "address": "CALLE 63A ENTRE AVENIDAS 4Y5 CASA 4-20 NRO 2Y3,SECTOR TIERRA NEGRA",
+      "code": "4160"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "Maracaibo",
+      "name": "Av. La Limpia",
+      "address": "AV. 28 CALLE 79 CASA NRO 77-60,SECTOR LA LIMPIA",
+      "code": "4130"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "Maracaibo",
+      "name": "Boulevard La Coromoto",
+      "address": "CALLE 171, LOCAL NRO. 44-73, SECTOR LA COROMOTO.",
+      "code": "4162"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "Maracaibo",
+      "name": "C.C Akrai Center",
+      "address": "CALLE 86 PICHINCHA CON AV 4 BELLA VISTA, CENTRO COMERCIAL AKRAI CENTER, LOCALES A-14 Y A-15 PB",
+      "code": "4036"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "Maracaibo",
+      "name": "C.C El Saman",
+      "address": "CTRA. KM 11 VÍA PERIJÁ, C.C. EL SAMÁN, NIVEL P.B, LOCAL S/N, URB. EL CAUJARO.",
+      "code": "4182"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "Maracaibo",
+      "name": "C.C Galerias Maracaibo",
+      "address": "CALLE 28,C.C GALERIAS MALL, NIVEL P.B. LOCAL PB-ESTE 4A, SECTOR FRANCISCO DE MIRANDA.",
+      "code": "4121"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "Maracaibo",
+      "name": "C.C. Gran Bazar",
+      "address": "AV. 15 DELICIAS, C.C. GRAN BAZAR, NIVEL P.B., LOCAL ML 1480,SECTOR SANTA BÁRBARA.",
+      "code": "4097"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "Maracaibo",
+      "name": "C.C. Metrosol",
+      "address": "AV. 58 C.C. METROSOL NIVEL PB LOCAL 19-A, SECTOR CIRCUNVALACIÓN NRO 2.",
+      "code": "3063"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "Maracaibo",
+      "name": "Calle 72",
+      "address": "AV. 9 CON CALLE 72, LOCAL NRO. 01, SECTOR AVENIDA 72.",
+      "code": "4200"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "Maracaibo",
+      "name": "Centro Norte Fuerzas Armadas",
+      "address": "AV. 15 Y 15 A ENTRE CALLES 19 A Y 20 C.C. NORTE NIVEL P.B LOCAL PB-17, SECTOR FUERZAS ARMADAS",
+      "code": "4066"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "Maracaibo",
+      "name": "Ciudadela Faria",
+      "address": "AV. 27 CIRCUNVALACIÓN 2 CON CALLE 69, C.C. CIUDADELA PLAZA NIVEL 2DO LOCAL 13-1,URB CIUDADELA FARIA.",
+      "code": "4195"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "Maracaibo",
+      "name": "Delicias",
+      "address": "AV. 15 PROLONGACIÓN DELICIAS, C.C. LUZ Y SOL NRO 60C.58 NIVEL NO INDICA LOCAL 3.",
+      "code": "4129"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "Maracaibo",
+      "name": "Dr. Portillo",
+      "address": "CALLE 78 NRO 16-23, LOCAL NRO NO INDICA, SECTOR PARAÍSO.",
+      "code": "4231"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "Maracaibo",
+      "name": "Kilometro 4",
+      "address": "CALLE 148 LOCAL NO. 115-59, EDIF. TAMI VIA ZONA INDUSTRIAL A 50 METROS DEL KILÓMETRO 4.",
+      "code": "4110"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "Maracaibo",
+      "name": "La Chinita",
+      "address": "AV. 15, ENTRE CALLES 93 Y 95, CENTRO COMERCIAL LA CHINITA, PRIMER NIVEL, LOCAL N° 26. P.REF. POR LA FERIA DE COMIDA.",
+      "code": "168"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "Maracaibo",
+      "name": "Los Postes Negros",
+      "address": "AV. 28 CASA NRO 7-59, LOCAL N/A, BARRIO SEBASTOPOL.",
+      "code": "4176"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "Maracaibo",
+      "name": "Maracaibo",
+      "address": "AVENIDA 5 DE JULIO, CALLE 77 CON AV. 12.",
+      "code": "82"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "Maracaibo",
+      "name": "Plaza de Toros",
+      "address": "CALLE 52-A LOCAL NRO 1380000, URB. LA TRINIDAD, SECTOR PLAZA DE TORO.",
+      "code": "2068"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "Maracaibo",
+      "name": "Pomona",
+      "address": "CALLE NRO. 102, ENTRE AV. NRO. 18 Y CALLE NRO. 102A, LOCAL NRO. 18-26, BARRIO SAN TRINO LA POMONA.",
+      "code": "2718"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "Maracaibo",
+      "name": "San Miguel",
+      "address": "AV. 58 INTERMEDIA CON CALLE 96J EDIF. MONTREAL - NRO. 96-145 PISO P.B LOCAL 4,ZONA CIRCUNVALACION 2.",
+      "code": "4216"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "Maracaibo",
+      "name": "Santa Rita",
+      "address": "AV. 8 ENTRE CALLLES 66A Y 67 EDIF. EL GLOBO PISO P.B LOCAL 3,SECTOR SANTA RITA",
+      "code": "704"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "Maracaibo",
+      "name": "Sierra Maestra",
+      "address": "CALLE 13, C.C. OASIS NIVEL PB LOCAL L-3, BARRIO SIERRA MAESTRA.",
+      "code": "3269"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "Mene Grande",
+      "name": "Mene Grande",
+      "address": "MENE GRANDE - LA LINEA, SECTOR DELICIAS.",
+      "code": "4099"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "Santa Bárbara del Zulia",
+      "name": "Santa Barbara del Zulia",
+      "address": "AV. BOLIVAR C.C. DORADO, NIVEL P.B LOCAL 02, SECTOR SANTA BARBARA.",
+      "code": "4149"
+    },
+    {
+      "company": "Zoom",
+      "state": "Zulia",
+      "city": "Villa del Rosario",
+      "name": "La Villa del Rosario",
+      "address": "AV. 18 DE OCTUBRE, LOCAL 18-13, SECTOR CASCO CENTRAL.",
+      "code": "2052"
+    }
+  ]
+}

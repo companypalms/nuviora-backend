@@ -8,6 +8,8 @@ use App\Models\MetaAdset;
 use App\Models\MetaCampaign;
 use App\Models\MetaInsightCurrent;
 use App\Models\MetaInsightDaily;
+use App\Services\Storefront\PurchaseModes;
+use App\Services\Storefront\StorefrontRules;
 use Illuminate\Support\Carbon;
 
 /**
@@ -18,6 +20,10 @@ use Illuminate\Support\Carbon;
  * - el estado actual de los rangos fijos, con el alcance y la frecuencia de Meta (§27, §57).
  * Una llamada por cuenta, nivel y rango, con paginación (§52). Si Meta no acepta un campo, se pide sin él; si pide
  * menos datos, se parte el rango.
+ *
+ * `.168`: en los días en que una campaña estuvo marcada "Purchase al entregar", sus compras son los pedidos ("pedido hecho",
+ * AddPaymentInfo) y el Purchase de Meta queda en real_purchases; en sus rangos fijos, las compras son la suma de esos días.
+ * Así el C, el BE y todas las reglas la siguen midiendo por pedidos. Las demás campañas, igual que siempre.
  */
 class MetaInsightsSync
 {
@@ -38,6 +44,14 @@ class MetaInsightsSync
     /** Campos que Meta no aceptó en esta corrida (§54: "campo no disponible"). */
     private array $dropped = [];
 
+    /** `.168`: las campañas marcadas "Purchase al entregar" (se leen una vez por corrida). */
+    private ?array $modes = null;
+
+    private function modes(): array
+    {
+        return $this->modes ??= PurchaseModes::ranges();
+    }
+
     public function dropped(): array
     {
         return array_keys($this->dropped);
@@ -53,9 +67,11 @@ class MetaInsightsSync
             if (!$metaId || empty($row['date_start'])) {
                 continue;
             }
+            $campaign = isset($row['campaign_id']) ? (string) $row['campaign_id'] : null;
+            $marked = $campaign !== null && StorefrontRules::markedOn($campaign, (string) $row['date_start'], $this->modes());
             MetaInsightDaily::updateOrCreate(
                 ['date' => $row['date_start'], 'level' => $level, 'meta_id' => $metaId],
-                $this->values($account, $row) + ['synced_at' => $now],
+                $this->values($account, $row, $marked ? MetaInsightMapper::PLACED_ACTIONS : null) + ['synced_at' => $now],
             );
         }
         $this->ensureEntities($account, $level, $rows);
@@ -91,7 +107,7 @@ class MetaInsightsSync
             $seen[] = $metaId;
             MetaInsightCurrent::updateOrCreate(
                 ['range' => $preset, 'level' => $level, 'meta_id' => $metaId],
-                $this->values($account, $row) + [
+                $this->markedRange($level, $metaId, $row, $this->values($account, $row)) + [
                     'date_start' => $row['date_start'] ?? null, 'date_stop' => $row['date_stop'] ?? null, 'synced_at' => $now,
                 ],
             );
@@ -152,9 +168,35 @@ class MetaInsightsSync
         }
     }
 
-    private function values(MetaAdAccount $account, array $row): array
+    /**
+     * `.168`: un rango fijo de una campaña que tuvo días marcados: las compras son la suma de sus días (ya contados por
+     * pedidos), y el Purchase de Meta del rango queda en real_purchases.
+     */
+    private function markedRange(string $level, string $metaId, array $row, array $values): array
     {
-        return MetaInsightMapper::map($row) + [
+        $campaign = isset($row['campaign_id']) ? (string) $row['campaign_id'] : null;
+        $from = $row['date_start'] ?? null;
+        $to = $row['date_stop'] ?? null;
+        if ($campaign === null || !$from || !$to) {
+            return $values;
+        }
+        $touches = false;
+        foreach ($this->modes() as $r) {
+            $touches = $touches || ($r['campaign'] === $campaign && $r['from'] <= $to && ($r['to'] === null || $r['to'] >= $from));
+        }
+        if (!$touches) {
+            return $values;
+        }
+        $sum = MetaInsightDaily::where('level', $level)->where('meta_id', $metaId)->whereBetween('date', [$from, $to])
+            ->selectRaw('SUM(purchases) p, SUM(purchase_value) v')->first();
+
+        return ['purchases' => (float) ($sum->p ?? 0), 'purchase_value' => $sum?->v !== null ? (float) $sum->v : null,
+            'real_purchases' => $values['purchases']] + $values;
+    }
+
+    private function values(MetaAdAccount $account, array $row, ?array $countAs = null): array
+    {
+        return MetaInsightMapper::map($row, $countAs) + [
             'meta_ad_account_id' => $account->id,
             'campaign_meta_id' => isset($row['campaign_id']) ? (string) $row['campaign_id'] : null,
             'adset_meta_id' => isset($row['adset_id']) ? (string) $row['adset_id'] : null,

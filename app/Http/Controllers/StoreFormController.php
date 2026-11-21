@@ -2,22 +2,30 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\City;
+use App\Models\CourierOffice;
+use App\Models\MetaPurchaseMode;
 use App\Models\Product;
 use App\Models\ProductOffer;
 use App\Models\Shop;
 use App\Models\StorefrontDesign;
 use App\Models\StorefrontOrder;
 use App\Services\Storefront\StorefrontCatalog;
+use App\Services\Storefront\PurchaseModes;
 use App\Services\Storefront\StorefrontKpis;
 use App\Services\Storefront\StorefrontRules;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 /**
  * `.164` "Formulario de la tienda" (solo el Admin): prenderlo, la tienda y el producto, sus ofertas y su diseño, el píxel y
  * la API de conversiones (la clave solo se escribe: nunca vuelve a la pantalla), el WhatsApp, el código para pegar en la
  * landing, los KPIs y los pedidos que entraron por ahí.
+ *
+ * `.168`: el pago anticipado, la asesora y las encomiendas (de qué ciudad salen, dónde se deja el paquete y la lista de
+ * oficinas de MRW y Zoom), los mensajes al cliente, y las campañas de cada producto que mandan el Purchase al entregar.
  */
 class StoreFormController extends Controller
 {
@@ -40,6 +48,16 @@ class StoreFormController extends Controller
             'colors' => StorefrontRules::COLORS,
             'formats' => StorefrontRules::CONTENT_FORMATS,
             'rate' => (float) \App\Models\Setting::get('rate_binance_usd', 0),
+            // .168
+            'cod_cities' => City::whereIn('id', collect($ids)->flatMap(fn ($id) => array_column(StorefrontCatalog::codCities((int) $id), 'id'))->unique()->values())
+                ->orderBy('name')->get(['id', 'name']),
+            'couriers' => StorefrontRules::COURIERS,
+            'offices' => CourierOffice::groupBy('company')->selectRaw('company, COUNT(*) n, SUM(is_active) active')->get()
+                ->map(fn ($r) => ['company' => $r->company, 'total' => (int) $r->n, 'active' => (int) $r->active])->values(),
+            'messages' => ['whatsapp_message_prepaid' => StorefrontRules::WHATSAPP_PREPAID, 'whatsapp_message_advisor' => StorefrontRules::WHATSAPP_ADVISOR,
+                'whatsapp_message_courier' => StorefrontRules::WHATSAPP_COURIER, 'confirm_message' => StorefrontRules::CONFIRM_MESSAGE,
+                'confirm_message_courier' => StorefrontRules::CONFIRM_COURIER, 'ack_message' => StorefrontRules::ACK_MESSAGE],
+            'experiment' => $kpis->experiment($ids),
         ]);
     }
 
@@ -65,11 +83,32 @@ class StoreFormController extends Controller
             'send_initiate' => 'required|boolean',
             'send_pageview' => 'required|boolean',
             'daily_max' => 'required|integer|min:10|max:5000',
+            // .168
+            'prepaid_enabled' => 'sometimes|boolean',
+            'advisor_enabled' => 'sometimes|boolean',
+            'courier_enabled' => 'sometimes|boolean',
+            'courier_companies' => 'sometimes|array',
+            'courier_companies.*' => 'string|in:' . implode(',', StorefrontRules::COURIERS),
+            'courier_origin_city_id' => 'nullable|integer|exists:cities,id',
+            'courier_dropoff' => 'sometimes|array',
+            'courier_dropoff.*' => 'nullable|string|max:500',
+            'whatsapp_message_prepaid' => 'sometimes|nullable|string|max:1000',
+            'whatsapp_message_advisor' => 'sometimes|nullable|string|max:1000',
+            'whatsapp_message_courier' => 'sometimes|nullable|string|max:1000',
+            'confirm_message' => 'sometimes|nullable|string|max:1000',
+            'confirm_message_courier' => 'sometimes|nullable|string|max:1000',
+            'ack_message' => 'sometimes|nullable|string|max:1000',
         ]);
         abort_if($data['enabled'] && empty($data['shop_id']), 422, 'Elige tu tienda antes de prender el formulario.');
         abort_if($data['enabled'] && $data['product_ids'] === [], 422, 'Elige el producto donde va el formulario.');
         foreach ($data['allowed_origins'] as $o) {
             abort_if(StorefrontRules::origin($o) === null, 422, "«{$o}» no es una dirección de tu tienda (empieza con https://).");
+        }
+        // .168: las encomiendas salen de una ciudad donde se paga al recibir (con su agencia y su stock)
+        if (!empty($data['courier_enabled'])) {
+            abort_if(empty($data['courier_origin_city_id']), 422, 'Elige de qué ciudad salen las encomiendas.');
+            $cod = collect($data['product_ids'])->flatMap(fn ($id) => array_column(StorefrontCatalog::codCities((int) $id), 'id'))->all();
+            abort_if(!in_array((int) $data['courier_origin_city_id'], $cod, true), 422, 'Las encomiendas salen de una ciudad con agencia (donde se paga al recibir).');
         }
         $noShopify = Product::whereIn('id', $data['product_ids'])->whereNull('product_id')->exists();
         abort_if($noShopify, 422, 'Ese producto no está unido a Shopify todavía: pásale su link a tu asistente.');
@@ -126,6 +165,56 @@ class StoreFormController extends Controller
         return response()->json(['message' => 'Diseño guardado.', 'product' => $this->selected($product->fresh())]);
     }
 
+    /**
+     * `.168`: las campañas de un producto que mandan el Purchase al entregar (marcadas desde hoy; al desmarcar, hoy queda
+     * como su último día).
+     */
+    public function savePurchaseModes(Request $request, Product $product)
+    {
+        $data = $request->validate(['campaigns' => 'present|array', 'campaigns.*' => 'string|max:32']);
+        $mine = DB::table('meta_campaigns')->where('product_id', $product->id)->pluck('meta_id')->map(fn ($v) => (string) $v)->all();
+        $want = array_values(array_intersect(array_map('strval', $data['campaigns']), $mine));
+        foreach ($mine as $id) {
+            PurchaseModes::set($product->id, $id, in_array($id, $want, true));
+        }
+        Cache::forget('storefront:kpis:' . implode(',', StorefrontCatalog::settings()['product_ids']));
+
+        return response()->json(['message' => $want ? 'Guardado: ' . count($want) . ' campaña(s) mandan el Purchase al entregar desde hoy.' : 'Guardado: todas mandan el Purchase al pedir.',
+            'product' => $this->selected($product->fresh())]);
+    }
+
+    /** `.168`: las oficinas de encomienda de una empresa (para buscarlas, apagarlas o agregar una). */
+    public function offices(Request $request)
+    {
+        $data = $request->validate(['company' => 'required|in:' . implode(',', StorefrontRules::COURIERS), 'q' => 'nullable|string|max:80']);
+        $q = trim((string) ($data['q'] ?? ''));
+
+        return response()->json(['offices' => CourierOffice::where('company', $data['company'])
+            ->when($q !== '', fn ($w) => $w->where(fn ($w) => $w->where('name', 'like', "%{$q}%")->orWhere('city', 'like', "%{$q}%")->orWhere('state', 'like', "%{$q}%")
+                ->orWhere('address', 'like', "%{$q}%")))
+            ->orderBy('state')->orderBy('city')->orderBy('name')->limit(300)->get(['id', 'company', 'state', 'city', 'name', 'address', 'code', 'is_active', 'source'])]);
+    }
+
+    public function addOffice(Request $request)
+    {
+        $data = $request->validate(['company' => 'required|in:' . implode(',', StorefrontRules::COURIERS), 'state' => 'required|string|max:60',
+            'city' => 'nullable|string|max:80', 'name' => 'required|string|max:120', 'address' => 'nullable|string|max:300']);
+        $office = CourierOffice::create($data + ['code' => 'duenio-' . Str::lower(Str::random(10)), 'source' => 'dueño', 'is_active' => true]);
+        StorefrontCatalog::refresh();
+
+        return response()->json(['message' => 'Oficina agregada.', 'office' => $office]);
+    }
+
+    public function updateOffice(Request $request, CourierOffice $office)
+    {
+        $data = $request->validate(['is_active' => 'sometimes|boolean', 'state' => 'sometimes|string|max:60', 'city' => 'sometimes|nullable|string|max:80',
+            'name' => 'sometimes|string|max:120', 'address' => 'sometimes|nullable|string|max:300']);
+        $office->update($data);
+        StorefrontCatalog::refresh();
+
+        return response()->json(['message' => $office->is_active ? 'Oficina guardada.' : 'Oficina apagada: ya no sale en el formulario.', 'office' => $office]);
+    }
+
     /** Un producto elegido: sus ofertas, su diseño, dónde se paga al recibir y si el precio de su página cuadra. */
     private function selected(Product $p): array
     {
@@ -143,17 +232,25 @@ class StoreFormController extends Controller
             'offers' => ProductOffer::where('product_id', $p->id)->orderBy('position')->orderBy('id')->get(['id', 'units', 'discount_pct', 'title', 'badge', 'is_default', 'is_active']),
             'design' => ['texts' => (object) ($design?->texts ?? []), 'colors' => (object) ($design?->colors ?? []), 'font' => $design?->font, 'radius' => $design?->radius,
                 'custom_css' => $design?->custom_css],
-            'cities' => StorefrontCatalog::codCities($p->id)];
+            'cities' => StorefrontCatalog::codCities($p->id),
+            // .168: sus campañas y cuáles mandan el Purchase al entregar
+            'campaigns' => DB::table('meta_campaigns')->where('product_id', $p->id)->orderByDesc('id')->get(['meta_id', 'name', 'effective_status'])
+                ->map(fn ($c) => ['id' => (string) $c->meta_id, 'name' => (string) $c->name, 'status' => $c->effective_status,
+                    'delivery' => in_array((string) $c->meta_id, PurchaseModes::markedNow(), true),
+                    'since' => MetaPurchaseMode::where('campaign_meta_id', (string) $c->meta_id)->whereNull('ends_on')->value('starts_on')])->values()];
     }
 
     /** Los últimos 30 pedidos del formulario. */
     private function orders(array $ids): array
     {
-        return StorefrontOrder::with(['order:id,name,status_id,created_at', 'order.status:id,description', 'product:id,title,showable_name'])
+        return StorefrontOrder::with(['order:id,name,status_id,created_at,courier_company', 'order.status:id,description', 'product:id,title,showable_name'])
             ->whereIn('product_id', $ids ?: [0])->whereNotNull('order_id')->latest('id')->limit(30)->get()
             ->map(fn ($f) => ['id' => $f->id, 'order_id' => $f->order_id, 'name' => $f->order?->name, 'at' => $f->created_at?->toDateTimeString(),
                 'product' => $f->product?->showable_name ?: $f->product?->title, 'units' => $f->units, 'total_bs' => $f->total_bs, 'total_usd' => $f->total_usd,
                 'express' => $f->express_fee !== null, 'city' => \App\Models\City::whereKey($f->city_id)->value('name'), 'status' => $f->order?->status?->description,
-                'capi' => $f->capi_status, 'whatsapp' => $f->whatsapp_opened_at !== null])->all();
+                'capi' => $f->capi_status, 'whatsapp' => $f->whatsapp_opened_at !== null,
+                // .168
+                'payment' => $f->payment, 'purchase_mode' => $f->purchase_mode, 'placed' => $f->placed_capi_status, 'purchase_sent_at' => $f->purchase_sent_at?->toDateTimeString(),
+                'courier' => $f->order?->courier_company, 'confirm' => $f->confirm_status, 'after_hours' => (bool) $f->after_hours])->all();
     }
 }

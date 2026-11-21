@@ -11,3 +11,6 @@ Route::get('cargador.js', [StorefrontController::class, 'loader'])->middleware('
 Route::get('productos/{shopifyId}', [StorefrontController::class, 'config'])->whereNumber('shopifyId')->middleware('throttle:tienda-ver');
 Route::post('pedidos', [StorefrontController::class, 'order'])->middleware('throttle:tienda-pedidos');
 Route::post('eventos', [StorefrontController::class, 'events'])->middleware('throttle:tienda-ver');
+// .168: la cuenta de pago móvil para pagar por adelantado y las oficinas de MRW y Zoom
+Route::get('pago', [StorefrontController::class, 'account'])->middleware('throttle:tienda-ver');
+Route::get('oficinas', [StorefrontController::class, 'offices'])->middleware('throttle:tienda-ver');

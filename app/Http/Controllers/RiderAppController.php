@@ -250,7 +250,8 @@ class RiderAppController extends Controller
                     'logistics_order_id' => $row->id,
                     'status' => $handingOver ? 'reemplazo' : $row->status,
                     'status_label' => $handingOver ? 'Reemplazo en camino' : LogisticsStatus::label($row->status),
-                    'next_action' => match (true) {
+                    // .168: el que pagó por adelantado no paga al recibir (la app ya muestra este texto: sin APK nuevo)
+                    'next_action' => self::withPrepaid($order, $returning, match (true) {
                         $handingOver => $row->rider_id
                             ? 'Otro rider va a recoger el paquete donde estás: entrégaselo cuando llegue.'
                             : 'El operador está buscando quién recoja el paquete donde estás. Espera sus instrucciones.',
@@ -259,7 +260,7 @@ class RiderAppController extends Controller
                         $route && in_array($row->status, Routes::BEFORE_DEPARTURE, true)
                             => "Ruta de {$route['stops']} paradas: recoge los {$route['stops']} paquetes juntos en el centro.",
                         default => self::NEXT_ACTION[$row->status] ?? null,
-                    },
+                    }),
                     'route' => $route,
                     'pickup' => $pickingUp ? [
                         'name' => $row->pickupRider?->names,
@@ -286,7 +287,9 @@ class RiderAppController extends Controller
                         'courier_shipment' => (bool) $order?->courier_shipment,
                         // `.61`: si se paga por pago móvil, los datos de la cuenta de ESTA orden para dárselos al cliente
                         // (los mismos de la plantilla de la agencia) y lo que paga en Bs. En un retorno, no
-                        'payment_account' => !$returning && $order?->paymentAccount && $order->payments->contains('method', PaymentAccounts::METHOD)
+                        // .168: si ya pagó por adelantado (formulario de la tienda), no se le muestran datos para cobrarle
+                    'prepaid' => $order?->prepaid_at !== null,
+                    'payment_account' => !$returning && !$order?->prepaid_at && $order?->paymentAccount && $order->payments->contains('method', PaymentAccounts::METHOD)
                             ? PaymentAccounts::present($order->paymentAccount) + ['amount_bs' => PaymentAccountRules::orderBs($order->payments)]
                             : null,
                     ],
@@ -419,6 +422,12 @@ class RiderAppController extends Controller
             'next_logistics_order_id' => $next?->id,
             'waiting_for' => $blocking ? ['stop' => (int) $blocking->route_stop, 'order' => $blocking->order?->name, 'logistics_order_id' => $blocking->id] : null,
         ];
+    }
+
+    /** `.168`: al que pagó por adelantado (formulario de la tienda) no se le cobra al entregar. */
+    private static function withPrepaid(?\App\Models\Order $order, bool $returning, ?string $next): ?string
+    {
+        return !$returning && $order?->prepaid_at ? trim('✅ Ya pagó por adelantado: NO le cobres. ' . ($next ?? '')) : $next;
     }
 
     public const NEXT_ACTION = [

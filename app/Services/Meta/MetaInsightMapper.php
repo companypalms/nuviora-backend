@@ -27,20 +27,31 @@ class MetaInsightMapper
         return (array) config('services.meta.purchase_actions', ['omni_purchase', 'purchase', 'offsite_conversion.fb_pixel_purchase']);
     }
 
-    public static function map(array $row): array
+    /**
+     * `.168`: el "pedido hecho" de nuestro formulario (AddPaymentInfo). En las campañas marcadas "Purchase al entregar" cuenta
+     * como compra: así el sistema las mide por pedidos, como a todas, y el Purchase de Meta queda en real_purchases.
+     */
+    public const PLACED_ACTIONS = ['omni_add_payment_info', 'add_payment_info', 'offsite_conversion.fb_pixel_add_payment_info'];
+
+    /** @param list<string>|null $countAs con qué acción se cuentan las compras (null = el Purchase, como siempre) */
+    public static function map(array $row, ?array $countAs = null): array
     {
         $actions = self::byType($row['actions'] ?? null);
         $values = self::byType($row['action_values'] ?? null);
 
-        $purchaseType = null;
-        foreach (self::purchaseActions() as $type) {
-            if (array_key_exists($type, $actions)) {
-                $purchaseType = $type;
-                break;
+        $first = function (array $types) use ($actions): ?string {
+            foreach ($types as $type) {
+                if (array_key_exists($type, $actions)) {
+                    return $type;
+                }
             }
-        }
+            return null;
+        };
+        $realType = $first(self::purchaseActions());
+        $purchaseType = $countAs !== null ? $first($countAs) : $realType;
         // Si la fila trae acciones pero ninguna compra, son 0 compras; si no trae acciones, no se sabe.
         $purchases = $purchaseType !== null ? $actions[$purchaseType] : (isset($row['actions']) ? 0.0 : null);
+        $real = $realType !== null ? $actions[$realType] : (isset($row['actions']) ? 0.0 : null);
 
         return [
             'spend' => self::num($row['spend'] ?? null) ?? 0.0,
@@ -56,6 +67,7 @@ class MetaInsightMapper
                 : (isset($actions['omni_landing_page_view']) ? (int) $actions['omni_landing_page_view'] : (isset($row['actions']) ? 0 : null)),
             'purchases' => $purchases,
             'purchase_value' => $purchaseType !== null && isset($values[$purchaseType]) ? $values[$purchaseType] : null,
+            'real_purchases' => $countAs !== null ? $real : null,
             'video_plays' => self::sumList($row['video_play_actions'] ?? null),
             // §21: "3-second Video Plays" es la acción video_view de Meta
             'video_3s_plays' => isset($actions['video_view']) ? (int) $actions['video_view'] : (isset($row['video_play_actions']) ? 0 : null),

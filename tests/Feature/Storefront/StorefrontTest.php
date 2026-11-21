@@ -111,6 +111,24 @@ beforeEach(function () {
         $t->decimal('purchases', 12, 2)->nullable()]);
     Schema::create('order_sources', fn ($t) => [$t->id(), $t->unsignedBigInteger('order_id'), $t->string('ad_meta_id')->nullable(), $t->timestamps()]);
     Schema::create('order_cancellations', fn ($t) => [$t->id(), $t->unsignedBigInteger('order_id'), $t->string('category')->nullable(), $t->timestamps()]);
+    // .168: el pago anticipado, las encomiendas y las campañas "al entregar"
+    Schema::create('meta_ads', fn ($t) => [$t->id(), $t->string('meta_id'), $t->string('campaign_meta_id')->nullable(), $t->timestamps()]);
+    Schema::create('meta_adsets', fn ($t) => [$t->id(), $t->string('meta_id'), $t->string('campaign_meta_id')->nullable(), $t->timestamps()]);
+    Schema::create('business_days', fn ($t) => [$t->id(), $t->unsignedBigInteger('shop_id')->nullable(), $t->date('date'), $t->timestamp('open_at')->nullable(),
+        $t->timestamp('close_at')->nullable(), $t->timestamps()]);
+    Schema::table('orders', function ($t) {
+        foreach (['courier_recipient_name', 'courier_recipient_id_number', 'courier_recipient_phone', 'location', 'payment_receipt'] as $c) {
+            $t->string($c)->nullable();
+        }
+        $t->boolean('courier_shipment')->default(false);
+        $t->boolean('is_return')->default(false);
+        $t->boolean('is_exchange')->default(false);
+        $t->decimal('cash_received', 10, 2)->nullable();
+        $t->decimal('change_amount', 10, 2)->nullable();
+        $t->unsignedBigInteger('payment_account_id')->nullable();
+        $t->timestamp('payment_account_at')->nullable();
+    });
+    (require database_path('migrations/2026_11_21_100000_storefront_prepaid_and_courier.php'))->up();
 
     Event::fake(); // también los observers del pedido (agencia, almacén, logística): aquí solo importa lo que guarda el formulario
     DB::table('roles')->insert([['id' => 1, 'description' => 'Admin'], ['id' => 2, 'description' => 'Vendedor'], ['id' => 3, 'description' => 'Agencia']]);
@@ -380,5 +398,353 @@ describe('.164: la compra por la API de conversiones de Meta', function () {
 
         expect((new MetaCapi())->send($this->front))->toBe('failed')
             ->and($this->front->fresh()->capi_error)->toBe('Invalid OAuth access token.');
+    });
+});
+
+// ───────────────────────────── .168 ─────────────────────────────
+// Dueño (21/11): "que la persona pueda pagar anticipado desde el sitio web… si la persona monta el pagomovil en el formulario
+// se envía el evento purchase, si por el contrario es pago contraentrega o quiere primero hablar con una vendedora, entonces
+// el evento purchase se enviaría a facebook cuando el pedido esté entregado en el sistema". Más las encomiendas (MRW y Zoom,
+// envío incluido, salen de la ciudad que elige el dueño) y el mensaje de fuera de horario.
+
+/** Una foto de comprobante de verdad (un PNG de 1×1), como la manda el formulario. */
+const RECIBO168 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+
+function tablas168(): void
+{
+    Schema::create('company_accounts', function ($t) {
+        $t->id();
+        $t->string('name');
+        $t->string('icon')->nullable();
+        $t->string('method')->nullable();
+        $t->string('currency')->nullable();
+        $t->unsignedBigInteger('statement_source_id')->nullable();
+        $t->unsignedBigInteger('financial_account_id')->nullable();
+        $t->json('details')->nullable();
+        $t->boolean('is_active')->default(true);
+        $t->boolean('takes_orders')->default(true);
+        $t->timestamps();
+    });
+    Schema::create('order_payments', fn ($t) => [$t->id(), $t->unsignedBigInteger('order_id'), $t->string('method'), $t->decimal('amount', 10, 2),
+        $t->decimal('rate', 14, 4)->nullable(), $t->string('reference')->nullable(), $t->decimal('usd_rate', 14, 4)->nullable(), $t->decimal('eur_rate', 14, 4)->nullable(),
+        $t->decimal('binance_usd_rate', 14, 4)->nullable(), $t->timestamps()]);
+    Schema::create('payment_receipts', fn ($t) => [$t->id(), $t->unsignedBigInteger('order_id'), $t->string('path'), $t->string('original_name')->nullable(),
+        $t->string('file_sha256')->nullable(), $t->string('image_dhash')->nullable(), $t->timestamps()]);
+    Schema::create('receipt_checks', fn ($t) => [$t->id(), $t->unsignedBigInteger('payment_receipt_id')->nullable(), $t->unsignedBigInteger('order_id'), $t->string('status'),
+        $t->text('error')->nullable(), $t->timestamp('reviewed_at')->nullable(), $t->timestamps()]);
+    Schema::create('currencies', fn ($t) => [$t->id(), $t->string('description'), $t->decimal('value', 14, 4), $t->unsignedBigInteger('status_id')->nullable(), $t->timestamps()]);
+    Schema::create('whatsapp_messages', function ($t) {
+        $t->id();
+        foreach (['order_id', 'client_id'] as $c) {
+            $t->unsignedBigInteger($c)->nullable();
+        }
+        foreach (['message_id', 'message_type', 'template_name', 'status', 'error_reason'] as $c) {
+            $t->string($c)->nullable();
+        }
+        $t->text('body')->nullable();
+        $t->boolean('is_from_client')->default(false);
+        $t->integer('error_code')->nullable();
+        $t->json('media')->nullable();
+        $t->timestamp('sent_at')->nullable();
+        $t->timestamps();
+    });
+    Schema::table('clients', fn ($t) => $t->timestamp('last_whatsapp_received_at')->nullable());
+    DB::table('statuses')->insert([['id' => 4, 'description' => 'Activo'], ['id' => 5, 'description' => 'Rechazado']]);
+    DB::table('currencies')->insert(['description' => 'binance_usd', 'value' => 250, 'status_id' => 4]);
+    DB::table('company_accounts')->insert(['id' => 6, 'name' => 'Pago móvil Banesco', 'method' => 'pago_movil', 'currency' => 'VES',
+        'details' => json_encode([['label' => 'Banco', 'value' => 'Banesco (0134)'], ['label' => 'Teléfono', 'value' => '0414-0000000'], ['label' => 'Cédula', 'value' => 'V-11111111']])]);
+    DB::table('courier_offices')->insert([
+        ['id' => 70, 'company' => 'MRW', 'state' => 'Barinas', 'city' => 'Barinas', 'name' => 'Alto Barinas', 'address' => 'URB ALTO BARINAS NORTE, LOCAL 135', 'code' => 'mrw-1', 'is_active' => true, 'source' => 'lista'],
+        ['id' => 71, 'company' => 'Zoom', 'state' => 'Lara', 'city' => 'Barquisimeto', 'name' => 'Centro', 'address' => 'Av. 20', 'code' => 'zoom-1', 'is_active' => true, 'source' => 'lista'],
+        ['id' => 72, 'company' => 'MRW', 'state' => 'Lara', 'city' => 'Carora', 'name' => 'Carora', 'address' => null, 'code' => 'mrw-2', 'is_active' => false, 'source' => 'lista'],
+    ]);
+}
+
+describe('.168: pagar por adelantado con pago móvil', function () {
+    beforeEach(function () {
+        tablas168();
+        Illuminate\Support\Facades\Storage::fake('public');
+        StorefrontCatalog::saveSettings(['prepaid_enabled' => true]);
+        $this->sources->shouldReceive('record');
+        $this->intake->shouldReceive('finish');
+    });
+
+    it('el formulario pide la cuenta del día: sus datos para el cliente y su número firmado', function () {
+        $r = $this->get('/tienda/pago?p=7558816', ['Origin' => 'https://solobrillo.com'])->assertOk();
+
+        expect($r->json('account.name'))->toBe('Pago móvil Banesco')
+            ->and(array_column($r->json('account.details'), 'value'))->toBe(['Banesco (0134)', '0414-0000000', 'V-11111111'])
+            ->and(StorefrontCatalog::accountId($r->json('account.id')))->toBe(6)
+            // un número sin firma no vale
+            ->and(StorefrontCatalog::accountId('6.otra'))->toBeNull();
+    });
+
+    it('entra pagado: su pago móvil por el total con la tasa de la landing, la cuenta que vio y la foto; sale el Purchase ya', function () {
+        $account = $this->get('/tienda/pago?p=7558816')->json('account.id');
+        $r = enviar164($this, ['payment' => 'pago_movil', 'account' => $account, 'receipt' => RECIBO168])->assertOk();
+        $order = Order::first();
+        $pay = DB::table('order_payments')->first();
+        $receipt = DB::table('payment_receipts')->first();
+
+        expect($r->json('payment'))->toBe('pago_movil')
+            ->and(array_column($r->json('events'), 'name'))->toBe(['AddPaymentInfo', 'Purchase'])
+            ->and($r->json('events.0.id'))->toBe('nuv-pedido-1')
+            ->and($r->json('event.id'))->toBe('nuv-web-1')
+            ->and($order->prepaid_at)->not->toBeNull()
+            ->and((float) $order->cash_received)->toBe(51.5)
+            ->and($pay->method)->toBe('PAGOMOVIL')->and((float) $pay->amount)->toBe(51.5)->and((float) $pay->rate)->toBe(254.37)
+            ->and((int) $order->payment_account_id)->toBe(6)
+            ->and($receipt->original_name)->toBe('comprobante-WEB-1.png')
+            ->and(Illuminate\Support\Facades\Storage::disk('public')->exists($receipt->path))->toBeTrue()
+            ->and(StorefrontOrder::first()->payment)->toBe('pago_movil')
+            ->and(urldecode($r->json('whatsapp')))->toContain('Ya lo pagué por pago móvil')
+            ->and(DB::table('order_activity_logs')->where('action', 'storefront_prepaid')->exists())->toBeTrue();
+    });
+
+    it('sin la foto del comprobante no entra; con el pago anticipado apagado tampoco', function () {
+        expect(enviar164($this, ['payment' => 'pago_movil'])->assertStatus(422)->json('fields'))->toBe(['receipt'])
+            ->and(enviar164($this, ['payment' => 'pago_movil', 'receipt' => 'data:image/png;base64,' . base64_encode('<?php echo 1;')])->assertStatus(422)->json('fields'))->toBe(['receipt']);
+        StorefrontCatalog::saveSettings(['prepaid_enabled' => false]);
+        expect(enviar164($this, ['payment' => 'pago_movil', 'receipt' => RECIBO168])->assertStatus(422)->json('fields'))->toContain('pay');
+    });
+
+    it('con la tienda cerrada le dice el horario y cuándo una asesora valida el pago', function () {
+        $r = enviar164($this, ['payment' => 'pago_movil', 'receipt' => RECIBO168])->assertOk();
+
+        // sin un día abierto la tienda está cerrada; sin horario automático, el del equipo
+        expect($r->json('after_hours'))->toBeTrue()
+            ->and($r->json('hours'))->toBe('de lunes a sábado, de 8:00 a. m. a 7:00 p. m.')
+            ->and($r->json('when'))->toMatch('/^(Hoy|Mañana|El lunes) a partir de las 8:00 a\. m\.$/');
+    });
+
+    it('n8n no le manda "Confirma tu pedido… Pago al recibir": para él ya está confirmado', function () {
+        enviar164($this, ['payment' => 'pago_movil', 'receipt' => RECIBO168])->assertOk();
+
+        expect(Order::first()->prepaid_at)->not->toBeNull();
+        // check-window toma prepaid_at como la confirmación (ver ExternalWhatsAppController)
+        expect(file_get_contents(app_path('Http/Controllers/External/ExternalWhatsAppController.php')))->toContain("\$prepaidAt?->toDateTimeString()");
+    });
+});
+
+describe('.168: la encomienda a otra ciudad del país (MRW y Zoom)', function () {
+    beforeEach(function () {
+        tablas168();
+        Illuminate\Support\Facades\Storage::fake('public');
+        StorefrontCatalog::saveSettings(['courier_enabled' => true, 'courier_origin_city_id' => 2, 'courier_dropoff' => ['MRW' => 'https://maps.app.goo.gl/mrw-valencia', 'Zoom' => '']]);
+        $this->sources->shouldReceive('record');
+        $this->intake->shouldReceive('finish');
+    });
+
+    it('la configuración la ofrece y la lista trae solo las oficinas activas de esa empresa', function () {
+        expect($this->get('/tienda/productos/7558816')->json('courier'))->toBe(['companies' => ['MRW', 'Zoom']]);
+        $r = $this->get('/tienda/oficinas?empresa=MRW')->assertOk();
+
+        expect(array_column($r->json('offices'), 'name'))->toBe(['Alto Barinas'])
+            ->and($this->get('/tienda/oficinas?empresa=Tealca')->status())->toBe(404);
+    });
+
+    it('sale de la ciudad del dueño, pagada, con la empresa, la oficina y quien retira; sin express', function () {
+        $r = enviar164($this, ['city' => null, 'address' => null, 'express' => true, 'receipt' => RECIBO168,
+            'courier' => ['company' => 'MRW', 'office_id' => 70, 'id_number' => 'v 12.345.678']])->assertOk();
+        $order = Order::first();
+
+        expect($r->json('payment'))->toBe('pago_movil')
+            ->and((int) $order->city_id)->toBe(2)->and((int) $order->agency_id)->toBe(21)
+            ->and((bool) $order->courier_shipment)->toBeTrue()
+            ->and($order->courier_recipient_name)->toBe('María José Pérez')
+            ->and($order->courier_recipient_id_number)->toBe('V-12345678')
+            ->and($order->courier_recipient_phone)->toBe('+584141234567')
+            ->and($order->courier_company)->toBe('MRW')
+            ->and($order->courier_office)->toBe('MRW Alto Barinas — URB ALTO BARINAS NORTE, LOCAL 135, Barinas')
+            ->and($order->location)->toBe('https://maps.app.goo.gl/mrw-valencia')
+            ->and($order->prepaid_at)->not->toBeNull()
+            ->and($order->express_fee)->toBeNull()
+            ->and((float) $order->current_total_price)->toBe(49.5)
+            ->and(urldecode($r->json('whatsapp')))->toContain('para retirar en MRW');
+    });
+
+    it('si no encuentra su oficina la escribe; una apagada, Tealca o una cédula rara no valen', function () {
+        enviar164($this, ['city' => null, 'receipt' => RECIBO168, 'courier' => ['company' => 'Zoom', 'office_text' => 'Zoom de Cabudare, al lado del banco', 'state' => 'Lara', 'id_number' => '12345678']])->assertOk();
+        expect(Order::first()->courier_office)->toBe('Zoom (la escribió el cliente): Zoom de Cabudare, al lado del banco, Lara')
+            ->and(Order::first()->location)->toBeNull();
+
+        expect(enviar164($this, ['phone' => '04241234567', 'city' => null, 'receipt' => RECIBO168, 'courier' => ['company' => 'MRW', 'office_id' => 72, 'id_number' => 'V-1234567']])
+            ->assertStatus(422)->json('fields'))->toContain('office')
+            ->and(enviar164($this, ['phone' => '04241234567', 'city' => null, 'receipt' => RECIBO168, 'courier' => ['company' => 'Tealca', 'office_text' => 'Tealca Centro', 'state' => 'Lara', 'id_number' => '12345678']])
+                ->assertStatus(422)->json('fields'))->toContain('company')
+            ->and(enviar164($this, ['phone' => '04241234567', 'city' => null, 'receipt' => RECIBO168, 'courier' => ['company' => 'MRW', 'office_id' => 70, 'id_number' => 'J-1']])
+                ->assertStatus(422)->json('fields'))->toBe(['id_number']);
+    });
+});
+
+describe('.168: hablar con una asesora antes', function () {
+    beforeEach(function () {
+        tablas168();
+        StorefrontCatalog::saveSettings(['advisor_enabled' => true]);
+        $this->sources->shouldReceive('record');
+        $this->intake->shouldReceive('finish');
+    });
+
+    it('entra sin dirección, sin pago, con su nota para la vendedora y su mensaje', function () {
+        $r = enviar164($this, ['payment' => 'asesora', 'address' => '', 'reference' => ''])->assertOk();
+
+        expect(Order::first()->prepaid_at)->toBeNull()
+            ->and(DB::table('order_payments')->count())->toBe(0)
+            ->and(DB::table('order_activity_logs')->where('action', 'storefront_advisor')->exists())->toBeTrue()
+            ->and(urldecode($r->json('whatsapp')))->toContain('quiero hablar con una asesora sobre mi pedido WEB-1');
+    });
+});
+
+describe('.168: el Purchase al entregar (solo en las campañas marcadas)', function () {
+    beforeEach(function () {
+        tablas168();
+        Illuminate\Support\Facades\Storage::fake('public');
+        StorefrontCatalog::saveSettings(['prepaid_enabled' => true, 'advisor_enabled' => true]);
+        DB::table('meta_purchase_modes')->insert(['product_id' => 7, 'campaign_meta_id' => '120210000000555', 'starts_on' => today()->toDateString()]);
+        $this->sources->shouldReceive('record');
+        $this->intake->shouldReceive('finish');
+    });
+
+    $landing = fn (string $campaign) => "https://solobrillo.com/products/solo-brillo?utm_campaign={$campaign}&utm_content=120210000000001";
+
+    it('al recibir, en una campaña marcada: al pedir solo el "pedido hecho"; el Purchase queda para la entrega', function () use ($landing) {
+        $r = enviar164($this, ['landing' => $landing('120210000000555')])->assertOk();
+
+        expect(StorefrontOrder::first()->purchase_mode)->toBe('delivery')
+            ->and($r->json('event'))->toBeNull()
+            ->and(array_column($r->json('events'), 'name'))->toBe(['AddPaymentInfo']);
+    });
+
+    it('si paga por adelantado, el Purchase sale ya aunque la campaña esté marcada', function () use ($landing) {
+        $r = enviar164($this, ['landing' => $landing('120210000000555'), 'payment' => 'pago_movil', 'receipt' => RECIBO168])->assertOk();
+
+        expect(array_column($r->json('events'), 'name'))->toBe(['AddPaymentInfo', 'Purchase']);
+    });
+
+    it('en otra campaña (o sin campaña, o desmarcada) todo sigue como siempre: el Purchase al pedir', function () use ($landing) {
+        enviar164($this, ['landing' => $landing('120210000000777')])->assertOk();
+        DB::table('meta_purchase_modes')->update(['ends_on' => today()->toDateString()]);
+        enviar164($this, ['phone' => '04241234567', 'landing' => $landing('120210000000555')])->assertOk();
+
+        expect(StorefrontOrder::pluck('purchase_mode')->all())->toBe(['order', 'order']);
+    });
+
+    it('al pasar a Entregado sale el Purchase una sola vez, con la hora del pedido (o la de ahora si pasaron más de 6 días)', function () use ($landing) {
+        Illuminate\Support\Facades\Bus::fake();
+        StorefrontCatalog::saveSettings(['pixel_id' => '1802353243804', 'capi_token' => 'EAAprueba']);
+        enviar164($this, ['landing' => $landing('120210000000555')])->assertOk();
+        $order = Order::first();
+        $front = StorefrontOrder::first();
+
+        App\Services\Storefront\StorefrontDelivered::handle($order);
+        Illuminate\Support\Facades\Bus::assertDispatched(App\Jobs\SendStorefrontEvent::class,
+            fn ($j) => $j->event === 'Purchase' && $j->time === $front->created_at->timestamp);
+
+        // ya salió: no se repite; un retorno tampoco
+        $front->forceFill(['capi_status' => 'sent'])->save();
+        App\Services\Storefront\StorefrontDelivered::handle($order);
+        Illuminate\Support\Facades\Bus::assertDispatchedTimes(App\Jobs\SendStorefrontEvent::class, 2); // el "pedido hecho" al pedir y el Purchase al entregar, nada más
+        expect(StorefrontRules::deliveredTime(1000, 1000 + 7 * 86400))->toBe(1000 + 7 * 86400)
+            ->and(StorefrontRules::deliveredTime(1000, 1000 + 6 * 86400))->toBe(1000);
+    });
+
+    it('la API manda el "pedido hecho" con su número, y el Purchase al entregar con su hora y el total entregado', function () use ($landing) {
+        StorefrontCatalog::saveSettings(['pixel_id' => '1802353243804', 'capi_token' => 'EAAprueba']);
+        Illuminate\Support\Facades\Bus::fake();
+        enviar164($this, ['landing' => $landing('120210000000555')])->assertOk();
+        $front = StorefrontOrder::first();
+        Order::first()->forceFill(['current_total_price' => 47.5])->saveQuietly();
+        Http::fake(['graph.facebook.com/*' => Http::response(['events_received' => 1])]);
+
+        expect((new MetaCapi())->send($front, MetaCapi::PLACED))->toBe('sent')
+            ->and((new MetaCapi())->send($front->fresh(), MetaCapi::PURCHASE, 1_800_000_000))->toBe('sent');
+        $sent = Http::recorded()->map(fn ($x) => $x[0]['data'][0])->all();
+        expect([$sent[0]['event_name'], $sent[0]['event_id'], $sent[0]['custom_data']['value']])->toBe(['AddPaymentInfo', 'nuv-pedido-1', 51.5])
+            ->and([$sent[1]['event_name'], $sent[1]['event_id'], $sent[1]['event_time'], $sent[1]['custom_data']['value']])->toBe(['Purchase', 'nuv-web-1', 1_800_000_000, 47.5])
+            ->and($front->fresh()->placed_capi_status)->toBe('sent')
+            ->and($front->fresh()->purchase_sent_at)->not->toBeNull();
+    });
+});
+
+describe('.168: lo que le escribe el sistema al que pagó por adelantado', function () {
+    beforeEach(function () {
+        tablas168();
+        Illuminate\Support\Facades\Storage::fake('public');
+        StorefrontCatalog::saveSettings(['prepaid_enabled' => true]);
+        config(['services.receipt_checks.mode' => 'observe', 'services.openai.key' => 'sk-prueba']);
+        $this->sources->shouldReceive('record');
+        $this->intake->shouldReceive('finish');
+        Illuminate\Support\Facades\Bus::fake();
+        enviar164($this, ['payment' => 'pago_movil', 'receipt' => RECIBO168])->assertOk();
+        $this->front = StorefrontOrder::first();
+        $this->sent = [];
+        $this->mock(App\Services\WhatsAppService::class, function ($m) {
+            $m->shouldReceive('sendMessage')->andReturnUsing(function ($to, $text) {
+                $this->sent[] = $text;
+
+                return ['messages' => [['id' => 'wamid.' . count($this->sent)]]];
+            });
+        });
+        $this->abrir = fn () => DB::table('business_days')->insert(['shop_id' => 4, 'date' => today()->toDateString(), 'open_at' => now()]);
+        $this->ventana = fn () => DB::table('clients')->update(['last_whatsapp_received_at' => now()]);
+        $this->correr = fn () => app(App\Services\Storefront\PrepaidMessages::class)->run();
+    });
+
+    it('fuera de horario: apenas escribe, el aviso de que una asesora validará su pago en el horario (una vez)', function () {
+        ($this->ventana)();
+        $this->travel(2)->minutes();
+        ($this->correr)();
+        ($this->correr)();
+
+        expect($this->sent)->toHaveCount(1)
+            ->and($this->sent[0])->toContain('Recibimos tu pedido WEB-1 y tu comprobante de pago')
+            ->and($this->sent[0])->toContain('Nuestro horario de atención es de lunes a sábado, de 8:00 a. m. a 7:00 p. m.')
+            ->and($this->sent[0])->toContain('una asesora validará tu pago y procederá con tu envío')
+            ->and($this->sent[0])->not->toContain('IA');
+    });
+
+    it('comprobante bien y tienda abierta: "ya confirmamos tu pago" entre 5 y 15 minutos después', function () {
+        ($this->abrir)();
+        ($this->ventana)();
+        DB::table('receipt_checks')->update(['status' => 'ok']);
+        ($this->correr)();
+        $due = $this->front->fresh()->confirm_due_at;
+
+        expect($due->between(now()->addMinutes(5)->subSecond(), now()->addMinutes(15)->addSecond()))->toBeTrue()
+            ->and($this->sent)->toBe([]);
+        $this->travel(16)->minutes();
+        ($this->correr)();
+
+        expect($this->sent)->toHaveCount(1)->and($this->sent[0])->toContain('Ya confirmamos tu pago del pedido WEB-1')
+            ->and($this->front->fresh()->confirm_status)->toBe('sent');
+    });
+
+    it('sin la ventana de WhatsApp abierta, la vendedora lo confirma; con un problema en el comprobante, nada', function () {
+        ($this->abrir)();
+        DB::table('receipt_checks')->update(['status' => 'fail']);
+        ($this->correr)();
+        expect($this->front->fresh()->confirm_status)->toBeNull()->and($this->front->fresh()->confirm_due_at)->toBeNull();
+
+        // administración lo aprueba a mano: ahora sí, pero no tiene la ventana abierta
+        DB::table('receipt_checks')->update(['reviewed_at' => now()]);
+        ($this->correr)();
+        $this->travel(16)->minutes();
+        ($this->correr)();
+
+        expect($this->sent)->toBe([])
+            ->and($this->front->fresh()->confirm_status)->toBe('seller')
+            ->and(DB::table('order_activity_logs')->where('action', 'storefront_confirm_seller')->value('description'))->toContain('escríbele que ya confirmamos su pago')
+            ->and(App\Services\Storefront\PrepaidState::of(Order::first())['state'])->toBe('seller');
+    });
+
+    it('validado con la tienda cerrada: espera a que abra (y ahí 5 a 15 minutos)', function () {
+        ($this->ventana)();
+        DB::table('receipt_checks')->update(['status' => 'ok']);
+        ($this->correr)();
+        expect($this->front->fresh()->confirm_due_at)->toBeNull();
+
+        ($this->abrir)();
+        ($this->correr)();
+        expect($this->front->fresh()->confirm_due_at)->not->toBeNull();
     });
 });

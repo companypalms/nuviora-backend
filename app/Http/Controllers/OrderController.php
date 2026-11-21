@@ -276,6 +276,10 @@ class OrderController extends Controller
                 'courier_recipient_name'      => $order->courier_recipient_name,
                 'courier_recipient_id_number' => $order->courier_recipient_id_number,
                 'courier_recipient_phone'     => $order->courier_recipient_phone,
+                // .168: la empresa y la oficina donde retira (formulario de la tienda o la vendedora), y si ya pagó
+                'courier_company'             => $order->courier_company,
+                'courier_office'              => $order->courier_office,
+                'prepaid'                     => \App\Services\Storefront\PrepaidState::of($order),
                 'cash_received'        => $order->cash_received,
                 'change_amount'        => $order->change_amount,
                 'change_covered_by'    => $order->change_covered_by,
@@ -1263,19 +1267,23 @@ class OrderController extends Controller
             'courier_recipient_name' => 'nullable|required_if:courier_shipment,true,1|string|max:150',
             'courier_recipient_id_number' => ['nullable', 'required_if:courier_shipment,true,1', 'string', 'max:30', 'regex:/^[VvEeJjGgPp]?[\s.\-]*\d[\d.\s]{4,14}$/'],
             'courier_recipient_phone' => 'nullable|required_if:courier_shipment,true,1|string|max:40',
+            // .168: la empresa y la oficina donde retira (opcionales para la vendedora)
+            'courier_company' => 'nullable|string|in:' . implode(',', \App\Services\Storefront\StorefrontRules::COURIERS),
+            'courier_office' => 'nullable|string|max:300',
         ], [
             'courier_recipient_name.required_if' => 'Falta el nombre de quien recibe la encomienda.',
             'courier_recipient_id_number.required_if' => 'Falta la cédula de quien recibe la encomienda.',
             'courier_recipient_id_number.regex' => 'La cédula tiene que ser un número (por ejemplo, V-12345678).',
             'courier_recipient_phone.required_if' => 'Falta el teléfono de quien recibe la encomienda.',
         ]);
-        $before = $order->only(['courier_shipment', 'courier_recipient_name', 'courier_recipient_id_number', 'courier_recipient_phone']);
+        $before = $order->only(['courier_shipment', 'courier_recipient_name', 'courier_recipient_id_number', 'courier_recipient_phone', 'courier_company', 'courier_office']);
         $order->fill([
             'courier_shipment' => (bool) $data['courier_shipment'],
             'courier_recipient_name' => $data['courier_shipment'] ? trim((string) $data['courier_recipient_name']) : $order->courier_recipient_name,
             'courier_recipient_id_number' => $data['courier_shipment'] ? trim((string) $data['courier_recipient_id_number']) : $order->courier_recipient_id_number,
             'courier_recipient_phone' => $data['courier_shipment'] ? trim((string) $data['courier_recipient_phone']) : $order->courier_recipient_phone,
-        ])->save();
+        ] + ($data['courier_shipment'] && $request->has('courier_company') ? ['courier_company' => $data['courier_company'] ?? null] : [])
+          + ($data['courier_shipment'] && $request->has('courier_office') ? ['courier_office' => trim((string) ($data['courier_office'] ?? '')) ?: null] : []))->save();
         \App\Models\OrderActivityLog::create([
             'order_id' => $order->id,
             'user_id' => Auth::id(),

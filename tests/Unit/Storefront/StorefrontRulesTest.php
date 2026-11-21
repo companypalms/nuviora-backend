@@ -134,3 +134,106 @@ describe('.164: los KPIs', function () {
             ->and(array_column(StorefrontKpis::evaluate($web(['fallback' => 1]), $base)['kpis'], 'state', 'key')['technical'])->toBe('bad');
     });
 });
+
+// .168 (dueño, 2026-11-21): el pago anticipado, las encomiendas, el horario para el cliente y el Purchase al entregar.
+describe('.168: pago anticipado, encomiendas y Purchase al entregar', function () {
+    it('la cédula de quien retira queda limpia (V o E y los números); algo raro no vale', function () {
+        expect(StorefrontRules::idNumber('v 12.345.678'))->toBe('V-12345678')
+            ->and(StorefrontRules::idNumber('12345678'))->toBe('V-12345678')
+            ->and(StorefrontRules::idNumber('E-8.123.456'))->toBe('E-8123456')
+            ->and(StorefrontRules::idNumber('J-1'))->toBeNull()
+            ->and(StorefrontRules::idNumber('12345'))->toBeNull()
+            ->and(StorefrontRules::idNumber(null))->toBeNull();
+    });
+
+    it('una campaña marcada manda el Purchase al entregar desde su día; al desmarcarla, los pedidos nuevos vuelven a "al pedir"', function () {
+        $ranges = [['campaign' => '111', 'from' => '2026-11-21', 'to' => null], ['campaign' => '222', 'from' => '2026-11-10', 'to' => '2026-11-20']];
+
+        expect(StorefrontRules::purchaseMode('111', $ranges, '2026-11-21'))->toBe('delivery')
+            ->and(StorefrontRules::purchaseMode('111', $ranges, '2026-11-20'))->toBe('order')
+            ->and(StorefrontRules::purchaseMode('222', $ranges, '2026-11-15'))->toBe('order') // ya desmarcada
+            ->and(StorefrontRules::purchaseMode(null, $ranges, '2026-11-21'))->toBe('order')
+            // el sistema la mide con el "pedido hecho" en todos sus días marcados (el último incluido)
+            ->and(StorefrontRules::markedOn('222', '2026-11-20', $ranges))->toBeTrue()
+            ->and(StorefrontRules::markedOn('222', '2026-11-21', $ranges))->toBeFalse()
+            ->and(StorefrontRules::markedOn('111', '2026-11-30', $ranges))->toBeTrue();
+    });
+
+    it('el Purchase sale al pedir salvo en una campaña "al entregar" sin pago adelantado', function () {
+        expect(StorefrontRules::purchaseNow('order', 'cod'))->toBeTrue()
+            ->and(StorefrontRules::purchaseNow('delivery', 'cod'))->toBeFalse()
+            ->and(StorefrontRules::purchaseNow('delivery', 'asesora'))->toBeFalse()
+            ->and(StorefrontRules::purchaseNow('delivery', 'pago_movil'))->toBeTrue()
+            ->and(StorefrontRules::placedEventId(12))->toBe('nuv-pedido-12');
+    });
+
+    it('al entregar, la hora del pedido si fue hace 6 días o menos (Meta acepta 7); si no, la de ahora', function () {
+        $t = 1_800_000_000;
+
+        expect(StorefrontRules::deliveredTime($t, $t + 2 * 86400))->toBe($t)
+            ->and(StorefrontRules::deliveredTime($t, $t + 6 * 86400))->toBe($t)
+            ->and(StorefrontRules::deliveredTime($t, $t + 6 * 86400 + 1))->toBe($t + 6 * 86400 + 1);
+    });
+
+    it('"ya confirmamos tu pago" sale entre 5 y 15 minutos después', function () {
+        expect(StorefrontRules::confirmDue(1000, 0.0))->toBe(1300)
+            ->and(StorefrontRules::confirmDue(1000, 1.0))->toBe(1900)
+            ->and(StorefrontRules::confirmDue(1000, 0.5))->toBe(1600);
+    });
+
+    it('el horario para el cliente, como lo diría una persona', function () {
+        expect(StorefrontRules::hoursText('08:00:00', '19:00:00', [1, 2, 3, 4, 5, 6]))->toBe('de lunes a sábado, de 8:00 a. m. a 7:00 p. m.')
+            ->and(StorefrontRules::hoursText('09:00', '18:30', [1, 2, 3, 4, 5]))->toBe('de lunes a viernes, de 9:00 a. m. a 6:30 p. m.')
+            ->and(StorefrontRules::hoursText('09:00', '18:00', [1, 3, 6]))->toBe('los lunes, los miércoles y los sábados, de 9:00 a. m. a 6:00 p. m.')
+            ->and(StorefrontRules::hoursText('09:00', '18:00', null))->toBe('de lunes a domingo, de 9:00 a. m. a 6:00 p. m.')
+            ->and(StorefrontRules::hoursText(null, '18:00', null))->toBeNull()
+            ->and(StorefrontRules::niceHour('12:15'))->toBe('12:15 p. m.')
+            ->and(StorefrontRules::niceHour('00:30'))->toBe('12:30 a. m.');
+    });
+
+    it('cuándo vuelve a atender: hoy, mañana o el lunes (el domingo no se trabaja)', function () {
+        $days = [1, 2, 3, 4, 5, 6];
+        $at = fn (string $s) => new DateTimeImmutable($s);
+        // viernes 20/11/2026 a las 6 a. m. → hoy a las 8; a las 10 p. m. → mañana; sábado en la noche → el lunes
+        $when = fn (string $now) => StorefrontRules::whenText($at($now), StorefrontRules::nextOpening($at($now), '08:00', $days));
+
+        expect($when('2026-11-20 06:00'))->toBe('Hoy a partir de las 8:00 a. m.')
+            ->and($when('2026-11-20 22:00'))->toBe('Mañana a partir de las 8:00 a. m.')
+            ->and($when('2026-11-21 21:00'))->toBe('El lunes a partir de las 8:00 a. m.')
+            ->and(StorefrontRules::whenText($at('2026-11-20 06:00'), null))->toBe('Apenas abramos');
+    });
+
+    it('nada de lo que ve o recibe el cliente nombra a una IA (dueño: "la persona debe creer que es un ser humano")', function () {
+        $customer = [...array_values(StorefrontRules::TEXTS), StorefrontRules::WHATSAPP_PREPAID, StorefrontRules::WHATSAPP_ADVISOR, StorefrontRules::WHATSAPP_COURIER,
+            StorefrontRules::CONFIRM_MESSAGE, StorefrontRules::CONFIRM_COURIER, StorefrontRules::ACK_MESSAGE];
+        foreach ($customer as $text) {
+            expect(preg_match('/\b(IA|AI|inteligencia artificial|autom[aá]tic|robot|bot)\b/iu', $text))->toBe(0, $text);
+        }
+        expect(StorefrontRules::ACK_MESSAGE)->toContain('una asesora validará tu pago y procederá con tu envío');
+    });
+
+    it('los ajustes nuevos: sin Tealca, las encomiendas con su ciudad de origen y los mensajes de siempre si quedan vacíos', function () {
+        $s = StorefrontRules::settings(['courier_companies' => ['MRW', 'Tealca'], 'courier_origin_city_id' => '2', 'courier_dropoff' => ['MRW' => ' https://maps.app/x ', 'Tealca' => 'y'],
+            'confirm_message' => '  ', 'prepaid_enabled' => 1]);
+
+        expect($s['courier_companies'])->toBe(['MRW'])
+            ->and($s['courier_origin_city_id'])->toBe(2)
+            ->and($s['courier_dropoff'])->toBe(['MRW' => 'https://maps.app/x', 'Zoom' => ''])
+            ->and($s['confirm_message'])->toBe(StorefrontRules::CONFIRM_MESSAGE)
+            ->and($s['prepaid_enabled'])->toBeTrue()
+            ->and(StorefrontRules::settings([])['courier_companies'])->toBe(['MRW', 'Zoom']);
+    });
+
+    it('el experimento: con 14 días y 30 entregados en cada lado gana "al entregar" si sale 10 % más barato por entregado', function () {
+        $arm = fn (int $delivered, ?float $cpd, ?float $eff = 60.0) => ['delivered' => $delivered, 'cost_per_delivered' => $cpd, 'effectiveness' => $eff];
+
+        expect(StorefrontKpis::experimentVerdict($arm(40, 10.0), $arm(35, 8.5), 14)['key'])->toBe('go')
+            ->and(StorefrontKpis::experimentVerdict($arm(40, 10.0), $arm(35, 8.5), 14)['text'])->toContain('15 % más barato')
+            // casi igual de caro pero con más efectividad: también gana
+            ->and(StorefrontKpis::experimentVerdict($arm(40, 10.0), $arm(35, 9.8, 70.0), 14)['key'])->toBe('go')
+            ->and(StorefrontKpis::experimentVerdict($arm(40, 10.0), $arm(35, 12.0), 14)['key'])->toBe('back')
+            ->and(StorefrontKpis::experimentVerdict($arm(40, 10.0), $arm(35, 9.8, 55.0), 14)['key'])->toBe('tie')
+            ->and(StorefrontKpis::experimentVerdict($arm(40, 10.0), $arm(20, 5.0), 14)['key'])->toBe('measuring')
+            ->and(StorefrontKpis::experimentVerdict($arm(40, 10.0), $arm(35, 5.0), 9)['key'])->toBe('measuring');
+    });
+});

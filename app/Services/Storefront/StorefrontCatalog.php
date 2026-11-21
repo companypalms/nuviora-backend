@@ -3,6 +3,9 @@
 namespace App\Services\Storefront;
 
 use App\Models\City;
+use App\Models\CourierOffice;
+use App\Models\Shop;
+use App\Services\Payments\PaymentAccounts;
 use App\Models\LogisticsCenter;
 use App\Models\Product;
 use App\Models\ProductCityAvailability;
@@ -18,6 +21,9 @@ use Illuminate\Support\Facades\DB;
  * `.164`: lo que necesita nuestro formulario en la landing de un producto (por su id de Shopify): si está prendido, las
  * ofertas con sus Bs (con la tasa de la página del dueño), las tallas, dónde se paga al recibir, el Delivery Express, el
  * diseño, el píxel y el WhatsApp. Lo que no depende de la tasa se guarda 30 segundos (cada visita de la landing lo pide).
+ *
+ * `.168`: también si se puede pagar por adelantado, hablar con una asesora o pedir por encomienda (MRW y Zoom, con sus
+ * oficinas), la cuenta de pago móvil que le toca al cliente y el horario de atención (para el mensaje de fuera de horario).
  */
 class StorefrontCatalog
 {
@@ -108,6 +114,8 @@ class StorefrontCatalog
             'pixel' => ['id' => $s['pixel_id'], 'initiate' => $s['send_initiate'], 'pageview' => $s['send_pageview'],
                 'content_id' => StorefrontRules::contentId($s['content_id_format'], $s['content_region'], (string) $product->product_id, $product->variant_id ? (string) $product->variant_id : null)],
             'releasit' => $s['releasit_selector'],
+            'pay' => ['prepaid' => $s['prepaid_enabled'], 'advisor' => $s['advisor_enabled']],
+            'courier' => self::courierOn($s) ? ['companies' => $s['courier_companies']] : null,
             'ts' => $ts = now()->timestamp,
             'sig' => StorefrontRules::sign($ts, (string) config('app.key')),
         ];
@@ -147,6 +155,74 @@ class StorefrontCatalog
 
         return StorefrontRules::codCities(City::orderBy('name')->get(['id', 'name'])->map(fn ($c) => ['id' => $c->id, 'name' => $c->name])->all(),
             $withAgency, $withCenter, $unavailable);
+    }
+
+    /** `.168`: las encomiendas van si el dueño las prendió y eligió de qué ciudad salen. */
+    public static function courierOn(array $s): bool
+    {
+        return $s['courier_enabled'] && $s['courier_origin_city_id'] !== null;
+    }
+
+    /**
+     * `.168`: las oficinas activas de una empresa, por estado (10 minutos).
+     *
+     * @return list<array{id: int, state: string, city: ?string, name: string, address: ?string}>
+     */
+    public static function offices(string $company): array
+    {
+        return Cache::remember("storefront:offices:{$company}:" . (Cache::get('storefront:version') ?? 0), 600, fn () => CourierOffice::where('company', $company)
+            ->where('is_active', true)->orderBy('state')->orderBy('city')->orderBy('name')->get(['id', 'state', 'city', 'name', 'address'])
+            ->map(fn ($o) => ['id' => $o->id, 'state' => $o->state, 'city' => $o->city, 'name' => $o->name, 'address' => $o->address])->all());
+    }
+
+    /**
+     * `.168`: la cuenta de pago móvil que le toca ahora al cliente (la que menos Bs lleva hoy), con lo que ve: sus datos.
+     * Va firmada: al llegar el pedido, la orden se queda con esa.
+     *
+     * @return ?array{id: string, name: string, details: list<array{label: string, value: string}>}
+     */
+    public static function account(): ?array
+    {
+        $account = app(PaymentAccounts::class)->suggest();
+        if (!$account) {
+            return null;
+        }
+        $shown = PaymentAccounts::present($account);
+
+        return ['id' => $account->id . '.' . self::accountSig($account->id), 'name' => $account->name,
+            'details' => array_map(fn ($d) => ['label' => (string) ($d['label'] ?? ''), 'value' => (string) ($d['value'] ?? '')], $shown['details'])];
+    }
+
+    /** "12.firma" → 12 si la firma es nuestra (así nadie elige otra cuenta a mano). */
+    public static function accountId(?string $signed): ?int
+    {
+        [$id, $sig] = array_pad(explode('.', (string) $signed, 2), 2, '');
+
+        return ctype_digit($id) && hash_equals(self::accountSig((int) $id), $sig) ? (int) $id : null;
+    }
+
+    private static function accountSig(int $id): string
+    {
+        return substr(hash_hmac('sha256', "nvf-acc|{$id}", (string) config('app.key')), 0, 24);
+    }
+
+    /**
+     * `.168`: el horario de atención de la tienda para el cliente y cuándo se vuelve a atender. Sin horario automático, el
+     * del equipo (de lunes a sábado, de 8:00 a. m. a 7:00 p. m., el mismo de los mensajes de n8n).
+     *
+     * @return array{text: string, when: string}
+     */
+    public static function hours(?int $shopId): array
+    {
+        $shop = $shopId ? Shop::find($shopId) : null;
+        $auto = $shop && $shop->auto_schedule_enabled && $shop->auto_open_at && $shop->auto_close_at;
+        $open = $auto ? (string) $shop->auto_open_at : '08:00';
+        $close = $auto ? (string) $shop->auto_close_at : '19:00';
+        $days = $auto ? (is_array($shop->auto_open_days) ? $shop->auto_open_days : null) : [1, 2, 3, 4, 5, 6];
+        $now = now()->toDateTimeImmutable();
+
+        return ['text' => StorefrontRules::hoursText($open, $close, $days) ?? 'en horario de oficina',
+            'when' => StorefrontRules::whenText($now, StorefrontRules::nextOpening($now, $open, $days))];
     }
 
     /** Después de cambiar ofertas o diseño, el formulario los toma enseguida. */

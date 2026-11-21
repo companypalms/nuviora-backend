@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\CourierOffice;
 use App\Models\StorefrontOrder;
 use App\Services\Storefront\StorefrontCatalog;
 use App\Services\Storefront\StorefrontLimit;
@@ -16,13 +17,21 @@ use Symfony\Component\HttpFoundation\Response;
  * `.164`: lo público de nuestro formulario en la landing de la tienda (sin sesión ni cookies; `routes/tienda.php`). El
  * cargador, la configuración de un producto, el pedido y el embudo. Solo responde a la tienda: el navegador solo deja leer
  * las respuestas desde los dominios que el dueño puso en Ajustes. Si algo de aquí falla, la landing muestra Releasit.
+ *
+ * `.168`: la cuenta de pago móvil para pagar por adelantado, las oficinas de MRW y Zoom, y el pedido con su forma de pago,
+ * la foto del comprobante y la encomienda.
  */
 class StorefrontController extends Controller
 {
     /** Los pasos del embudo que se cuentan (sin datos personales). */
     private const EVENTS = ['view', 'start', 'submit', 'error', 'fallback', 'whatsapp'];
 
-    private const FIELDS = ['offer', 'size', 'name', 'phone', 'city', 'address', 'reference', 'express'];
+    private const FIELDS = ['offer', 'size', 'name', 'phone', 'city', 'address', 'reference', 'express', 'pay', 'receipt', 'company', 'state', 'office', 'id_number'];
+
+    /** `.168`: la foto del comprobante (ya comprimida en el navegador). */
+    private const RECEIPT_MAX_BYTES = 3 * 1024 * 1024;
+
+    private const RECEIPT_TYPES = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'];
 
     public function __construct(private StorefrontCatalog $catalog)
     {
@@ -65,19 +74,34 @@ class StorefrontController extends Controller
             || now()->timestamp - $ts < StorefrontRules::MIN_SECONDS || now()->timestamp - $ts > 86400) {
             return $this->json($request, ['ok' => false, 'message' => StorefrontOrders::LIMIT_DAY], 422);
         }
+        $s = StorefrontCatalog::settings();
         $cities = array_column(StorefrontCatalog::codCities((int) $product->id), 'id');
+        // .168: la encomienda (otra ciudad del país) se paga siempre por adelantado; la asesora puede no dar la dirección
+        $c = is_array($in['courier'] ?? null) && StorefrontCatalog::courierOn($s) ? $in['courier'] : null;
+        $payment = $c ? StorefrontOrder::PREPAID : (string) ($in['payment'] ?? StorefrontOrder::COD);
+        $allowed = [StorefrontOrder::COD, ...($s['prepaid_enabled'] ? [StorefrontOrder::PREPAID] : []), ...($s['advisor_enabled'] ? [StorefrontOrder::ADVISOR] : [])];
+        $fields = [];
+        if (!$c && !in_array($payment, $allowed, true)) {
+            $fields[] = 'pay';
+        }
         $v = Validator::make($in, [
             'name' => 'required|string|min:3|max:80',
             'phone' => ['required', 'string', 'max:30', fn ($a, $value, $fail) => StorefrontRules::phone($value) === null ? $fail('phone') : null],
-            'city' => ['required', 'integer', fn ($a, $value, $fail) => in_array((int) $value, $cities, true) ? null : $fail('city')],
-            'address' => 'required|string|min:5|max:250',
+            'city' => $c ? 'nullable' : ['required', 'integer', fn ($a, $value, $fail) => in_array((int) $value, $cities, true) ? null : $fail('city')],
+            'address' => $c ? 'nullable' : ($payment === StorefrontOrder::ADVISOR ? 'nullable|string|max:250' : 'required|string|min:5|max:250'),
             'reference' => 'nullable|string|max:250',
             'offer' => 'nullable|integer',
             'variant' => 'nullable|integer',
             'express' => 'nullable|boolean',
         ]);
-        if ($v->fails()) {
-            return $this->json($request, ['ok' => false, 'fields' => array_keys($v->errors()->toArray())], 422);
+        $fields = [...$fields, ...array_keys($v->errors()->toArray())];
+        $courier = $c ? $this->courier($c, $in, $s, $fields) : null;
+        $receipt = null;
+        if ($payment === StorefrontOrder::PREPAID && ($receipt = self::receipt($in['receipt'] ?? null)) === null) {
+            $fields[] = 'receipt';
+        }
+        if ($fields) {
+            return $this->json($request, ['ok' => false, 'fields' => array_values(array_unique($fields))], 422);
         }
         $hasVariants = \App\Models\ProductVariant::where('product_id', $product->id)->where('is_active', true)->exists();
         if ($hasVariants && empty($in['variant'])) {
@@ -86,10 +110,12 @@ class StorefrontController extends Controller
         try {
             $r = $orders->place($product, [
                 'offer' => !empty($in['offer']) ? (int) $in['offer'] : null, 'variant' => !empty($in['variant']) ? (int) $in['variant'] : null,
-                'name' => trim((string) $in['name']), 'phone' => (string) $in['phone'], 'city' => (int) $in['city'], 'address' => trim((string) $in['address']),
+                'name' => trim((string) $in['name']), 'phone' => (string) $in['phone'], 'city' => $c ? null : (int) $in['city'],
+                'address' => trim((string) ($in['address'] ?? '')) ?: null,
                 'reference' => trim((string) ($in['reference'] ?? '')) ?: null, 'express' => (bool) ($in['express'] ?? false), 'rate' => $in['rate'] ?? null,
                 'visitor' => $in['visitor'] ?? null, 'landing' => $in['landing'] ?? null, 'referrer' => $in['referrer'] ?? null, 'page' => $in['page'] ?? null,
                 'fbp' => $in['fbp'] ?? null, 'fbc' => $in['fbc'] ?? null,
+                'payment' => $payment, 'account' => StorefrontCatalog::accountId($in['account'] ?? null), 'receipt' => $receipt, 'courier' => $courier,
             ], ['ip' => $request->ip(), 'ua' => $request->userAgent()]);
         } catch (StorefrontLimit $e) {
             return $this->json($request, ['ok' => false, 'message' => $e->getMessage(), 'limit' => true], 429);
@@ -97,13 +123,96 @@ class StorefrontController extends Controller
             return $this->json($request, ['ok' => false, 'fields' => ['offer']], 422);
         }
         $front = $r['storefront'];
-        $wa = StorefrontOrders::whatsapp($r['order'], StorefrontCatalog::settings());
+        $wa = StorefrontOrders::whatsapp($r['order'], $s, (string) $front->payment);
+        $value = ['value' => round((float) $front->total_usd, 2), 'currency' => 'USD', 'num_items' => (int) $front->units];
+        $purchase = StorefrontRules::purchaseNow((string) $front->purchase_mode, (string) $front->payment);
+        $hours = $front->after_hours ? StorefrontCatalog::hours($s['shop_id']) : null;
 
         return $this->json($request, [
             'ok' => true, 'duplicate' => $r['duplicate'], 'order' => $r['order']->name, 'id' => $front->id,
             'whatsapp' => $wa['link'],
-            'event' => ['id' => $front->event_id, 'value' => round((float) $front->total_usd, 2), 'currency' => 'USD', 'num_items' => (int) $front->units],
+            // .168: el Purchase solo si sale al pedir (un cargador viejo en caché solo mira este); el "pedido hecho" siempre
+            'event' => $purchase ? ['id' => $front->event_id] + $value : null,
+            'events' => array_values(array_filter([
+                ['name' => 'AddPaymentInfo', 'id' => StorefrontRules::placedEventId((int) $front->id)] + $value,
+                $purchase ? ['name' => 'Purchase', 'id' => $front->event_id] + $value : null,
+            ])),
+            'payment' => $front->payment, 'after_hours' => (bool) $front->after_hours, 'hours' => $hours['text'] ?? null, 'when' => $hours['when'] ?? null,
         ]);
+    }
+
+    /** `.168`: la cuenta de pago móvil a la que paga el cliente que elige pagar por adelantado. */
+    public function account(Request $request): Response
+    {
+        $product = $this->catalog->product((string) $request->query('p', ''));
+        $s = StorefrontCatalog::settings();
+        if (!$this->catalog->enabledFor($product, $s) || (!$s['prepaid_enabled'] && !StorefrontCatalog::courierOn($s))) {
+            return $this->json($request, ['ok' => false], 404);
+        }
+        $account = StorefrontCatalog::account();
+
+        return $this->json($request, $account ? ['ok' => true, 'account' => $account] : ['ok' => false], $account ? 200 : 503);
+    }
+
+    /** `.168`: las oficinas de una empresa de encomiendas, por estado. */
+    public function offices(Request $request): Response
+    {
+        $s = StorefrontCatalog::settings();
+        $company = (string) $request->query('empresa', '');
+        if (!StorefrontCatalog::courierOn($s) || !in_array($company, $s['courier_companies'], true)) {
+            return $this->json($request, ['ok' => false], 404);
+        }
+
+        return $this->json($request, ['ok' => true, 'company' => $company, 'offices' => StorefrontCatalog::offices($company)]);
+    }
+
+    /**
+     * `.168`: los datos de la encomienda, limpios; lo que falta o no vale va a $fields.
+     *
+     * @return ?array{company: string, office_id: ?int, office_text: ?string, state: string, recipient_name: string, recipient_id: string, recipient_phone: string}
+     */
+    private function courier(array $c, array $in, array $s, array &$fields): ?array
+    {
+        $company = (string) ($c['company'] ?? '');
+        if (!in_array($company, $s['courier_companies'], true)) {
+            $fields[] = 'company';
+        }
+        $officeId = !empty($c['office_id']) ? (int) $c['office_id'] : null;
+        $officeText = trim((string) ($c['office_text'] ?? ''));
+        $office = $officeId ? CourierOffice::where('company', $company)->where('is_active', true)->find($officeId) : null;
+        if (!$office && mb_strlen($officeText) < 4) {
+            $fields[] = 'office';
+        }
+        $state = trim((string) ($office?->state ?? $c['state'] ?? ''));
+        if ($state === '') {
+            $fields[] = 'state';
+        }
+        $id = StorefrontRules::idNumber($c['id_number'] ?? null);
+        if ($id === null) {
+            $fields[] = 'id_number';
+        }
+
+        return ['company' => $company, 'office_id' => $office?->id, 'office_text' => $office ? null : mb_substr($officeText, 0, 200), 'state' => mb_substr($state, 0, 60),
+            'recipient_name' => mb_substr(trim((string) ($c['recipient_name'] ?? '')) ?: trim((string) ($in['name'] ?? '')), 0, 150), 'recipient_id' => (string) $id,
+            'recipient_phone' => StorefrontRules::phone($c['recipient_phone'] ?? null) ?? (string) StorefrontRules::phone($in['phone'] ?? null)];
+    }
+
+    /**
+     * `.168`: la foto del comprobante que manda el formulario ("data:image/jpeg;base64,…"): solo una imagen de verdad, de
+     * hasta 3 MB. @return ?array{bytes: string, ext: string}
+     */
+    public static function receipt(mixed $raw): ?array
+    {
+        if (!is_string($raw) || !preg_match('#^data:image/[a-z+]+;base64,(.+)$#s', $raw, $m)) {
+            return null;
+        }
+        $bytes = base64_decode($m[1], true);
+        if ($bytes === false || $bytes === '' || strlen($bytes) > self::RECEIPT_MAX_BYTES) {
+            return null;
+        }
+        $type = (new \finfo(FILEINFO_MIME_TYPE))->buffer($bytes);
+
+        return isset(self::RECEIPT_TYPES[$type]) ? ['bytes' => $bytes, 'ext' => self::RECEIPT_TYPES[$type]] : null;
     }
 
     /** El embudo del formulario: cuántas veces se vio, se empezó, se tocó cada campo, se mandó, falló o pasó a WhatsApp. */

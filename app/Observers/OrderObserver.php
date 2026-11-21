@@ -125,6 +125,15 @@ class OrderObserver
                     }
                 }
 
+                // .168: el Purchase de Meta de un pedido del formulario en una campaña "al entregar"
+                if ($newStatusDesc === \App\Constants\OrderStatus::ENTREGADO) {
+                    try {
+                        \App\Services\Storefront\StorefrontDelivered::handle($order);
+                    } catch (\Throwable $e) {
+                        report($e);
+                    }
+                }
+
                 // --- Automated WhatsApp Notifications (DESACTIVADO temporalmente por solicitud del cliente) ---
                 // $this->handleStatusWhatsApp($order, $newStatusDesc);
             } elseif ($key === 'agent_id') {

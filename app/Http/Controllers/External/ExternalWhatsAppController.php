@@ -520,6 +520,14 @@ class ExternalWhatsAppController extends Controller
             && !$hasClientResponseSinceLastAutomated
             && !$hasAgentResponseSinceLastAutomated;
 
+        // .168: el pedido que pagó por adelantado en el formulario ya está confirmado (pagó). Para n8n es como si ya se le
+        // hubiera mandado la confirmación: así no le llega "Confirma tu pedido… 💳 Pago al recibir" ni los recordatorios.
+        // Los mensajes de ese cliente los manda el sistema (tienda:confirmar-pagos).
+        $prepaidAt = $order?->prepaid_at;
+        if ($prepaidAt) {
+            $shouldSendNextTemplate = false;
+        }
+
         // La agencia que entrega la orden (o la principal de su ciudad) y su horario (dueño, 2026-11-01): n8n manda los
         // mensajes de la orden solo cuando trabajan el equipo y esa agencia.
         $agency = null;
@@ -586,7 +594,7 @@ class ExternalWhatsAppController extends Controller
             'template_tracking' => [
                 'last_template_sent' => $lastAutomated ? $lastAutomated->body : null,
                 'last_template_sent_at' => $lastAutomated ? $lastAutomated->sent_at?->toDateTimeString() : null,
-                'confirmation_sent_at' => $confirmationMessage ? $confirmationMessage->sent_at?->toDateTimeString() : null,
+                'confirmation_sent_at' => $confirmationMessage ? $confirmationMessage->sent_at?->toDateTimeString() : $prepaidAt?->toDateTimeString(),
                 'has_client_responded_since' => $hasClientResponseSinceLastAutomated,
                 'should_send_next_template' => $shouldSendNextTemplate
             ],

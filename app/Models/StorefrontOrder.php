@@ -14,10 +14,17 @@ class StorefrontOrder extends Model
 {
     protected $fillable = ['order_id', 'product_id', 'offer_id', 'variant_id', 'units', 'phone_last10', 'city_id', 'total_usd', 'total_bs',
         'rate', 'express_fee', 'event_id', 'visitor_id', 'landing_url', 'referrer', 'page_url', 'fbp', 'fbc', 'ip', 'user_agent',
-        'capi_status', 'capi_error', 'whatsapp_opened_at'];
+        'capi_status', 'capi_error', 'whatsapp_opened_at', 'payment', 'purchase_mode', 'placed_capi_status', 'purchase_sent_at', 'after_hours',
+        'ack_sent_at', 'confirm_due_at', 'confirm_sent_at', 'confirm_status'];
 
     protected $casts = ['total_usd' => 'float', 'total_bs' => 'integer', 'rate' => 'float', 'express_fee' => 'float', 'units' => 'integer',
-        'whatsapp_opened_at' => 'datetime'];
+        'whatsapp_opened_at' => 'datetime', 'purchase_sent_at' => 'datetime', 'after_hours' => 'boolean', 'ack_sent_at' => 'datetime',
+        'confirm_due_at' => 'datetime', 'confirm_sent_at' => 'datetime'];
+
+    /** `.168`: las formas de pago del formulario. */
+    public const COD = 'cod';
+    public const PREPAID = 'pago_movil';
+    public const ADVISOR = 'asesora';
 
     public function order(): BelongsTo
     {

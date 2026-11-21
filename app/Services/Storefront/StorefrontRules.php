@@ -8,6 +8,11 @@ namespace App\Services\Storefront;
  * del dueño: las mismas ofertas (unidades × precio × (1 − %)), los precios en bolívares con su tasa de Shopify (la cuenta y el
  * redondeo de su Liquid), el Delivery Express, el teléfono venezolano, los nombres de los pedidos (WEB-12), el Content ID de
  * su catálogo y el mensaje de WhatsApp después del pedido (los códigos de Releasit).
+ *
+ * `.168` (dueño, 2026-11-21): el pago anticipado (pago móvil con la foto del comprobante), las encomiendas a todo el país
+ * (MRW y Zoom), "hablar con una asesora", el horario para el mensaje de fuera de horario, y cuándo sale el Purchase en las
+ * campañas marcadas "al entregar". Nada de lo que ve o recibe el cliente nombra a una IA: "el cliente debe creer que lo
+ * revisa una persona… así evitamos que nos busquen hacer fraudes y estafas".
  */
 final class StorefrontRules
 {
@@ -18,10 +23,37 @@ final class StorefrontRules
     /** El mensaje de WhatsApp del dueño en Releasit (19/11). */
     public const WHATSAPP_MESSAGE = '*Es importante enviar este mensaje* ¡Hola! Soy {first_name} y he realizado el pedido {order_id}. Deseo pagarlo al momento de recibirlo. Muchas gracias!';
 
+    /** `.168`: las empresas de encomiendas (Tealca no, por ahora). */
+    public const COURIERS = ['MRW', 'Zoom'];
+
+    /** `.168`: el mensaje que manda el cliente según cómo pagó (los mismos códigos, más {courier}). */
+    public const WHATSAPP_PREPAID = '*Es importante enviar este mensaje* ¡Hola! Soy {first_name} y he realizado el pedido {order_id}. Ya lo pagué por pago móvil y envié el comprobante. Muchas gracias!';
+
+    public const WHATSAPP_ADVISOR = '*Es importante enviar este mensaje* ¡Hola! Soy {first_name} y quiero hablar con una asesora sobre mi pedido {order_id}. Muchas gracias!';
+
+    public const WHATSAPP_COURIER = '*Es importante enviar este mensaje* ¡Hola! Soy {first_name} y he realizado el pedido {order_id} para retirar en {courier}. Ya lo pagué por pago móvil y envié el comprobante. Muchas gracias!';
+
+    /** `.168`: lo que le escribe el sistema al cliente que pagó por adelantado (como si lo escribiera una persona). */
+    public const CONFIRM_MESSAGE = '¡Hola {first_name}! ✅ Ya confirmamos tu pago del pedido {order_id}. Estamos preparando tu envío y te avisaremos por aquí cuando salga. ¡Gracias por tu compra! 💕';
+
+    public const CONFIRM_COURIER = '¡Hola {first_name}! ✅ Ya confirmamos tu pago del pedido {order_id}. Estamos preparando tu envío por {courier} y te mandaremos por aquí el número de guía cuando salga. ¡Gracias por tu compra! 💕';
+
+    /** Dueño (21/11): fuera del horario, "debe decir que en nuestro horario laboral una asesora validará el pago y procederá a realizar el envío". */
+    public const ACK_MESSAGE = '¡Hola {first_name}! 🙌 Recibimos tu pedido {order_id} y tu comprobante de pago. Nuestro horario de atención es {horario}. {cuando}, una asesora validará tu pago y procederá con tu envío. Te escribiremos por aquí. ¡Gracias por tu confianza! 💕';
+
+    /** El "ya confirmamos tu pago" sale entre estos minutos después de validar el comprobante (como si lo revisara una persona). */
+    public const CONFIRM_MINUTES = [5, 15];
+
+    /** Meta acepta un evento de la web hasta 7 días después: con un día de margen, después de eso sale con la hora de entrega. */
+    public const LATE_EVENT_DAYS = 6;
+
     public const DEFAULTS = ['enabled' => false, 'shop_id' => null, 'product_ids' => [], 'express_usd' => 2.0, 'whatsapp_number' => '+584221792891',
         'whatsapp_message' => self::WHATSAPP_MESSAGE, 'allowed_origins' => [], 'releasit_selector' => '', 'pixel_id' => '', 'capi_token' => null,
         'capi_test_code' => '', 'content_id_format' => 'shopify', 'content_region' => 'VE', 'send_initiate' => true, 'send_pageview' => false,
-        'daily_max' => 500];
+        'daily_max' => 500, 'prepaid_enabled' => false, 'advisor_enabled' => false, 'courier_enabled' => false, 'courier_companies' => self::COURIERS,
+        'courier_origin_city_id' => null, 'courier_dropoff' => ['MRW' => '', 'Zoom' => ''], 'whatsapp_message_prepaid' => self::WHATSAPP_PREPAID,
+        'whatsapp_message_advisor' => self::WHATSAPP_ADVISOR, 'whatsapp_message_courier' => self::WHATSAPP_COURIER, 'confirm_message' => self::CONFIRM_MESSAGE,
+        'confirm_message_courier' => self::CONFIRM_COURIER, 'ack_message' => self::ACK_MESSAGE];
 
     /** Los celulares de Venezuela (Movilnet, Movistar y Digitel). */
     public const MOBILE = ['412', '414', '416', '422', '424', '426'];
@@ -69,6 +101,50 @@ final class StorefrontRules
         'repeat_text' => 'Ya tenemos tu pedido {pedido}: no hace falta enviarlo otra vez.',
         'error_required' => 'Completa este dato',
         'error_phone' => 'Escribe un número de WhatsApp de Venezuela (0414, 0424, 0412, 0416, 0426 o 0422)',
+        // .168: el pago anticipado, las encomiendas y la asesora
+        'courier_option' => 'Envío a todo el país por MRW o Zoom',
+        'courier_company_label' => 'Empresa de envío',
+        'courier_free' => 'Envío gratis',
+        'courier_state_label' => 'Estado',
+        'courier_state_placeholder' => 'Elige tu estado',
+        'courier_office_label' => 'Agencia {empresa} donde retiras',
+        'courier_office_placeholder' => 'Elige la agencia',
+        'courier_office_hint' => '¿No ves tu ciudad? Elige la agencia más cercana a ti.',
+        'courier_office_missing' => 'No encuentro mi agencia',
+        'courier_office_text_placeholder' => 'Escribe la agencia y la ciudad',
+        'courier_id_label' => 'Cédula de quien retira',
+        'courier_id_placeholder' => 'V-12345678',
+        'courier_note' => 'Las encomiendas se pagan por adelantado con pago móvil.',
+        'pay_label' => '¿Cómo quieres pagar?',
+        'pay_cod' => 'Pagar al recibir',
+        'pay_cod_note' => 'Pagas cuando te llegue el pedido',
+        'pay_now' => 'Pagar ahora con pago móvil',
+        'pay_now_note' => 'Pagas ya y aseguramos tu pedido',
+        'pay_advisor' => 'Prefiero hablar con una asesora antes',
+        'pay_advisor_note' => 'Te escribimos por WhatsApp para resolver tus dudas',
+        'pm_title' => 'Datos para tu pago móvil',
+        'pm_amount' => 'Monto exacto a pagar',
+        'pm_copy' => 'Copiar',
+        'pm_copied' => 'Copiado',
+        'pm_loading' => 'Cargando los datos del pago…',
+        'pm_error' => 'No pudimos cargar los datos del pago. Elige pagar al recibir o inténtalo de nuevo.',
+        'receipt_label' => 'Foto del comprobante de pago',
+        'receipt_button' => 'Subir foto del comprobante',
+        'receipt_change' => 'Cambiar foto',
+        'receipt_note' => 'Nuestro equipo valida cada pago antes de enviar tu pedido.',
+        'button_note_prepaid' => 'YA PAGUÉ · ENVIAR COMPROBANTE',
+        'button_note_advisor' => 'HABLAR CON UNA ASESORA',
+        'thanks_prepaid_title' => '¡Listo! Recibimos tu pedido {pedido} y tu comprobante',
+        'thanks_prepaid_open' => 'Estamos validando tu pago. En unos minutos te llegará un WhatsApp de confirmación.',
+        'thanks_prepaid_closed' => 'Gracias por tu confianza. Nuestro horario de atención es {horario}. {cuando}, una asesora validará tu pago y procederá con tu envío. Te escribiremos por WhatsApp.',
+        'thanks_advisor' => 'Una asesora te escribirá por WhatsApp para ayudarte con tu pedido.',
+        'thanks_go_whatsapp' => 'Ahora te llevamos a WhatsApp: envía el mensaje para que podamos escribirte.',
+        'courier_other' => '¿Retira otra persona?',
+        'courier_name_label' => 'Nombre de quien retira',
+        'courier_phone_label' => 'Teléfono de quien retira',
+        'error_receipt' => 'Sube la foto del comprobante de tu pago',
+        'error_id' => 'Escribe la cédula (solo números, por ejemplo V-12345678)',
+        'error_office' => 'Elige la agencia donde retiras',
     ];
 
     /** Los colores del formulario de Releasit del dueño; cada producto puede cambiar los suyos. */
@@ -101,7 +177,161 @@ final class StorefrontRules
             'send_initiate' => (bool) ($raw['send_initiate'] ?? $d['send_initiate']),
             'send_pageview' => (bool) ($raw['send_pageview'] ?? $d['send_pageview']),
             'daily_max' => min(5000, max(10, (int) ($raw['daily_max'] ?? $d['daily_max']))),
+            'prepaid_enabled' => (bool) ($raw['prepaid_enabled'] ?? $d['prepaid_enabled']),
+            'advisor_enabled' => (bool) ($raw['advisor_enabled'] ?? $d['advisor_enabled']),
+            'courier_enabled' => (bool) ($raw['courier_enabled'] ?? $d['courier_enabled']),
+            'courier_companies' => array_values(array_intersect(self::COURIERS, (array) ($raw['courier_companies'] ?? $d['courier_companies']))) ?: self::COURIERS,
+            'courier_origin_city_id' => isset($raw['courier_origin_city_id']) && (int) $raw['courier_origin_city_id'] > 0 ? (int) $raw['courier_origin_city_id'] : null,
+            'courier_dropoff' => array_combine(self::COURIERS, array_map(fn ($c) => mb_substr(trim((string) (((array) ($raw['courier_dropoff'] ?? []))[$c] ?? '')), 0, 500), self::COURIERS)),
+            ...array_combine(['whatsapp_message_prepaid', 'whatsapp_message_advisor', 'whatsapp_message_courier', 'confirm_message', 'confirm_message_courier', 'ack_message'],
+                array_map(fn ($k) => mb_substr(trim((string) ($raw[$k] ?? '')) ?: $d[$k], 0, 1000),
+                    ['whatsapp_message_prepaid', 'whatsapp_message_advisor', 'whatsapp_message_courier', 'confirm_message', 'confirm_message_courier', 'ack_message'])),
         ];
+    }
+
+    /** La cédula de quien retira una encomienda: "v 12.345.678" → "V-12345678"; sin letra, V. Algo raro → null. */
+    public static function idNumber(?string $raw): ?string
+    {
+        $v = strtoupper(preg_replace('/[\s.\-]+/', '', (string) $raw));
+        if (!preg_match('/^([VE])?(\d{6,9})$/', $v, $m)) {
+            return null;
+        }
+
+        return ($m[1] ?: 'V') . '-' . $m[2];
+    }
+
+    /**
+     * Si un pedido nuevo de esta campaña manda el Purchase al entregar ('delivery') o al pedir ('order', como siempre): al
+     * entregar solo si la campaña está marcada ahora (al desmarcarla, su último día queda en `to`).
+     *
+     * @param list<array{campaign: string, from: string, to: ?string}> $ranges las campañas marcadas (MetaPurchaseMode)
+     */
+    public static function purchaseMode(?string $campaignId, array $ranges, string $date): string
+    {
+        foreach ($ranges as $r) {
+            if ($campaignId !== null && (string) $r['campaign'] === $campaignId && $r['from'] <= $date && $r['to'] === null) {
+                return 'delivery';
+            }
+        }
+
+        return 'order';
+    }
+
+    /**
+     * Si ese día la campaña estuvo marcada (con su último día incluido): ese día el sistema la mide con el "pedido hecho".
+     *
+     * @param list<array{campaign: string, from: string, to: ?string}> $ranges
+     */
+    public static function markedOn(string $campaignId, string $date, array $ranges): bool
+    {
+        foreach ($ranges as $r) {
+            if ((string) $r['campaign'] === $campaignId && $r['from'] <= $date && ($r['to'] === null || $r['to'] >= $date)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** Si el Purchase sale al pedir: la campaña lo quiere al pedir, o el cliente ya pagó (pago móvil o encomienda). */
+    public static function purchaseNow(string $mode, string $payment): bool
+    {
+        return $mode !== 'delivery' || $payment === 'pago_movil';
+    }
+
+    /** El "pedido hecho" (AddPaymentInfo) de cada pedido, para que el sistema siga contando pedidos. */
+    public static function placedEventId(int $n): string
+    {
+        return "nuv-pedido-{$n}";
+    }
+
+    /** La hora del Purchase al entregar: la del pedido si fue hace 6 días o menos (más exacta); si no, la de ahora. */
+    public static function deliveredTime(int $created, int $now): int
+    {
+        return $now - $created <= self::LATE_EVENT_DAYS * 86400 ? $created : $now;
+    }
+
+    /** Cuándo sale el "ya confirmamos tu pago": entre 5 y 15 minutos después ($rand de 0 a 1). */
+    public static function confirmDue(int $now, float $rand): int
+    {
+        [$min, $max] = self::CONFIRM_MINUTES;
+
+        return $now + (int) round(($min + max(0, min(1, $rand)) * ($max - $min)) * 60);
+    }
+
+    /** 8 → "8:00 a. m.", "19:30" → "7:30 p. m.". */
+    public static function niceHour(string $hhmm): string
+    {
+        [$h, $m] = array_map('intval', explode(':', $hhmm) + [0, 0]);
+
+        return ($h % 12 === 0 ? 12 : $h % 12) . ':' . str_pad((string) $m, 2, '0', STR_PAD_LEFT) . ($h < 12 ? ' a. m.' : ' p. m.');
+    }
+
+    private const DAYS = ['', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
+
+    /**
+     * El horario de atención para el cliente: "de lunes a sábado, de 8:00 a. m. a 7:00 p. m.". Sin horario → null.
+     *
+     * @param list<int>|null $days 1 = lunes … 7 = domingo; null = todos
+     */
+    public static function hoursText(?string $open, ?string $close, ?array $days): ?string
+    {
+        if (!$open || !$close) {
+            return null;
+        }
+        $list = $days === null ? range(1, 7) : array_values(array_unique(array_map('intval', $days)));
+        sort($list);
+        if ($list === []) {
+            return null;
+        }
+        $groups = [];
+        foreach ($list as $d) {
+            $last = count($groups) - 1;
+            if ($last >= 0 && end($groups[$last]) === $d - 1) {
+                $groups[$last][] = $d;
+            } else {
+                $groups[] = [$d];
+            }
+        }
+        $parts = array_map(fn ($g) => count($g) === 1 ? 'los ' . self::DAYS[$g[0]] . (in_array($g[0], [6, 7], true) ? 's' : '')
+            : (count($g) === 2 ? self::DAYS[$g[0]] . ' y ' . self::DAYS[$g[1]] : 'de ' . self::DAYS[$g[0]] . ' a ' . self::DAYS[end($g)]), $groups);
+        $daysText = count($parts) === 1 ? $parts[0] : implode(', ', array_slice($parts, 0, -1)) . ' y ' . end($parts);
+
+        return $daysText . ', de ' . self::niceHour(substr($open, 0, 5)) . ' a ' . self::niceHour(substr($close, 0, 5));
+    }
+
+    /**
+     * Cuándo se vuelve a atender: la próxima apertura después de ahora (hasta 2 semanas), o null.
+     *
+     * @param list<int>|null $days
+     */
+    public static function nextOpening(\DateTimeImmutable $now, ?string $open, ?array $days): ?\DateTimeImmutable
+    {
+        if (!$open) {
+            return null;
+        }
+        [$h, $m] = array_map('intval', explode(':', $open) + [0, 0]);
+        for ($i = 0; $i <= 14; $i++) {
+            $at = $now->modify("+{$i} days")->setTime($h, $m);
+            $dow = (int) $at->format('N');
+            if (($days === null || in_array($dow, array_map('intval', $days), true)) && $at > $now) {
+                return $at;
+            }
+        }
+
+        return null;
+    }
+
+    /** "Mañana a partir de las 8:00 a. m.", "Hoy a partir de…", "El lunes a partir de…"; sin apertura, "Apenas abramos". */
+    public static function whenText(\DateTimeImmutable $now, ?\DateTimeImmutable $at): string
+    {
+        if ($at === null) {
+            return 'Apenas abramos';
+        }
+        $days = (int) $now->setTime(12, 0)->diff($at->setTime(12, 0))->days;
+        $day = $days === 0 ? 'Hoy' : ($days === 1 ? 'Mañana' : 'El ' . self::DAYS[(int) $at->format('N')]);
+
+        return "{$day} a partir de las " . self::niceHour($at->format('H:i'));
     }
 
     /** "https://mitienda.com/" → "https://mitienda.com"; lo que no es un origen https (o localhost) no vale. */
@@ -267,7 +497,10 @@ final class StorefrontRules
      */
     public static function whatsappMessage(string $template, array $vars): string
     {
-        return trim(preg_replace_callback('/\{([a-z0-9_]+)\}/', fn ($m) => (string) ($vars[$m[1]] ?? ''), $template));
+        $text = preg_replace_callback('/\{([a-z0-9_]+)\}/', fn ($m) => (string) ($vars[$m[1]] ?? ''), $template);
+
+        // .168: "…7:00 p. m.. El lunes": el punto de la abreviatura cierra la oración
+        return trim(preg_replace('/(?<!\.)\.\.(?!\.)/u', '.', $text));
     }
 
     /** "https://wa.me/584221792891?text=…". */

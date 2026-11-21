@@ -107,6 +107,18 @@ class PaymentAccounts
         });
     }
 
+    /**
+     * `.168`: la cuenta que le tocaría ahora a una orden, sin dársela. El formulario de la tienda se la muestra al cliente
+     * que paga por adelantado; al llegar su pedido, la orden se queda con esa (la que vio y a la que pagó).
+     */
+    public function suggest(): ?CompanyAccount
+    {
+        $accounts = $this->candidates();
+        $id = PaymentAccountRules::pick($this->load($accounts));
+
+        return $id !== null ? $accounts->firstWhere('id', $id) : null;
+    }
+
     /** El Admin cambia la cuenta de una orden a mano (queda en el historial). */
     public function change(Order $order, CompanyAccount $account, ?int $userId): void
     {

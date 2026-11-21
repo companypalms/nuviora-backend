@@ -835,6 +835,11 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::put('/settings', [\App\Http\Controllers\StoreFormController::class, 'saveSettings']);
         Route::put('/products/{product}/offers', [\App\Http\Controllers\StoreFormController::class, 'saveOffers'])->whereNumber('product');
         Route::put('/products/{product}/design', [\App\Http\Controllers\StoreFormController::class, 'saveDesign'])->whereNumber('product');
+        // .168: las campañas "Purchase al entregar" y las oficinas de encomienda
+        Route::put('/products/{product}/purchase-modes', [\App\Http\Controllers\StoreFormController::class, 'savePurchaseModes'])->whereNumber('product');
+        Route::get('/courier-offices', [\App\Http\Controllers\StoreFormController::class, 'offices']);
+        Route::post('/courier-offices', [\App\Http\Controllers\StoreFormController::class, 'addOffice']);
+        Route::put('/courier-offices/{office}', [\App\Http\Controllers\StoreFormController::class, 'updateOffice'])->whereNumber('office');
     });
 
     // Calendario del dueño (Etapa 3): sus notas, los recordatorios del sistema y lo que marca como hecho. Solo el Admin
