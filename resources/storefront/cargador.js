@@ -11,6 +11,8 @@
  * dice el servidor (en las campañas "al entregar" sale al entregar, salvo si ya pagó). Nada de lo que ve el cliente
  * nombra a una IA: el pago "lo valida nuestro equipo".
  * .169: en pasos numerados; primero sus datos y su estado o ciudad, y según eso la entrega y el pago.
+ * .172: solo lo que se puede entregar con el stock de hoy (cada ciudad, la de las encomiendas, la oferta y la talla). Sin
+ * stock en ninguna parte no sale nada: ni el nuestro ni Releasit.
  */
 (function () {
   'use strict';
@@ -336,7 +338,7 @@
         el('div', { class: 'nvf-offer-main' }, [el('div', { class: 'nvf-offer-title', text: o.title }), o.badge ? el('span', { class: 'nvf-badge', text: o.badge }) : null]),
         el('div', { class: 'nvf-price' }, [bs(o.price_bs), o.saving_bs ? el('span', { class: 'nvf-saving', text: fill(t.saving, { ahorro: bs(o.saving_bs) }) }) : null])
       ]);
-      input.addEventListener('change', function () { state.offer = i; touched('offer'); update(); });
+      input.addEventListener('change', function () { state.offer = i; touched('offer'); refreshStock(); update(); });
       offers.appendChild(node);
       return { node: node, input: input };
     });
@@ -345,6 +347,7 @@
       size = el('select', { name: 'size', 'aria-label': t.size_label }, [el('option', { value: '', text: t.size_label })].concat(cfg.variants.map(function (v) {
         return el('option', { value: String(v.id), text: v.title });
       })));
+      size.addEventListener('change', function () { refreshStock(); update(); });
     }
     var manyOffers = cfg.offers.length > 1;
     if (manyOffers) {
@@ -357,14 +360,14 @@
     step(t.step_data);
     if (size && !manyOffers) form.appendChild(row('size', t.size_label, null, size, true));
     var codNames = cfg.cities.map(function (x) { return x.name; });
-    var codOptions = cfg.cities.map(function (x) { return el('option', { value: 'c:' + x.id, text: x.name }); });
+    // .172: los grupos se llenan según el stock de la oferta y la talla elegidas (fillWhere)
+    var wherePlaceholder = el('option', { value: '', text: t.where_placeholder });
+    var codGroup = el('optgroup', { label: t.where_group_cod });
+    var courierGroup = el('optgroup', { label: t.where_group_courier }, STATES.map(function (x) { return el('option', { value: 's:' + x, text: x }); }));
     var f = {
       name: el('input', { name: 'name', autocomplete: 'name', placeholder: t.name_placeholder, maxlength: '80' }),
       phone: el('input', { name: 'phone', type: 'tel', inputmode: 'tel', autocomplete: 'tel', placeholder: t.phone_placeholder, maxlength: '20' }),
-      where: el('select', { name: 'where' }, [el('option', { value: '', text: t.where_placeholder })].concat(courierCfg
-        ? [el('optgroup', { label: t.where_group_cod }, codOptions),
-          el('optgroup', { label: t.where_group_courier }, STATES.map(function (x) { return el('option', { value: 's:' + x, text: x }); }))]
-        : codOptions)),
+      where: el('select', { name: 'where' }, [wherePlaceholder]),
       address: el('input', { name: 'address', autocomplete: 'street-address', placeholder: t.address_placeholder, maxlength: '250' }),
       reference: el('input', { name: 'reference', placeholder: t.reference_placeholder, maxlength: '250' })
     };
@@ -662,6 +665,51 @@
       if (kind() === 'courier') return state.payment === 'asesora' && pay.advisor ? 'asesora' : 'pago_movil';
       return state.payment === 'pago_movil' && pay.prepaid ? 'pago_movil' : 'cod';
     }
+    // .172 (dueño: "no debería ofrecer si no hay stock"): cada ciudad y la de las encomiendas dicen cuánto pueden entregar
+    // (hasta la oferta más grande): de esa talla; sin talla elegida, de alguna; sin tallas, del producto
+    function enough(stock, units, vid) {
+      if (!stock) return true; // un servidor viejo no lo manda
+      var sizes = stock.sizes || {};
+      if (vid) return (sizes[vid] || 0) >= units;
+      var keys = Object.keys(sizes);
+      return keys.length ? keys.some(function (k) { return sizes[k] >= units; }) : stock.all >= units;
+    }
+    function places(units, vid) {
+      return { cities: cfg.cities.filter(function (x) { return enough(x.stock, units, vid); }), courier: !!courierCfg && enough(courierCfg.stock, units, vid) };
+    }
+    function canSell(units, vid) { var p = places(units, vid); return p.cities.length > 0 || p.courier; }
+    function fillWhere(p) {
+      var keep = f.where.value;
+      while (f.where.lastChild !== wherePlaceholder) f.where.removeChild(f.where.lastChild);
+      var cod = p.cities.map(function (x) { return el('option', { value: 'c:' + x.id, text: x.name }); });
+      if (courierCfg) {
+        codGroup.textContent = '';
+        cod.forEach(function (o) { codGroup.appendChild(o); });
+        if (cod.length) f.where.appendChild(codGroup);
+        if (p.courier) f.where.appendChild(courierGroup);
+      } else {
+        cod.forEach(function (o) { f.where.appendChild(o); });
+      }
+      f.where.value = keep;
+      if (f.where.value !== keep) { f.where.value = ''; state.where = null; } // ya no se puede: que vuelva a elegir
+    }
+    function refreshStock() {
+      offerNodes.forEach(function (n, i) { n.node.hidden = !canSell(cfg.offers[i].units, null); });
+      if (offerNodes[state.offer].node.hidden) {
+        for (var i = 0; i < offerNodes.length; i++) { if (!offerNodes[i].node.hidden) { state.offer = i; break; } }
+      }
+      var units = cfg.offers[state.offer].units;
+      if (size) {
+        cfg.variants.forEach(function (v, i) {
+          var ok = canSell(units, v.id);
+          var opt = size.options[i + 1];
+          opt.disabled = !ok;
+          opt.textContent = ok ? v.title : v.title + ' · ' + t.size_sold_out;
+        });
+        if (size.value && size.options[size.selectedIndex].disabled) size.value = '';
+      }
+      fillWhere(places(units, size && size.value ? Number(size.value) : null));
+    }
     function list(names) { return names.length > 1 ? names.slice(0, -1).join(', ') + ' y ' + names[names.length - 1] : names.join(''); }
     function update() {
       offerNodes.forEach(function (n, i) { n.node.classList.toggle('is-on', i === state.offer); n.input.checked = i === state.offer; });
@@ -744,6 +792,21 @@
         .then(function (r) {
           if (r.status === 200 && r.j.ok) return done(r.j, false);
           btn.disabled = false;
+          if (r.status === 422 && r.j.stock) {
+            // .172: se agotó mientras llenaba el formulario: esa ciudad (o las encomiendas) ya no alcanza para lo que eligió
+            var units = cfg.offers[state.offer].units;
+            var vid = size && size.value ? Number(size.value) : null;
+            var where = r.j.courier ? courierCfg : cfg.cities.filter(function (x) { return state.where && x.id === state.where.id; })[0];
+            if (where && where.stock) {
+              if (vid) where.stock.sizes[vid] = Math.min(where.stock.sizes[vid] || 0, units - 1);
+              else where.stock.all = Math.min(where.stock.all, units - 1);
+            }
+            refreshStock();
+            update();
+            bad('where', fill(t.error_stock, { ciudad: r.j.city || '' }));
+            track('error');
+            return;
+          }
           if (r.status === 422 && r.j.fields) {
             r.j.fields.forEach(function (k) {
               bad(k, ({ phone: t.error_phone, receipt: t.error_receipt, id_number: t.error_id, office: t.error_office, company: t.error_office, city: t.error_where, state: t.error_where })[k] || t.error_required);
@@ -799,6 +862,7 @@
 
     mount.appendChild(form);
     root = form;
+    refreshStock();
     update();
     track('view');
   }
@@ -817,7 +881,10 @@
     Promise.race([fetch(url).then(function (r) { if (!r.ok) throw new Error('status ' + r.status); return r.json(); }), timeout])
       .then(function (c) {
         clearTimeout(timer);
-        if (!c || !c.enabled || !c.offers || !c.offers.length || !c.cities || (!c.cities.length && !PREVIEW)) return; // apagado: queda Releasit
+        if (!c || !c.enabled || !c.offers || !c.offers.length || !c.cities) return; // apagado: queda Releasit
+        // .172: sin stock en ninguna parte no sale nada, ni Releasit (dueño: "no sale agotado ni nada")
+        if (c.available === false && !PREVIEW) { cfg = c; hideReleasit(); return; }
+        if (!c.cities.length && !c.courier && !PREVIEW) return;
         cfg = c;
         try {
           render(mount);

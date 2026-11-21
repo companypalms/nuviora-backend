@@ -83,6 +83,7 @@ final class StorefrontRules
         'step_delivery' => 'Entrega y pago',
         'step_confirm' => 'Confirma tu pedido',
         'size_label' => 'Talla',
+        'size_sold_out' => 'Agotada',
         'name_label' => 'Nombre y apellido',
         'name_placeholder' => 'Nombre completo',
         'phone_label' => 'Numero de contacto',
@@ -158,6 +159,7 @@ final class StorefrontRules
         'error_receipt' => 'Sube la foto del comprobante de tu pago',
         'error_id' => 'Escribe la cédula (solo números, por ejemplo V-12345678)',
         'error_office' => 'Elige la agencia donde retiras',
+        'error_stock' => 'Se nos acaba de agotar en {ciudad}. Elige otra opción.',
     ];
 
     /** Los colores del formulario de Releasit del dueño; cada producto puede cambiar los suyos. */
@@ -471,6 +473,59 @@ final class StorefrontRules
         usort($out, fn ($a, $b) => strcmp((string) $a['name'], (string) $b['name']));
 
         return array_map(fn ($c) => ['id' => (int) $c['id'], 'name' => (string) $c['name']], $out);
+    }
+
+    /**
+     * `.172` (dueño, 2026-11-21: "no debería ofrecer si no hay stock"): cuánto puede entregar cada ciudad (PHP puro). Una
+     * orden la entrega un solo almacén, así que vale el que más tiene: del producto ('all') y de cada talla (el menor entre el
+     * producto y la talla en ese almacén, la misma regla de StockCheck).
+     *
+     * @param array<int, list<int>> $warehousesByCity city_id => sus almacenes
+     * @param array<int, int> $productStock almacén => stock útil del producto
+     * @param array<int, array<int, int>> $variantStock almacén => [talla => stock útil]
+     * @param list<int> $variantIds las tallas activas del producto
+     * @return array<int, array{all: int, sizes: array<int, int>}>
+     */
+    public static function stockByCity(array $warehousesByCity, array $productStock, array $variantStock, array $variantIds): array
+    {
+        $out = [];
+        foreach ($warehousesByCity as $cityId => $warehouses) {
+            $all = 0;
+            $sizes = array_fill_keys($variantIds, 0);
+            foreach ($warehouses as $w) {
+                $p = (int) ($productStock[$w] ?? 0);
+                $all = max($all, $p);
+                foreach ($variantIds as $v) {
+                    $sizes[$v] = max($sizes[$v], min($p, (int) ($variantStock[$w][$v] ?? 0)));
+                }
+            }
+            $out[(int) $cityId] = ['all' => $all, 'sizes' => $sizes];
+        }
+
+        return $out;
+    }
+
+    /**
+     * `.172`: si esa ciudad puede entregar esas piezas: de esa talla; sin talla elegida, de alguna; sin tallas, del producto.
+     *
+     * @param ?array{all: int, sizes: array<int, int>} $stock
+     */
+    public static function canDeliver(?array $stock, int $units, ?int $variantId = null): bool
+    {
+        if ($stock === null) {
+            return false;
+        }
+        if ($variantId !== null) {
+            return ($stock['sizes'][$variantId] ?? 0) >= $units;
+        }
+
+        return ($stock['sizes'] === [] ? $stock['all'] : max(0, ...array_values($stock['sizes']))) >= $units;
+    }
+
+    /** `.172`: lo que ve la página: hasta la oferta más grande (alcanza o no; no dice cuánto stock hay). */
+    public static function stockShown(array $stock, int $cap): array
+    {
+        return ['all' => min($stock['all'], $cap), 'sizes' => (object) array_map(fn ($n) => min($n, $cap), $stock['sizes'])];
     }
 
     /** Si un pedido anterior del mismo teléfono y producto es el mismo pedido (un doble toque o un reenvío). */

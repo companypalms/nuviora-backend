@@ -122,6 +122,10 @@ class StorefrontController extends Controller
             ], ['ip' => $request->ip(), 'ua' => $request->userAgent()]);
         } catch (StorefrontLimit $e) {
             return $this->json($request, ['ok' => false, 'message' => $e->getMessage(), 'limit' => true], 429);
+        } catch (\App\Services\Storefront\StorefrontNoStock $e) {
+            // .172: se agotó mientras llenaba el formulario (no había pagado): que elija otra opción
+            return $this->json($request, ['ok' => false, 'fields' => ['where'], 'stock' => true, 'city' => $e->city,
+                'courier' => !empty($in['courier'])], 422);
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {
             return $this->json($request, ['ok' => false, 'fields' => ['offer']], 422);
         }

@@ -264,3 +264,25 @@ describe('.171: Purchase según cómo paga, por producto (sin duplicar campañas
             ->and(StorefrontKpis::experimentVerdict(null, $arm(35, 10.0), 14)['text'])->toBe('No hay con qué comparar: faltan las ventas de antes o el gasto de Meta.');
     });
 });
+
+describe('.172: solo donde hay stock', function () {
+    it('cada ciudad vale lo de su almacén que más tiene; por talla, el menor entre el producto y la talla en ese almacén', function () {
+        $s = StorefrontRules::stockByCity([1 => [10, 11], 2 => [12], 3 => []], [10 => 3, 11 => 7, 12 => 2], [10 => [70 => 3, 71 => 1], 11 => [71 => 9], 12 => [70 => 5]], [70, 71]);
+
+        expect($s)->toBe([1 => ['all' => 7, 'sizes' => [70 => 3, 71 => 7]], 2 => ['all' => 2, 'sizes' => [70 => 2, 71 => 0]], 3 => ['all' => 0, 'sizes' => [70 => 0, 71 => 0]]]);
+    });
+
+    it('si alcanza: de esa talla, de alguna talla si no eligió, o del producto si no tiene tallas', function () {
+        $sizes = ['all' => 5, 'sizes' => [70 => 0, 71 => 2]];
+        $plain = ['all' => 2, 'sizes' => []];
+
+        expect(StorefrontRules::canDeliver($sizes, 2, 71))->toBeTrue()
+            ->and(StorefrontRules::canDeliver($sizes, 1, 70))->toBeFalse()
+            ->and(StorefrontRules::canDeliver($sizes, 2))->toBeTrue()
+            ->and(StorefrontRules::canDeliver($sizes, 3))->toBeFalse() // el producto tiene 5, pero sin repartir por talla no se vende
+            ->and(StorefrontRules::canDeliver($plain, 2))->toBeTrue()
+            ->and(StorefrontRules::canDeliver($plain, 3))->toBeFalse()
+            ->and(StorefrontRules::canDeliver(null, 1))->toBeFalse()
+            ->and(json_encode(StorefrontRules::stockShown(['all' => 40, 'sizes' => [70 => 1, 71 => 9]], 3)))->toBe('{"all":3,"sizes":{"70":1,"71":3}}');
+    });
+});

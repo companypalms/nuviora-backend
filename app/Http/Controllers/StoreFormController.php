@@ -14,6 +14,7 @@ use App\Services\Storefront\MetaCapi;
 use App\Services\Storefront\StorefrontCatalog;
 use App\Services\Storefront\PurchaseModes;
 use App\Services\Storefront\StorefrontKpis;
+use App\Services\Storefront\StorefrontStock;
 use App\Services\Storefront\StorefrontRules;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -262,7 +263,27 @@ class StoreFormController extends Controller
                 'custom_css' => $design?->custom_css],
             'cities' => StorefrontCatalog::codCities($p->id),
             // .171: desde cuándo manda el Purchase según cómo paga el cliente (null = apagado)
-            'purchase_by_payment' => PurchaseModes::productSince($p->id)];
+            'purchase_by_payment' => PurchaseModes::productSince($p->id),
+            // .172: qué sale hoy en el formulario, con el stock de cada ciudad
+            'stock' => $this->stockToday($p)];
+    }
+
+    /**
+     * `.172`: cada ciudad con delivery y la de las encomiendas, con lo que puede entregar hoy (el almacén que más tiene; con
+     * tallas, la talla que más tiene) y si sale en el formulario (alcanza para la oferta más chica).
+     */
+    private function stockToday(Product $p): array
+    {
+        $s = StorefrontCatalog::settings();
+        $cities = StorefrontCatalog::codCities($p->id);
+        $origin = StorefrontCatalog::courierOn($s) ? (int) $s['courier_origin_city_id'] : null;
+        $stock = app(StorefrontStock::class)->byCity($p->id, [...array_column($cities, 'id'), ...($origin !== null ? [$origin] : [])], true);
+        $min = (int) (ProductOffer::where('product_id', $p->id)->where('is_active', true)->min('units') ?? 1);
+        $line = fn (int $id, string $name) => ['name' => $name, 'ok' => StorefrontRules::canDeliver($stock[$id] ?? null, $min),
+            'units' => ($x = $stock[$id] ?? null) === null ? 0 : ($x['sizes'] === [] ? $x['all'] : max(0, ...array_values($x['sizes'])))];
+
+        return ['cities' => array_map(fn ($c) => $line($c['id'], $c['name']), $cities),
+            'courier' => $origin !== null ? $line($origin, (string) City::whereKey($origin)->value('name')) : null];
     }
 
     /** Los últimos 30 pedidos del formulario. */

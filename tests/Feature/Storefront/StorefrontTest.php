@@ -55,7 +55,13 @@ beforeEach(function () {
     Schema::create('cities', fn ($t) => [$t->id(), $t->string('name'), $t->unsignedBigInteger('agency_id')->nullable(), $t->timestamps()]);
     Schema::create('provinces', fn ($t) => [$t->id(), $t->string('name'), $t->timestamps()]);
     Schema::create('city_agency', fn ($t) => [$t->id(), $t->unsignedBigInteger('city_id'), $t->unsignedBigInteger('agency_id'), $t->boolean('is_active')->default(true), $t->timestamps()]);
-    Schema::create('logistics_centers', fn ($t) => [$t->id(), $t->unsignedBigInteger('city_id'), $t->boolean('is_active')->default(true), $t->timestamps()]);
+    Schema::create('logistics_centers', fn ($t) => [$t->id(), $t->unsignedBigInteger('city_id'), $t->unsignedBigInteger('warehouse_id')->nullable(), $t->boolean('is_active')->default(true), $t->timestamps()]);
+    // .172: el stock de cada ciudad (los almacenes de sus agencias y de su logística propia)
+    Schema::create('warehouses', fn ($t) => [$t->id(), $t->unsignedBigInteger('user_id')->nullable(), $t->boolean('is_active')->default(true), $t->timestamps()]);
+    Schema::create('inventories', fn ($t) => [$t->id(), $t->unsignedBigInteger('warehouse_id'), $t->unsignedBigInteger('product_id'), $t->integer('quantity')->default(0),
+        $t->integer('reserved_stock')->default(0), $t->integer('defective_stock')->default(0), $t->integer('blocked_stock')->default(0), $t->json('sizes_stock')->nullable(), $t->timestamps()]);
+    Schema::create('inventory_variants', fn ($t) => [$t->id(), $t->unsignedBigInteger('warehouse_id'), $t->unsignedBigInteger('product_id'), $t->unsignedBigInteger('variant_id'),
+        $t->integer('quantity')->default(0), $t->integer('defective_stock')->default(0), $t->timestamps()]);
     Schema::create('product_city_availability', fn ($t) => [$t->id(), $t->unsignedBigInteger('product_id'), $t->unsignedBigInteger('city_id'), $t->boolean('is_available')->default(true), $t->timestamps()]);
     Schema::create('shops', fn ($t) => [$t->id(), $t->string('name'), $t->string('shopify_domain')->nullable(), $t->timestamps()]);
     Schema::create('clients', function ($t) {
@@ -143,7 +149,11 @@ beforeEach(function () {
         ['id' => 3, 'name' => 'Aragua', 'agency_id' => null], ['id' => 4, 'name' => 'Lara', 'agency_id' => null]]);
     DB::table('provinces')->insert(['id' => 9, 'name' => 'Distrito Capital']);
     DB::table('city_agency')->insert([['city_id' => 1, 'agency_id' => 20], ['city_id' => 2, 'agency_id' => 21]]);
-    DB::table('logistics_centers')->insert(['city_id' => 3]);
+    DB::table('logistics_centers')->insert(['city_id' => 3, 'warehouse_id' => 130]);
+    // de sobra en las tres ciudades (las pruebas de la .172 lo bajan)
+    DB::table('warehouses')->insert([['id' => 120, 'user_id' => 20], ['id' => 121, 'user_id' => 21], ['id' => 130, 'user_id' => null]]);
+    DB::table('inventories')->insert([['warehouse_id' => 120, 'product_id' => 7, 'quantity' => 50], ['warehouse_id' => 121, 'product_id' => 7, 'quantity' => 50],
+        ['warehouse_id' => 130, 'product_id' => 7, 'quantity' => 50]]);
     DB::table('product_offers')->insert([
         ['id' => 31, 'product_id' => 7, 'units' => 3, 'discount_pct' => 33, 'title' => 'LLEVA 3 GALONES CON 33% DE DESCUENTO', 'badge' => '🎁 EL DESCUENTO MÁXIMO', 'is_default' => false, 'position' => 0, 'is_active' => true],
         ['id' => 32, 'product_id' => 7, 'units' => 2, 'discount_pct' => 25, 'title' => 'LLEVA 2 GALONES CON 25% DE DESCUENTO', 'badge' => '🏆 LA OPCIÓN FAVORITA', 'is_default' => false, 'position' => 1, 'is_active' => true],
@@ -275,6 +285,7 @@ describe('.164: el pedido', function () {
 
     it('con tallas, la talla es obligatoria', function () {
         DB::table('product_variants')->insert(['id' => 70, 'product_id' => 7, 'title' => 'XL', 'shopify_variant_id' => 999, 'is_active' => true]);
+        DB::table('inventory_variants')->insert(['warehouse_id' => 120, 'product_id' => 7, 'variant_id' => 70, 'quantity' => 10]); // .172: la talla en stock
         $this->sources->shouldReceive('record');
         $this->intake->shouldReceive('finish');
 
@@ -538,7 +549,7 @@ describe('.168: la encomienda a otra ciudad del país (MRW y Zoom)', function ()
     });
 
     it('la configuración la ofrece y la lista trae solo las oficinas activas de esa empresa', function () {
-        expect($this->get('/tienda/productos/7558816')->json('courier'))->toBe(['companies' => ['MRW', 'Zoom']]);
+        expect($this->get('/tienda/productos/7558816')->json('courier'))->toBe(['companies' => ['MRW', 'Zoom'], 'stock' => ['all' => 3, 'sizes' => []]]);
         $r = $this->get('/tienda/oficinas?empresa=MRW')->assertOk();
 
         expect(array_column($r->json('offices'), 'name'))->toBe(['Alto Barinas'])
@@ -767,6 +778,91 @@ describe('.170: probar el Purchase al entregar sin entregar el pedido', function
 // ───────────────────────────── .171 ─────────────────────────────
 // Dueño (21/11): "me parece muy complicado esas pruebas… hay que buscar una manera más sencilla sin duplicar campañas":
 // "Purchase según cómo paga el cliente" se prende por producto, para todas sus campañas.
+
+// ───────────────────────────── .172 ─────────────────────────────
+// Dueño (21/11): si no hay stock "no debería ofrecer"; la ciudad sin stock puede pedir por encomienda; agotado en todas partes,
+// "no sale agotado ni nada".
+
+/** El stock útil de un almacén de prueba (120 = Distrito Capital, 121 = Carabobo, 130 = la logística propia de Aragua). */
+function stock172(int $warehouse, int $quantity, int $reserved = 0): void
+{
+    DB::table('inventories')->where('warehouse_id', $warehouse)->update(['quantity' => $quantity, 'reserved_stock' => $reserved]);
+}
+
+describe('.172: el formulario solo ofrece donde hay stock', function () {
+    it('una ciudad sale solo si alguna agencia (o la logística propia) tiene; la página no ve más que la oferta más grande', function () {
+        stock172(120, 2, 1); // le queda 1
+        stock172(121, 0);
+        stock172(130, 40);
+        $c = $this->get('/tienda/productos/7558816')->assertOk()->json();
+
+        expect(array_column($c['cities'], 'name'))->toBe(['Aragua', 'Distrito Capital'])
+            ->and(array_column(array_column($c['cities'], 'stock'), 'all'))->toBe([3, 1])
+            ->and($c['available'])->toBeTrue();
+    });
+
+    it('las encomiendas salen solo si la ciudad de origen tiene; sin stock en ninguna parte no sale nada', function () {
+        tablas168();
+        StorefrontCatalog::saveSettings(['courier_enabled' => true, 'courier_origin_city_id' => 2]);
+        stock172(121, 0);
+        expect($this->get('/tienda/productos/7558816')->json('courier'))->toBeNull();
+
+        stock172(121, 5);
+        stock172(120, 0);
+        stock172(130, 0);
+        Illuminate\Support\Facades\Cache::flush();
+        $c = $this->get('/tienda/productos/7558816')->json();
+        // Carabobo con delivery y también de donde salen las encomiendas (los clientes de las otras ciudades piden por encomienda)
+        expect(array_column($c['cities'], 'name'))->toBe(['Carabobo'])->and($c['courier']['companies'])->toBe(['MRW', 'Zoom'])->and($c['available'])->toBeTrue();
+
+        stock172(121, 0);
+        Illuminate\Support\Facades\Cache::flush();
+        $c = $this->get('/tienda/productos/7558816')->json();
+        expect([$c['cities'], $c['courier'], $c['available']])->toBe([[], null, false]);
+    });
+
+    it('con tallas cuenta la talla en el mismo almacén (el menor entre el producto y la talla)', function () {
+        DB::table('product_variants')->insert([['id' => 70, 'product_id' => 7, 'title' => 'XL', 'is_active' => true], ['id' => 71, 'product_id' => 7, 'title' => 'L', 'is_active' => true]]);
+        stock172(121, 1);
+        stock172(130, 0);
+        DB::table('inventory_variants')->insert([['warehouse_id' => 120, 'product_id' => 7, 'variant_id' => 70, 'quantity' => 2],
+            ['warehouse_id' => 121, 'product_id' => 7, 'variant_id' => 71, 'quantity' => 4]]);
+        $c = $this->get('/tienda/productos/7558816')->json();
+
+        expect(array_column($c['cities'], 'stock', 'name'))->toBe(['Carabobo' => ['all' => 1, 'sizes' => ['70' => 0, '71' => 1]],
+            'Distrito Capital' => ['all' => 3, 'sizes' => ['70' => 2, '71' => 0]]]);
+    });
+
+    it('al confirmar se revisa otra vez: sin pagar no entra (dice la ciudad); ya pagado entra con el aviso; el mismo pedido reenviado pasa', function () {
+        tablas168();
+        Illuminate\Support\Facades\Storage::fake('public');
+        StorefrontCatalog::saveSettings(['prepaid_enabled' => true]);
+        Illuminate\Support\Facades\Bus::fake();
+        $this->sources->shouldReceive('record');
+        $this->intake->shouldReceive('finish');
+        stock172(120, 1);
+
+        enviar164($this)->assertStatus(422)->assertJson(['fields' => ['where'], 'stock' => true, 'city' => 'Distrito Capital']); // la oferta de 2
+        enviar164($this, ['offer' => 33])->assertOk();
+        enviar164($this, ['phone' => '04241234567', 'payment' => 'pago_movil', 'receipt' => RECIBO168])->assertOk();
+        stock172(120, 0);
+        expect(enviar164($this, ['offer' => 33])->assertOk()->json('duplicate'))->toBeTrue()
+            ->and(DB::table('order_activity_logs')->where('action', 'storefront_sold_out')->pluck('description')->all())
+            ->toBe(['Se agotó en Distrito Capital mientras el cliente pagaba: ofrécele esperar o devuélvele el pago.']);
+    });
+
+    it('en tu panel: qué sale hoy en cada ciudad y en las encomiendas', function () {
+        Sanctum::actingAs(User::find(1));
+        StorefrontCatalog::saveSettings(['courier_enabled' => true, 'courier_origin_city_id' => 2]);
+        stock172(120, 12);
+        stock172(121, 0);
+        $p = $this->putJson('/api/store-form/products/7/purchase-mode', ['on' => false])->assertOk()->json('product.stock');
+
+        expect($p['cities'])->toBe([['name' => 'Aragua', 'ok' => true, 'units' => 50], ['name' => 'Carabobo', 'ok' => false, 'units' => 0],
+            ['name' => 'Distrito Capital', 'ok' => true, 'units' => 12]])
+            ->and($p['courier'])->toBe(['name' => 'Carabobo', 'ok' => false, 'units' => 0]);
+    });
+});
 
 describe('.171: Purchase según cómo paga, por producto', function () {
     beforeEach(function () {

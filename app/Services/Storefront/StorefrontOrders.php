@@ -81,6 +81,14 @@ class StorefrontOrders
             if (StorefrontOrder::where('created_at', '>=', today())->count() >= $s['daily_max']) {
                 throw new StorefrontLimit(self::LIMIT_DAY);
             }
+            // .172: ¿todavía hay? Otro cliente pudo llevarse lo último mientras este llenaba el formulario. Si no ha pagado, no
+            // entra; si ya pagó, entra igual con el aviso para la vendedora
+            if (($short = $this->soldOut($product, $in, $s)) !== null) {
+                if (($in['payment'] ?? null) !== StorefrontOrder::PREPAID) {
+                    throw new StorefrontNoStock($short);
+                }
+                $in['sold_out'] = $short;
+            }
 
             // .168/.171: su producto (o su campaña) dice cuándo sale su Purchase; y si la tienda está cerrada, el cliente lo sabe
             $campaign = PurchaseModes::campaignOf($in['landing'] ?? null, $in['page'] ?? null);
@@ -92,6 +100,16 @@ class StorefrontOrders
 
             return ['order' => $order, 'storefront' => $front, 'duplicate' => false];
         });
+    }
+
+    /** `.172`: el nombre de la ciudad que ya no puede entregar este pedido (la del cliente, o la de las encomiendas), o null. */
+    private function soldOut(Product $product, array $in, array $s): ?string
+    {
+        $cityId = !empty($in['courier']) ? $s['courier_origin_city_id'] : $in['city'];
+        $offer = $in['offer'] ? ProductOffer::where('product_id', $product->id)->where('is_active', true)->find($in['offer']) : null;
+        $stock = app(StorefrontStock::class)->byCity((int) $product->id, [(int) $cityId], true)[(int) $cityId] ?? null;
+
+        return StorefrontRules::canDeliver($stock, $offer?->units ?? 1, $in['variant'] ?? null) ? null : (string) City::whereKey($cityId)->value('name');
     }
 
     private function create(Product $product, array $in, array $meta, array $s, string $phone, string $last10, string $mode, bool $closed): array
@@ -170,6 +188,10 @@ class StorefrontOrders
         if ($courier) {
             OrderActivityLog::create(['order_id' => $order->id, 'action' => 'storefront_courier',
                 'description' => "Encomienda por {$courier['company']}: retira en {$office}. Sale de {$city->name}."]);
+        }
+        if (!empty($in['sold_out'])) {
+            OrderActivityLog::create(['order_id' => $order->id, 'action' => 'storefront_sold_out',
+                'description' => "Se agotó en {$in['sold_out']} mientras el cliente pagaba: ofrécele esperar o devuélvele el pago."]);
         }
         if ($payment === StorefrontOrder::ADVISOR) {
             OrderActivityLog::create(['order_id' => $order->id, 'action' => 'storefront_advisor', 'description' => $courier

@@ -96,6 +96,19 @@ class StorefrontCatalog
             Cache::put("storefront:page_price:{$product->id}", round((float) $pagePrice, 2), now()->addDay());
         }
         $name = $base['name'];
+        // .172: solo donde hay stock: cada ciudad con delivery, y la de las encomiendas (dueño: "no debería ofrecer si no hay stock")
+        $origin = self::courierOn($s) ? (int) $s['courier_origin_city_id'] : null;
+        $units = array_column(array_filter($base['offers'], fn ($o) => $o['is_active']), 'units');
+        [$min, $cap] = $units ? [min($units), max($units)] : [1, 1];
+        $stock = app(StorefrontStock::class)->byCity((int) $product->id, [...array_column($base['cities'], 'id'), ...($origin !== null ? [$origin] : [])]);
+        $cities = [];
+        foreach ($base['cities'] as $c) {
+            if (StorefrontRules::canDeliver($stock[$c['id']] ?? null, $min)) {
+                $cities[] = $c + ['stock' => StorefrontRules::stockShown($stock[$c['id']], $cap)];
+            }
+        }
+        $courier = $origin !== null && StorefrontRules::canDeliver($stock[$origin] ?? null, $min)
+            ? ['companies' => $s['courier_companies'], 'stock' => StorefrontRules::stockShown($stock[$origin], $cap)] : null;
         $express = $s['express_usd'] > 0 ? ['usd' => $s['express_usd'], 'bs' => $rate !== null ? StorefrontRules::bs($s['express_usd'], $rate) : null] : null;
 
         return [
@@ -104,7 +117,9 @@ class StorefrontCatalog
             'rate' => $rate,
             'offers' => StorefrontRules::offers($price, $base['offers'], $rate, mb_strtoupper($name)),
             'variants' => $base['variants'],
-            'cities' => $base['cities'],
+            'cities' => $cities,
+            // .172: sin stock en ninguna parte, el formulario no sale (y Releasit sigue escondido: nadie puede pedir)
+            'available' => $cities !== [] || $courier !== null,
             'express' => $express,
             'texts' => $base['texts'],
             'colors' => $base['colors'],
@@ -115,7 +130,7 @@ class StorefrontCatalog
                 'content_id' => StorefrontRules::contentId($s['content_id_format'], $s['content_region'], (string) $product->product_id, $product->variant_id ? (string) $product->variant_id : null)],
             'releasit' => $s['releasit_selector'],
             'pay' => ['prepaid' => $s['prepaid_enabled'], 'advisor' => $s['advisor_enabled']],
-            'courier' => self::courierOn($s) ? ['companies' => $s['courier_companies']] : null,
+            'courier' => $courier,
             'ts' => $ts = now()->timestamp,
             'sig' => StorefrontRules::sign($ts, (string) config('app.key')),
         ];
