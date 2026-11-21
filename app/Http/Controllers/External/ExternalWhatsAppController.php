@@ -572,7 +572,7 @@ class ExternalWhatsAppController extends Controller
                 // Las plantillas que ya se le mandaron a esta orden: n8n no repite "Sin Stock" (dueño, 2026-11-02)
                 'sent_templates' => WhatsappMessage::templatesSentToOrder($order->id),
                 // .173: su caso (domicilio_al_recibir, domicilio_pagado, encomienda_pagada, encomienda_por_pagar), si se le
-                // cobra al entregar y la encomienda (empresa, oficina donde retira, quien retira y el número de guía)
+                // cobra al entregar y la encomienda (empresa, oficina donde retira, quien retira y la foto de la guía)
             ] + DeliveryCase::forOrder($order) : null,
             'agency' => $agency ? [
                 'id' => $agency->id,
