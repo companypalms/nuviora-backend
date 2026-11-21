@@ -286,8 +286,8 @@ class OrderController extends Controller
                 // .168: la empresa y la oficina donde retira (formulario de la tienda o la vendedora), y si ya pagó
                 'courier_company'             => $order->courier_company,
                 'courier_office'              => $order->courier_office,
-                // .173: el número de guía de MRW o Zoom (lo escribe la vendedora)
-                'courier_guide'               => $order->courier_guide,
+                // .173: la foto de la guía de MRW o Zoom (la sube la agencia o la operadora; sin ella no se entrega)
+                'courier_guide_photo_url'     => \App\Services\Orders\DeliveryCase::guidePhotoUrl($order),
                 'courier_guide_at'            => $order->courier_guide_at?->toDateTimeString(),
                 'prepaid'                     => \App\Services\Storefront\PrepaidState::of($order),
                 'cash_received'        => $order->cash_received,
@@ -490,6 +490,10 @@ class OrderController extends Controller
         // 1. Validar que existe comprobante de pago si se intenta cambiar a Entregado
         // SKIP for return/exchange orders - they don't require payments
         if ($statusEntregado && (int) $statusEntregado->id === (int) $request->status_id && !($order->is_return || $order->is_exchange)) {
+            // .173 (dueño, 21/11): una encomienda no se entrega sin la foto de su guía (nadie, como el comprobante)
+            if ($guideMissing = \App\Services\Orders\DeliveryCase::deliveryBlock((bool) $order->courier_shipment, $order->courier_guide_photo)) {
+                return response()->json(['status' => false, 'message' => $guideMissing, 'courier_guide_missing' => true], 422);
+            }
             if (empty($order->payment_receipt)) {
                 return response()->json([
                     'status' => false,
@@ -1310,44 +1314,56 @@ class OrderController extends Controller
     }
 
     /**
-     * `.173` (dueño, 2026-11-21: el número de guía lo escribe la vendedora): el número de guía de MRW o Zoom de una encomienda.
-     * Llega después de que el motorizado deja el paquete en la oficina, así que se puede escribir con el pedido Entregado.
-     * Cada guía nueva le avisa a n8n (evento `order.courier_guide`), que le escribe al cliente.
+     * `.173` (dueño, 2026-11-21: "la guía no debe ser por número, sino una foto a la guía, que debe tomar la agencia
+     * encargada… no lo tiene que hacer la vendedora (aunque puede)"; en la logística propia, "la operadora logística"): la
+     * foto de la guía de MRW o Zoom. Se toma al dejar el paquete en la oficina, así que también se puede cambiar con el pedido
+     * Entregado. Cada foto nueva le avisa a n8n (evento `order.courier_guide`), que se la manda al cliente.
      */
-    public function updateCourierGuide(Request $request, Order $order, \App\Services\WebhookService $webhooks)
+    public function uploadCourierGuide(Request $request, Order $order, \App\Services\WebhookService $webhooks)
     {
-        if (!in_array(Auth::user()->role?->description, ['Vendedor', 'Gerente', 'Admin'], true)) {
-            return response()->json(['status' => false], 403);
+        if (!in_array(Auth::user()->role?->description, \App\Services\Orders\DeliveryCase::GUIDE_UPLOADERS, true)) {
+            return response()->json(['status' => false, 'message' => 'La foto de la guía la sube la agencia, la operadora logística o la vendedora.'], 403);
         }
         if (!$order->courier_shipment) {
             return response()->json(['status' => false, 'message' => 'Esta orden no es una encomienda.'], 422);
         }
-        $request->merge(['courier_guide' => \App\Services\Orders\DeliveryCase::normalizeGuide($request->input('courier_guide'))]);
-        $request->validate(['courier_guide' => ['nullable', 'string', 'regex:' . \App\Services\Orders\DeliveryCase::GUIDE_PATTERN]],
-            ['courier_guide.regex' => 'El número de guía lleva solo letras y números (de 4 a 40).']);
-        $guide = $request->input('courier_guide');
-        $before = $order->courier_guide;
-        if ($guide === $before) {
-            return response()->json(['status' => true, 'message' => 'Ese número de guía ya estaba guardado.', 'order' => $order->fresh(['client', 'agent', 'status'])]);
-        }
-        $order->forceFill(['courier_guide' => $guide, 'courier_guide_at' => $guide ? now() : null])->save();
+        $request->validate(['photo' => 'required|image|max:10240'], [
+            'photo.required' => 'Falta la foto de la guía.',
+            'photo.image' => 'La guía tiene que ser una foto.',
+            'photo.max' => 'La foto pesa demasiado (hasta 10 MB).',
+        ]);
+        $before = $order->courier_guide_photo;
+        $order->forceFill(['courier_guide_photo' => $request->file('photo')->store('courier_guides', 'public'), 'courier_guide_at' => now()])->save();
         \App\Models\OrderActivityLog::create([
             'order_id' => $order->id,
             'user_id' => Auth::id(),
             'action' => 'courier_guide',
-            'description' => $guide
-                ? ($before ? "Corrigió el número de guía de la encomienda: {$guide} (antes {$before})" : "Escribió el número de guía de la encomienda: {$guide}")
-                : "Borró el número de guía de la encomienda (era {$before})",
+            'description' => $before ? 'Cambió la foto de la guía de la encomienda.' : 'Subió la foto de la guía de la encomienda.',
+            'properties' => ['photo' => ['old' => $before, 'new' => $order->courier_guide_photo]],
         ]);
-        if ($guide) {
-            $webhooks->trigger('order.courier_guide', $order->fresh(['status']));
-        }
+        $webhooks->trigger('order.courier_guide', $order->fresh(['status']));
 
         return response()->json([
             'status' => true,
-            'message' => $guide ? 'Número de guía guardado.' : 'Número de guía borrado.',
-            'order' => $order->fresh(['client', 'agent', 'status']),
+            'message' => 'Foto de la guía guardada.',
+            'order' => [
+                'id' => $order->id,
+                'courier_guide_at' => $order->courier_guide_at->toDateTimeString(),
+                'courier_guide_photo_url' => \App\Services\Orders\DeliveryCase::guidePhotoUrl($order),
+            ],
         ]);
+    }
+
+    /** `.173`: la foto de la guía (link firmado, como los comprobantes; n8n la manda al cliente). */
+    public function getCourierGuide(Request $request, Order $order)
+    {
+        $this->abortUnlessValidReceiptSignature($request);
+        $disk = \Illuminate\Support\Facades\Storage::disk('public');
+        if (!$order->courier_guide_photo || !$disk->exists($order->courier_guide_photo)) {
+            abort(404, 'No hay foto de la guía');
+        }
+
+        return response()->file($disk->path($order->courier_guide_photo));
     }
 
     /** Lo que le falta a una orden para pasar a "Asignar a agencia" en cuanto a la ubicación, o null si está completa. */

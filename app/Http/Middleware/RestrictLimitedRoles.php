@@ -12,7 +12,7 @@ use Symfony\Component\HttpFoundation\Response;
  * logístico solo llegan a lo suyo. Con el mismo login se podía llamar directo a la API y cambiar los pagos de la orden,
  * reprogramarla, pasársela a otro, tocar el catálogo… Aquí se invierte: todo les da 403 salvo esta lista.
  * - Rider: su app (/rider/*) y las dos llamadas de la entrega (§12.1): subir el comprobante y marcar "Entregado".
- * - Operador: su torre de control (/logistics/*).
+ * - Operador: su torre de control (/logistics/*) y subir la foto de la guía de una encomienda (.173, dueño 21/11).
  * - Los editores (Etapa 5, paso 5a): sus encargos (/editor/*).
  * - El editor de landings (paso 6b): sus encargos de landing (/landing-editor/*).
  * - Todos: su sesión y su perfil.
@@ -43,6 +43,9 @@ class RestrictLimitedRoles
             return $next($request);
         }
         if ($role === self::OPERATOR && $request->is('api/logistics/*')) {
+            return $next($request);
+        }
+        if ($role === self::OPERATOR && $request->isMethod('POST') && $request->is('api/orders/*/courier-guide')) {
             return $next($request);
         }
         if ($editor) {

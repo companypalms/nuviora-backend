@@ -48,7 +48,7 @@ class Tower
     {
         $settings = $this->settings->for($center);
         $rows = LogisticsOrder::with([
-            'order:id,name,order_number,current_total_price,client_id,status_id,location,is_return',
+            'order:id,name,order_number,current_total_price,client_id,status_id,location,is_return,courier_shipment,courier_guide_photo,courier_guide_at',
             'center',
             'order.client:id,first_name,last_name,phone,address1',
             'order.status:id,description',
@@ -113,6 +113,11 @@ class Tower
         // La ruta va resumida más abajo (sin el modelo completo)
         return array_diff_key($r->toArray(), ['route' => true]) + [
             'status_label' => LogisticsStatus::label($r->status),
+            // .173: una encomienda: la operadora sube la foto de la guía aquí (sin ella no se entrega)
+            'courier' => $r->order?->courier_shipment ? [
+                'guide_photo_url' => \App\Services\Orders\DeliveryCase::guidePhotoUrl($r->order),
+                'guide_at' => $r->order->courier_guide_at?->toDateTimeString(),
+            ] : null,
             'sla_minutes' => $sla,
             'sla_level' => self::slaLevel($sla, $settings),
             'searching_seconds' => $searching,

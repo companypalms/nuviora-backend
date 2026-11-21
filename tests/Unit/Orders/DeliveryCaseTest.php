@@ -2,7 +2,7 @@
 
 use App\Services\Orders\DeliveryCase;
 
-// .173 (dueño, 2026-11-21): el caso de cada pedido para n8n (cómo paga y cómo recibe), el número de guía y la encomienda
+// .173 (dueño, 2026-11-21): el caso de cada pedido para n8n (cómo paga y cómo recibe), la foto de la guía y la encomienda
 // que queda "Ya pagó" sola al registrar su pago completo.
 
 describe('.173: el caso de cada pedido', function () {
@@ -11,14 +11,11 @@ describe('.173: el caso de cada pedido', function () {
             ->toBe(['domicilio_al_recibir', 'domicilio_pagado', 'encomienda_pagada', 'encomienda_por_pagar']);
     });
 
-    it('el número de guía se guarda sin espacios de más y en mayúsculas; vacío es null', function () {
-        expect(DeliveryCase::normalizeGuide("  ab 12\t 34 "))->toBe('AB 12 34')
-            ->and(DeliveryCase::normalizeGuide('   '))->toBeNull()
-            ->and(DeliveryCase::normalizeGuide(null))->toBeNull()
-            ->and(preg_match(DeliveryCase::GUIDE_PATTERN, '1234'))->toBe(1)
-            ->and(preg_match(DeliveryCase::GUIDE_PATTERN, '123'))->toBe(0)
-            ->and(preg_match(DeliveryCase::GUIDE_PATTERN, '-1234'))->toBe(0)
-            ->and(preg_match(DeliveryCase::GUIDE_PATTERN, 'MRW-0012 3456'))->toBe(1);
+    it('una encomienda sin la foto de su guía no se entrega; a domicilio no la pide', function () {
+        expect(DeliveryCase::deliveryBlock(true, null))->toBe(DeliveryCase::GUIDE_MISSING)
+            ->and(DeliveryCase::deliveryBlock(true, ''))->toBe(DeliveryCase::GUIDE_MISSING)
+            ->and(DeliveryCase::deliveryBlock(true, 'courier_guides/guia.jpg'))->toBeNull()
+            ->and(DeliveryCase::deliveryBlock(false, null))->toBeNull();
     });
 
     it('«Ya pagó» por los pagos: solo encomiendas; se pone con el total y se quita si deja de cubrirlo; el del formulario no', function () {

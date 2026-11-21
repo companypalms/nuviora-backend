@@ -6,11 +6,13 @@ use App\Models\Order;
 use App\Models\OrderActivityLog;
 use App\Models\StorefrontOrder;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\URL;
 
 /**
  * `.173` (dueño, 2026-11-21: "tenemos que cambiar todo el flujo de n8n dependiendo de cómo paga el cliente y cómo va a
  * recibir"): el caso de cada pedido, para que n8n le mande a cada uno lo suyo. Una encomienda siempre se paga antes: con el
- * pago móvil del formulario, o con la asesora (la vendedora registra el pago y queda "✅ Ya pagó" sola).
+ * pago móvil del formulario, o con la asesora (la vendedora registra el pago y queda "✅ Ya pagó" sola). La guía es una foto
+ * que sube la agencia que lleva el paquete a la oficina (en la logística propia, la operadora); sin ella no se entrega.
  */
 final class DeliveryCase
 {
@@ -19,8 +21,10 @@ final class DeliveryCase
     public const COURIER_PAID = 'encomienda_pagada';
     public const COURIER_UNPAID = 'encomienda_por_pagar';
 
-    /** El número de guía de MRW o Zoom: letras, números, espacios y guiones. */
-    public const GUIDE_PATTERN = '/^[A-Za-z0-9][A-Za-z0-9 \-]{3,39}$/';
+    /** Quienes suben la foto de la guía: la agencia, la operadora de la logística propia y la vendedora, su líder o administración. */
+    public const GUIDE_UPLOADERS = ['Agencia', 'Operador logístico', 'Vendedor', 'Gerente', 'Admin', 'Master'];
+
+    public const GUIDE_MISSING = 'Falta la foto de la guía de la encomienda. La sube la agencia en el pedido (en la logística propia, la operadora en la Torre de control).';
 
     public static function of(bool $courier, bool $paid): string
     {
@@ -48,18 +52,25 @@ final class DeliveryCase
                 'office' => $order->courier_office,
                 'recipient_name' => $order->courier_recipient_name,
                 'recipient_id_number' => $order->courier_recipient_id_number,
-                'guide' => $order->courier_guide,
+                // n8n se la manda al cliente: el link vence a los 7 días
+                'guide_photo_url' => self::guidePhotoUrl($order, 7 * 24),
                 'guide_at' => $order->courier_guide_at?->toDateTimeString(),
             ] : null,
         ];
     }
 
-    /** El número de guía como se guarda: sin espacios de más y en mayúsculas; null si quedó vacío. */
-    public static function normalizeGuide(?string $guide): ?string
+    /** El link de la foto de la guía (firmado, como los comprobantes), o null si todavía no la tiene. */
+    public static function guidePhotoUrl(Order $order, int $hours = 12): ?string
     {
-        $guide = strtoupper(trim((string) preg_replace('/\s+/', ' ', (string) $guide)));
+        return $order->courier_guide_photo
+            ? URL::temporarySignedRoute('courier.guide', now()->addHours($hours), ['order' => $order->id])
+            : null;
+    }
 
-        return $guide === '' ? null : $guide;
+    /** Por qué no puede pasar a Entregado: una encomienda sin la foto de su guía (dueño, 21/11). Null si puede. */
+    public static function deliveryBlock(bool $courier, ?string $photo): ?string
+    {
+        return $courier && !$photo ? self::GUIDE_MISSING : null;
     }
 
     /**

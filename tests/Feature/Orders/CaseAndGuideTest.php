@@ -8,13 +8,16 @@ use App\Models\WhatsappMessage;
 use App\Services\Orders\DeliveryCase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
 
 // .173 (dueño, 2026-11-21): "tenemos que cambiar todo el flujo de n8n dependiendo de cómo paga el cliente y cómo va a
-// recibir"; el número de guía lo escribe la vendedora y n8n le avisa al cliente; la encomienda cobrada completa queda "Ya
-// pagó" sola. En una base en memoria (no toca la base local); n8n y Meta son de mentira (Http::fake).
+// recibir"; la guía es una foto que sube la agencia (en la logística propia, la operadora) y sin ella no se entrega; n8n se
+// entera de cada foto; la encomienda cobrada completa queda "Ya pagó" sola. En una base en memoria (no toca la base local);
+// n8n y Meta son de mentira (Http::fake) y las fotos van a un disco de mentira (Storage::fake).
 
 beforeEach(function () {
     Schema::create('roles', fn ($t) => [$t->id(), $t->string('description'), $t->timestamps()]);
@@ -67,6 +70,8 @@ beforeEach(function () {
             $t->string($c)->nullable();
         }
         $t->timestamp('prepaid_at')->nullable();
+        $t->boolean('is_return')->default(false);
+        $t->boolean('is_exchange')->default(false);
         $t->timestamps();
     });
     (require database_path('migrations/2026_11_22_110000_courier_guide.php'))->up();
@@ -117,6 +122,10 @@ beforeEach(function () {
         $t->timestamp('ended_at')->nullable(), $t->timestamps()]);
     Schema::create('internal_conversations', fn ($t) => [$t->id(), $t->unsignedBigInteger('order_id')->nullable(), $t->timestamps()]);
     Schema::create('internal_messages', fn ($t) => [$t->id(), $t->unsignedBigInteger('conversation_id'), $t->timestamps()]);
+    Schema::create('warehouses', fn ($t) => [$t->id(), $t->unsignedBigInteger('user_id')->nullable(), $t->unsignedBigInteger('city_id')->nullable(), $t->boolean('is_active')->default(true), $t->timestamps()]);
+    // la logística propia: la operadora llega a las órdenes de su centro
+    Schema::create('logistics_orders', fn ($t) => [$t->id(), $t->unsignedBigInteger('order_id'), $t->unsignedBigInteger('center_id'), $t->string('status')->default('en_ruta'), $t->timestamps()]);
+    Schema::create('logistics_center_operators', fn ($t) => [$t->id(), $t->unsignedBigInteger('center_id'), $t->unsignedBigInteger('user_id'), $t->timestamps()]);
     Schema::create('webhooks', function ($t) {
         $t->id();
         $t->string('name');
@@ -128,6 +137,7 @@ beforeEach(function () {
     });
 
     config(['app.external_api_key' => 'clave-de-prueba']);
+    Storage::fake('public');
     Event::fake([WhatsappMessageReceived::class]);
     Http::preventStrayRequests();
     Http::fake(['n8n.prueba/*' => Http::response(['ok' => true], 200)]);
@@ -188,17 +198,25 @@ describe('.173: el caso de cada pedido para n8n', function () {
 
         expect([$r['order']['case'], $r['order']['delivery'], $r['order']['paid'], $r['order']['collect_on_delivery']])->toBe(['encomienda_por_pagar', 'encomienda', false, false])
             ->and($r['order']['courier'])->toBe(['company' => 'MRW', 'office' => 'MRW Barquisimeto Centro — Av. 20, Lara', 'recipient_name' => 'María Prueba',
-                'recipient_id_number' => 'V-12345678', 'guide' => null, 'guide_at' => null])
+                'recipient_id_number' => 'V-12345678', 'guide_photo_url' => null, 'guide_at' => null])
             ->and($r['template_tracking']['confirmation_sent_at'])->toBe(Order::find($order)->created_at->toDateTimeString())
             ->and($r['template_tracking']['should_send_next_template'])->toBeFalse();
     });
 
-    it('encomienda pagada, con su guía', function () {
-        [$order, $client] = pedido173(ENCOMIENDA173 + ['prepaid_at' => now(), 'courier_guide' => '123456789', 'courier_guide_at' => '2026-11-22 10:00:00']);
+    it('encomienda pagada, con la foto de su guía: n8n recibe un link firmado que vence a los 7 días', function () {
+        Storage::disk('public')->put('courier_guides/guia.jpg', 'foto');
+        [$order, $client] = pedido173(ENCOMIENDA173 + ['prepaid_at' => now(), 'courier_guide_photo' => 'courier_guides/guia.jpg', 'courier_guide_at' => '2026-11-22 10:00:00']);
         $r = ventana173($this, $order, $client);
+        $url = $r['order']['courier']['guide_photo_url'];
+        parse_str((string) parse_url($url, PHP_URL_QUERY), $q);
 
         expect($r['order']['case'])->toBe('encomienda_pagada')
-            ->and([$r['order']['courier']['guide'], $r['order']['courier']['guide_at']])->toBe(['123456789', '2026-11-22 10:00:00']);
+            ->and($r['order']['courier']['guide_at'])->toBe('2026-11-22 10:00:00')
+            ->and($url)->toContain("/api/orders/{$order}/courier-guide?")
+            ->and((int) $q['expires'] - now()->timestamp)->toBeGreaterThan(6 * 86400);
+        // el link abre la foto (sin sesión); sin la firma, no
+        expect(file_get_contents($this->get($url)->assertOk()->baseResponse->getFile()->getPathname()))->toBe('foto');
+        $this->get("/api/orders/{$order}/courier-guide")->assertForbidden();
     });
 
     it('una encomienda que ya recibió la confirmación (la vendedora la cambió después) sigue con su ancla', function () {
@@ -210,53 +228,73 @@ describe('.173: el caso de cada pedido para n8n', function () {
     });
 });
 
-describe('.173: el número de guía', function () {
-    it('la vendedora lo escribe (también con el pedido Entregado); queda en el pedido, en el historial y n8n se entera', function () {
-        $seller = rol173('Vendedor');
-        [$order] = pedido173(ENCOMIENDA173 + ['agent_id' => $seller->id], 'Entregado');
-        Sanctum::actingAs($seller);
+describe('.173: la foto de la guía', function () {
+    function foto173($test, int $order)
+    {
+        return $test->post("/api/orders/{$order}/courier-guide", ['photo' => UploadedFile::fake()->image('guia.jpg', 800, 1200)], ['Accept' => 'application/json']);
+    }
 
-        $r = $this->putJson("/api/orders/{$order}/courier-guide", ['courier_guide' => '  1234 5678-ab '])->assertOk();
+    it('la agencia la sube (también con el pedido Entregado); queda en el pedido y en el historial, y n8n se entera', function () {
+        $agency = rol173('Agencia');
+        [$order] = pedido173(ENCOMIENDA173 + ['agency_id' => $agency->id], 'Entregado');
+        Sanctum::actingAs($agency);
+
+        $r = foto173($this, $order)->assertOk();
 
         $o = Order::find($order);
-        expect($r->json('message'))->toBe('Número de guía guardado.')
-            ->and([$o->courier_guide, $o->courier_guide_at !== null])->toBe(['1234 5678-AB', true])
-            ->and(DB::table('order_activity_logs')->where('action', 'courier_guide')->value('description'))->toBe('Escribió el número de guía de la encomienda: 1234 5678-AB');
-        Http::assertSent(fn ($req) => $req->url() === 'https://n8n.prueba/guia' && $req['event'] === 'order.courier_guide' && $req['data']['courier_guide'] === '1234 5678-AB');
+        expect($r->json('message'))->toBe('Foto de la guía guardada.')
+            ->and($r->json('order.courier_guide_photo_url'))->toContain("/api/orders/{$order}/courier-guide?")
+            ->and($o->courier_guide_at)->not->toBeNull()
+            ->and(Storage::disk('public')->exists($o->courier_guide_photo))->toBeTrue()
+            ->and(DB::table('order_activity_logs')->where('action', 'courier_guide')->value('description'))->toBe('Subió la foto de la guía de la encomienda.');
+        Http::assertSent(fn ($req) => $req->url() === 'https://n8n.prueba/guia' && $req['event'] === 'order.courier_guide' && $req['data']['courier_guide_photo'] === $o->courier_guide_photo);
         // el aviso de cambio de estado no sale (n8n no repite el mensaje de "Entregado")
         Http::assertNotSent(fn ($req) => $req->url() === 'https://n8n.prueba/estados');
     });
 
-    it('corregirla avisa otra vez; la misma no; borrarla no avisa', function () {
-        Sanctum::actingAs(rol173('Admin'));
-        [$order] = pedido173(ENCOMIENDA173 + ['courier_guide' => '111111']);
+    it('en la logística propia la sube la operadora de su centro; cambiarla avisa otra vez', function () {
+        $operator = rol173('Operador logístico');
+        [$order] = pedido173(ENCOMIENDA173);
+        DB::table('logistics_orders')->insert(['order_id' => $order, 'center_id' => 3]);
+        DB::table('logistics_center_operators')->insert(['center_id' => 3, 'user_id' => $operator->id]);
+        Sanctum::actingAs($operator);
 
-        $this->putJson("/api/orders/{$order}/courier-guide", ['courier_guide' => '111111'])->assertOk()->assertJson(['message' => 'Ese número de guía ya estaba guardado.']);
-        Http::assertSentCount(0);
-        $this->putJson("/api/orders/{$order}/courier-guide", ['courier_guide' => '222222'])->assertOk();
-        Http::assertSentCount(1);
-        $this->putJson("/api/orders/{$order}/courier-guide", ['courier_guide' => ''])->assertOk()->assertJson(['message' => 'Número de guía borrado.']);
+        foto173($this, $order)->assertOk();
+        foto173($this, $order)->assertOk();
 
-        expect(Http::recorded())->toHaveCount(1)
-            ->and(Order::find($order)->only(['courier_guide', 'courier_guide_at']))->toBe(['courier_guide' => null, 'courier_guide_at' => null])
-            ->and(DB::table('order_activity_logs')->where('action', 'courier_guide')->pluck('description')->all())
-            ->toBe(['Corrigió el número de guía de la encomienda: 222222 (antes 111111)', 'Borró el número de guía de la encomienda (era 222222)']);
+        expect(DB::table('order_activity_logs')->where('action', 'courier_guide')->pluck('description')->all())
+            ->toBe(['Subió la foto de la guía de la encomienda.', 'Cambió la foto de la guía de la encomienda.']);
+        Http::assertSentCount(2);
     });
 
-    it('solo en encomiendas, con letras y números, y solo la vendedora, su líder o administración', function () {
+    it('solo en encomiendas, solo una foto, y el motorizado no la sube', function () {
         Sanctum::actingAs(rol173('Admin'));
         [$home] = pedido173();
         [$courier] = pedido173(ENCOMIENDA173);
 
-        $this->putJson("/api/orders/{$home}/courier-guide", ['courier_guide' => '123456'])->assertStatus(422)->assertJson(['message' => 'Esta orden no es una encomienda.']);
-        $this->putJson("/api/orders/{$courier}/courier-guide", ['courier_guide' => '12'])->assertStatus(422)->assertJsonValidationErrors('courier_guide');
-        $this->putJson("/api/orders/{$courier}/courier-guide", ['courier_guide' => 'guía #1?'])->assertStatus(422);
-        Sanctum::actingAs(rol173('Agencia'));
-        DB::table('orders')->where('id', $courier)->update(['agency_id' => auth()->id()]);
-        $this->putJson("/api/orders/{$courier}/courier-guide", ['courier_guide' => '123456'])->assertForbidden();
+        foto173($this, $home)->assertStatus(422)->assertJson(['message' => 'Esta orden no es una encomienda.']);
+        $this->post("/api/orders/{$courier}/courier-guide", ['photo' => UploadedFile::fake()->create('guia.pdf', 10, 'application/pdf')], ['Accept' => 'application/json'])
+            ->assertStatus(422)->assertJsonValidationErrors('photo');
+        $rider = rol173('Repartidor');
+        DB::table('orders')->where('id', $courier)->update(['deliverer_id' => $rider->id]);
+        Sanctum::actingAs($rider);
+        foto173($this, $courier)->assertForbidden();
 
-        expect(Order::find($courier)->courier_guide)->toBeNull();
+        expect(Order::find($courier)->courier_guide_photo)->toBeNull();
         Http::assertNothingSent();
+    });
+
+    it('sin la foto la encomienda no pasa a Entregado (ni administración); con la foto sigue con lo de siempre', function () {
+        Sanctum::actingAs(rol173('Admin'));
+        DB::table('statuses')->insert(['description' => 'Entregado']);
+        [$order] = pedido173(ENCOMIENDA173, 'En ruta');
+
+        $this->putJson("/api/orders/{$order}/status", ['status' => 'Entregado'])->assertStatus(422)
+            ->assertJson(['message' => DeliveryCase::GUIDE_MISSING, 'courier_guide_missing' => true]);
+        foto173($this, $order)->assertOk();
+        // ya no la frena la guía: sigue la regla de siempre (el comprobante de pago)
+        $this->putJson("/api/orders/{$order}/status", ['status' => 'Entregado'])->assertStatus(422)
+            ->assertJson(['message' => 'No se puede marcar como entregado sin un comprobante de pago']);
     });
 });
 
