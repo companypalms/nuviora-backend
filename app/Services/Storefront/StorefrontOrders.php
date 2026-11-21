@@ -82,9 +82,9 @@ class StorefrontOrders
                 throw new StorefrontLimit(self::LIMIT_DAY);
             }
 
-            // .168: la campaña del pedido dice cuándo sale su Purchase; y si la tienda está cerrada, el cliente lo sabe
+            // .168/.171: su producto (o su campaña) dice cuándo sale su Purchase; y si la tienda está cerrada, el cliente lo sabe
             $campaign = PurchaseModes::campaignOf($in['landing'] ?? null, $in['page'] ?? null);
-            $mode = StorefrontRules::purchaseMode($campaign, PurchaseModes::ranges(), today()->toDateString());
+            $mode = StorefrontRules::purchaseMode($campaign, PurchaseModes::ranges(), today()->toDateString(), (int) $product->id);
             $closed = $s['shop_id'] !== null && !app(AssignOrderService::class)->isBusinessOpen($s['shop_id']);
 
             [$order, $front] = DB::transaction(fn () => $this->create($product, $in, $meta, $s, $phone, $last10, $mode, $closed));

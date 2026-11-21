@@ -6,20 +6,42 @@ use App\Models\MetaAd;
 use App\Models\MetaAdset;
 use App\Models\MetaPurchaseMode;
 use App\Services\Orders\OrderSourceRules;
+use Illuminate\Support\Facades\DB;
 
 /**
  * `.168` (dueño, 2026-11-21: "si funciona bien y los kpis muestran que es el camino correcto, lo aplicamos en el resto de los
- * productos"): las campañas marcadas "Purchase al entregar". Se compara con dos campañas iguales del mismo producto, una
- * marcada y otra no. Un pedido sigue a la campaña de su anuncio (los parámetros de URL de la `.53`).
+ * productos"): cuándo sale el Purchase. Un pedido sigue a la campaña de su anuncio (los parámetros de URL de la `.53`).
+ *
+ * `.171` (dueño, 2026-11-21: "hay que buscar una manera más sencilla sin duplicar campañas"): se prende por producto
+ * ("Purchase según cómo paga el cliente"), para todas sus campañas, también las que se creen después. Las marcas por
+ * campaña de la `.168` quedan como historia (el sistema sigue midiendo sus días por pedidos).
  */
 final class PurchaseModes
 {
-    /** @return list<array{campaign: string, from: string, to: ?string}> */
+    /**
+     * Los rangos: los de cada campaña, y los de cada producto prendido (sin campaña) con cada una de sus campañas de hoy.
+     *
+     * @return list<array{campaign: ?string, product: ?int, from: string, to: ?string}>
+     */
     public static function ranges(): array
     {
-        return MetaPurchaseMode::orderBy('id')->get()->map(fn (MetaPurchaseMode $m) => [
-            'campaign' => (string) $m->campaign_meta_id, 'from' => $m->starts_on->toDateString(), 'to' => $m->ends_on?->toDateString(),
-        ])->all();
+        $rows = MetaPurchaseMode::orderBy('id')->get();
+        $products = $rows->whereNull('campaign_meta_id')->pluck('product_id')->filter()->unique()->values()->all();
+        $campaigns = $products === [] ? collect() : DB::table('meta_campaigns')->whereIn('product_id', $products)->get(['meta_id', 'product_id'])->groupBy('product_id');
+        $out = [];
+        foreach ($rows as $m) {
+            $range = ['from' => $m->starts_on->toDateString(), 'to' => $m->ends_on?->toDateString()];
+            if ($m->campaign_meta_id !== null) {
+                $out[] = ['campaign' => (string) $m->campaign_meta_id, 'product' => $m->product_id] + $range;
+                continue;
+            }
+            $out[] = ['campaign' => null, 'product' => (int) $m->product_id] + $range;
+            foreach ($campaigns->get($m->product_id, collect()) as $c) {
+                $out[] = ['campaign' => (string) $c->meta_id, 'product' => (int) $m->product_id] + $range;
+            }
+        }
+
+        return $out;
     }
 
     /** La campaña de un pedido del formulario: la de su landing (utm_campaign) o la de su anuncio o su ad set. */
@@ -43,20 +65,27 @@ final class PurchaseModes
         return null;
     }
 
-    /** Marca o desmarca una campaña desde hoy. Al desmarcar, hoy queda como su último día (lo de hoy ya salió así). */
-    public static function set(?int $productId, string $campaignMetaId, bool $on): void
+    /**
+     * `.171`: prende o apaga "Purchase según cómo paga" en todo el producto, desde hoy. Al apagarlo, hoy queda como su último
+     * día (lo de hoy ya salió así). Prenderlo cierra las marcas por campaña de la `.168` de ese producto.
+     */
+    public static function setProduct(int $productId, bool $on): void
     {
-        $open = MetaPurchaseMode::where('campaign_meta_id', $campaignMetaId)->whereNull('ends_on')->first();
-        if ($on && !$open) {
-            MetaPurchaseMode::create(['product_id' => $productId, 'campaign_meta_id' => $campaignMetaId, 'starts_on' => today()->toDateString()]);
-        } elseif (!$on && $open) {
-            $open->update(['ends_on' => today()->toDateString()]);
+        $open = fn () => MetaPurchaseMode::where('product_id', $productId)->whereNull('ends_on');
+        if (!$on) {
+            $open()->update(['ends_on' => today()->toDateString()]);
+
+            return;
+        }
+        $open()->whereNotNull('campaign_meta_id')->update(['ends_on' => today()->toDateString()]);
+        if (!$open()->whereNull('campaign_meta_id')->exists()) {
+            MetaPurchaseMode::create(['product_id' => $productId, 'campaign_meta_id' => null, 'starts_on' => today()->toDateString()]);
         }
     }
 
-    /** Las campañas marcadas ahora. @return list<string> */
-    public static function markedNow(): array
+    /** Desde cuándo el producto manda el Purchase según cómo paga (null = apagado). */
+    public static function productSince(int $productId): ?string
     {
-        return MetaPurchaseMode::whereNull('ends_on')->pluck('campaign_meta_id')->map(fn ($v) => (string) $v)->unique()->values()->all();
+        return MetaPurchaseMode::where('product_id', $productId)->whereNull('campaign_meta_id')->whereNull('ends_on')->first()?->starts_on?->toDateString();
     }
 }

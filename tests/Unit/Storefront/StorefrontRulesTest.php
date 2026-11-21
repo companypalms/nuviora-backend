@@ -224,16 +224,43 @@ describe('.168: pago anticipado, encomiendas y Purchase al entregar', function (
             ->and(StorefrontRules::settings([])['courier_companies'])->toBe(['MRW', 'Zoom']);
     });
 
-    it('el experimento: con 14 días y 30 entregados en cada lado gana "al entregar" si sale 10 % más barato por entregado', function () {
-        $arm = fn (int $delivered, ?float $cpd, ?float $eff = 60.0) => ['delivered' => $delivered, 'cost_per_delivered' => $cpd, 'effectiveness' => $eff];
+});
 
-        expect(StorefrontKpis::experimentVerdict($arm(40, 10.0), $arm(35, 8.5), 14)['key'])->toBe('go')
-            ->and(StorefrontKpis::experimentVerdict($arm(40, 10.0), $arm(35, 8.5), 14)['text'])->toContain('15 % más barato')
-            // casi igual de caro pero con más efectividad: también gana
-            ->and(StorefrontKpis::experimentVerdict($arm(40, 10.0), $arm(35, 9.8, 70.0), 14)['key'])->toBe('go')
-            ->and(StorefrontKpis::experimentVerdict($arm(40, 10.0), $arm(35, 12.0), 14)['key'])->toBe('back')
-            ->and(StorefrontKpis::experimentVerdict($arm(40, 10.0), $arm(35, 9.8, 55.0), 14)['key'])->toBe('tie')
-            ->and(StorefrontKpis::experimentVerdict($arm(40, 10.0), $arm(20, 5.0), 14)['key'])->toBe('measuring')
-            ->and(StorefrontKpis::experimentVerdict($arm(40, 10.0), $arm(35, 5.0), 9)['key'])->toBe('measuring');
+describe('.171: Purchase según cómo paga, por producto (sin duplicar campañas)', function () {
+    it('un producto prendido manda según cómo paga en cualquier campaña (o sin campaña); apagado, al pedir', function () {
+        $ranges = [['campaign' => null, 'product' => 9, 'from' => '2026-11-21', 'to' => null], ['campaign' => '555', 'product' => 9, 'from' => '2026-11-21', 'to' => null],
+            ['campaign' => null, 'product' => 8, 'from' => '2026-11-10', 'to' => '2026-11-15']];
+
+        expect(StorefrontRules::purchaseMode(null, $ranges, '2026-11-21', 9))->toBe('delivery')
+            ->and(StorefrontRules::purchaseMode('999', $ranges, '2026-11-22', 9))->toBe('delivery')
+            ->and(StorefrontRules::purchaseMode(null, $ranges, '2026-11-20', 9))->toBe('order') // antes de prenderlo
+            ->and(StorefrontRules::purchaseMode(null, $ranges, '2026-11-21', 8))->toBe('order') // ya apagado
+            ->and(StorefrontRules::purchaseMode(null, $ranges, '2026-11-21', 7))->toBe('order') // otro producto
+            // el sistema mide por pedidos sus campañas de esos días (la fila del producto sola no es una campaña)
+            ->and(StorefrontRules::markedOn('555', '2026-11-21', $ranges))->toBeTrue()
+            ->and(StorefrontRules::markedOn('999', '2026-11-21', $ranges))->toBeFalse();
+    });
+
+    it('cada lado del experimento: la efectividad, cuánto de lo vendido se va en publicidad y el costo por entregado', function () {
+        expect(StorefrontKpis::arm(300.0, 60, 40, 50, 1200.0, 12.344))->toBe(['spend' => 300.0, 'orders' => 60, 'delivered' => 40, 'closed' => 50,
+            'revenue' => 1200.0, 'effectiveness' => 80.0, 'ad_share' => 25.0, 'cost_per_delivered' => 7.5, 'profit_per_day' => 12.34])
+            ->and(StorefrontKpis::arm(0.0, 0, 0, 0, 0.0, null))->toMatchArray(['effectiveness' => null, 'ad_share' => null, 'cost_per_delivered' => null]);
+    });
+
+    it('el veredicto: con 14 días y 30 entregados, va mejor si la publicidad se come 15 % menos de lo vendido que antes', function () {
+        $arm = fn (int $delivered, ?float $share, ?float $eff = 60.0) => ['delivered' => $delivered, 'ad_share' => $share, 'effectiveness' => $eff];
+        $before = $arm(40, 30.0);
+
+        expect(StorefrontKpis::experimentVerdict($before, $arm(35, 25.5), 14)['key'])->toBe('go')
+            ->and(StorefrontKpis::experimentVerdict($before, $arm(35, 25.5), 14)['text'])
+            ->toBe('Va mejor: la publicidad se come el 26 % de lo vendido (antes 30 %) y la efectividad es 60 % (antes 60 %). Puedes prenderlo en otro producto.')
+            // casi igual de publicidad pero 5 puntos más de efectividad: también va mejor
+            ->and(StorefrontKpis::experimentVerdict($before, $arm(35, 29.0, 65.0), 14)['key'])->toBe('go')
+            ->and(StorefrontKpis::experimentVerdict($before, $arm(35, 33.0), 14)['key'])->toBe('back')
+            ->and(StorefrontKpis::experimentVerdict($before, $arm(35, 33.0, 70.0), 14)['key'])->toBe('tie') // más publicidad pero más efectividad
+            ->and(StorefrontKpis::experimentVerdict($before, $arm(35, 28.0), 14)['key'])->toBe('tie')
+            ->and(StorefrontKpis::experimentVerdict($before, $arm(20, 10.0), 14)['key'])->toBe('measuring')
+            ->and(StorefrontKpis::experimentVerdict($before, $arm(35, 10.0), 9)['key'])->toBe('measuring')
+            ->and(StorefrontKpis::experimentVerdict(null, $arm(35, 10.0), 14)['text'])->toBe('No hay con qué comparar: faltan las ventas de antes o el gasto de Meta.');
     });
 });

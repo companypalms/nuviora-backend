@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\City;
 use App\Models\CourierOffice;
-use App\Models\MetaPurchaseMode;
 use App\Models\OrderActivityLog;
 use App\Models\Product;
 use App\Models\ProductOffer;
@@ -168,21 +167,19 @@ class StoreFormController extends Controller
     }
 
     /**
-     * `.168`: las campañas de un producto que mandan el Purchase al entregar (marcadas desde hoy; al desmarcar, hoy queda
-     * como su último día).
+     * `.171` (dueño, 2026-11-21: "sin duplicar campañas"): "Purchase según cómo paga el cliente" en todo el producto, desde
+     * hoy (al apagarlo, hoy queda como su último día).
      */
-    public function savePurchaseModes(Request $request, Product $product)
+    public function savePurchaseMode(Request $request, Product $product)
     {
-        $data = $request->validate(['campaigns' => 'present|array', 'campaigns.*' => 'string|max:32']);
-        $mine = DB::table('meta_campaigns')->where('product_id', $product->id)->pluck('meta_id')->map(fn ($v) => (string) $v)->all();
-        $want = array_values(array_intersect(array_map('strval', $data['campaigns']), $mine));
-        foreach ($mine as $id) {
-            PurchaseModes::set($product->id, $id, in_array($id, $want, true));
-        }
+        $on = (bool) $request->validate(['on' => 'required|boolean'])['on'];
+        PurchaseModes::setProduct($product->id, $on);
         Cache::forget('storefront:kpis:' . implode(',', StorefrontCatalog::settings()['product_ids']));
+        $name = $product->showable_name ?: $product->title;
 
-        return response()->json(['message' => $want ? 'Guardado: ' . count($want) . ' campaña(s) mandan el Purchase al entregar desde hoy.' : 'Guardado: todas mandan el Purchase al pedir.',
-            'product' => $this->selected($product->fresh())]);
+        return response()->json(['message' => $on
+            ? "Prendido: desde hoy el Purchase de {$name} sale según cómo paga el cliente."
+            : "Apagado: el Purchase de {$name} vuelve a salir al pedir, como siempre.", 'product' => $this->selected($product->fresh())]);
     }
 
     /**
@@ -264,14 +261,8 @@ class StoreFormController extends Controller
             'design' => ['texts' => (object) ($design?->texts ?? []), 'colors' => (object) ($design?->colors ?? []), 'font' => $design?->font, 'radius' => $design?->radius,
                 'custom_css' => $design?->custom_css],
             'cities' => StorefrontCatalog::codCities($p->id),
-            // .170: su landing (la página del último pedido del formulario, sin parámetros), para el link de prueba de cada campaña
-            'page' => preg_replace('/[?#].*$/s', '', (string) StorefrontOrder::where('product_id', $p->id)->whereNotNull('page_url')->latest('id')->value('page_url')) ?: null,
-            // .168: sus campañas y cuáles mandan el Purchase al entregar
-            'campaigns' => DB::table('meta_campaigns')->where('product_id', $p->id)->orderByDesc('id')->get(['meta_id', 'name', 'effective_status'])
-                ->map(fn ($c) => ['id' => (string) $c->meta_id, 'name' => (string) $c->name, 'status' => $c->effective_status,
-                    'delivery' => in_array((string) $c->meta_id, PurchaseModes::markedNow(), true),
-                    // .170: la fecha sola (antes salía con la hora: "21T04:00:00.000000Z/11/2026")
-                    'since' => MetaPurchaseMode::where('campaign_meta_id', (string) $c->meta_id)->whereNull('ends_on')->first()?->starts_on?->toDateString()])->values()];
+            // .171: desde cuándo manda el Purchase según cómo paga el cliente (null = apagado)
+            'purchase_by_payment' => PurchaseModes::productSince($p->id)];
     }
 
     /** Los últimos 30 pedidos del formulario. */

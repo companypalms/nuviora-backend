@@ -214,15 +214,18 @@ final class StorefrontRules
     }
 
     /**
-     * Si un pedido nuevo de esta campaña manda el Purchase al entregar ('delivery') o al pedir ('order', como siempre): al
-     * entregar solo si la campaña está marcada ahora (al desmarcarla, su último día queda en `to`).
+     * Si un pedido nuevo manda el Purchase según cómo paga ('delivery': al entregar si paga al recibir o con la asesora) o al
+     * pedir ('order', como siempre): según cómo paga si su producto lo tiene prendido ahora (`.171`) o si su campaña está
+     * marcada ahora (`.168`). Al apagarlo, su último día queda en `to`.
      *
-     * @param list<array{campaign: string, from: string, to: ?string}> $ranges las campañas marcadas (MetaPurchaseMode)
+     * @param list<array{campaign: ?string, product?: ?int, from: string, to: ?string}> $ranges PurchaseModes::ranges()
      */
-    public static function purchaseMode(?string $campaignId, array $ranges, string $date): string
+    public static function purchaseMode(?string $campaignId, array $ranges, string $date, ?int $productId = null): string
     {
         foreach ($ranges as $r) {
-            if ($campaignId !== null && (string) $r['campaign'] === $campaignId && $r['from'] <= $date && $r['to'] === null) {
+            $hit = ($campaignId !== null && $r['campaign'] !== null && (string) $r['campaign'] === $campaignId)
+                || ($productId !== null && $r['campaign'] === null && ($r['product'] ?? null) === $productId);
+            if ($hit && $r['from'] <= $date && $r['to'] === null) {
                 return 'delivery';
             }
         }
@@ -233,12 +236,12 @@ final class StorefrontRules
     /**
      * Si ese día la campaña estuvo marcada (con su último día incluido): ese día el sistema la mide con el "pedido hecho".
      *
-     * @param list<array{campaign: string, from: string, to: ?string}> $ranges
+     * @param list<array{campaign: ?string, from: string, to: ?string}> $ranges
      */
     public static function markedOn(string $campaignId, string $date, array $ranges): bool
     {
         foreach ($ranges as $r) {
-            if ((string) $r['campaign'] === $campaignId && $r['from'] <= $date && ($r['to'] === null || $r['to'] >= $date)) {
+            if ($r['campaign'] !== null && (string) $r['campaign'] === $campaignId && $r['from'] <= $date && ($r['to'] === null || $r['to'] >= $date)) {
                 return true;
             }
         }

@@ -42,8 +42,8 @@ beforeEach(function () {
         $t->date('date_stop')->nullable();
     });
     Schema::create('meta_campaigns', fn ($t) => [$t->id(), $t->unsignedBigInteger('meta_ad_account_id')->nullable(), $t->string('meta_id'), $t->string('name')->nullable(),
-        $t->timestamp('missing_since')->nullable(), $t->timestamps()]);
-    Schema::create('meta_purchase_modes', fn ($t) => [$t->id(), $t->unsignedBigInteger('product_id')->nullable(), $t->string('campaign_meta_id'), $t->date('starts_on'),
+        $t->unsignedBigInteger('product_id')->nullable(), $t->timestamp('missing_since')->nullable(), $t->timestamps()]);
+    Schema::create('meta_purchase_modes', fn ($t) => [$t->id(), $t->unsignedBigInteger('product_id')->nullable(), $t->string('campaign_meta_id')->nullable(), $t->date('starts_on'),
         $t->date('ends_on')->nullable(), $t->timestamps()]);
     DB::table('meta_campaigns')->insert([['meta_id' => '555', 'name' => 'CERO CCS al entregar'], ['meta_id' => '777', 'name' => 'CERO CCS']]);
     DB::table('meta_purchase_modes')->insert(['product_id' => 7, 'campaign_meta_id' => '555', 'starts_on' => '2026-11-20']);
@@ -94,4 +94,25 @@ it('un rango fijo de la campaña marcada suma sus días (ya contados por pedidos
     // 3 pedidos del 19 (antes de marcarla) + 5 del 20; Meta vio 5 Purchase en el rango
     expect([(float) $range('555')->purchases, (float) $range('555')->real_purchases])->toBe([8.0, 5.0])
         ->and([(float) $range('777')->purchases, $range('777')->real_purchases])->toBe([6.0, null]);
+});
+
+it('.171: con el producto prendido, todas sus campañas (también una nueva) cuentan pedidos desde ese día; las de otro producto, no', function () {
+    DB::table('meta_purchase_modes')->delete();
+    DB::table('meta_purchase_modes')->insert(['product_id' => 7, 'campaign_meta_id' => null, 'starts_on' => '2026-11-20']);
+    DB::table('meta_campaigns')->where('meta_id', '777')->update(['product_id' => 7]);
+    DB::table('meta_campaigns')->insert([['meta_id' => '888', 'name' => 'CERO resto del país', 'product_id' => 7], ['meta_id' => '999', 'name' => 'OTRO', 'product_id' => 8]]);
+    Http::fake(['graph.facebook.com/*' => Http::response(['data' => [
+        fila168('777', '2026-11-19', '2026-11-19', 3, 3),
+        fila168('777', '2026-11-20', '2026-11-20', 2, 5),
+        fila168('888', '2026-11-20', '2026-11-20', 1, 4),
+        fila168('999', '2026-11-20', '2026-11-20', 4, 6),
+    ]])]);
+
+    (new MetaInsightsSync())->daily($this->account, new MetaClient('prueba'), 'campaign', '2026-11-19', '2026-11-20');
+    $day = fn (string $id, string $date) => DB::table('meta_insights_daily')->where('meta_id', $id)->where('date', $date)->first();
+
+    expect([(float) $day('777', '2026-11-19')->purchases, $day('777', '2026-11-19')->real_purchases])->toBe([3.0, null])
+        ->and([(float) $day('777', '2026-11-20')->purchases, (float) $day('777', '2026-11-20')->real_purchases])->toBe([5.0, 2.0])
+        ->and([(float) $day('888', '2026-11-20')->purchases, (float) $day('888', '2026-11-20')->real_purchases])->toBe([4.0, 1.0])
+        ->and([(float) $day('999', '2026-11-20')->purchases, $day('999', '2026-11-20')->real_purchases])->toBe([4.0, null]);
 });

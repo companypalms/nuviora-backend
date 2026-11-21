@@ -109,7 +109,7 @@ beforeEach(function () {
     Schema::create('meta_campaigns', fn ($t) => [$t->id(), $t->string('meta_id'), $t->string('name')->nullable(), $t->string('effective_status')->nullable(),
         $t->unsignedBigInteger('product_id')->nullable(), $t->timestamps()]);
     Schema::create('meta_insights_daily', fn ($t) => [$t->id(), $t->date('date'), $t->string('level'), $t->string('meta_id'), $t->decimal('landing_page_views', 12, 2)->nullable(),
-        $t->decimal('purchases', 12, 2)->nullable()]);
+        $t->decimal('purchases', 12, 2)->nullable(), $t->decimal('spend', 12, 2)->nullable()]);
     Schema::create('order_sources', fn ($t) => [$t->id(), $t->unsignedBigInteger('order_id'), $t->string('ad_meta_id')->nullable(), $t->timestamps()]);
     Schema::create('order_cancellations', fn ($t) => [$t->id(), $t->unsignedBigInteger('order_id'), $t->string('category')->nullable(), $t->timestamps()]);
     // .168: el pago anticipado, las encomiendas y las campañas "al entregar"
@@ -130,6 +130,7 @@ beforeEach(function () {
         $t->timestamp('payment_account_at')->nullable();
     });
     (require database_path('migrations/2026_11_21_100000_storefront_prepaid_and_courier.php'))->up();
+    (require database_path('migrations/2026_11_22_100000_purchase_mode_by_product.php'))->up();
 
     Event::fake(); // también los observers del pedido (agencia, almacén, logística): aquí solo importa lo que guarda el formulario
     DB::table('roles')->insert([['id' => 1, 'description' => 'Admin'], ['id' => 2, 'description' => 'Vendedor'], ['id' => 3, 'description' => 'Agencia']]);
@@ -761,19 +762,90 @@ describe('.170: probar el Purchase al entregar sin entregar el pedido', function
             ->assertJsonPath('message', 'Meta no recibió el Purchase: Invalid OAuth access token.');
     });
 
-    it('cada producto trae su landing sin parámetros, para el link de prueba de cada campaña', function () {
-        $page = fn () => $this->putJson('/api/store-form/products/7/purchase-modes', ['campaigns' => []])->assertOk()->json('product.page');
-        expect($page())->toBeNull();
-        enviar164($this, ['page' => 'https://solobrillo.com/products/solo-brillo?variant=4521&utm_campaign=1#pedido'])->assertOk();
+});
 
-        expect($page())->toBe('https://solobrillo.com/products/solo-brillo');
+// ───────────────────────────── .171 ─────────────────────────────
+// Dueño (21/11): "me parece muy complicado esas pruebas… hay que buscar una manera más sencilla sin duplicar campañas":
+// "Purchase según cómo paga el cliente" se prende por producto, para todas sus campañas.
+
+describe('.171: Purchase según cómo paga, por producto', function () {
+    beforeEach(function () {
+        tablas168();
+        Illuminate\Support\Facades\Storage::fake('public');
+        StorefrontCatalog::saveSettings(['prepaid_enabled' => true]);
+        $this->sources->shouldReceive('record');
+        $this->intake->shouldReceive('finish');
+        Illuminate\Support\Facades\Bus::fake();
+        Sanctum::actingAs(User::find(1));
     });
 
-    it('la campaña marcada dice desde qué día, con la fecha sola', function () {
-        DB::table('meta_campaigns')->insert(['meta_id' => '120210000000555', 'name' => 'Cerofrizz Caracas copia', 'effective_status' => 'PAUSED', 'product_id' => 7]);
-        $c = $this->putJson('/api/store-form/products/7/purchase-modes', ['campaigns' => ['120210000000555']])->assertOk()->json('product.campaigns.0');
+    it('prendido: al recibir espera la entrega en cualquier campaña o sin campaña; pagado, sale ya; apagado, como siempre', function () {
+        $r = $this->putJson('/api/store-form/products/7/purchase-mode', ['on' => true])->assertOk();
+        expect($r->json('product.purchase_by_payment'))->toBe(today()->toDateString())
+            ->and($r->json('message'))->toContain('según cómo paga el cliente');
 
-        expect([$c['id'], $c['delivery'], $c['since']])->toBe(['120210000000555', true, today()->toDateString()]);
+        $cod = enviar164($this)->assertOk(); // sin campaña
+        $paid = enviar164($this, ['phone' => '04241234567', 'payment' => 'pago_movil', 'receipt' => RECIBO168,
+            'landing' => 'https://solobrillo.com/products/solo-brillo?utm_campaign=120210000000777'])->assertOk();
+        expect(StorefrontOrder::orderBy('id')->pluck('purchase_mode')->all())->toBe(['delivery', 'delivery'])
+            ->and(array_column($cod->json('events'), 'name'))->toBe(['AddPaymentInfo'])
+            ->and(array_column($paid->json('events'), 'name'))->toBe(['AddPaymentInfo', 'Purchase']);
+
+        $this->putJson('/api/store-form/products/7/purchase-mode', ['on' => false])->assertOk()->assertJsonPath('product.purchase_by_payment', null);
+        enviar164($this, ['phone' => '04161234567'])->assertOk();
+        expect(StorefrontOrder::latest('id')->value('purchase_mode'))->toBe('order');
+    });
+
+    it('prenderlo cierra las marcas por campaña de la .168; solo el Admin', function () {
+        DB::table('meta_purchase_modes')->insert(['product_id' => 7, 'campaign_meta_id' => '120210000000555', 'starts_on' => today()->subDays(3)->toDateString()]);
+        $this->putJson('/api/store-form/products/7/purchase-mode', ['on' => true])->assertOk();
+        $this->putJson('/api/store-form/products/7/purchase-mode', ['on' => true])->assertOk(); // dos veces: una sola fila
+
+        expect(DB::table('meta_purchase_modes')->whereNull('ends_on')->get(['campaign_meta_id'])->pluck('campaign_meta_id')->all())->toBe([null])
+            ->and(DB::table('meta_purchase_modes')->where('campaign_meta_id', '120210000000555')->value('ends_on'))->toBe(today()->toDateString());
+        Sanctum::actingAs(User::find(2));
+        $this->putJson('/api/store-form/products/7/purchase-mode', ['on' => false])->assertForbidden();
+    });
+
+    it('el experimento: el producto ahora contra sus últimos 14 días con anuncios de antes, con los días ya cerrados', function () {
+        Schema::create('order_financials', fn ($t) => [$t->id(), $t->unsignedBigInteger('order_id'), ...array_map(fn ($c) => $t->decimal($c, 10, 2)->default(0),
+            ['revenue_main', 'revenue_upsell', 'revenue_refunded', 'cogs_main', 'cogs_upsell', 'delivery_cost', 'delivery_legacy_cost', 'commission_seller',
+                'commission_upsell', 'commission_leader', 'commission_deliverer'])]);
+        DB::table('statuses')->insert([['id' => 30, 'description' => 'Entregado'], ['id' => 31, 'description' => 'Cancelado']]);
+        DB::table('meta_campaigns')->insert(['meta_id' => '555', 'product_id' => 7]);
+        $start = today()->subDays(20);
+        DB::table('meta_purchase_modes')->insert(['product_id' => 7, 'campaign_meta_id' => null, 'starts_on' => $start->toDateString()]);
+        // antes (mayo): 12 entregados de 15 cerrados, $360 vendidos, $90 de publicidad
+        $order = function (Carbon\Carbon $at, int $status, float $total) {
+            static $n = 0;
+            $n++;
+            $id = DB::table('orders')->insertGetId(['order_id' => 9000 + $n, 'name' => "#{$n}", 'status_id' => $status, 'current_total_price' => $total, 'created_at' => $at]);
+            DB::table('order_products')->insert(['order_id' => $id, 'product_id' => 7, 'price' => $total, 'quantity' => 1]);
+        };
+        $may = Carbon\Carbon::parse('2026-05-20');
+        foreach (range(1, 12) as $i) {
+            $order($may->copy()->addDays($i % 10), 30, 30.0);
+        }
+        foreach (range(1, 3) as $i) {
+            $order($may->copy()->addDays($i), 31, 30.0);
+        }
+        DB::table('meta_insights_daily')->insert([['date' => '2026-05-25', 'level' => 'campaign', 'meta_id' => '555', 'spend' => 60, 'purchases' => 10],
+            ['date' => '2026-05-30', 'level' => 'campaign', 'meta_id' => '555', 'spend' => 30, 'purchases' => 5]]);
+        // ahora: 5 entregados de 5, $150 vendidos, $30 de publicidad (y un día todavía sin cerrar que no cuenta)
+        foreach (range(1, 5) as $i) {
+            $order($start->copy()->addDays($i), 30, 30.0);
+        }
+        DB::table('meta_insights_daily')->insert([['date' => $start->copy()->addDay()->toDateString(), 'level' => 'campaign', 'meta_id' => '555', 'spend' => 30, 'purchases' => 5],
+            ['date' => today()->subDay()->toDateString(), 'level' => 'campaign', 'meta_id' => '555', 'spend' => 99, 'purchases' => 1]]);
+
+        $e = (new StorefrontKpis())->experiment([7]);
+
+        expect([$e['active'], $e['basis'], $e['days'], $e['from'], $e['to']])->toBe([true, 'own', 17, $start->toDateString(), today()->subDays(4)->toDateString()])
+            ->and([$e['before']['from'], $e['before']['to']])->toBe(['2026-05-17', '2026-05-30'])
+            ->and(array_intersect_key($e['before'], array_flip(['spend', 'delivered', 'closed', 'ad_share', 'effectiveness'])))
+            ->toBe(['spend' => 90.0, 'delivered' => 12, 'closed' => 15, 'effectiveness' => 80.0, 'ad_share' => 25.0])
+            ->and(array_intersect_key($e['after'], array_flip(['spend', 'delivered', 'ad_share'])))->toBe(['spend' => 30.0, 'delivered' => 5, 'ad_share' => 20.0])
+            ->and($e['verdict']['key'])->toBe('measuring');
     });
 });
 

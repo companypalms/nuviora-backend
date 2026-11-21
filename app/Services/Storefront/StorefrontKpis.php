@@ -15,6 +15,10 @@ use Illuminate\Support\Facades\DB;
  *
  * `.168`: en las campañas "al entregar" Meta ve los pedidos por el "pedido hecho" (el sistema las mide con él), y el
  * experimento: "Purchase al pedir" contra "Purchase al entregar", lado a lado, con los días ya cerrados.
+ *
+ * `.171` (dueño, 2026-11-21: "sin duplicar campañas"): el experimento es el producto con "Purchase según cómo paga"
+ * prendido contra el mismo producto antes (sus últimos 14 días con anuncios), o contra el arranque de los demás productos si
+ * antes no vendió.
  */
 class StorefrontKpis
 {
@@ -122,7 +126,8 @@ class StorefrontKpis
     /** La línea de comparación: los productos con Releasit en sus primeros 14 días (los que arrancaron en los últimos 180). */
     public function baseline(array $exclude): array
     {
-        $out = ['orders' => 0, 'visits' => 0.0, 'attributed' => 0, 'delivered' => 0, 'closed' => 0, 'duplicates' => 0, 'express' => 0, 'products' => 0];
+        $out = ['orders' => 0, 'visits' => 0.0, 'attributed' => 0, 'delivered' => 0, 'closed' => 0, 'duplicates' => 0, 'express' => 0, 'products' => 0,
+            'spend' => 0.0, 'revenue' => 0.0]; // .171: el gasto y lo vendido, para el experimento
         $firsts = DB::table('order_products as op')->join('orders as o', 'o.id', '=', 'op.order_id')->whereNotIn('op.product_id', $exclude ?: [0])
             ->where('o.name', 'not like', 'WEB-%')->groupBy('op.product_id')->selectRaw('op.product_id, MIN(o.created_at) f')->get()
             ->filter(fn ($r) => $r->f !== null && Carbon::parse($r->f)->gte(now()->subDays(180)) && Carbon::parse($r->f)->lte(now()->subDays(self::DAYS)));
@@ -152,6 +157,9 @@ class StorefrontKpis
             $out['duplicates'] += $closed['duplicates'];
             $out['express'] += $express;
             $out['products']++;
+            $out['spend'] += (float) DB::table('meta_insights_daily')->where('level', 'campaign')->whereIn('meta_id', $campaigns ?: ['-'])
+                ->whereBetween('date', [$from->toDateString(), $to->toDateString()])->sum('spend');
+            $out['revenue'] += $this->deliveredRevenue($ids);
         }
 
         return $out;
@@ -160,93 +168,149 @@ class StorefrontKpis
     /** Días que tarda un pedido en cerrarse (el mismo desfase del C y el BE): el experimento solo mira días ya cerrados. */
     public const MATURE_DAYS = 4;
 
-    /** Con menos de esto en cada campaña todavía no se decide. */
+    /** Con menos de esto todavía no se decide (en lo de ahora). */
     public const EXPERIMENT_DAYS = 14;
 
     public const EXPERIMENT_DELIVERED = 30;
 
-    /**
-     * El veredicto del experimento (PHP puro): con 14 días y 30 entregados en cada lado, "al entregar" gana si sale 10 % más
-     * barato por entregado, o con más efectividad al mismo costo o menos; si sale más caro, se vuelve a "al pedir".
-     *
-     * @param array{delivered: int, cost_per_delivered: ?float, effectiveness: ?float} $order
-     * @param array{delivered: int, cost_per_delivered: ?float, effectiveness: ?float} $delivery
-     * @return array{key: string, text: string}
-     */
-    public static function experimentVerdict(array $order, array $delivery, int $days): array
-    {
-        if ($days < self::EXPERIMENT_DAYS || $order['delivered'] < self::EXPERIMENT_DELIVERED || $delivery['delivered'] < self::EXPERIMENT_DELIVERED) {
-            return ['key' => 'measuring', 'text' => 'Midiendo: se decide con ' . self::EXPERIMENT_DAYS . ' días cerrados y ' . self::EXPERIMENT_DELIVERED
-                . ' entregados en cada campaña (van ' . $days . ' días, ' . $order['delivered'] . ' y ' . $delivery['delivered'] . ' entregados).'];
-        }
-        $a = $order['cost_per_delivered'];
-        $b = $delivery['cost_per_delivered'];
-        if ($a === null || $b === null) {
-            return ['key' => 'measuring', 'text' => 'Falta el gasto de Meta de alguna de las dos campañas.'];
-        }
-        $cheaper = round(100 * (1 - $b / $a));
-        if ($b <= $a * 0.9 || ($b <= $a && ($delivery['effectiveness'] ?? 0) > ($order['effectiveness'] ?? 0))) {
-            return ['key' => 'go', 'text' => "\"Al entregar\" sale {$cheaper} % más barato por pedido entregado: puedes pasarlo a más productos."];
-        }
-        if ($b > $a) {
-            return ['key' => 'back', 'text' => '"Al entregar" sale ' . abs($cheaper) . ' % más caro por pedido entregado: desmarca la campaña y vuelve a "al pedir".'];
-        }
+    /** "Va mejor" si la publicidad se come 15 % menos de lo vendido (los productos y los momentos no son iguales). */
+    public const EXPERIMENT_BETTER = 0.85;
 
-        return ['key' => 'tie', 'text' => 'Salen casi igual: no hace falta cambiar los demás productos.'];
+    /** Puntos de efectividad que cuentan como "más efectividad". */
+    public const EXPERIMENT_EFFECTIVENESS = 5;
+
+    /**
+     * Un lado del experimento con sus números (PHP puro): la efectividad, cuánto de lo vendido (los entregados) se fue en
+     * publicidad, el costo por entregado y la ganancia por día.
+     *
+     * @return array{spend: float, orders: int, delivered: int, closed: int, revenue: float, effectiveness: ?float, ad_share: ?float, cost_per_delivered: ?float, profit_per_day: ?float}
+     */
+    public static function arm(float $spend, int $orders, int $delivered, int $closed, float $revenue, ?float $profitPerDay): array
+    {
+        return ['spend' => round($spend, 2), 'orders' => $orders, 'delivered' => $delivered, 'closed' => $closed, 'revenue' => round($revenue, 2),
+            'effectiveness' => $closed > 0 ? round(100 * $delivered / $closed, 1) : null,
+            'ad_share' => $revenue > 0 && $spend > 0 ? round(100 * $spend / $revenue, 1) : null,
+            'cost_per_delivered' => $delivered > 0 && $spend > 0 ? round($spend / $delivered, 2) : null,
+            'profit_per_day' => $profitPerDay !== null ? round($profitPerDay, 2) : null];
     }
 
     /**
-     * `.168`: el experimento de los productos del formulario, desde la primera campaña marcada hasta hace 4 días (días ya
-     * cerrados): por lado ("al pedir" y "al entregar"), el gasto, los pedidos, los entregados, la efectividad, el costo por
-     * entregado, la ganancia por día (sin los gastos fijos) y el pago por adelantado.
+     * El veredicto (PHP puro), con 14 días cerrados y 30 entregados ahora: va mejor si la publicidad se come 15 % menos de lo
+     * vendido que antes, o si la efectividad sube 5 puntos sin que la publicidad suba; va peor si la publicidad sube y la
+     * efectividad no; si no, sale parecido.
+     *
+     * @param ?array{ad_share: ?float, effectiveness: ?float} $before
+     * @param array{delivered: int, ad_share: ?float, effectiveness: ?float} $after
+     * @return array{key: string, text: string}
+     */
+    public static function experimentVerdict(?array $before, array $after, int $days): array
+    {
+        if ($days < self::EXPERIMENT_DAYS || $after['delivered'] < self::EXPERIMENT_DELIVERED) {
+            return ['key' => 'measuring', 'text' => 'Midiendo: se decide con ' . self::EXPERIMENT_DAYS . ' días cerrados y ' . self::EXPERIMENT_DELIVERED
+                . " entregados (van {$days} días y {$after['delivered']} entregados)."];
+        }
+        $a = $before['ad_share'] ?? null;
+        $b = $after['ad_share'];
+        if ($a === null || $b === null) {
+            return ['key' => 'measuring', 'text' => 'No hay con qué comparar: faltan las ventas de antes o el gasto de Meta.'];
+        }
+        $ea = (float) ($before['effectiveness'] ?? 0);
+        $eb = (float) ($after['effectiveness'] ?? 0);
+        $numbers = 'la publicidad se come el ' . round($b) . ' % de lo vendido (antes ' . round($a) . ' %) y la efectividad es ' . round($eb)
+            . ' % (antes ' . round($ea) . ' %)';
+        if ($b <= $a * self::EXPERIMENT_BETTER || ($eb >= $ea + self::EXPERIMENT_EFFECTIVENESS && $b <= $a)) {
+            return ['key' => 'go', 'text' => "Va mejor: {$numbers}. Puedes prenderlo en otro producto."];
+        }
+        if ($b > $a && $eb <= $ea) {
+            return ['key' => 'back', 'text' => "Va peor: {$numbers}. Apaga «Purchase según cómo paga»."];
+        }
+
+        return ['key' => 'tie', 'text' => "Sale parecido: {$numbers}. No hace falta cambiar los demás productos."];
+    }
+
+    /**
+     * `.171`: el experimento del producto con "Purchase según cómo paga" prendido (el primero de los del formulario), con
+     * los días ya cerrados, contra el mismo producto antes (sus últimos 14 días con gasto en Meta, si entregó al menos 10) o
+     * contra el arranque de los demás productos.
      */
     public function experiment(array $productIds): array
     {
-        $first = DB::table('meta_purchase_modes')->whereIn('product_id', $productIds ?: [0])->min('starts_on');
-        if (!$first) {
+        $modes = DB::table('meta_purchase_modes')->whereIn('product_id', $productIds ?: [0])->whereNull('campaign_meta_id')->orderBy('starts_on')->get();
+        if ($modes->isEmpty()) {
             return ['active' => false];
         }
-        $from = Carbon::parse($first)->startOfDay();
+        $productId = (int) $modes->first()->product_id;
+        $mine = $modes->where('product_id', $productId);
+        $from = Carbon::parse($mine->min('starts_on'))->startOfDay();
         $to = today()->subDays(self::MATURE_DAYS);
+        if ($mine->whereNull('ends_on')->isEmpty()) {
+            $to = $to->min(Carbon::parse($mine->max('ends_on')));
+        }
         $days = $to->gte($from) ? (int) $from->diffInDays($to) + 1 : 0;
-        $ranges = PurchaseModes::ranges();
-        $campaigns = DB::table('meta_campaigns')->whereIn('product_id', $productIds ?: [0])->pluck('meta_id')->map(fn ($v) => (string) $v)->all();
-        $spend = ['order' => 0.0, 'delivery' => 0.0];
-        $metaOrders = ['order' => 0.0, 'delivery' => 0.0];
-        if ($days > 0) {
-            foreach (DB::table('meta_insights_daily')->where('level', 'campaign')->whereIn('meta_id', $campaigns ?: ['-'])
-                ->whereBetween('date', [$from->toDateString(), $to->toDateString()])->get(['meta_id', 'date', 'spend', 'purchases']) as $r) {
-                $arm = StorefrontRules::markedOn((string) $r->meta_id, Carbon::parse($r->date)->toDateString(), $ranges) ? 'delivery' : 'order';
-                $spend[$arm] += (float) $r->spend;
-                $metaOrders[$arm] += (float) $r->purchases;
+        $campaigns = DB::table('meta_campaigns')->where('product_id', $productId)->pluck('meta_id')->map(fn ($v) => (string) $v)->all();
+
+        $after = $days > 0 ? $this->window($productId, $campaigns, $from, $to) : self::arm(0, 0, 0, 0, 0, null);
+        $fronts = $days > 0 ? DB::table('storefront_orders')->where('product_id', $productId)->whereNotNull('order_id')
+            ->whereBetween('created_at', [$from, $to->copy()->endOfDay()])->get(['order_id', 'payment', 'purchase_mode', 'purchase_sent_at']) : collect();
+        $metaOrders = $days > 0 ? (float) DB::table('meta_insights_daily')->where('level', 'campaign')->whereIn('meta_id', $campaigns ?: ['-'])
+            ->whereBetween('date', [$from->toDateString(), $to->toDateString()])->sum('purchases') : 0.0;
+        $waiting = $fronts->where('purchase_mode', 'delivery')->where('payment', '!=', 'pago_movil');
+        $after += [
+            'meta_sees' => $fronts->count() > 0 ? round(100 * $metaOrders / $fronts->count(), 1) : null,
+            'prepaid' => $fronts->where('payment', 'pago_movil')->count(), 'advisor' => $fronts->where('payment', 'asesora')->count(),
+            'courier' => DB::table('orders')->whereIn('id', $fronts->pluck('order_id')->all() ?: [0])->where('courier_shipment', true)->count(),
+            // los Purchase que llegaron a Meta al entregar ÷ los entregados que no habían pagado antes
+            'purchase_on_delivery' => [$waiting->whereNotNull('purchase_sent_at')->count(), DB::table('orders as o')->join('statuses as s', 's.id', '=', 'o.status_id')
+                ->where('s.description', OrderStatus::ENTREGADO)->whereIn('o.id', $waiting->pluck('order_id')->all() ?: [0])->count()],
+        ];
+
+        // antes: sus últimos 14 días con gasto en Meta antes de prenderlo; si ahí no entregó al menos 10, el arranque de los demás
+        $before = null;
+        $basis = null;
+        $last = DB::table('meta_insights_daily')->where('level', 'campaign')->whereIn('meta_id', $campaigns ?: ['-'])->where('date', '<', $from->toDateString())
+            ->where('spend', '>', 0)->max('date');
+        if ($last) {
+            $end = Carbon::parse($last);
+            $start = $end->copy()->subDays(self::DAYS - 1)->startOfDay();
+            $own = $this->window($productId, $campaigns, $start, $end);
+            if ($own['delivered'] >= self::MIN_CLOSED) {
+                [$before, $basis] = [$own + ['from' => $start->toDateString(), 'to' => $end->toDateString()], 'own'];
             }
         }
-        $arms = [];
-        foreach (['order', 'delivery'] as $arm) {
-            $fronts = $days > 0 ? DB::table('storefront_orders')->whereIn('product_id', $productIds ?: [0])->whereNotNull('order_id')->where('purchase_mode', $arm)
-                ->whereBetween('created_at', [$from, $to->copy()->endOfDay()])->get(['order_id', 'payment', 'purchase_sent_at']) : collect();
-            $ids = $fronts->pluck('order_id')->all();
-            $closed = $this->closed($ids);
-            $money = DB::table('order_financials')->whereIn('order_id', $ids ?: [0])->selectRaw('COALESCE(SUM(revenue_main + revenue_upsell - revenue_refunded - cogs_main - cogs_upsell
-                - delivery_cost - delivery_legacy_cost - commission_seller - commission_upsell - commission_leader - commission_deliverer), 0) m')->value('m');
-            $courier = DB::table('orders')->whereIn('id', $ids ?: [0])->where('courier_shipment', true)->count();
-            $arms[$arm] = [
-                'spend' => round($spend[$arm], 2), 'orders' => count($ids), 'delivered' => $closed['delivered'], 'closed' => $closed['closed'],
-                'effectiveness' => $closed['closed'] > 0 ? round(100 * $closed['delivered'] / $closed['closed'], 1) : null,
-                'cost_per_delivered' => $closed['delivered'] > 0 && $spend[$arm] > 0 ? round($spend[$arm] / $closed['delivered'], 2) : null,
-                'profit_per_day' => $days > 0 ? round(((float) $money - $spend[$arm]) / $days, 2) : null,
-                'meta_sees' => count($ids) > 0 ? round(100 * $metaOrders[$arm] / count($ids), 1) : null,
-                'prepaid' => $fronts->where('payment', 'pago_movil')->count(), 'courier' => $courier,
-                'advisor' => $fronts->where('payment', 'asesora')->count(),
-                // al entregar: los Purchase que llegaron a Meta ÷ los entregados que no habían pagado antes
-                'purchase_on_delivery' => $arm === 'delivery' ? [$fronts->where('payment', '!=', 'pago_movil')->whereNotNull('purchase_sent_at')->count(),
-                    DB::table('orders as o')->join('statuses as s', 's.id', '=', 'o.status_id')->where('s.description', OrderStatus::ENTREGADO)
-                        ->whereIn('o.id', $fronts->where('payment', '!=', 'pago_movil')->pluck('order_id')->all() ?: [0])->count()] : null,
-            ];
+        if ($before === null) {
+            $b = $this->baseline([$productId]);
+            if ($b['delivered'] > 0) {
+                [$before, $basis] = [self::arm($b['spend'], $b['orders'], $b['delivered'], $b['closed'], $b['revenue'], null) + ['products' => $b['products']], 'launches'];
+            }
         }
 
-        return ['active' => true, 'from' => $from->toDateString(), 'to' => $to->toDateString(), 'days' => $days, 'arms' => $arms,
-            'verdict' => self::experimentVerdict($arms['order'], $arms['delivery'], $days)];
+        $product = DB::table('products')->where('id', $productId)->first(['showable_name', 'title']);
+
+        return ['active' => true, 'product' => $product?->showable_name ?: $product?->title,
+            'from' => $from->toDateString(), 'to' => $to->toDateString(), 'days' => $days, 'before' => $before, 'basis' => $basis, 'after' => $after,
+            'verdict' => self::experimentVerdict($before, $after, $days)];
+    }
+
+    /** Un producto entre dos días: sus pedidos (por fecha), el gasto de sus campañas, lo vendido entregado y la ganancia por día. */
+    private function window(int $productId, array $campaigns, Carbon $from, Carbon $to): array
+    {
+        $ids = DB::table('order_products as op')->join('orders as o', 'o.id', '=', 'op.order_id')->where('op.product_id', $productId)
+            ->whereBetween('o.created_at', [$from, $to->copy()->endOfDay()])->distinct()->pluck('o.id')->all();
+        $spend = (float) DB::table('meta_insights_daily')->where('level', 'campaign')->whereIn('meta_id', $campaigns ?: ['-'])
+            ->whereBetween('date', [$from->toDateString(), $to->toDateString()])->sum('spend');
+        $closed = $this->closed($ids);
+        $money = (float) DB::table('order_financials')->whereIn('order_id', $ids ?: [0])->selectRaw('COALESCE(SUM(revenue_main + revenue_upsell - revenue_refunded - cogs_main - cogs_upsell
+            - delivery_cost - delivery_legacy_cost - commission_seller - commission_upsell - commission_leader - commission_deliverer), 0) m')->value('m');
+        $days = (int) $from->diffInDays($to) + 1;
+
+        return self::arm($spend, count($ids), $closed['delivered'], $closed['closed'], $this->deliveredRevenue($ids), ($money - $spend) / max(1, $days));
+    }
+
+    /** Lo vendido: el total de los pedidos entregados. */
+    private function deliveredRevenue(array $ids): float
+    {
+        return (float) DB::table('orders as o')->join('statuses as s', 's.id', '=', 'o.status_id')->whereIn('o.id', $ids ?: [0])
+            ->where('s.description', OrderStatus::ENTREGADO)->sum('o.current_total_price');
     }
 
     /** @return array{delivered: int, closed: int, duplicates: int} */

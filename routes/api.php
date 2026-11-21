@@ -835,8 +835,8 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::put('/settings', [\App\Http\Controllers\StoreFormController::class, 'saveSettings']);
         Route::put('/products/{product}/offers', [\App\Http\Controllers\StoreFormController::class, 'saveOffers'])->whereNumber('product');
         Route::put('/products/{product}/design', [\App\Http\Controllers\StoreFormController::class, 'saveDesign'])->whereNumber('product');
-        // .168: las campañas "Purchase al entregar" y las oficinas de encomienda
-        Route::put('/products/{product}/purchase-modes', [\App\Http\Controllers\StoreFormController::class, 'savePurchaseModes'])->whereNumber('product');
+        // .168/.171: "Purchase según cómo paga" (por producto) y las oficinas de encomienda
+        Route::put('/products/{product}/purchase-mode', [\App\Http\Controllers\StoreFormController::class, 'savePurchaseMode'])->whereNumber('product');
         Route::get('/courier-offices', [\App\Http\Controllers\StoreFormController::class, 'offices']);
         Route::post('/courier-offices', [\App\Http\Controllers\StoreFormController::class, 'addOffice']);
         Route::put('/courier-offices/{office}', [\App\Http\Controllers\StoreFormController::class, 'updateOffice'])->whereNumber('office');
