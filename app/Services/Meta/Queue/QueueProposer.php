@@ -245,13 +245,15 @@ class QueueProposer
         $iterations = IterationRules::state($winner ? [$winner] : []);
         $due = $now->copy()->addDays((int) $s['reserve_due_days'])->toDateString();
         $done = CreativeBatch::where('product_id', $productId)->where('proposed_on', $today)->count();
-        $plan = ProposalRules::plan([$productId => $d], [$productId => [$due]], [], [$productId => $done], ['skip' => $iterations['busy'], 'prev' => $iterations['prev']]);
+        // El dueño (2026-11-23): "nosotros testeamos sin stock, y dependiendo de los resultados de las campañas decidimos si
+        // compramos stock o no": lo adelantado no mira el stock y se lanza como cualquier otro
+        $plan = ProposalRules::plan([$productId => $d], [$productId => [$due]], [], [$productId => $done], ['skip' => $iterations['busy'], 'prev' => $iterations['prev']], true);
         if (($plan[0]['needs_angle'] ?? false) === true) {
             $this->proposals->ensure($productId);
             self::block($productId, 'A este producto no le queda un ángulo para probar: el dueño tiene que elegir uno (ya se lo pedimos en su calendario).');
         }
         if ($plan === []) {
-            self::block($productId, 'No hay una ciudad activa con stock donde probarlo: no se puede adelantar hoy.');
+            self::block($productId, 'No tiene ninguna campaña prendida donde probarlo: no se puede adelantar hoy.');
         }
         $p = $plan[0] + ['key' => 'E1', 'pieces' => max(1, (int) $s['batch_pieces'])];
         $p['context'] = $this->context($p, $decisions);

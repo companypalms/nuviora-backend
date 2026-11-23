@@ -67,7 +67,8 @@
   cada mañana (puede tardar hasta un minuto). Lo adelantado se entrega como siempre y espera en la banca su turno. Un
   producto nuevo sale de la cola del dueño: el primero de sus batches queda para quien elegiste y los demás en "Sin
   asignar".
-- Si un producto hoy no se puede adelantar (por ejemplo, no hay una ciudad activa con stock donde probarlo, o no le queda
+- Adelantar no depende del stock: se testea sin mercancía, y el dueño decide si compra según cómo le va a la campaña.
+- Si un producto hoy no se puede adelantar (por ejemplo, no tiene ninguna campaña prendida donde probarlo, o no le queda
   un ángulo), "Para adelantar" lo dice y no muestra el botón hasta mañana.
 - "Sin asignar": encargos sin editor, el más urgente arriba, con "Asignar editor".
 - "Devuelto por el dueño": si el dueño ve un batch de la banca que no sirve (por ejemplo, un video de otro producto), lo

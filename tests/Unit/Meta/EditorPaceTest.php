@@ -104,6 +104,17 @@ describe('Las horas y la meta', function () use ($week) {
 });
 
 describe('Para adelantar', function () {
+    it('no mira el stock: se testea sin mercancía (lo que pide el sistema cada mañana sí lo mira)', function () {
+        $campaigns = [
+            ['city_id' => 1, 'city' => 'Caracas', 'active' => true, 'stock' => 0, 'purchases7' => 9, 'action' => ['key' => 'hold']],
+            ['city_id' => 2, 'city' => 'Valencia', 'active' => false, 'stock' => 5, 'purchases7' => 3, 'action' => ['key' => 'hold']],
+        ];
+        expect(\App\Services\Meta\Queue\ProposalRules::city($campaigns))->toBeNull()
+            ->and(\App\Services\Meta\Queue\ProposalRules::city($campaigns, true))->toBe(['city_id' => 1, 'city' => 'Caracas'])
+            // sin ninguna campaña prendida, tampoco se adelanta
+            ->and(\App\Services\Meta\Queue\ProposalRules::city([$campaigns[1]], true))->toBeNull();
+    });
+
     it('lo que le falta a un producto para 2 semanas, menos lo que ya tiene pedido o listo', function () {
         // 2 vivos que duran 7 días: 2/7 por día → 4 en 14 días
         expect(AdvanceRules::left(2 / 7, 1))->toBe(3)

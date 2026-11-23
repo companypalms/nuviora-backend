@@ -41,15 +41,17 @@ final class ProposalRules
      * @param array<int, int> $done los que ya se pidieron hoy de ese producto (para variar el tipo: el primero, el segundo…)
      * @param array{skip?: list<int>, prev?: array<int, list<string>>} $iterations `.133`: los creativos que hoy no se iteran
      *        (su variación anterior no tiene resultado o ya se le probó todo) y los tipos de la última variación de cada uno
+     * @param bool $anyStock `.175`: "Adelantar" del líder no mira el stock (el dueño: "nosotros testeamos sin stock, y dependiendo
+     *        de los resultados de las campañas decidimos si compramos stock o no")
      * @return list<array{product_id: int, product: string, kind: string, angle_code: ?string, reference_id: ?int, reference: ?string,
      *     reference_type: ?string, city_id: ?int, city: ?string, format: string, iterate: ?string, urgency: ?int, reason: string, due: string}>
      */
-    public static function plan(array $decisions, array $quotas, array $testing = [], array $done = [], array $iterations = []): array
+    public static function plan(array $decisions, array $quotas, array $testing = [], array $done = [], array $iterations = [], bool $anyStock = false): array
     {
         $products = [];
         foreach ($decisions as $pid => $d) {
             $dates = array_values($quotas[$pid] ?? []);
-            $city = self::city($d['campaigns'] ?? []);
+            $city = self::city($d['campaigns'] ?? [], $anyStock);
             if ($dates === [] || $city === null || ($d['product']['mode'] ?? 'normal') !== 'normal') {
                 continue;
             }
@@ -174,10 +176,13 @@ final class ProposalRules
         return ['id' => $c['id'], 'label' => $c['label'], 'type' => $c['type'] ?? null, 'angle' => $c['angle_code'] ?? null];
     }
 
-    /** La ciudad de aprendizaje: activa, con stock (o sin dato de stock) y la que más vendió en 7 días. */
-    public static function city(array $campaigns): ?array
+    /**
+     * La ciudad de aprendizaje: activa, con stock (o sin dato de stock) y la que más vendió en 7 días. `.175`: con $anyStock
+     * (lo que adelanta el líder), aunque no haya stock: se testea sin mercancía.
+     */
+    public static function city(array $campaigns, bool $anyStock = false): ?array
     {
-        $ok = array_filter($campaigns, fn ($c) => ($c['active'] ?? false) && ($c['stock'] ?? 1) > 0
+        $ok = array_filter($campaigns, fn ($c) => ($c['active'] ?? false) && ($anyStock || ($c['stock'] ?? 1) > 0)
             && !in_array($c['action']['key'] ?? null, self::NO_CITY, true) && ($c['action']['label'] ?? null) !== 'No se vende aquí');
         if (!$ok) {
             return null;
