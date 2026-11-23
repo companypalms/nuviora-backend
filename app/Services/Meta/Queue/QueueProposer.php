@@ -8,6 +8,7 @@ use App\Models\CreativeBatchPiece;
 use App\Models\MetaAnalysis;
 use App\Models\ProductAdSetting;
 use App\Models\Setting;
+use App\Models\User;
 use App\Services\Meta\Analysis\AnalysisSender;
 use App\Services\Meta\Analysis\MetaAnalyzer;
 use App\Services\Meta\Decisions\DecisionSettings;
@@ -17,7 +18,9 @@ use App\Services\Meta\Products\ProductProfileRules;
 use App\Services\Meta\Products\ProductProfiles;
 use App\Services\Meta\Products\ProductQueue;
 use App\Services\Meta\Products\TestingPhase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
 
 /**
@@ -190,6 +193,108 @@ class QueueProposer
         Setting::set(self::DEMAND, ['date' => $today, 'at' => now()->toIso8601String(), 'batches' => (object) $reasons, 'unfilled' => $unfilled]);
 
         return $run;
+    }
+
+    /**
+     * `.175` (dueño, 2026-11-23: "el líder de editores sí debe ver absolutamente todo lo que se tiene que hacer… para que él
+     * vaya asignando y adelantando creativos si ve que al editor le sobra tiempo o a él mismo"): el líder adelanta algo de
+     * "Para adelantar" (EditorTeam::advance).
+     * - El siguiente batch de un producto que vende: se arma como los de cada mañana (las reglas y la IA), con la fecha de la
+     *   reserva, aprobado y, si eligió a alguien, asignado. Lo que pide el sistema solo sigue igual (`.100`): cuando se lance
+     *   el que está pedido, este ya viene en camino y no se pide otro.
+     * - Un producto nuevo de la cola: sale ya (como si hubiera chance) y sus batches del testeo se piden en la misma corrida;
+     *   el primero queda asignado a quien eligió.
+     *
+     * @return list<CreativeBatch> lo que se creó
+     */
+    public function advance(int $productId, User $actor, ?int $editorId = null): array
+    {
+        $item = collect(EditorTeam::advance())->firstWhere('product_id', $productId);
+        if ($item === null) {
+            throw ValidationException::withMessages(['product_id' => 'Este producto ya no tiene nada para adelantar: vuelve a abrir la pantalla.']);
+        }
+        if ($item['kind'] === 'new') {
+            $since = now();
+            ProductQueue::startNow($productId);
+            $this->run($actor->id);
+            $made = CreativeBatch::where('product_id', $productId)->where('status', 'approved')->where('created_at', '>=', $since)->orderBy('id')->get()->all();
+            $this->remember($made, 'Adelantado por el líder. ' . self::START);
+        } else {
+            $made = [$this->next($productId, $actor->id, $item['why'])];
+        }
+        if ($editorId !== null && $made !== []) {
+            $made[0] = (new EditorWork())->assign($made[0], $editorId, $actor);
+        }
+
+        return $made;
+    }
+
+    /** `.175`: el siguiente batch de un producto que vende, armado ahora (las reglas eligen qué y la IA lo redacta). */
+    private function next(int $productId, int $userId, string $why): CreativeBatch
+    {
+        $now = now(config('app.timezone'));
+        $today = $now->toDateString();
+        $s = $this->settings->get();
+        $decisions = ($this->decisions ?? app(MetaDecisions::class))->forProducts([$productId]);
+        $d = $decisions[$productId] ?? null;
+        if ($d === null) {
+            throw ValidationException::withMessages(['product_id' => 'Este producto ya no está activo en Meta: no hay qué adelantar.']);
+        }
+        $d['profile_angles'] = TestingPhase::profileAngles($productId);
+        $winner = (int) ($d['plan']['work']['winner']['id'] ?? 0);
+        $iterations = IterationRules::state($winner ? [$winner] : []);
+        $due = $now->copy()->addDays((int) $s['reserve_due_days'])->toDateString();
+        $done = CreativeBatch::where('product_id', $productId)->where('proposed_on', $today)->count();
+        $plan = ProposalRules::plan([$productId => $d], [$productId => [$due]], [], [$productId => $done], ['skip' => $iterations['busy'], 'prev' => $iterations['prev']]);
+        if (($plan[0]['needs_angle'] ?? false) === true) {
+            $this->proposals->ensure($productId);
+            self::block($productId, 'A este producto no le queda un ángulo para probar: el dueño tiene que elegir uno (ya se lo pedimos en su calendario).');
+        }
+        if ($plan === []) {
+            self::block($productId, 'No hay una ciudad activa con stock donde probarlo: no se puede adelantar hoy.');
+        }
+        $p = $plan[0] + ['key' => 'E1', 'pieces' => max(1, (int) $s['batch_pieces'])];
+        $p['context'] = $this->context($p, $decisions);
+        $run = ['at' => now()->toIso8601String(), 'created' => 0, 'replaced' => 0, 'learnings' => 0, 'status' => 'nothing', 'model' => null, 'error' => null];
+        [$text] = $this->write([$p], [], $run);
+        $batch = DB::transaction(function () use ($p, $text, $today, $userId) {
+            $draft = collect($text['encargos'] ?? [])->firstWhere('clave', 'E1') ?? QueueWriter::example([$p], [])['encargos'][0];
+            $batch = $this->create($p, $draft, $today, $userId);
+            $batch->forceFill(['due_date' => $p['due']])->save();
+
+            return (new BatchQueue($this->settings))->approve($batch, null);
+        });
+        $this->remember([$batch], "Adelantado por el líder. {$why}");
+
+        return $batch;
+    }
+
+    /** `.175`: por qué hoy no se puede adelantar un producto (lo dice "Para adelantar" hasta mañana, sin volver a intentarlo). */
+    public static function blocked(int $productId): ?string
+    {
+        return Cache::get('editor-advance:blocked:' . now(config('app.timezone'))->toDateString() . ":{$productId}");
+    }
+
+    private static function block(int $productId, string $why): never
+    {
+        Cache::put('editor-advance:blocked:' . now(config('app.timezone'))->toDateString() . ":{$productId}", $why, now()->addDay());
+
+        throw ValidationException::withMessages(['product_id' => $why]);
+    }
+
+    /** `.175`: el porqué de lo adelantado, en "Lo que necesitamos" de hoy. */
+    private function remember(array $batches, string $why): void
+    {
+        $today = now(config('app.timezone'))->toDateString();
+        $d = (array) Setting::get(self::DEMAND);
+        if (($d['date'] ?? null) !== $today) {
+            $d = ['date' => $today, 'at' => now()->toIso8601String(), 'batches' => [], 'unfilled' => []];
+        }
+        $reasons = (array) ($d['batches'] ?? []);
+        foreach ($batches as $b) {
+            $reasons[$b->id] = $why;
+        }
+        Setting::set(self::DEMAND, ['batches' => (object) $reasons] + $d);
     }
 
     /**

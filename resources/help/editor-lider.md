@@ -7,11 +7,19 @@
 - Lo que entrega el líder no necesita revisión: pasa directo a la banca, a su nombre.
 - Mientras una entrega espera su revisión, no puede llegar a la banca: hay que revisar rápido.
 - El líder también hace todo lo que hace un editor de video (Mis encargos, Entregar, Referencias, Mis resultados).
+- Que nadie del equipo se quede sin trabajo: cuando un editor (o tú) termina lo suyo dentro de su horario, te sale la
+  misión de asignarle otro. El editor no elige el siguiente: se lo das tú.
+
+## La meta de cada día
+- La meta mínima es de 2 batches por día por persona, también para ti. Si el dueño la cambia, todo dice la nueva.
+- Cuenta el día en que se entrega un batch por primera vez. Las correcciones no suman otro batch.
+- Se mide en los días del horario de cada uno, sin los días de permiso. Sin horario no se juzga.
+- El horario de tus editores de video lo pones tú; el tuyo lo pone el dueño.
 
 ## El menú del líder
 - Pantallas: "Encargos del equipo" (su pantalla principal, al entrar cae ahí), "Banca", "Mis encargos", "Referencias"
   y "Mis resultados".
-- El número de encargos del menú suma lo que tiene por hacer, por asignar y por revisar.
+- El número de encargos del menú suma lo que tiene por hacer, por asignar, por revisar y cada editor libre (también tú).
 - La campanita le avisa una vez por día lo urgente que está atrasado (por ejemplo "Urgente: B0108 era para el lunes y se
   necesita hoy").
 
@@ -22,7 +30,16 @@
 - El marcador: cuántas entregas esperan su revisión ("Por revisar"), cuántos encargos no tienen editor ("Sin asignar") y
   cuántos están atrasados.
 - Debajo, su juego: racha al día, el equipo a tiempo este mes y los ganadores del equipo.
-- "Lo de ahora": lo más urgente, con sus pasos y un solo botón. Primero siempre revisar, después asignar.
+- "Lo de ahora": lo más urgente, con sus pasos y un solo botón. Primero, un editor libre ("Eva está libre: asígnale
+  otro", o "Estás libre: asígnate otro"): un editor sin trabajo es tiempo perdido y darle trabajo es un clic. Después
+  revisar, y después asignar.
+- La misión del editor libre dice desde qué hora está libre, cuántos lleva hoy ("1 de 2") y cuánto le queda de su
+  horario. Te propone el siguiente encargo sin asignar, con "Asignar" (viene elegido ese editor). Si no hay nada sin
+  asignar, te propone lo primero de "Para adelantar", con "Adelantar y dárselo a Eva" (o "Adelantar y hacerlo yo").
+- "Tu equipo hoy": cada uno con lo que lleva hoy contra la meta ("1 de 2"), cómo está ("Trabajando · sale a las 5:00
+  p. m.", "Libre desde las 2:10 p. m. · le quedan 3 h", "Entra a las…", "Ya salió", "Hoy no le toca", "De permiso hoy") y
+  su horario. En tus editores de video: "Poner su horario" o "Cambiar horario" (los días y de qué hora a qué hora, hora de
+  Venezuela) y "Hoy está de permiso" (ese día no cuenta para su meta; "Quitar el permiso de hoy" lo deshace).
 - Cada encargo dice qué hay que hacer, en una frase. Por ejemplo: "Asigna B0101: 3 variaciones de hook de C0146", "3
   variaciones de formato de C0146" (el mismo mensaje en otros formatos, por ejemplo UGC y testimonio), "3 variaciones para
   mejorar el hold rate de C0146", "3 variaciones de call to action de C0146", "3 variaciones de C0146: 1 de hook y 2 de
@@ -38,9 +55,20 @@
   antiguo: el anuncio, el conjunto de anuncios (que dice el batch y el ángulo) y la ciudad, hasta 3 lugares, y su ángulo.
   Si el sistema no sabe dónde está en Meta, dice solo su nombre y su ángulo.
 - "Por revisar": todas las entregas que esperan. Tocar una abre la ventana de revisar.
-- "¿Alcanza el equipo?": dice si el equipo llega a tiempo con lo que hace falta. Si dice que falta gente, hay que
-  avisarle al dueño.
-- "Lo que necesitamos": lo que hace falta, del más urgente al menos, con su porqué. Lo pide el sistema solo.
+- "¿Alcanza el equipo?": dice si el equipo llega a tiempo con lo que hace falta, si cada uno cumple su meta en los días
+  de su horario. "De dónde sale" dice también cómo va el equipo contra la meta en las últimas 2 semanas ("entregó 30 de
+  40: va al 75 % de su meta"). Si dice que falta gente aun cumpliendo la meta, hay que avisarle al dueño.
+- "Todo lo que hay que hacer": lo que ya está pedido, del más urgente al menos, con su porqué (lo pide el sistema solo),
+  y al final "Para adelantar".
+- "Para adelantar": lo que va a hacer falta después y el sistema todavía no pidió (él pide un batch a la vez por
+  producto). De cada producto que vende: cuántos batches más va a necesitar en las próximas 2 semanas y para cuándo hace
+  falta el próximo. Y los productos nuevos que el dueño tiene en su cola, con sus batches del testeo.
+- "Adelantar": eliges quién lo hace (un editor, tú o "Sin asignar todavía") y el sistema escribe el encargo como los de
+  cada mañana (puede tardar hasta un minuto). Lo adelantado se entrega como siempre y espera en la banca su turno. Un
+  producto nuevo sale de la cola del dueño: el primero de sus batches queda para quien elegiste y los demás en "Sin
+  asignar".
+- Si un producto hoy no se puede adelantar (por ejemplo, no hay una ciudad activa con stock donde probarlo, o no le queda
+  un ángulo), "Para adelantar" lo dice y no muestra el botón hasta mañana.
 - "Sin asignar": encargos sin editor, el más urgente arriba, con "Asignar editor".
 - "Devuelto por el dueño": si el dueño ve un batch de la banca que no sirve (por ejemplo, un video de otro producto), lo
   devuelve con una nota y las piezas que están mal. Te llega a la campanita "El dueño te devolvió B0133…" y el encargo sale
@@ -132,6 +160,9 @@ computadora.
 - Los editores de video no ven si una referencia ganó o perdió.
 
 ## Los números del líder
+- En "Mis resultados" (y el dueño en su panel), de cada uno: días con la meta cumplida, ritmo contra la meta, horas por
+  batch (en horas de su horario) y horas sin encargo (horas de su horario sin nada asignado: eso es tiempo que no le
+  diste trabajo, no culpa del editor). Sin horario dicen "Falta su horario".
 - Racha al día: días seguidos sin entregas esperando su revisión más de 1 día. Un día sin nada para revisar no la corta.
 - Equipo a tiempo: encargos del equipo entregados por primera vez dentro del plazo, este mes.
 - Ganadores del equipo: creativos del equipo que ganaron este mes.
@@ -145,10 +176,12 @@ computadora.
 
 ## Tu día, en orden
 1. Abre "Encargos del equipo": empieza por lo de arriba.
-2. Revisa lo que está "Por revisar", primero lo atrasado.
-3. Asigna lo que está "Sin asignar".
-4. Haz lo tuyo en "Mis encargos".
-5. Mira "Lo que necesitamos" y "¿Alcanza el equipo?"; si no alcanza, avísale al dueño.
+2. Si alguien está libre (o tú), dale otro encargo: lo sin asignar o algo de "Para adelantar".
+3. Revisa lo que está "Por revisar", primero lo atrasado.
+4. Asigna lo que está "Sin asignar".
+5. Haz lo tuyo en "Mis encargos": tu meta también es de 2 por día.
+6. Mira "Todo lo que hay que hacer" y "¿Alcanza el equipo?"; si no alcanza aun cumpliendo la meta, avísale al dueño.
+- Si alguien falta un día por permiso, márcalo en "Tu equipo hoy": ese día no cuenta para su meta.
 - Consejo: revisa al menos dos veces al día (mañana y tarde).
 
 ## Preguntas rápidas del líder
@@ -162,3 +195,8 @@ computadora.
 - ¿Tengo un tope de preguntas en "¿Dudas?"? No: el líder puede preguntar todo lo que necesite.
 - ¿Por qué mi racha al día está en 0? Una entrega esperó tu revisión más de 1 día. Vuelve a subir desde el día siguiente.
 - ¿Quieres saber por qué el sistema pide algo o cómo lo calcula? Eso pregúntaselo al dueño.
+- Un editor terminó y no hay nada sin asignar: en la misión del editor libre toca "Adelantar y dárselo a…", o elige algo
+  de "Para adelantar".
+- ¿Puedo cambiar mi propio horario? No: el tuyo lo pone el dueño. El de tus editores de video sí lo pones tú.
+- ¿Por qué un editor sale "Libre · sin horario"? Porque todavía no tiene horario: sin horario, el sistema no sabe si está
+  trabajando. Pónselo en "Tu equipo hoy".

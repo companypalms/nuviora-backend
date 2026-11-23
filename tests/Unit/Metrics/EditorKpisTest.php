@@ -86,7 +86,8 @@ describe('Editores › resultados en Meta', function () use ($semana, $fila) {
 
 describe('Editores › lo que ven ellos', function () use ($semana, $fila) {
     it('sin dólares: ni el gasto ni la ganancia, y los textos no traen montos', function () use ($semana, $fila) {
-        expect(array_keys(EditorKpis::withoutMoney(EditorKpis::METRICS)))->toBe(['delivered', 'on_time', 'returned', 'winners', 'cpa_vs_c', 'purchases']);
+        // .175: primero la meta y el ritmo (sin dinero)
+        expect(array_keys(EditorKpis::withoutMoney(EditorKpis::METRICS)))->toBe(['goal_days', 'pace', 'batch_hours', 'idle_hours', 'delivered', 'on_time', 'returned', 'winners', 'cpa_vs_c', 'purchases']);
         $r = (new EditorKpis())->compute(hechosEditores([batchEditor(1, 20, ['delivered_at' => '2026-10-20 10:00:00'])], [], [$fila(1, 33.33, 7)]), $semana);
         expect(json_encode($r['people'][20]['details']))->not->toContain('$')->not->toContain('33');
     });

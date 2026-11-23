@@ -13,9 +13,20 @@
 - En la computadora, la flecha de arriba abre el menú con los nombres.
 - El botón "¿Dudas?", abajo a la derecha, abre esta ayuda.
 
+## Tu meta de cada día
+- La meta mínima es de 2 batches por día (la misma para todos, también el líder). Si el dueño la cambia, "Tu meta de hoy"
+  dice la nueva.
+- Cuenta el día en que entregas un batch por primera vez. Las correcciones (cuando te lo devuelven) no suman otro batch.
+- "Tu meta de hoy", en "Mis encargos", dice cuántos llevas hoy ("1 de 2"), con una barrita por batch, y tu horario. Cuando
+  llegas a la meta dice "¡Meta cumplida!" y, si haces más, cuántos extra.
+- La meta se mide en los días de tu horario. Tu horario lo pone el líder (el del líder lo pone el dueño). Si un día no
+  trabajas por permiso, el líder lo marca y ese día no cuenta.
+- Si terminas lo tuyo antes de tu hora de salida, no tienes que buscar nada: al líder le sale enseguida la misión de
+  asignarte otro. En "Mis encargos" ves "Ya le avisamos al líder: te asigna el siguiente". Tú no eliges el siguiente.
+
 ## "Mis encargos": ¿qué entrego ahora?
 - Arriba está tu marcador: por entregar, atrasados y tu racha a tiempo.
-- Debajo, tu mes: cuántos te aprobaron a la primera y tus ganadores.
+- Debajo, tu mes: cuántos te aprobaron a la primera y tus ganadores. Después, "Tu meta de hoy".
 - Después, el encargo de ahora con sus pasos y un solo botón, "Entregar".
 - El título dice qué hay que hacer, en una frase. Por ejemplo: "Haz y entrega B0100: 3 variaciones de hook de C0146",
   "3 variaciones de formato de C0146" (el mismo mensaje en otros formatos, por ejemplo UGC y testimonio), "3 variaciones
@@ -120,6 +131,14 @@
   entregar tarde sí. Vuelve a subir desde el día siguiente.
 - A la primera: encargos que se aprobaron sin devolverte nada.
 - Ganadores: tus creativos que ganaron este mes.
+- Días con la meta cumplida: de tus días de trabajo que ya terminaron (sin los de permiso), en cuántos entregaste por
+  primera vez la meta o más. Hoy no cuenta hasta que termine.
+- Ritmo contra la meta: lo que entregaste contra la meta de tus días de trabajo (100 % es justo la meta). Abajo dice
+  cuántos batches hiciste por día trabajado.
+- Horas por batch: lo que tardas en promedio en cada batch, contando solo las horas de tu horario, desde que te lo
+  asignaron (o desde tu entrega anterior, si tenías varios) hasta que lo entregaste.
+- Horas sin encargo: horas de tu horario en las que no tenías nada asignado. Eso no es culpa tuya.
+- Sin horario, estos 4 números dicen "Falta su horario": pídele al líder que lo ponga.
 
 ## Los avisos
 - El número de "Mis encargos" en el menú se actualiza solo: ahí ves si te asignaron algo nuevo.

@@ -11,6 +11,7 @@ use App\Services\Files\Uploads;
 use App\Services\Meta\Products\ProductModes;
 use App\Services\Meta\Queue\EditorFacts;
 use App\Services\Meta\Queue\EditorRules;
+use App\Services\Meta\Queue\EditorTeam;
 use App\Services\Meta\Queue\EditorWork;
 use App\Services\Meta\Queue\QueueProposer;
 use App\Services\Metrics\Period;
@@ -43,13 +44,25 @@ class EditorQueueController extends Controller
         $demand = QueueProposer::demandToday();
         // .99: lo de un producto en pausa, en liquidación o abandonado no hace falta (y lo suyo está en espera)
         $stopped = ProductModes::stoppedIds();
+        // .175: cómo va cada uno hoy contra la meta (el líder ve a todos; el editor, lo suyo)
+        $team = EditorTeam::today();
+        $mine = collect($team)->firstWhere('id', $user->id);
+        $pending = EditorRules::pending($who, EditorWork::states($batches));
+        if ($leader) {
+            $pending = self::withFree($pending, count(array_filter($team, fn ($e) => $e['free'])));
+        }
 
         return response()->json([
             'me' => ['id' => $user->id, 'name' => trim($user->names . ' ' . ($user->surnames ?? '')), 'leader' => $leader],
             'batches' => array_map(fn ($b) => $b + ['need' => $demand['batches'][$b['id']] ?? null], EditorWork::present($batches, $who)),
             // .94: cada editor con lo que tiene y el sugerido para el próximo
             'editors' => $leader ? EditorWork::editorsWithLoad() : [],
-            'pending' => EditorRules::pending($who, EditorWork::states($batches)),
+            'pending' => $pending,
+            // .175: la meta, cómo va quien mira hoy y, para el líder, su equipo (con el horario) y lo que se puede adelantar
+            'goal' => EditorTeam::goal(),
+            'me_today' => $mine ? array_intersect_key($mine, array_flip(['state', 'left', 'start', 'end', 'done', 'goal', 'open', 'free', 'schedule_text'])) : null,
+            'team' => $leader ? self::withSchedules($team, $user) : [],
+            'advance' => $leader ? EditorTeam::advance() : [],
             // .88: para el líder, lo que hace falta y no se pudo pedir, y si alcanza el equipo
             'unfilled' => $leader ? array_values(array_filter($demand['unfilled'], fn ($u) => !in_array((int) $u['product_id'], $stopped, true))) : [],
             // .99: para el líder, los encargos en espera porque su producto está parado (para que sepa dónde están)
@@ -73,8 +86,24 @@ class EditorQueueController extends Controller
     {
         $who = EditorWork::who($request->user());
         $batches = $this->visible($who)->whereIn('status', ['approved', 'production', 'review'])->with('deliveries:id,creative_batch_id,editor_id,review,version')->get();
+        $pending = EditorRules::pending($who, EditorWork::states($batches));
 
-        return response()->json(['pending' => EditorRules::pending($who, EditorWork::states($batches))]);
+        // .175: al líder también le cuenta cada editor libre (la misión de asignarle otro)
+        return response()->json(['pending' => $who['role'] === EditorRules::LEADER ? self::withFree($pending, EditorTeam::freeCount()) : $pending]);
+    }
+
+    /** `.175`: los editores libres suman al número del líder. */
+    private static function withFree(array $pending, int $free): array
+    {
+        return ['free' => $free, 'total' => (int) ($pending['total'] ?? 0) + $free] + $pending;
+    }
+
+    /** `.175`: la franja del equipo con el horario de cada uno, sus días de permiso y si el líder puede cambiarlo. */
+    private static function withSchedules(array $team, \App\Models\User $viewer): array
+    {
+        $extra = collect(EditorTeam::listFor($viewer))->keyBy('id');
+
+        return array_map(fn ($e) => $e + ['can_edit' => (bool) ($extra[$e['id']]['can_edit'] ?? false), 'days_off' => $extra[$e['id']]['days_off'] ?? []], $team);
     }
 
     public function start(Request $request, CreativeBatch $batch, EditorWork $work)

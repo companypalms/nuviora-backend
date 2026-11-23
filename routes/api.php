@@ -678,6 +678,10 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::get('/product-profiles', [\App\Http\Controllers\MetaProductProfileController::class, 'index']);
         Route::put('/product-profiles/{product}', [\App\Http\Controllers\MetaProductProfileController::class, 'update']);
         Route::post('/product-profiles/{product}/next-round', [\App\Http\Controllers\MetaProductProfileController::class, 'nextRound']); // .65
+        // .175: el horario de los editores (el del líder lo pone el dueño) y sus días de permiso
+        Route::get('/editor-team', [\App\Http\Controllers\EditorTeamController::class, 'index']);
+        Route::put('/editor-team/{user}/schedule', [\App\Http\Controllers\EditorTeamController::class, 'schedule'])->whereNumber('user');
+        Route::put('/editor-team/{user}/day-off', [\App\Http\Controllers\EditorTeamController::class, 'dayOff'])->whereNumber('user');
         // .154: la cola de productos por montar (sale sola al editor líder; el dueño la ordena o saca uno)
         Route::get('/product-queue', [\App\Http\Controllers\MetaProductQueueController::class, 'index']);
         Route::post('/product-queue/{product}/move', [\App\Http\Controllers\MetaProductQueueController::class, 'move']);
@@ -753,6 +757,10 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::get('/bank', [\App\Http\Controllers\EditorQueueController::class, 'bank']);
         // .153: la barra de la comisión del líder (solo él)
         Route::get('/commission', [\App\Http\Controllers\EditorQueueController::class, 'commission']);
+        // .175: el líder pone el horario y los días de permiso de sus editores, y adelanta encargos
+        Route::put('/team/{user}/schedule', [\App\Http\Controllers\EditorTeamController::class, 'schedule'])->whereNumber('user');
+        Route::put('/team/{user}/day-off', [\App\Http\Controllers\EditorTeamController::class, 'dayOff'])->whereNumber('user');
+        Route::post('/advance', [\App\Http\Controllers\EditorTeamController::class, 'advance'])->middleware('throttle:10,1');
         // .96: la ayuda "¿Dudas?" (la IA solo sabe el libro de ayuda de su rol)
         Route::get('/help', [\App\Http\Controllers\EditorHelpController::class, 'index']);
         Route::post('/help', [\App\Http\Controllers\EditorHelpController::class, 'store'])->middleware('throttle:10,1');

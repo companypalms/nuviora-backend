@@ -55,6 +55,8 @@ class MetaQueueController extends Controller
         $batches->load(self::WITH);
         $s = $settings->get();
         $demand = QueueProposer::demandToday();
+        // .175: lo que hace el equipo por día si cada uno cumple su meta
+        $team = \App\Services\Meta\Queue\EditorTeam::capacity();
 
         return response()->json([
             // .88: por qué hace falta cada uno (lo que ve el líder)
@@ -65,9 +67,9 @@ class MetaQueueController extends Controller
             'products' => $this->products($decisions),
             'settings' => [
                 'batch_pieces' => (int) $s['batch_pieces'], 'due_days' => (int) $s['due_days'], 'bank_min' => (int) $s['bank_min'], 'bank_max' => (int) $s['bank_max'],
-                'video_editors' => (int) $s['video_editors'],
-                // 2 batches por editor por día, menos el tiempo de las correcciones
-                'capacity' => round($s['video_editors'] * $s['batches_per_editor'] / (1 + $s['corrections_pct'] / 100), 1),
+                'video_editors' => $team['people'] ?: (int) $s['video_editors'],
+                // .175: la meta de cada editor (también el líder) por los días de su horario
+                'capacity' => $team['people'] ? round($team['per_day'], 1) : round($s['video_editors'] * $s['batches_per_editor'] / (1 + $s['corrections_pct'] / 100), 1),
             ],
             'statuses' => QueueRules::STATUSES, 'kinds' => QueueRules::KINDS, 'formats' => QueueRules::FORMATS, 'styles' => QueueRules::STYLES,
             'last_run' => Setting::get(QueueProposer::LAST_RUN),

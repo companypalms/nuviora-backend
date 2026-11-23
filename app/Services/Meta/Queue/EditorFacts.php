@@ -48,7 +48,80 @@ class EditorFacts
             ])->values()->all(),
             'reviews' => $reviews,
             'rows' => $this->rows($batches, $period->start->toDateString(), $period->end->toDateString()),
+            // .175: el ritmo de cada uno contra la meta (su horario, sus permisos, sus primeras entregas y sus ratos con encargo)
+            'goal' => EditorTeam::goal(),
+            'pace' => $this->pace($period, $editorIds),
         ];
+    }
+
+    /**
+     * `.175`: lo del ritmo de cada editor en el período: su horario (el de ahora), sus días de permiso, sus primeras entregas
+     * (V01) por día, de dónde a dónde fue cada batch (desde lo último entre que se lo asignaron y su entrega anterior, hasta su
+     * primera entrega) y los ratos en que tuvo algo asignado por entregar (de la asignación a la entrega, y de una devolución a
+     * la entrega siguiente). "until" es el último día ya terminado: hoy no cuenta para la meta hasta que se acabe.
+     *
+     * @return array{from: string, to: string, until: string, editors: array<int, array{schedule: ?array, off: list<string>, first: array<string, int>,
+     *     spans: list<array{start: string, end: string}>, busy: list<array{0: string, 1: string}>}>}
+     */
+    private function pace(Period $period, ?array $editorIds): array
+    {
+        $fmt = 'Y-m-d H:i:s';
+        $from = $period->start->format($fmt);
+        $to = $period->end->format($fmt);
+        $now = now(config('app.timezone'))->format($fmt);
+        $until = min($period->end->toDateString(), now(config('app.timezone'))->subDay()->toDateString());
+        $ids = $editorIds ?? array_column(EditorWork::editors(), 'id');
+        $out = ['from' => $from, 'to' => $to, 'until' => $until, 'editors' => []];
+        if ($ids === []) {
+            return $out;
+        }
+        $schedules = EditorTeam::schedules($ids);
+        $off = EditorTeam::daysOff($ids, $period->start->toDateString(), $period->end->toDateString());
+        foreach ($ids as $id) {
+            $out['editors'][$id] = ['schedule' => $schedules[$id] ?? null, 'off' => $off[$id] ?? [], 'first' => [], 'spans' => [], 'busy' => []];
+        }
+        // Las entregas (con dos semanas antes, para saber la anterior de cada una)
+        $deliveries = CreativeBatchDelivery::with('batch:id,editor_id,assigned_at')->whereIn('editor_id', $ids)
+            ->whereBetween('created_at', [$period->start->subDays(14)->format($fmt), $to])->orderBy('created_at')->orderBy('id')
+            ->get(['id', 'creative_batch_id', 'editor_id', 'version', 'created_at']);
+        $prev = [];
+        foreach ($deliveries as $d) {
+            $e = (int) $d->editor_id;
+            $at = $d->created_at->format($fmt);
+            if ((int) $d->version === 1 && $at >= $from) {
+                $day = substr($at, 0, 10);
+                $out['editors'][$e]['first'][$day] = ($out['editors'][$e]['first'][$day] ?? 0) + 1;
+                $assigned = $d->batch && (int) $d->batch->editor_id === $e && $d->batch->assigned_at ? $d->batch->assigned_at->format($fmt) : null;
+                $start = max(array_filter([$prev[$e] ?? null, $assigned !== null && $assigned < $at ? $assigned : null]) ?: [null]);
+                if ($start !== null) {
+                    $out['editors'][$e]['spans'][] = ['start' => $start, 'end' => $at];
+                }
+            }
+            $prev[$e] = $at;
+        }
+        // Los ratos con algo asignado por entregar
+        $batches = CreativeBatch::with(['deliveries' => fn ($q) => $q->orderBy('version')->select(['id', 'creative_batch_id', 'version', 'created_at', 'review', 'reviewed_at'])])
+            ->whereIn('editor_id', $ids)->whereNotNull('assigned_at')->where('assigned_at', '<=', $to)
+            ->where(fn ($q) => $q->whereNull('source')->orWhere('source', '!=', 'imported')) // .95: cargar uno ya hecho no es un encargo
+            ->get(['id', 'editor_id', 'assigned_at', 'status', 'status_at']);
+        foreach ($batches as $b) {
+            $e = (int) $b->editor_id;
+            $openEnd = in_array($b->status, ['approved', 'production'], true) ? $now : ($b->status_at?->format($fmt) ?? $now);
+            $dels = $b->deliveries->values();
+            $spans = [[$b->assigned_at->format($fmt), $dels->first()?->created_at?->format($fmt) ?? $openEnd]];
+            foreach ($dels as $i => $d) {
+                if ($d->review === 'returned' && $d->reviewed_at) {
+                    $spans[] = [$d->reviewed_at->format($fmt), $dels->get($i + 1)?->created_at?->format($fmt) ?? $openEnd];
+                }
+            }
+            foreach ($spans as [$a, $z]) {
+                if ($z > $a && $z > $from && $a < $to) {
+                    $out['editors'][$e]['busy'][] = [$a, $z];
+                }
+            }
+        }
+
+        return $out;
     }
 
     /** Lo que gastaron y vendieron en Meta los anuncios de cada encargo, en el período y en toda su vida, por ciudad. */

@@ -3,6 +3,7 @@
 namespace App\Services\Metrics\Team;
 
 use App\Services\Meta\Queue\EditorFacts;
+use App\Services\Meta\Queue\EditorPaceRules;
 use App\Services\Meta\Queue\EditorRules;
 use App\Services\Meta\Queue\QueueRules;
 use App\Services\Metrics\Filters;
@@ -22,10 +23,39 @@ use App\Services\Metrics\Readers\TeamReader;
  * - Ganancia estimada: compras × BE − gasto. El BE de cada ciudad ya trae la tasa real de entrega.
  * - El editor líder se mide igual, y el total del rol es el del equipo entero.
  * - Los editores no ven dinero: WITHOUT_MONEY dice qué se les esconde (en "Mis resultados").
+ * - `.175` (dueño, 2026-11-23: "¿cómo me aseguro que mis editores no estén flojeando…?"; meta mínima de 2 batches al día,
+ *   también para el líder): los días con la meta cumplida, el ritmo contra la meta, las horas por batch y las horas sin
+ *   encargo, con su horario (EditorPaceRules). Sin horario no se juzga. Hoy no cuenta para la meta hasta que se acabe.
  */
 final class EditorKpis extends TeamRole
 {
     public const METRICS = [
+        // .175: la meta (2 batches por día) y el ritmo
+        'goal_days' => [
+            'label' => 'Días con la meta cumplida',
+            'format' => 'percent',
+            'better' => 'higher',
+            'card' => true,
+            'help' => 'De los días de su horario que ya terminaron (sin los de permiso), en cuántos entregó por primera vez la meta de batches o más. Las correcciones no suman otro batch. Sin horario no se mide.',
+        ],
+        'pace' => [
+            'label' => 'Ritmo contra la meta',
+            'format' => 'percent',
+            'better' => 'higher',
+            'help' => 'Lo que entregó por primera vez contra la meta de sus días de trabajo: 100 % es justo la meta. Abajo dice cuántos batches hizo por día trabajado.',
+        ],
+        'batch_hours' => [
+            'label' => 'Horas por batch',
+            'format' => 'hours',
+            'better' => 'lower',
+            'help' => 'Lo que tarda en promedio cada batch, contando solo las horas de su horario: desde que se lo asignaron (o desde su entrega anterior, si tenía varios) hasta que lo entregó por primera vez.',
+        ],
+        'idle_hours' => [
+            'label' => 'Horas sin encargo',
+            'format' => 'hours_total',
+            'better' => 'lower',
+            'help' => 'Horas de su horario en las que no tuvo nada asignado por entregar. Eso no es culpa del editor: es tiempo que el líder (o el sistema) no le dio trabajo.',
+        ],
         'delivered' => [
             'label' => 'Encargos entregados',
             'format' => 'count',
@@ -162,6 +192,25 @@ final class EditorKpis extends TeamRole
                 $bump($b['editor_id'], 'winners', self::isWinner($b['verdicts']) ? 1 : 0);
             }
         }
+        // .175: el ritmo contra la meta, solo de quien tiene horario
+        $goal = max(1, (int) ($facts['goal'] ?? 2));
+        $pace = $facts['pace'] ?? null;
+        foreach ($pace['editors'] ?? [] as $id => $e) {
+            if ($e['schedule'] === null) {
+                continue;
+            }
+            $days = EditorPaceRules::workDays($e['schedule'], $e['off'], substr($pace['from'], 0, 10), $pace['until']);
+            $g = EditorPaceRules::goalDays($e['first'], $days, $goal);
+            $hours = EditorPaceRules::batchHours($e['spans'], $e['schedule'], $e['off']);
+            $bump((int) $id, 'scheduled');
+            $bump((int) $id, 'work_days', $g['days']);
+            $bump((int) $id, 'met_days', $g['met']);
+            $bump((int) $id, 'goal_want', $goal * $g['days']);
+            $bump((int) $id, 'first_done', array_sum(array_filter($e['first'], fn ($day) => $day <= $pace['until'], ARRAY_FILTER_USE_KEY)));
+            $bump((int) $id, 'span_hours', array_sum($hours));
+            $bump((int) $id, 'spans', count($hours));
+            $bump((int) $id, 'idle', EditorPaceRules::idleHours($e['busy'], $e['schedule'], $e['off'], $pace['from'], $pace['to']));
+        }
         foreach ($facts['reviews'] as $r) {
             $bump($r['editor_id'], 'reviewed');
             $bump($r['editor_id'], 'returned', $r['review'] === 'returned' ? 1 : 0);
@@ -185,10 +234,10 @@ final class EditorKpis extends TeamRole
 
         $out = [];
         foreach ($raw as $id => $r) {
-            $out[$id] = ['name' => $people[$id]['name'] ?? "Editor {$id}", 'group' => $people[$id]['group'] ?? null] + self::values($r);
+            $out[$id] = ['name' => $people[$id]['name'] ?? "Editor {$id}", 'group' => $people[$id]['group'] ?? null] + self::values($r, $goal);
         }
 
-        return ['people' => $out, 'totals' => self::values($total)];
+        return ['people' => $out, 'totals' => self::values($total, $goal)];
     }
 
     /**
@@ -250,13 +299,21 @@ final class EditorKpis extends TeamRole
     private static function emptyRaw(): array
     {
         return ['delivered' => 0, 'on_time' => 0, 'reviewed' => 0, 'returned' => 0, 'tested' => 0, 'winners' => 0, 'spend' => 0.0, 'purchases' => 0.0,
-            'spend_with_c' => 0.0, 'allowed' => 0.0, 'profit' => 0.0, 'profit_rows' => 0];
+            'spend_with_c' => 0.0, 'allowed' => 0.0, 'profit' => 0.0, 'profit_rows' => 0,
+            'scheduled' => 0, 'work_days' => 0, 'met_days' => 0, 'goal_want' => 0, 'first_done' => 0, 'span_hours' => 0.0, 'spans' => 0, 'idle' => 0.0];
     }
 
-    private static function values(array $r): array
+    private static function values(array $r, int $goal = 2): array
     {
+        $timed = $r['scheduled'] > 0;
+        $perDay = $r['work_days'] > 0 ? $r['first_done'] / $r['work_days'] : null;
+
         return [
             'values' => [
+                'goal_days' => $timed ? self::pct($r['met_days'], $r['work_days']) : null,
+                'pace' => $timed ? self::pct($r['first_done'], $r['goal_want']) : null,
+                'batch_hours' => $r['spans'] > 0 ? round($r['span_hours'] / $r['spans'], 1) : null,
+                'idle_hours' => $timed ? round($r['idle'], 1) : null,
                 'delivered' => (int) $r['delivered'],
                 'on_time' => self::pct($r['on_time'], $r['delivered']),
                 'returned' => self::pct($r['returned'], $r['reviewed']),
@@ -268,6 +325,10 @@ final class EditorKpis extends TeamRole
             ],
             // Sin montos: estos textos también los ven los editores
             'details' => [
+                'goal_days' => $timed ? "{$r['met_days']} de " . self::plural((int) $r['work_days'], 'día de trabajo', 'días de trabajo') : 'Falta su horario',
+                'pace' => $perDay !== null ? str_replace('.', ',', (string) round($perDay, 1)) . " batches por día trabajado; la meta es {$goal}" : 'Falta su horario',
+                'batch_hours' => $r['spans'] > 0 ? 'En ' . self::plural((int) $r['spans'], 'batch', 'batches') : ($timed ? 'Todavía sin entregas' : 'Falta su horario'),
+                'idle_hours' => $timed ? 'En su horario' : 'Falta su horario',
                 'on_time' => "{$r['on_time']} de " . self::plural((int) $r['delivered'], 'encargo', 'encargos'),
                 'returned' => "{$r['returned']} de " . self::plural((int) $r['reviewed'], 'entrega revisada', 'entregas revisadas'),
                 'winners' => "{$r['winners']} de " . self::plural((int) $r['tested'], 'batch testeado', 'batches testeados'),

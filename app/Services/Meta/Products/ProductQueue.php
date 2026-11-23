@@ -212,6 +212,20 @@ class ProductQueue
         }
     }
 
+    /**
+     * `.175`: el editor líder lo adelanta desde "Para adelantar": sale ya, aunque el equipo no tenga chance. Solo uno que está en
+     * la cola y no le falta nada.
+     */
+    public static function startNow(int $productId): int
+    {
+        $row = collect(self::rows())->firstWhere('product_id', $productId);
+        if ($row === null || $row['missing'] !== []) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['product_id' => 'Ese producto ya no está en la cola o le falta algo: vuelve a abrir la pantalla.']);
+        }
+
+        return self::start($productId);
+    }
+
     /** Sale de la cola: empieza su testeo (los batches los pide la misma corrida) y se le avisa al dueño. */
     private static function start(int $productId): int
     {

@@ -13,14 +13,12 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * `.88`: el pronóstico de los editores "con lo que pasó de verdad" (lo eligió el dueño): cuánto dura un batch bueno en cada
- * producto antes de cansarse (la historia de Meta), cuántos batches nuevos se lanzaron en las últimas 4 semanas y cuántos
- * entregan de verdad los editores por día. Sin historia, los ajustes, y lo dice. Las cuentas, en ForecastRules. Solo lee.
+ * producto antes de cansarse (la historia de Meta) y cuántos batches nuevos se lanzaron en las últimas 4 semanas. Sin
+ * historia, los ajustes, y lo dice. `.175`: lo que puede hacer el equipo es su meta (EditorTeam). Las cuentas, en
+ * ForecastRules. Solo lee.
  */
 class EditorForecast
 {
-    /** Con menos días de entregas que esto, lo que hace el equipo sale de los ajustes. */
-    public const MIN_DAYS = 14;
-
     /** Cuántos días se miran hacia atrás (lanzados y entregas). */
     private const WINDOW = 28;
 
@@ -59,8 +57,10 @@ class EditorForecast
                 'ordered' => array_sum($due), 'replace' => round($use['rate'] * max(0, ForecastRules::DAYS - 1 - $reserve), 1),
                 'new' => round($newRate * (ForecastRules::DAYS - 1), 1), 'products' => $use['products'], 'life' => $use['life'],
                 'life_source' => $use['source'], 'new_products_month' => (int) $s['new_products_month'], 'start_batches' => (int) $s['start_batches'],
-                'editors' => (int) $s['video_editors'], 'per_day' => round($cap['per_day'], 1), 'per_editor' => round($cap['per_editor'], 1),
+                'editors' => (int) $cap['people'], 'per_day' => round($cap['per_day'], 1), 'per_editor' => round($cap['per_editor'], 1),
                 'capacity_source' => $cap['source'],
+                // .175: la meta de cada uno, a quién le falta el horario y cómo va el equipo contra la meta (las últimas 2 semanas)
+                'goal' => (int) $cap['goal'], 'missing_schedule' => $cap['missing'], 'pace' => $cap['pace'],
             ]];
     }
 
@@ -102,31 +102,50 @@ class EditorForecast
             ->map(fn ($g) => $g->map(fn ($x) => $x->batch_code ?: self::identity((string) $x->name))->unique()->count());
         $rate = 0.0;
         $used = [];
+        $byProduct = [];
         foreach ($ids as $pid) {
             $life = isset($lives[$pid]) ? self::median($lives[$pid]) : ($global ?? $fallback);
             $used[] = $life;
-            $rate += max(UrgentList::MIN_LIVE / max(1.0, $life), (float) ($launched[$pid] ?? 0) / self::WINDOW);
+            // .175: lo de cada producto, para "Para adelantar" del líder
+            $byProduct[$pid] = max(UrgentList::MIN_LIVE / max(1.0, $life), (float) ($launched[$pid] ?? 0) / self::WINDOW);
+            $rate += $byProduct[$pid];
         }
 
-        return ['rate' => $rate, 'products' => count($ids), 'life' => round(self::median($used), 1), 'source' => $global !== null ? 'meta' : 'settings'];
+        return ['rate' => $rate, 'products' => count($ids), 'life' => round(self::median($used), 1), 'source' => $global !== null ? 'meta' : 'settings',
+            'by_product' => $byProduct];
     }
 
-    /** Lo que entrega el equipo por día: lo de verdad (lo aprobado en las últimas 4 semanas) con 2 semanas de entregas; si no, los ajustes. */
+    /**
+     * `.175`: lo que se cansa por día de cada producto que vende (en modo normal, fuera del testeo y sin el freno de Malo), el
+     * mismo número de "¿Alcanza el equipo?".
+     *
+     * @return array<int, float>
+     */
+    public function rates(): array
+    {
+        $s = $this->settings->get();
+        $today = now(config('app.timezone'))->toDateString();
+
+        return Cache::remember("editor-forecast:use:{$today}", 3600, fn () => $this->consumption((float) $s['batch_life_days'], $today))['by_product'] ?? [];
+    }
+
+    /**
+     * Lo que puede hacer el equipo por día. `.175` (dueño, 2026-11-23: "¿cómo me aseguro que mis editores no estén
+     * flojeando…?"): antes salía de lo que entregaron de verdad, así que si iban lentos el pronóstico pedía un flotante en vez
+     * de decir que iban lentos. Ahora es la meta de cada editor (también el líder) por los días de su horario (sin horario, de
+     * lunes a viernes); lo de verdad va aparte (pace), para comparar. Sin editores en el sistema, los ajustes.
+     */
     private function capacity(array $s, string $today): array
     {
-        $first = DB::table('creative_batch_deliveries')->where('review', 'approved')->min('reviewed_at');
-        $days = $first ? (int) floor((strtotime($today) - strtotime(substr((string) $first, 0, 10))) / 86400) + 1 : 0;
-        if ($days >= self::MIN_DAYS) {
-            $window = min(self::WINDOW, $days);
-            $done = DB::table('creative_batch_deliveries')->where('review', 'approved')
-                ->where('reviewed_at', '>=', date('Y-m-d', strtotime("{$today} -" . ($window - 1) . ' days')))->distinct()->count('creative_batch_id');
-            $perDay = $done / $window;
-
-            return ['per_day' => $perDay, 'per_editor' => $perDay / max(1, (int) $s['video_editors']), 'source' => 'real'];
+        $team = EditorTeam::capacity();
+        if ($team['people'] > 0) {
+            return ['per_day' => $team['per_day'], 'per_editor' => $team['per_day'] / $team['people'], 'source' => 'goal', 'people' => $team['people'],
+                'goal' => $team['goal'], 'missing' => $team['missing'], 'pace' => EditorTeam::pace()];
         }
         $perEditor = (float) $s['batches_per_editor'] / (1 + (float) $s['corrections_pct'] / 100);
 
-        return ['per_day' => (int) $s['video_editors'] * $perEditor, 'per_editor' => $perEditor, 'source' => 'settings'];
+        return ['per_day' => (int) $s['video_editors'] * $perEditor, 'per_editor' => $perEditor, 'source' => 'settings', 'people' => (int) $s['video_editors'],
+            'goal' => EditorTeam::goal(), 'missing' => [], 'pace' => null];
     }
 
     /** "B0102 FASP - Copia" y "B0102 FASP" son el mismo batch. */
