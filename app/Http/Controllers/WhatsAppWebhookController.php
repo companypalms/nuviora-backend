@@ -56,6 +56,7 @@ class WhatsAppWebhookController extends Controller
             $mediaPath   = null;
             $buttonId    = null;
             $buttonText  = null;
+            $location    = null; // .182: [lat, lng] si mandó su ubicación
 
             // 1. Extraer contenido según el tipo
             if (isset($messageData['text'])) {
@@ -66,6 +67,7 @@ class WhatsAppWebhookController extends Controller
                 $name = $messageData['location']['name'] ?? '';
                 $addr = $messageData['location']['address'] ?? '';
                 $body = "📍 Ubicación: https://www.google.com/maps?q={$lat},{$lng}";
+                $location = [$lat, $lng];
                 if ($name) $body .= "\nNombre: {$name}";
                 if ($addr) $body .= "\nDir: {$addr}";
             } elseif (isset($messageData['interactive'])) {
@@ -193,7 +195,8 @@ class WhatsAppWebhookController extends Controller
 
             // REGLA DE ASIGNACIÓN POR NÚMERO DE ORDEN EN EL MENSAJE
             // 🛑 Solo reasignar si hay alguna tienda abierta ahora mismo.
-            if (!empty($body) && \App\Services\CrmAssignmentService::isAnyShopOpen()) {
+            // .182: una ubicación ("📍 Ubicación: …maps?q=10.4806,…") no trae un número de pedido: sus cifras no reasignan el chat
+            if (!empty($body) && $location === null && \App\Services\CrmAssignmentService::isAnyShopOpen()) {
                 // Buscar patrón #1234 o solo 1234 (mínimo 4 dígitos)
                 if (preg_match('/#?(\d{4,10})/', $body, $matches)) {
                     $orderNum = $matches[1];
@@ -248,6 +251,15 @@ class WhatsAppWebhookController extends Controller
             ConversationBucketService::recalculate($client->id);
 
             $msg->refresh()->load('client', 'order');
+
+            // .182: la ubicación que manda el cliente queda sola en su pedido a domicilio (la vendedora ya no la copia)
+            if ($location !== null && $order) {
+                try {
+                    app(\App\Services\Orders\WhatsappLocation::class)->apply($order, $location[0], $location[1]);
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::error('WA_HOOK_LOCATION_ERROR: ' . $e->getMessage());
+                }
+            }
 
             event(new \App\Events\WhatsappMessageReceived($msg));
             

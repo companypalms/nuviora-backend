@@ -20,6 +20,8 @@ use App\Services\WhatsAppService;
  * - Si tiene un problema, no sale nada: lo atiende la vendedora, como hoy.
  * - `.181`: la encomienda que se paga con una asesora: "respóndenos y una asesora te ayuda a hacer el pago móvil", con la
  *   tienda abierta (una vez).
+ * - `.182`: a domicilio, si 2 horas después de "ya confirmamos tu pago" todavía no mandó su ubicación, un recordatorio (una
+ *   vez, con la tienda abierta). Cuando la manda por WhatsApp queda sola en el pedido (Orders\WhatsappLocation).
  * `.181`: todo sale con su plantilla de Meta (StorefrontRules::TEMPLATES), aunque el cliente no nos haya escrito ("muchas
  * personas no envían ese mensaje"). Si una no sale (por ejemplo, Meta todavía no la aprobó), no se reintenta: la vendedora
  * ve "Confírmale el pago" con el motivo. Corre cada minuto (`tienda:confirmar-pagos`).
@@ -33,10 +35,10 @@ class PrepaidMessages
     {
     }
 
-    /** @return array{ack: int, confirmed: int, advisor: int, seller: int, waiting: int, items: list<string>} */
+    /** @return array{ack: int, confirmed: int, advisor: int, location: int, seller: int, waiting: int, items: list<string>} */
     public function run(bool $dryRun = false): array
     {
-        $out = ['ack' => 0, 'confirmed' => 0, 'advisor' => 0, 'seller' => 0, 'waiting' => 0, 'items' => []];
+        $out = ['ack' => 0, 'confirmed' => 0, 'advisor' => 0, 'location' => 0, 'seller' => 0, 'waiting' => 0, 'items' => []];
         $fronts = StorefrontOrder::with(['order.client', 'order.status'])->where('payment', StorefrontOrder::PREPAID)->whereNotNull('order_id')
             ->where('created_at', '>=', now()->subDays(self::DAYS))
             ->where(fn ($q) => $q->whereNull('confirm_status')->orWhere(fn ($q) => $q->where('after_hours', true)->whereNull('ack_sent_at')))
@@ -105,8 +107,59 @@ class PrepaidMessages
             $out['confirmed']++;
         }
         $this->advisors($out, $dryRun);
+        $this->locationReminders($out, $dryRun);
 
         return $out;
+    }
+
+    /**
+     * `.182`: el que pagó por adelantado y lo recibe en su casa, si 2 horas después de "ya confirmamos tu pago" todavía no
+     * mandó su ubicación: un recordatorio con su plantilla, una vez y con la tienda abierta. Si no sale, o tampoco la manda,
+     * la vendedora ve "Falta la ubicación" (PrepaidState).
+     */
+    private function locationReminders(array &$out, bool $dryRun): void
+    {
+        $fronts = StorefrontOrder::with(['order.client', 'order.status'])->where('payment', StorefrontOrder::PREPAID)->where('confirm_status', 'sent')
+            ->whereBetween('confirm_sent_at', [now()->subDays(self::DAYS), now()->subHours(StorefrontRules::LOCATION_REMINDER_HOURS)])
+            ->whereHas('order', fn ($q) => $q->where(fn ($q) => $q->whereNull('courier_shipment')->orWhere('courier_shipment', false))
+                ->where(fn ($q) => $q->whereNull('location')->orWhere('location', '')))
+            ->orderBy('id')->get();
+        foreach ($fronts as $f) {
+            $order = $f->order;
+            if (in_array($order->status?->description, [OrderStatus::ENTREGADO, OrderStatus::CANCELADO, OrderStatus::RECHAZADO], true)
+                || self::locationReminder($order->id)) {
+                continue;
+            }
+            if ($order->shop_id && !$this->business->isBusinessOpen($order->shop_id)) {
+                $out['waiting']++;
+                continue;
+            }
+            $out['items'][] = "{$order->name}: recordatorio de la ubicación";
+            if (!$dryRun) {
+                $error = $this->send($f, 'location_reminder', StorefrontRules::templateParams('location_reminder', StorefrontOrders::vars($order)));
+                if ($error !== null) {
+                    OrderActivityLog::create(['order_id' => $order->id, 'action' => 'storefront_location_failed',
+                        'description' => "El recordatorio de la ubicación no salió por WhatsApp ({$error}): pídesela tú."]);
+                }
+            }
+            $out['location']++;
+        }
+    }
+
+    /** `.182`: el recordatorio de la ubicación de un pedido (también si no salió: no se reintenta), o null si no se le mandó. */
+    public static function locationReminder(int $orderId): ?WhatsappMessage
+    {
+        return WhatsappMessage::where('order_id', $orderId)->where('template_name', StorefrontRules::TEMPLATES['location_reminder']['name'])->latest('id')->first();
+    }
+
+    /** `.182`: le falta la ubicación aunque ya se le recordó (el recordatorio no salió, o salió hace 2 horas y no la mandó). */
+    public static function locationMissing(\App\Models\Order $order): bool
+    {
+        if ($order->courier_shipment || trim((string) $order->location) !== '' || !($r = self::locationReminder($order->id))) {
+            return false;
+        }
+
+        return $r->status === 'failed' || $r->sent_at?->lte(now()->subHours(StorefrontRules::LOCATION_REMINDER_HOURS));
     }
 
     /**

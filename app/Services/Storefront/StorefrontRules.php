@@ -42,6 +42,9 @@ final class StorefrontRules
      *   realizar el envío");
      * - confirm_home: su comprobante quedó bien y lo recibe en su casa (dueño, 26/11: "debe igualmente pedir la ubicación gps
      *   para que el repartidor llegue más fácil");
+     *   (`.182`: primero le agradece la dirección del formulario: "qué bueno que nos mandó la ubicación… en el formulario, pero
+     *   para que el repartidor llegue más rápido, que por favor nos envíe su ubicación por WhatsApp");
+     * - location_reminder (`.182`): si 2 horas después todavía no la mandó, una vez;
      * - confirm_courier: igual, en una encomienda (la guía es una foto desde la `.173`);
      * - advisor: la encomienda que se paga con una asesora (no paga en el formulario): que nos responda para cobrarle.
      */
@@ -50,7 +53,10 @@ final class StorefrontRules
             'text' => "¡Hola {{1}}! 🙌 Recibimos tu pedido {{2}} y tu comprobante de pago.\n\nNuestro horario de atención es {{3}}. Una asesora validará tu pago {{4}} y procederá con tu envío. Te escribiremos por aquí.\n\n¡Gracias por tu confianza! 💕",
             'examples' => ['María', 'WEB-12', 'de lunes a sábado, de 8:00 a. m. a 7:00 p. m', 'mañana a partir de las 8:00 a. m.']],
         'confirm_home' => ['name' => 'pago_confirmado_domicilio', 'when' => 'Su comprobante quedó bien y lo recibe en su casa: entre 5 y 15 minutos después, con la tienda abierta.',
-            'text' => "¡Hola {{1}}! ✅ Ya confirmamos tu pago del pedido {{2}}. Estamos preparando tu envío y te avisaremos por aquí cuando salga.\n\n📍 Para que el repartidor llegue más fácil, respóndenos con tu ubicación: toca el 📎 (o el +), elige «Ubicación» y «Enviar tu ubicación actual».\n\n¡Gracias por tu compra! 💕",
+            'text' => "¡Hola {{1}}! ✅ Ya confirmamos tu pago del pedido {{2}}. Estamos preparando tu envío y te avisaremos por aquí cuando salga.\n\n📍 Ya tenemos la dirección que nos dejaste. Para que el repartidor llegue más rápido, respóndenos con tu ubicación: toca el 📎 (o el +), elige «Ubicación» y «Enviar tu ubicación actual».\n\n¡Gracias por tu compra! 💕",
+            'examples' => ['María', 'WEB-12']],
+        'location_reminder' => ['name' => 'recordatorio_ubicacion', 'when' => 'Pagó por adelantado, lo recibe en su casa y 2 horas después de la confirmación todavía no mandó su ubicación: una vez, con la tienda abierta.',
+            'text' => "¡Hola {{1}}! 📍 Para llevarte tu pedido {{2}} sin demoras, ¿nos ayudas con tu ubicación? Respóndenos por aquí: toca el 📎 (o el +), elige «Ubicación» y «Enviar tu ubicación actual».\n\n¡Gracias! 💕",
             'examples' => ['María', 'WEB-12']],
         'confirm_courier' => ['name' => 'pago_confirmado_encomienda', 'when' => 'Su comprobante quedó bien y es una encomienda: entre 5 y 15 minutos después, con la tienda abierta.',
             'text' => "¡Hola {{1}}! ✅ Ya confirmamos tu pago del pedido {{2}}. Estamos preparando tu envío por {{3}} y te mandaremos por aquí la foto de tu guía cuando salga.\n\n¡Gracias por tu compra! 💕",
@@ -59,6 +65,9 @@ final class StorefrontRules
             'text' => "¡Hola {{1}}! 📦 Recibimos tu pedido {{2}} para enviarlo por {{3}}.\n\nRespóndenos este mensaje y una asesora te ayuda a hacer el pago móvil y a confirmar tu envío. ¡Gracias por tu confianza! 💕",
             'examples' => ['María', 'WEB-12', 'MRW']],
     ];
+
+    /** `.182`: el recordatorio de la ubicación sale estas horas después de "ya confirmamos tu pago" (si todavía no la mandó). */
+    public const LOCATION_REMINDER_HOURS = 2;
 
     /** El "ya confirmamos tu pago" sale entre estos minutos después de validar el comprobante (como si lo revisara una persona). */
     public const CONFIRM_MINUTES = [5, 15];

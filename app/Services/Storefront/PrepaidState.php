@@ -12,7 +12,7 @@ use App\Models\StorefrontOrder;
  */
 final class PrepaidState
 {
-    /** @return ?array{at: string, state: string, confirm_sent_at: ?string, source: string} */
+    /** @return ?array{at: string, state: string, confirm_sent_at: ?string, source: string, location_missing?: bool} */
     public static function of(Order $order): ?array
     {
         if (!$order->prepaid_at) {
@@ -34,6 +34,6 @@ final class PrepaidState
         };
 
         return ['at' => $order->prepaid_at->toDateTimeString(), 'state' => $state, 'confirm_sent_at' => $front?->confirm_sent_at?->toDateTimeString(),
-            'source' => 'form'];
+            'source' => 'form', 'location_missing' => PrepaidMessages::locationMissing($order)]; // .182
     }
 }

@@ -1031,7 +1031,7 @@ describe('.168: lo que le escribe el sistema al que pagó por adelantado', funct
         ($this->correr)();
 
         expect($this->sent)->toBe(['pago_confirmado_domicilio'])
-            ->and(($this->texto)())->toContain('Ya confirmamos tu pago del pedido WEB-1')->toContain('respóndenos con tu ubicación')
+            ->and(($this->texto)())->toContain('Ya confirmamos tu pago del pedido WEB-1')->toContain('Ya tenemos la dirección que nos dejaste')->toContain('respóndenos con tu ubicación')
             ->and($this->front->fresh()->confirm_status)->toBe('sent');
     });
 
@@ -1054,6 +1054,59 @@ describe('.168: lo que le escribe el sistema al que pagó por adelantado', funct
             ->and(DB::table('order_activity_logs')->where('action', 'storefront_confirm_seller')->value('description'))
             ->toContain('la plantilla no existe o no está aprobada')->toContain('escríbele que ya confirmamos su pago')
             ->and(App\Services\Storefront\PrepaidState::of(Order::first())['state'])->toBe('seller');
+    });
+
+    it('.182: la ubicación que manda por WhatsApp queda sola en el pedido; si ya tenía otra, la vendedora la revisa', function () {
+        $loc = app(App\Services\Orders\WhatsappLocation::class);
+
+        expect($loc->apply(Order::first(), 10.4806, -66.9036))->toBe('set')
+            ->and(Order::first()->location)->toBe('https://www.google.com/maps?q=10.4806,-66.9036')
+            ->and(DB::table('order_activity_logs')->where('action', 'location_from_whatsapp')->value('description'))->toContain('quedó en el pedido')
+            ->and($loc->apply(Order::first(), 10.4806, -66.9036))->toBe('same')
+            ->and($loc->apply(Order::first(), 10.5, -66.8))->toBe('other')
+            ->and(Order::first()->location)->toBe('https://www.google.com/maps?q=10.4806,-66.9036')
+            ->and(DB::table('order_activity_logs')->where('action', 'location_from_whatsapp_other')->value('description'))->toContain('revísala');
+    });
+
+    it('.182: 2 horas después de confirmar, si no mandó la ubicación, un recordatorio (una vez); si tampoco, "falta la ubicación"', function () {
+        $abierta = fn () => DB::table('business_days')->updateOrInsert(['shop_id' => 4, 'date' => today()->toDateString()], ['open_at' => now()]);
+        $abierta();
+        DB::table('receipt_checks')->update(['status' => 'ok']);
+        ($this->correr)();
+        $this->travel(16)->minutes();
+        $abierta();
+        ($this->correr)();
+        $this->travel(1)->hours();
+        $abierta();
+        ($this->correr)();
+        expect($this->sent)->toBe(['pago_confirmado_domicilio']); // todavía no pasan 2 horas
+
+        $this->travel(61)->minutes();
+        $abierta();
+        ($this->correr)();
+        ($this->correr)();
+        expect($this->sent)->toBe(['pago_confirmado_domicilio', 'recordatorio_ubicacion'])
+            ->and(($this->texto)())->toContain('¿nos ayudas con tu ubicación?')
+            ->and(App\Services\Storefront\PrepaidState::of(Order::first())['location_missing'])->toBeFalse();
+
+        $this->travel(121)->minutes();
+        expect(App\Services\Storefront\PrepaidState::of(Order::first())['location_missing'])->toBeTrue();
+        app(App\Services\Orders\WhatsappLocation::class)->apply(Order::first(), 10.48, -66.9);
+        expect(App\Services\Storefront\PrepaidState::of(Order::first())['location_missing'])->toBeFalse();
+    });
+
+    it('.182: si ya mandó su ubicación, no hay recordatorio', function () {
+        ($this->abrir)();
+        DB::table('receipt_checks')->update(['status' => 'ok']);
+        ($this->correr)();
+        $this->travel(16)->minutes();
+        ($this->correr)();
+        Order::query()->update(['location' => 'https://www.google.com/maps?q=10.48,-66.9']);
+        $this->travel(3)->hours();
+        DB::table('business_days')->updateOrInsert(['shop_id' => 4, 'date' => today()->toDateString()], ['open_at' => now()]);
+        ($this->correr)();
+
+        expect($this->sent)->toBe(['pago_confirmado_domicilio']);
     });
 
     it('validado con la tienda cerrada: espera a que abra (y ahí 5 a 15 minutos)', function () {
