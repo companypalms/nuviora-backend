@@ -33,13 +33,32 @@ final class StorefrontRules
 
     public const WHATSAPP_COURIER = '*Es importante enviar este mensaje* ¡Hola! Soy {first_name} y he realizado el pedido {order_id} para retirar en {courier}. Ya lo pagué por pago móvil y envié el comprobante. Muchas gracias!';
 
-    /** `.168`: lo que le escribe el sistema al cliente que pagó por adelantado (como si lo escribiera una persona). */
-    public const CONFIRM_MESSAGE = '¡Hola {first_name}! ✅ Ya confirmamos tu pago del pedido {order_id}. Estamos preparando tu envío y te avisaremos por aquí cuando salga. ¡Gracias por tu compra! 💕';
-
-    public const CONFIRM_COURIER = '¡Hola {first_name}! ✅ Ya confirmamos tu pago del pedido {order_id}. Estamos preparando tu envío por {courier} y te mandaremos por aquí el número de guía cuando salga. ¡Gracias por tu compra! 💕';
-
-    /** Dueño (21/11): fuera del horario, "debe decir que en nuestro horario laboral una asesora validará el pago y procederá a realizar el envío". */
-    public const ACK_MESSAGE = '¡Hola {first_name}! 🙌 Recibimos tu pedido {order_id} y tu comprobante de pago. Nuestro horario de atención es {horario}. {cuando}, una asesora validará tu pago y procederá con tu envío. Te escribiremos por aquí. ¡Gracias por tu confianza! 💕';
+    /**
+     * `.168`: lo que le escribe el sistema al cliente de los casos nuevos, como si lo escribiera una persona. `.181` (dueño,
+     * 26/11: "necesito que todos los mensajes para los casos nuevos que estamos agregando sean plantillas aprobadas por
+     * meta"; "muchas personas no envían ese mensaje"): sale siempre con su plantilla de Meta (Utilidad, Español), nos haya
+     * escrito o no. El texto es el mismo que el dueño crea en Meta: con él se guarda en el chat lo que le llegó.
+     * - ack: pagó con la tienda cerrada (dueño, 21/11: "en nuestro horario laboral una asesora validará el pago y procederá a
+     *   realizar el envío");
+     * - confirm_home: su comprobante quedó bien y lo recibe en su casa (dueño, 26/11: "debe igualmente pedir la ubicación gps
+     *   para que el repartidor llegue más fácil");
+     * - confirm_courier: igual, en una encomienda (la guía es una foto desde la `.173`);
+     * - advisor: la encomienda que se paga con una asesora (no paga en el formulario): que nos responda para cobrarle.
+     */
+    public const TEMPLATES = [
+        'ack' => ['name' => 'pago_recibido_fuera_de_horario', 'when' => 'Pagó con la tienda cerrada: 1 minuto después de pedir.',
+            'text' => "¡Hola {{1}}! 🙌 Recibimos tu pedido {{2}} y tu comprobante de pago.\n\nNuestro horario de atención es {{3}}. Una asesora validará tu pago {{4}} y procederá con tu envío. Te escribiremos por aquí.\n\n¡Gracias por tu confianza! 💕",
+            'examples' => ['María', 'WEB-12', 'de lunes a sábado, de 8:00 a. m. a 7:00 p. m', 'mañana a partir de las 8:00 a. m.']],
+        'confirm_home' => ['name' => 'pago_confirmado_domicilio', 'when' => 'Su comprobante quedó bien y lo recibe en su casa: entre 5 y 15 minutos después, con la tienda abierta.',
+            'text' => "¡Hola {{1}}! ✅ Ya confirmamos tu pago del pedido {{2}}. Estamos preparando tu envío y te avisaremos por aquí cuando salga.\n\n📍 Para que el repartidor llegue más fácil, respóndenos con tu ubicación: toca el 📎 (o el +), elige «Ubicación» y «Enviar tu ubicación actual».\n\n¡Gracias por tu compra! 💕",
+            'examples' => ['María', 'WEB-12']],
+        'confirm_courier' => ['name' => 'pago_confirmado_encomienda', 'when' => 'Su comprobante quedó bien y es una encomienda: entre 5 y 15 minutos después, con la tienda abierta.',
+            'text' => "¡Hola {{1}}! ✅ Ya confirmamos tu pago del pedido {{2}}. Estamos preparando tu envío por {{3}} y te mandaremos por aquí la foto de tu guía cuando salga.\n\n¡Gracias por tu compra! 💕",
+            'examples' => ['María', 'WEB-12', 'MRW']],
+        'advisor' => ['name' => 'pedido_encomienda_asesora', 'when' => 'Encomienda que paga con una asesora: 1 minuto después de pedir, con la tienda abierta (si está cerrada, al abrir).',
+            'text' => "¡Hola {{1}}! 📦 Recibimos tu pedido {{2}} para enviarlo por {{3}}.\n\nRespóndenos este mensaje y una asesora te ayuda a hacer el pago móvil y a confirmar tu envío. ¡Gracias por tu confianza! 💕",
+            'examples' => ['María', 'WEB-12', 'MRW']],
+    ];
 
     /** El "ya confirmamos tu pago" sale entre estos minutos después de validar el comprobante (como si lo revisara una persona). */
     public const CONFIRM_MINUTES = [5, 15];
@@ -52,8 +71,7 @@ final class StorefrontRules
         'capi_test_code' => '', 'content_id_format' => 'shopify', 'content_region' => 'VE', 'send_initiate' => true, 'send_pageview' => false,
         'daily_max' => 500, 'prepaid_enabled' => false, 'advisor_enabled' => false, 'courier_enabled' => false, 'courier_companies' => self::COURIERS,
         'courier_origin_city_id' => null, 'courier_dropoff' => ['MRW' => '', 'Zoom' => ''], 'whatsapp_message_prepaid' => self::WHATSAPP_PREPAID,
-        'whatsapp_message_advisor' => self::WHATSAPP_ADVISOR, 'whatsapp_message_courier' => self::WHATSAPP_COURIER, 'confirm_message' => self::CONFIRM_MESSAGE,
-        'confirm_message_courier' => self::CONFIRM_COURIER, 'ack_message' => self::ACK_MESSAGE, 'courier_fee_usd' => null];
+        'whatsapp_message_advisor' => self::WHATSAPP_ADVISOR, 'whatsapp_message_courier' => self::WHATSAPP_COURIER, 'courier_fee_usd' => null];
 
     /** Los celulares de Venezuela (Movilnet, Movistar y Digitel). */
     public const MOBILE = ['412', '414', '416', '422', '424', '426'];
@@ -201,9 +219,9 @@ final class StorefrontRules
             // .174: lo que cobra MRW o Zoom por envío, en promedio (null = el dueño todavía no lo puso)
             'courier_fee_usd' => isset($raw['courier_fee_usd']) && is_numeric($raw['courier_fee_usd']) && (float) $raw['courier_fee_usd'] >= 0
                 ? round(min(100, (float) $raw['courier_fee_usd']), 2) : null,
-            ...array_combine(['whatsapp_message_prepaid', 'whatsapp_message_advisor', 'whatsapp_message_courier', 'confirm_message', 'confirm_message_courier', 'ack_message'],
+            ...array_combine(['whatsapp_message_prepaid', 'whatsapp_message_advisor', 'whatsapp_message_courier'],
                 array_map(fn ($k) => mb_substr(trim((string) ($raw[$k] ?? '')) ?: $d[$k], 0, 1000),
-                    ['whatsapp_message_prepaid', 'whatsapp_message_advisor', 'whatsapp_message_courier', 'confirm_message', 'confirm_message_courier', 'ack_message'])),
+                    ['whatsapp_message_prepaid', 'whatsapp_message_advisor', 'whatsapp_message_courier'])),
         ];
     }
 
@@ -575,6 +593,34 @@ final class StorefrontRules
 
         // .168: "…7:00 p. m.. El lunes": el punto de la abreviatura cierra la oración
         return trim(preg_replace('/(?<!\.)\.\.(?!\.)/u', '.', $text));
+    }
+
+    /**
+     * `.181`: las variables de una plantilla, en el orden de {{1}}, {{2}}… Meta no manda una plantilla con una variable vacía
+     * ni con saltos de línea en ella. El horario va sin su punto final ("…7:00 p. m" + "."), y cuándo abrimos, en minúscula
+     * ("validará tu pago mañana a partir de las 8:00 a. m.").
+     *
+     * @param array<string, string> $vars los de StorefrontOrders::vars
+     * @param array{text?: string, when?: string} $hours los de StorefrontCatalog::hours
+     * @return list<string>
+     */
+    public static function templateParams(string $key, array $vars, array $hours = []): array
+    {
+        $clean = fn ($v, string $empty) => trim((string) preg_replace('/\s+/u', ' ', (string) $v)) ?: $empty;
+        $first = [$clean($vars['first_name'] ?? '', 'cliente'), $clean($vars['order_id'] ?? '', 'tu pedido')];
+        $when = $clean($hours['when'] ?? '', 'Apenas abramos');
+
+        return match ($key) {
+            'ack' => [...$first, rtrim($clean($hours['text'] ?? '', 'en horario de oficina'), '.'), mb_strtolower(mb_substr($when, 0, 1)) . mb_substr($when, 1)],
+            'confirm_courier', 'advisor' => [...$first, $clean($vars['courier'] ?? '', 'encomienda')],
+            default => $first,
+        };
+    }
+
+    /** `.181`: el texto que le llega con su plantilla (para el chat de la vendedora). */
+    public static function templateText(string $key, array $params): string
+    {
+        return preg_replace_callback('/\{\{(\d+)\}\}/', fn ($m) => (string) ($params[(int) $m[1] - 1] ?? ''), self::TEMPLATES[$key]['text']);
     }
 
     /** "https://wa.me/584221792891?text=…". */

@@ -612,6 +612,33 @@ describe('.169: la encomienda pagada con una asesora', function () {
             ->and(urldecode($r->json('whatsapp')))->toContain('quiero hablar con una asesora');
     });
 
+    it('.181: un minuto después y con la tienda abierta, su plantilla para que nos responda y la asesora le cobre (una vez)', function () {
+        $sent = [];
+        $this->mock(App\Services\WhatsAppService::class, function ($m) use (&$sent) {
+            $m->shouldReceive('sendTemplate')->andReturnUsing(function ($to, $name) use (&$sent) {
+                $sent[] = $name;
+
+                return ['messages' => [['id' => 'wamid.' . count($sent)]]];
+            });
+        });
+        enviar164($this, ['city' => null, 'address' => null, 'payment' => 'asesora',
+            'courier' => ['company' => 'MRW', 'office_id' => 70, 'state' => 'Barinas', 'id_number' => '12345678']])->assertOk();
+        $correr = fn () => app(App\Services\Storefront\PrepaidMessages::class)->run();
+
+        $correr();
+        $this->travel(2)->minutes();
+        $correr(); // la tienda está cerrada: espera a que abra
+        expect($sent)->toBe([]);
+
+        DB::table('business_days')->insert(['shop_id' => 4, 'date' => today()->toDateString(), 'open_at' => now()]);
+        $correr();
+        $correr();
+
+        expect($sent)->toBe(['pedido_encomienda_asesora'])
+            ->and(DB::table('whatsapp_messages')->value('body'))->toContain('Recibimos tu pedido WEB-1 para enviarlo por MRW')->toContain('una asesora te ayuda a hacer el pago móvil')
+            ->and(StorefrontOrder::first()->confirm_status)->toBe('advisor');
+    });
+
     it('sin la asesora prendida, la encomienda solo se paga ahora; y "al recibir" no vale en una encomienda', function () {
         expect(enviar164($this, ['city' => null, 'payment' => 'cod', 'courier' => ['company' => 'MRW', 'office_id' => 70, 'id_number' => '12345678']])
             ->assertStatus(422)->json('fields'))->toContain('pay');
@@ -959,34 +986,41 @@ describe('.168: lo que le escribe el sistema al que pagó por adelantado', funct
         enviar164($this, ['payment' => 'pago_movil', 'receipt' => RECIBO168])->assertOk();
         $this->front = StorefrontOrder::first();
         $this->sent = [];
+        $this->falla = false;
+        // .181: siempre con su plantilla de Meta, nunca texto libre
         $this->mock(App\Services\WhatsAppService::class, function ($m) {
-            $m->shouldReceive('sendMessage')->andReturnUsing(function ($to, $text) {
-                $this->sent[] = $text;
+            $m->shouldReceive('sendTemplate')->andReturnUsing(function ($to, $name, $lang, $components) {
+                $this->sent[] = $name;
+                $this->params = array_column($components[0]['parameters'], 'text');
 
-                return ['messages' => [['id' => 'wamid.' . count($this->sent)]]];
+                return $this->falla ? ['error' => ['code' => 132001, 'message' => 'Template name does not exist in the translation']]
+                    : ['messages' => [['id' => 'wamid.' . count($this->sent)]]];
             });
+            $m->shouldNotReceive('sendMessage');
         });
+        $this->texto = fn () => DB::table('whatsapp_messages')->orderByDesc('id')->value('body');
         $this->abrir = fn () => DB::table('business_days')->insert(['shop_id' => 4, 'date' => today()->toDateString(), 'open_at' => now()]);
         $this->ventana = fn () => DB::table('clients')->update(['last_whatsapp_received_at' => now()]);
         $this->correr = fn () => app(App\Services\Storefront\PrepaidMessages::class)->run();
     });
 
-    it('fuera de horario: apenas escribe, el aviso de que una asesora validará su pago en el horario (una vez)', function () {
-        ($this->ventana)();
+    it('fuera de horario: un minuto después, el aviso de que una asesora validará su pago, aunque no nos haya escrito (una vez)', function () {
+        ($this->correr)();
+        expect($this->sent)->toBe([]);
         $this->travel(2)->minutes();
         ($this->correr)();
         ($this->correr)();
 
-        expect($this->sent)->toHaveCount(1)
-            ->and($this->sent[0])->toContain('Recibimos tu pedido WEB-1 y tu comprobante de pago')
-            ->and($this->sent[0])->toContain('Nuestro horario de atención es de lunes a sábado, de 8:00 a. m. a 7:00 p. m.')
-            ->and($this->sent[0])->toContain('una asesora validará tu pago y procederá con tu envío')
-            ->and($this->sent[0])->not->toContain('IA');
+        expect($this->sent)->toBe(['pago_recibido_fuera_de_horario'])
+            ->and($this->params[0])->toBe('María')->and($this->params[1])->toBe('WEB-1')
+            ->and(DB::table('whatsapp_messages')->value('template_name'))->toBe('pago_recibido_fuera_de_horario')
+            ->and(($this->texto)())->toContain('Recibimos tu pedido WEB-1 y tu comprobante de pago')
+            ->and(($this->texto)())->toContain('Nuestro horario de atención es de lunes a sábado, de 8:00 a. m. a 7:00 p. m. Una asesora validará tu pago')
+            ->and(($this->texto)())->not->toContain('IA');
     });
 
-    it('comprobante bien y tienda abierta: "ya confirmamos tu pago" entre 5 y 15 minutos después', function () {
+    it('comprobante bien y tienda abierta: "ya confirmamos tu pago" (y su ubicación) entre 5 y 15 minutos después, aunque no nos haya escrito', function () {
         ($this->abrir)();
-        ($this->ventana)();
         DB::table('receipt_checks')->update(['status' => 'ok']);
         ($this->correr)();
         $due = $this->front->fresh()->confirm_due_at;
@@ -996,25 +1030,29 @@ describe('.168: lo que le escribe el sistema al que pagó por adelantado', funct
         $this->travel(16)->minutes();
         ($this->correr)();
 
-        expect($this->sent)->toHaveCount(1)->and($this->sent[0])->toContain('Ya confirmamos tu pago del pedido WEB-1')
+        expect($this->sent)->toBe(['pago_confirmado_domicilio'])
+            ->and(($this->texto)())->toContain('Ya confirmamos tu pago del pedido WEB-1')->toContain('respóndenos con tu ubicación')
             ->and($this->front->fresh()->confirm_status)->toBe('sent');
     });
 
-    it('sin la ventana de WhatsApp abierta, la vendedora lo confirma; con un problema en el comprobante, nada', function () {
+    it('con un problema en el comprobante, nada; si la plantilla no sale, la vendedora lo confirma (sin reintentar)', function () {
         ($this->abrir)();
         DB::table('receipt_checks')->update(['status' => 'fail']);
         ($this->correr)();
         expect($this->front->fresh()->confirm_status)->toBeNull()->and($this->front->fresh()->confirm_due_at)->toBeNull();
 
-        // administración lo aprueba a mano: ahora sí, pero no tiene la ventana abierta
+        // administración lo aprueba a mano: ahora sí, pero Meta todavía no aprobó la plantilla
         DB::table('receipt_checks')->update(['reviewed_at' => now()]);
+        $this->falla = true;
         ($this->correr)();
         $this->travel(16)->minutes();
         ($this->correr)();
+        ($this->correr)();
 
-        expect($this->sent)->toBe([])
+        expect($this->sent)->toBe(['pago_confirmado_domicilio'])
             ->and($this->front->fresh()->confirm_status)->toBe('seller')
-            ->and(DB::table('order_activity_logs')->where('action', 'storefront_confirm_seller')->value('description'))->toContain('escríbele que ya confirmamos su pago')
+            ->and(DB::table('order_activity_logs')->where('action', 'storefront_confirm_seller')->value('description'))
+            ->toContain('la plantilla no existe o no está aprobada')->toContain('escríbele que ya confirmamos su pago')
             ->and(App\Services\Storefront\PrepaidState::of(Order::first())['state'])->toBe('seller');
     });
 

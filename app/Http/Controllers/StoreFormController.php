@@ -57,8 +57,9 @@ class StoreFormController extends Controller
             'offices' => CourierOffice::groupBy('company')->selectRaw('company, COUNT(*) n, SUM(is_active) active')->get()
                 ->map(fn ($r) => ['company' => $r->company, 'total' => (int) $r->n, 'active' => (int) $r->active])->values(),
             'messages' => ['whatsapp_message_prepaid' => StorefrontRules::WHATSAPP_PREPAID, 'whatsapp_message_advisor' => StorefrontRules::WHATSAPP_ADVISOR,
-                'whatsapp_message_courier' => StorefrontRules::WHATSAPP_COURIER, 'confirm_message' => StorefrontRules::CONFIRM_MESSAGE,
-                'confirm_message_courier' => StorefrontRules::CONFIRM_COURIER, 'ack_message' => StorefrontRules::ACK_MESSAGE],
+                'whatsapp_message_courier' => StorefrontRules::WHATSAPP_COURIER],
+            // .181: lo que le escribe el sistema al cliente de los casos nuevos sale con estas plantillas de Meta
+            'templates' => array_values(StorefrontRules::TEMPLATES),
             'experiment' => $kpis->experiment($ids),
         ]);
     }
@@ -98,9 +99,6 @@ class StoreFormController extends Controller
             'whatsapp_message_prepaid' => 'sometimes|nullable|string|max:1000',
             'whatsapp_message_advisor' => 'sometimes|nullable|string|max:1000',
             'whatsapp_message_courier' => 'sometimes|nullable|string|max:1000',
-            'confirm_message' => 'sometimes|nullable|string|max:1000',
-            'confirm_message_courier' => 'sometimes|nullable|string|max:1000',
-            'ack_message' => 'sometimes|nullable|string|max:1000',
         ]);
         abort_if($data['enabled'] && empty($data['shop_id']), 422, 'Elige tu tienda antes de prender el formulario.');
         abort_if($data['enabled'] && $data['product_ids'] === [], 422, 'Elige el producto donde va el formulario.');

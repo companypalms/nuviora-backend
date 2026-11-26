@@ -205,21 +205,44 @@ describe('.168: pago anticipado, encomiendas y Purchase al entregar', function (
 
     it('nada de lo que ve o recibe el cliente nombra a una IA (dueño: "la persona debe creer que es un ser humano")', function () {
         $customer = [...array_values(StorefrontRules::TEXTS), StorefrontRules::WHATSAPP_PREPAID, StorefrontRules::WHATSAPP_ADVISOR, StorefrontRules::WHATSAPP_COURIER,
-            StorefrontRules::CONFIRM_MESSAGE, StorefrontRules::CONFIRM_COURIER, StorefrontRules::ACK_MESSAGE];
+            ...array_column(StorefrontRules::TEMPLATES, 'text')];
         foreach ($customer as $text) {
             expect(preg_match('/\b(IA|AI|inteligencia artificial|autom[aá]tic|robot|bot)\b/iu', $text))->toBe(0, $text);
         }
-        expect(StorefrontRules::ACK_MESSAGE)->toContain('una asesora validará tu pago y procederá con tu envío');
+        expect(StorefrontRules::TEMPLATES['ack']['text'])->toContain('Una asesora validará tu pago {{4}} y procederá con tu envío');
+    });
+
+    it('.181: las plantillas de los casos nuevos, con sus variables en orden y nunca vacías', function () {
+        $vars = ['first_name' => " María\n", 'order_id' => 'WEB-12', 'courier' => 'MRW'];
+        $hours = ['text' => 'de lunes a sábado, de 8:00 a. m. a 7:00 p. m.', 'when' => 'Mañana a partir de las 8:00 a. m.'];
+        $ack = StorefrontRules::templateParams('ack', $vars, $hours);
+
+        expect($ack)->toBe(['María', 'WEB-12', 'de lunes a sábado, de 8:00 a. m. a 7:00 p. m', 'mañana a partir de las 8:00 a. m.'])
+            ->and(StorefrontRules::templateText('ack', $ack))->toContain("es de lunes a sábado, de 8:00 a. m. a 7:00 p. m. Una asesora validará tu pago mañana a partir de las 8:00 a. m. y procederá")
+            ->and(StorefrontRules::templateText('confirm_home', StorefrontRules::templateParams('confirm_home', $vars)))
+            ->toContain('¡Hola María! ✅ Ya confirmamos tu pago del pedido WEB-12.')->toContain('respóndenos con tu ubicación')
+            ->and(StorefrontRules::templateText('confirm_courier', StorefrontRules::templateParams('confirm_courier', $vars)))->toContain('tu envío por MRW y te mandaremos por aquí la foto de tu guía')
+            ->and(StorefrontRules::templateParams('advisor', ['first_name' => '', 'order_id' => 'WEB-3']))->toBe(['cliente', 'WEB-3', 'encomienda']);
+
+        // lo que pide Meta: el nombre en minúsculas, una variable por cada {{n}}, sin empezar ni terminar con una variable
+        foreach (StorefrontRules::TEMPLATES as $key => $t) {
+            preg_match_all('/\{\{(\d+)\}\}/', $t['text'], $m);
+            expect($t['name'])->toMatch('/^[a-z0-9_]+$/')
+                ->and(array_map('intval', $m[1]))->toBe(range(1, count($t['examples'])), $key)
+                ->and(count(StorefrontRules::templateParams($key, $vars, $hours)))->toBe(count($t['examples']), $key)
+                ->and($t['text'])->not->toMatch('/^\{\{|\}\}$/u');
+        }
     });
 
     it('los ajustes nuevos: sin Tealca, las encomiendas con su ciudad de origen y los mensajes de siempre si quedan vacíos', function () {
         $s = StorefrontRules::settings(['courier_companies' => ['MRW', 'Tealca'], 'courier_origin_city_id' => '2', 'courier_dropoff' => ['MRW' => ' https://maps.app/x ', 'Tealca' => 'y'],
-            'confirm_message' => '  ', 'prepaid_enabled' => 1]);
+            'whatsapp_message_prepaid' => '  ', 'confirm_message' => 'texto viejo', 'prepaid_enabled' => 1]);
 
         expect($s['courier_companies'])->toBe(['MRW'])
             ->and($s['courier_origin_city_id'])->toBe(2)
             ->and($s['courier_dropoff'])->toBe(['MRW' => 'https://maps.app/x', 'Zoom' => ''])
-            ->and($s['confirm_message'])->toBe(StorefrontRules::CONFIRM_MESSAGE)
+            ->and($s['whatsapp_message_prepaid'])->toBe(StorefrontRules::WHATSAPP_PREPAID)
+            ->and(array_key_exists('confirm_message', $s))->toBeFalse() // .181: lo que le escribe el sistema va con su plantilla de Meta
             ->and($s['prepaid_enabled'])->toBeTrue()
             ->and(StorefrontRules::settings([])['courier_companies'])->toBe(['MRW', 'Zoom']);
     });
