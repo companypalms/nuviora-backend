@@ -761,6 +761,8 @@ Route::middleware(['auth:sanctum', 'agency.gate', 'limited.roles'])->group(funct
         Route::put('/team/{user}/schedule', [\App\Http\Controllers\EditorTeamController::class, 'schedule'])->whereNumber('user');
         Route::put('/team/{user}/day-off', [\App\Http\Controllers\EditorTeamController::class, 'dayOff'])->whereNumber('user');
         Route::post('/advance', [\App\Http\Controllers\EditorTeamController::class, 'advance'])->middleware('throttle:10,1');
+        // .177: toda la cola de productos nuevos del dueño, con su ficha (solo el líder)
+        Route::get('/products', [\App\Http\Controllers\EditorQueueController::class, 'products']);
         // .96: la ayuda "¿Dudas?" (la IA solo sabe el libro de ayuda de su rol)
         Route::get('/help', [\App\Http\Controllers\EditorHelpController::class, 'index']);
         Route::post('/help', [\App\Http\Controllers\EditorHelpController::class, 'store'])->middleware('throttle:10,1');

@@ -286,3 +286,50 @@ describe('La misión semanal usa la cola', function () {
         expect($m->refresh()->product_id)->toBeNull();
     });
 });
+
+// .177 (dueño, 2026-11-26): "necesito que a él le aparezcan todos los productos que vamos a montar… le debe aparecer por
+// completo la ficha, la foto del producto, el nombre del producto, etcétera, para que él pueda decidir si lo van adelantando".
+describe('El editor líder ve toda la cola', function () {
+    beforeEach(function () {
+        Schema::table('creative_batches', fn ($t) => $t->string('source', 12)->nullable());
+        Schema::create('creative_batch_deliveries', function ($t) {
+            $t->id();
+            $t->unsignedBigInteger('creative_batch_id');
+            $t->unsignedSmallInteger('version');
+            $t->unsignedBigInteger('editor_id')->nullable();
+            $t->string('review', 10)->default('pending');
+            $t->timestamps();
+        });
+        (require database_path('migrations/2026_11_23_100000_editor_schedules.php'))->up();
+        $this->leader = User::forceCreate(['names' => 'Leo', 'email' => 'l@test', 'password' => 'x', 'role_id' => Role::forceCreate(['description' => 'Editor líder'])->id]);
+        $this->editor = User::forceCreate(['names' => 'Ana', 'email' => 'a@test', 'password' => 'x', 'role_id' => Role::forceCreate(['description' => 'Editor de video'])->id]);
+    });
+
+    it('todos, en orden: la ficha sin precios, los buyer personas, los ángulos, las fotos, la estrategia y qué le falta', function () {
+        productoEnCola154(20, 'Termafit', 'queued', 1);
+        productoEnCola154(21, 'Glowmax', 'queued', 2, angles: false);
+        DB::table('product_profiles')->where('product_id', 20)->update(['what_it_is' => 'Una faja de compresión. Cuesta $25.']);
+        DB::table('stored_files')->insert([
+            ['kind' => 'photo', 'product_id' => 20, 'name' => 'foto.jpg', 'status' => 'ready'],
+            ['kind' => 'strategy', 'product_id' => 20, 'name' => 'estrategia.pdf', 'status' => 'ready'],
+            ['kind' => 'photo', 'product_id' => 21, 'name' => 'subiendo.jpg', 'status' => 'pending'],
+        ]);
+        Sanctum::actingAs($this->leader);
+        $r = $this->getJson('/api/editor/products')->assertOk();
+        expect(array_column($r->json('queue'), 'product'))->toBe(['Termafit', 'Glowmax'])
+            ->and($r->json('queue.0'))->toMatchArray(['position' => 1, 'ready' => true, 'waiting_for' => null, 'next' => true])
+            ->and($r->json('queue.0.info.what_it_is'))->toBe('Una faja de compresión.')
+            ->and($r->json('queue.0.personas.0.name'))->toBe('Ana')
+            ->and($r->json('queue.0.angles.0'))->toMatchArray(['code' => 'POSP', 'name' => 'Posparto'])
+            ->and(array_column($r->json('queue.0.photos'), 'name'))->toBe(['foto.jpg'])
+            ->and(array_column($r->json('queue.0.strategy'), 'name'))->toBe(['estrategia.pdf'])
+            ->and($r->json('queue.1'))->toMatchArray(['position' => 2, 'ready' => false, 'next' => false, 'photos' => [],
+                'waiting_for' => 'Todavía no se puede adelantar: el dueño tiene que poner sus ángulos de venta.'])
+            ->and(array_column($r->json('team'), 'name'))->toBe(['Leo', 'Ana']);
+    });
+
+    it('solo el líder: el editor de video no la ve', function () {
+        Sanctum::actingAs($this->editor);
+        $this->getJson('/api/editor/products')->assertForbidden();
+    });
+});

@@ -10,6 +10,7 @@ use App\Models\Setting;
 use App\Models\StoredFile;
 use App\Models\User;
 use App\Notifications\MetaWorkNotification;
+use App\Services\Meta\Decisions\DecisionSettings;
 use App\Services\Meta\Queue\DemandRules;
 use App\Services\Meta\Queue\LateBatches;
 use App\Services\Meta\Queue\QueueProposer;
@@ -44,7 +45,7 @@ class ProductQueue
     /**
      * Los de la cola, en orden, con lo que le falta a cada uno para poder salir.
      *
-     * @return list<array{product_id: int, product: string, position: int, missing: list<string>, linked: bool, angles: int}>
+     * @return list<array{product_id: int, product: string, position: int, missing: list<string>, leader_note: ?string, linked: bool, angles: int}>
      */
     public static function rows(): array
     {
@@ -59,9 +60,12 @@ class ProductQueue
         $out = [];
         foreach ($ids as $i => $pid) {
             $p = $products->get($pid);
+            $ficha = ProductProfileRules::missing($fichas[$pid]['profile'], $fichas[$pid]['personas']);
+            $mode = (string) ($modes[$pid] ?? 'normal');
             $out[] = ['product_id' => $pid, 'product' => (string) (($p->showable_name ?? null) ?: ($p->title ?? "Producto {$pid}")), 'position' => $i + 1,
-                'missing' => ProductQueueRules::notReady(ProductProfileRules::missing($fichas[$pid]['profile'], $fichas[$pid]['personas']),
-                    $angles[$pid] !== [], (string) ($modes[$pid] ?? 'normal')),
+                'missing' => ProductQueueRules::notReady($ficha, $angles[$pid] !== [], $mode),
+                // .177: lo mismo, dicho para el editor líder
+                'leader_note' => ProductQueueRules::forLeader($ficha, $angles[$pid] !== [], $mode),
                 'linked' => (int) ($p->product_id ?? 0) > 0, 'angles' => count($angles[$pid])];
         }
 
@@ -164,6 +168,40 @@ class ProductQueue
             'missing' => array_values($check['missing'] ?? []), 'checked_at' => $check['at'] ?? null,
             'next' => ProductQueueRules::pick($rows, $mission !== null ? (int) $mission : null),
             'mission_product_id' => $mission !== null ? (int) $mission : null,
+        ];
+    }
+
+    /**
+     * `.177` (dueño, 2026-11-26: "necesito que a él le aparezcan todos los productos que vamos a montar… le debe aparecer por
+     * completo la ficha, la foto del producto, el nombre del producto, etcétera, para que él pueda decidir si lo van
+     * adelantando o no"): toda la cola para el editor líder, en orden. De cada uno, lo que ve el editor en un encargo (la
+     * ficha sin precios, todos los buyer personas, los ángulos y las fotos) y los documentos de estrategia (el dueño eligió
+     * que también los vea). Se adelanta solo el que no le falta nada (QueueProposer::advance); del que le falta algo se dice
+     * qué tiene que completar el dueño. El orden de la cola lo pone el dueño.
+     */
+    public static function forLeader(): array
+    {
+        $rows = self::rows();
+        $ids = array_column($rows, 'product_id');
+        $fichas = ProductProfiles::many($ids);
+        $angles = TestingPhase::anglesMany($ids);
+        $photos = StoredFile::filesOf($ids, 'photo');
+        $docs = StoredFile::filesOf($ids, 'strategy');
+        $mission = NewProductMission::where('status', 'open')->value('product_id');
+        $next = ProductQueueRules::pick($rows, $mission !== null ? (int) $mission : null);
+        // los mismos que pide "Adelantar" (EditorTeam::advance)
+        $batches = max(1, (int) (new DecisionSettings())->get()['start_batches']);
+
+        return [
+            'queue' => array_map(fn ($r) => [
+                'product_id' => $r['product_id'], 'product' => $r['product'], 'position' => $r['position'], 'ready' => $r['missing'] === [],
+                'waiting_for' => $r['leader_note'], 'next' => $r['product_id'] === $next, 'batches' => $batches,
+                'info' => ProductProfileRules::forEditor($fichas[$r['product_id']]['profile'] ?? null),
+                'personas' => ProductProfileRules::personasForEditor($fichas[$r['product_id']]['personas'] ?? []),
+                'angles' => ProductProfileRules::anglesForEditor($angles[$r['product_id']] ?? []),
+                'photos' => $photos[$r['product_id']] ?? [], 'strategy' => $docs[$r['product_id']] ?? [],
+            ], $rows),
+            'building' => self::workshop()['building'],
         ];
     }
 

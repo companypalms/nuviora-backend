@@ -513,8 +513,7 @@ class EditorWork
         return [
             'product_info' => $rules::forEditor($profiles[$b->product_id]['profile'] ?? null),
             'persona' => $rules::personaForEditor($b->persona?->only(array_keys($rules::PERSONA_FIELDS))),
-            'personas' => array_values(array_filter(array_map(fn ($p) => $rules::personaForEditor(array_intersect_key($p, $rules::PERSONA_FIELDS)),
-                $profiles[$b->product_id]['personas'] ?? []))),
+            'personas' => $rules::personasForEditor($profiles[$b->product_id]['personas'] ?? []),
             'angles' => $rules::anglesForEditor($angles[$b->product_id] ?? []),
             'photos' => $photos[$b->product_id] ?? [],
         ];

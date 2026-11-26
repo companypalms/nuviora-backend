@@ -100,3 +100,17 @@ describe('Por el asistente', function () {
         expect($p->warnings)->toContain('En la cola, pero sin ángulos: no sale de la cola hasta que la ficha tenga sus ángulos.');
     });
 });
+
+// .177 (dueño, 2026-11-26): "necesito que a él le aparezcan todos los productos que vamos a montar… para que él pueda decidir
+// si lo van adelantando o no lo van adelantando".
+describe('Lo que le falta, dicho para el líder', function () {
+    it('sin nada que completar, se puede adelantar', function () {
+        expect(ProductQueueRules::forLeader([], true, 'normal'))->toBeNull();
+    });
+
+    it('dice qué tiene que completar el dueño', function () {
+        expect(ProductQueueRules::forLeader(['Cómo funciona', 'al menos un buyer persona'], false, 'paused'))
+            ->toBe('Todavía no se puede adelantar: el dueño tiene que completar su ficha (cómo funciona y al menos un buyer persona), poner sus ángulos de venta y activarlo (está en pausa).')
+            ->and(ProductQueueRules::forLeader([], false, 'normal'))->toBe('Todavía no se puede adelantar: el dueño tiene que poner sus ángulos de venta.');
+    });
+});

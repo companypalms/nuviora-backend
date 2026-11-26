@@ -89,6 +89,29 @@ final class ProductQueueRules
     }
 
     /**
+     * `.177`: lo mismo que notReady, dicho para el editor líder (lo completa el dueño). null: se puede adelantar.
+     *
+     * @param list<string> $ficha lo que le falta a la ficha (ProductProfileRules::missing)
+     */
+    public static function forLeader(array $ficha, bool $angles, string $mode): ?string
+    {
+        $out = [];
+        if ($ficha !== []) {
+            $out[] = 'completar su ficha (' . TestingRules::join(array_map('mb_strtolower', $ficha)) . ')';
+        }
+        if (!$angles) {
+            $out[] = 'poner sus ángulos de venta';
+        }
+        if ($mode !== 'normal') {
+            $out[] = 'activarlo (' . match ($mode) {
+                'paused' => 'está en pausa', 'liquidation' => 'está en liquidación', 'abandoned' => 'está abandonado', default => 'está parado',
+            } . ')';
+        }
+
+        return $out === [] ? null : 'Todavía no se puede adelantar: el dueño tiene que ' . TestingRules::join($out) . '.';
+    }
+
+    /**
      * Sube o baja un producto un lugar en la cola.
      *
      * @param list<int> $ids en orden

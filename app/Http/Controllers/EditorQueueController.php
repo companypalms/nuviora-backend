@@ -63,6 +63,8 @@ class EditorQueueController extends Controller
             'me_today' => $mine ? array_intersect_key($mine, array_flip(['state', 'left', 'start', 'end', 'done', 'goal', 'open', 'free', 'schedule_text'])) : null,
             'team' => $leader ? self::withSchedules($team, $user) : [],
             'advance' => $leader ? EditorTeam::advance() : [],
+            // .177: cuántos productos nuevos hay en la cola (los ve todos en "Productos nuevos")
+            'queued' => $leader ? count(\App\Services\Meta\Products\ProductQueue::ids()) : 0,
             // .88: para el líder, lo que hace falta y no se pudo pedir, y si alcanza el equipo
             'unfilled' => $leader ? array_values(array_filter($demand['unfilled'], fn ($u) => !in_array((int) $u['product_id'], $stopped, true))) : [],
             // .99: para el líder, los encargos en espera porque su producto está parado (para que sepa dónde están)
@@ -79,6 +81,17 @@ class EditorQueueController extends Controller
             'game' => \App\Services\Meta\Queue\EditorGame::for($who, now(config('app.timezone'))->toDateString(),
                 (int) (new \App\Services\Meta\Decisions\DecisionSettings())->get()['corrections_days']),
         ]);
+    }
+
+    /**
+     * `.177`: "Productos nuevos" del líder: toda la cola del dueño con la ficha, las fotos y la estrategia de cada uno, lo
+     * que el equipo está haciendo del testeo y el equipo hoy (para elegir a quién dárselo al adelantar).
+     */
+    public function products(Request $request)
+    {
+        abort_unless(EditorWork::who($request->user())['role'] === EditorRules::LEADER, 403, 'Los productos nuevos los ve el editor líder.');
+
+        return response()->json(\App\Services\Meta\Products\ProductQueue::forLeader() + ['team' => EditorTeam::today()]);
     }
 
     /** El número del menú: lo que tiene pendiente (se pide cada pocos minutos). */

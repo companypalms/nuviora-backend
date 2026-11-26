@@ -40,7 +40,13 @@ class StoredFile extends Model
     /** @return array<int, list<array>> las fotos de cada producto (listas), por producto */
     public static function photosOf(array $productIds): array
     {
-        return self::whereIn('product_id', array_map('intval', $productIds) ?: [0])->where('kind', 'photo')->where('status', 'ready')->orderBy('id')->get()
+        return self::filesOf($productIds, 'photo');
+    }
+
+    /** @return array<int, list<array>> los archivos listos de un tipo (photo, strategy) de cada producto, por producto */
+    public static function filesOf(array $productIds, string $kind): array
+    {
+        return self::whereIn('product_id', array_map('intval', $productIds) ?: [0])->where('kind', $kind)->where('status', 'ready')->orderBy('id')->get()
             ->groupBy('product_id')->map(fn ($files) => $files->map(fn (self $f) => $f->payload())->values()->all())->all();
     }
 

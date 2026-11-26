@@ -214,6 +214,17 @@ final class ProductProfileRules
     }
 
     /**
+     * Todos los buyer personas de un producto como los ve el editor (sin precios), en su orden.
+     *
+     * @param list<array> $personas ProductProfiles::many
+     * @return list<array>
+     */
+    public static function personasForEditor(array $personas): array
+    {
+        return array_values(array_filter(array_map(fn ($p) => self::personaForEditor(array_intersect_key($p, self::PERSONA_FIELDS)), $personas)));
+    }
+
+    /**
      * Lo que pide el asistente sobre la ficha guardada: los campos que vienen (no null) reemplazan a los de antes; cada
      * buyer persona se busca por su nombre (si ya existe, se cambian los campos que vienen; si no, se agrega) y los de
      * $remove se quitan.

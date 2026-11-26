@@ -17,8 +17,8 @@
 - El horario de tus editores de video lo pones tú; el tuyo lo pone el dueño.
 
 ## El menú del líder
-- Pantallas: "Encargos del equipo" (su pantalla principal, al entrar cae ahí), "Banca", "Mis encargos", "Referencias"
-  y "Mis resultados".
+- Pantallas: "Encargos del equipo" (su pantalla principal, al entrar cae ahí), "Productos nuevos", "Banca", "Mis
+  encargos", "Referencias" y "Mis resultados".
 - El número de encargos del menú suma lo que tiene por hacer, por asignar, por revisar y cada editor libre (también tú).
 - La campanita le avisa una vez por día lo urgente que está atrasado (por ejemplo "Urgente: B0108 era para el lunes y se
   necesita hoy").
@@ -62,7 +62,8 @@
   y al final "Para adelantar".
 - "Para adelantar": lo que va a hacer falta después y el sistema todavía no pidió (él pide un batch a la vez por
   producto). De cada producto que vende: cuántos batches más va a necesitar en las próximas 2 semanas y para cuándo hace
-  falta el próximo. Y los productos nuevos que el dueño tiene en su cola, con sus batches del testeo.
+  falta el próximo. Los productos nuevos de la cola del dueño están en su pantalla, "Productos nuevos": debajo dice
+  cuántos hay, con "Ver".
 - "Adelantar": eliges quién lo hace (un editor, tú o "Sin asignar todavía") y el sistema escribe el encargo como los de
   cada mañana (puede tardar hasta un minuto). Lo adelantado se entrega como siempre y espera en la banca su turno. Un
   producto nuevo sale de la cola del dueño: el primero de sus batches queda para quien elegiste y los demás en "Sin
@@ -114,6 +115,22 @@
 - "Ver los probados y descartados de los últimos 14 días": lo que ya terminó.
 - Mientras un producto tiene un batch esperando en la banca, el sistema no pide otro de ese producto hasta que se lance.
   Por eso conviene cargar los batches ya hechos: así no se piden encargos de más.
+
+## "Productos nuevos": todo lo que el dueño va a montar
+- En el menú, "Productos nuevos". Están todos los productos de la cola del dueño, en su orden. El orden lo pone el dueño.
+- Arriba, el marcador: cuántos hay en la cola, cuántos se pueden adelantar ya y qué testeo está haciendo el equipo ahora.
+- De cada uno: su lugar en la cola, su foto, su nombre y su ficha (qué es, para qué sirve y lo que nunca se dice). Con
+  "Ver la ficha completa": cómo funciona, la información clave, todos sus buyer personas, sus ángulos (de qué trata cada
+  uno) y sus fotos (toca una para bajarla). También los documentos de estrategia del dueño, para abrirlos o bajarlos.
+- "Sale solo primero": es el que el sistema te pasa solo cuando el equipo tenga chance (uno a la vez: cuando no hay nada
+  urgente ni atrasado y el equipo terminó el testeo del anterior).
+- "Adelantar": si a alguien (o a ti) le sobra tiempo, adelanta el que quieras. Eliges quién lo hace y sale ya de la cola:
+  el sistema escribe sus batches del testeo (puede tardar hasta un minuto); el primero queda para quien elegiste y los
+  demás en "Sin asignar". No depende del stock.
+- Si a un producto le falta algo, dice qué tiene que completar el dueño (por ejemplo "Todavía no se puede adelantar: el
+  dueño tiene que poner sus ángulos de venta") y no tiene botón. Si lo quieres adelantar, avísale al dueño.
+- Cada producto nuevo que adelantas suma sus batches del testeo al trabajo del equipo. Lo de los productos que venden va
+  primero: adelanta cuando sobre tiempo.
 
 ## Asignar un encargo
 1. Toca "Asignar" (o "Asignar editor"). Arriba de la ventana dice qué hay que hacer (por ejemplo "3 variaciones de
@@ -177,7 +194,8 @@ computadora.
 
 ## Tu día, en orden
 1. Abre "Encargos del equipo": empieza por lo de arriba.
-2. Si alguien está libre (o tú), dale otro encargo: lo sin asignar o algo de "Para adelantar".
+2. Si alguien está libre (o tú), dale otro encargo: lo sin asignar, algo de "Para adelantar" o un producto de
+   "Productos nuevos".
 3. Revisa lo que está "Por revisar", primero lo atrasado.
 4. Asigna lo que está "Sin asignar".
 5. Haz lo tuyo en "Mis encargos": tu meta también es de 2 por día.
@@ -191,6 +209,8 @@ computadora.
 - Un editor entregó algo que no es lo que se pidió: "Cambiar algo" → "No es lo que se pidió" y una nota corta.
 - El sistema pide un encargo que no tiene sentido: avísale al dueño; él lo puede descartar.
 - ¿Dónde está la banca? En el menú, "Banca". Ahí se cargan los batches ya hechos.
+- ¿Por qué no veo un producto nuevo? En "Productos nuevos" están todos los de la cola del dueño. Si no está ahí, el dueño
+  todavía no lo puso en la cola, o ya salió: sus encargos están en "Sin asignar" o "En curso".
 - Desaparecieron los encargos de un producto: el dueño lo pausó (por ejemplo, sin stock). Mira la línea "En espera" en
   "Encargos del equipo". Vuelven solos cuando él lo reactive.
 - ¿Tengo un tope de preguntas en "¿Dudas?"? No: el líder puede preguntar todo lo que necesite.
