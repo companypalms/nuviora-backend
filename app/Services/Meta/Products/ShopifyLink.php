@@ -2,8 +2,10 @@
 
 namespace App\Services\Meta\Products;
 
+use App\Models\AssistantAction;
 use App\Models\Shop;
 use App\Services\ShopifyService;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * `.89` (dueño, 2026-11-03: "ese producto nuevo de Termafit se debe enlazar de alguna manera con el producto creado en
@@ -47,7 +49,7 @@ final class ShopifyLink
             return ['id' => null, 'title' => null, 'price' => null,
                 'problem' => 'Ese link no es de un producto de Shopify: cópialo desde el panel de Shopify (Productos › el producto) o desde la página del producto en tu tienda.'];
         }
-        $product = ($find ?? self::finder())($p['id'], $p['handle']);
+        $product = ($find ?? self::remembered(self::finder()))($p['id'], $p['handle']);
         if ($product === null && $p['id'] === null) {
             return ['id' => null, 'title' => null, 'price' => null,
                 'problem' => 'No encontré ese producto en tu tienda Shopify. Pásame el link del panel de Shopify (Productos › el producto): de ahí sale su número.'];
@@ -56,6 +58,31 @@ final class ShopifyLink
 
         return ['id' => (int) ($product['id'] ?? $p['id']), 'title' => isset($product['title']) ? trim((string) $product['title']) : null,
             'price' => is_numeric($price) ? (float) $price : null, 'problem' => null];
+    }
+
+    /**
+     * `.178` (2026-11-26: la tarjeta de Sonrisa V34 se anuló con "Algo cambió" 38 segundos después de proponerla): al confirmar,
+     * el asistente vuelve a armar la tarjeta y la compara con la que vio el dueño; si Shopify contesta distinto (el precio o
+     * el nombre que se estaba editando, otra de sus tiendas), se anulaba. Lo que respondió Shopify se recuerda lo que dura
+     * una tarjeta (2 horas): al confirmar se usa lo mismo. Lo que no se encontró no se recuerda (se vuelve a preguntar).
+     */
+    public static function remembered(callable $find): callable
+    {
+        return function (?int $id, ?string $handle) use ($find): ?array {
+            $key = 'shopify-link:' . ($id !== null ? "id:{$id}" : "handle:{$handle}");
+            $hit = Cache::get($key);
+            if (is_array($hit)) {
+                return $hit;
+            }
+            $product = $find($id, $handle);
+            if ($product !== null) {
+                // solo lo que se usa: el número, el nombre y el precio
+                $product = ['id' => $product['id'] ?? $id, 'title' => $product['title'] ?? null, 'variants' => [['price' => $product['variants'][0]['price'] ?? null]]];
+                Cache::put($key, $product, now()->addHours(AssistantAction::EXPIRES_HOURS));
+            }
+
+            return $product;
+        };
     }
 
     /** Busca en cada tienda (y, si no hay ninguna cargada, con la del .env del servidor). */
