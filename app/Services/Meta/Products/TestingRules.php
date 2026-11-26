@@ -143,6 +143,16 @@ final class TestingRules
             . ' en Meta: el testeo pide hasta 3 batches juntos (los que ya están en la banca cuentan). Si solo hacen falta creativos nuevos, déjalo en «Iterar lo que funciona».' : null;
     }
 
+    /**
+     * `.179`: uno en testeo con sus batches del testeo ya pedidos no vuelve a la cola.
+     *
+     * @param list<string> $codes los encargos de su ronda abierta (B0158…)
+     */
+    public static function stillTesting(string $name, array $codes): string
+    {
+        return "{$name} ya está en testeo: sus batches del testeo ya le llegaron al editor líder (" . self::join($codes) . '). No vuelve a la cola.';
+    }
+
     /** "GINE, ABDO y FAJA". */
     public static function join(array $parts): string
     {

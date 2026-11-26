@@ -333,3 +333,33 @@ describe('El editor líder ve toda la cola', function () {
         $this->getJson('/api/editor/products')->assertForbidden();
     });
 });
+
+// .179 (2026-11-26): Sonrisa V34 volvió a la cola con sus 3 batches del testeo ya pedidos; al salir otra vez, su ronda pasó
+// a 2 sin batches y el sistema dejó de ver su testeo.
+describe('La ronda abierta no se pierde', function () {
+    it('uno en testeo con sus batches no vuelve a la cola, y lo dice', function () {
+        productoTaller154(30, 'Releev', ['approved', 'production']);
+        expect(fn () => TestingPhase::setPhase(30, 'queued'))
+            ->toThrow(Illuminate\Validation\ValidationException::class, 'Releev ya está en testeo: sus batches del testeo ya le llegaron al editor líder (B0300 y B0301). No vuelve a la cola.')
+            ->and(fase154(30))->toMatchArray(['phase' => 'testing', 'testing_round' => 1, 'queue_position' => null]);
+    });
+
+    it('si uno sale de la cola con su ronda abierta, sale con la misma ronda: sus batches siguen siendo su testeo', function () {
+        productoEnCola154(20, 'Sonrisa V34', 'queued', 1);
+        DB::table('product_profiles')->where('product_id', 20)->update(['testing_round' => 1]);
+        foreach (['POSP', 'POSP'] as $i => $angle) {
+            DB::table('creative_batches')->insert(['product_id' => 20, 'number' => 158 + $i, 'status' => 'approved', 'angle_code' => $angle, 'testing_round' => 1,
+                'due_date' => now()->addDays(2)->toDateString()]);
+        }
+        expect($this->queue->release([], $this->today, 1))->toBe(20)
+            ->and(fase154(20))->toMatchArray(['phase' => 'testing', 'testing_round' => 1])
+            ->and(ProductQueue::workshop()['building'])->toBe([['product_id' => 20, 'product' => 'Sonrisa V34', 'delivered' => 0, 'of' => 2]]);
+    });
+
+    it('con la ronda cerrada, volver al testeo abre la siguiente', function () {
+        productoTaller154(30, 'Releev', ['tested', 'tested']);
+        DB::table('product_profiles')->where('product_id', 30)->update(['phase' => 'iterate', 'testing_results' => json_encode([['round' => 1, 'won' => [], 'lost' => ['POSP'], 'tie' => []]])]);
+        TestingPhase::setPhase(30, 'testing');
+        expect(fase154(30))->toMatchArray(['phase' => 'testing', 'testing_round' => 2]);
+    });
+});

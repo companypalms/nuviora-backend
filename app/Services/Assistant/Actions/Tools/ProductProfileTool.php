@@ -163,7 +163,7 @@ class ProductProfileTool extends ChangeTool
         return self::proposal($productId, $name, $now['profile'], $now['personas'], $args, $angles,
             (string) (ProductProfile::where('product_id', $productId)->value('phase') ?? 'iterate'), TestingPhase::testedAngles($productId),
             ['create' => false, 'shopify' => $shopify && (int) $product->product_id !== $shopify['id'] ? $shopify : null,
-                'campaigns' => TestingPhase::liveCampaigns($productId)], $files);
+                'campaigns' => TestingPhase::liveCampaigns($productId), 'open' => TestingPhase::openRound($productId)], $files);
     }
 
     /** `.154`: un producto nuevo entra a la cola de productos por montar, salvo que el dueño pida empezarlo ya ("testeo"). */
@@ -273,6 +273,11 @@ class ProductProfileTool extends ChangeTool
             return ProductProfileRules::normalizeAngle($x);
         }, $angleArgs);
         $phase = self::PHASE_ARGS[$args['fase'] ?? ''] ?? $beforePhase;
+        // .179: uno en testeo con sus batches ya pedidos no vuelve a la cola (al salir otra vez, su ronda subía sin batches)
+        $stays = $phase === 'queued' && $beforePhase === 'testing' && ($link['open'] ?? []) !== [];
+        if ($stays) {
+            $phase = 'testing';
+        }
         if ($problems = array_merge(ProductProfileRules::problems($m['profile'], $m['personas']), ProductProfileRules::angleProblems($angles, $m['personas']))) {
             throw new ToolProblem(implode(' ', $problems));
         }
@@ -337,10 +342,10 @@ class ProductProfileTool extends ChangeTool
             ])));
         }
         if ($changed === [] && $newPersonas === 0 && $m['removed'] === [] && $files === []) {
-            throw new ToolProblem('Con eso la ficha de ' . $name . ' queda igual: no hay nada que cambiar.');
+            throw new ToolProblem($stays ? TestingRules::stillTesting($name, $link['open']) : 'Con eso la ficha de ' . $name . ' queda igual: no hay nada que cambiar.');
         }
 
-        $warnings = [];
+        $warnings = $stays ? [TestingRules::stillTesting($name, $link['open']) . ' El resto de la ficha sí se guarda.'] : [];
         if ($missing = ProductProfileRules::missing($m['profile'], $m['personas'])) {
             $warnings[] = 'La ficha queda incompleta: falta ' . self::join(array_map('mb_strtolower', $missing)) . '. Mientras falte, la IA no escribe encargos ni landings de ' . $name . '.';
         }

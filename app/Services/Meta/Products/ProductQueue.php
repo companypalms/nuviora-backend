@@ -268,7 +268,9 @@ class ProductQueue
     private static function start(int $productId): int
     {
         $p = ProductProfile::where('product_id', $productId)->firstOrFail();
-        $p->forceFill(['phase' => 'testing', 'phase_at' => now(), 'testing_round' => $p->testing_round + 1, 'released_at' => now(), 'queue_position' => null])->save();
+        // .179: si su ronda sigue abierta (con batches ya pedidos), sale con la misma ronda: sus batches siguen siendo su testeo
+        $round = TestingPhase::openRound($productId) !== [] ? $p->testing_round : $p->testing_round + 1;
+        $p->forceFill(['phase' => 'testing', 'phase_at' => now(), 'testing_round' => $round, 'released_at' => now(), 'queue_position' => null])->save();
         self::renumber(self::ids());
         $name = DB::table('products')->where('id', $productId)->get(['title', 'showable_name'])->map(fn ($x) => $x->showable_name ?: $x->title)->first() ?? 'El producto';
         try {

@@ -1,7 +1,9 @@
 <?php
 
 use App\Services\Assistant\Actions\Tools\ProductProfileTool;
+use App\Services\Assistant\Tools\ToolProblem;
 use App\Services\Meta\Products\ProductQueueRules;
+use App\Services\Meta\Products\TestingRules;
 
 // .154 (dueño, 2026-11-17): "quiero tener una banca de productos por montar… siempre dándole prioridad a los batch de los
 // productos que están activos actualmente, pero en cuanto tenga un chance, envía cada uno de esos productos por orden de cola".
@@ -112,5 +114,37 @@ describe('Lo que le falta, dicho para el líder', function () {
         expect(ProductQueueRules::forLeader(['Cómo funciona', 'al menos un buyer persona'], false, 'paused'))
             ->toBe('Todavía no se puede adelantar: el dueño tiene que completar su ficha (cómo funciona y al menos un buyer persona), poner sus ángulos de venta y activarlo (está en pausa).')
             ->and(ProductQueueRules::forLeader([], false, 'normal'))->toBe('Todavía no se puede adelantar: el dueño tiene que poner sus ángulos de venta.');
+    });
+});
+
+// .179 (2026-11-26): Sonrisa V34 volvió a la cola con sus 3 batches del testeo ya pedidos (la segunda tarjeta del asistente
+// decía «En cola»); al salir otra vez, su ronda pasó a 2 sin batches y el sistema dejó de ver su testeo.
+describe('Uno en testeo con sus batches no vuelve a la cola', function () {
+    $ficha = ['what_it_is' => 'Espuma morada', 'benefits' => 'Blanco al instante', 'mechanism' => 'Película violeta', 'not_this' => null, 'key_info' => null, 'photos_url' => null];
+    $persona = ['id' => 7, 'name' => 'El del evento', 'who' => 'Con boda pronto', 'pain' => 'El amarillo en las fotos', 'wants' => null, 'objections' => null];
+    $angles = [['code' => 'EVENTO', 'name' => 'Evento', 'hypothesis' => null, 'persona' => null]];
+    $args = fn (array $over = []) => $over + ['producto' => 'Sonrisa V34', 'que_es' => null, 'para_que_sirve' => null, 'como_funciona' => null, 'lo_que_no_es' => null,
+        'info_clave' => null, 'fotos' => null, 'buyer_personas' => [], 'quitar_buyer_personas' => [], 'angulos' => [], 'fase' => 'cola'];
+    $card = fn (array $args, array $open) => ProductProfileTool::proposal(1186, 'Sonrisa V34', $ficha, [$persona], $args, $angles, 'testing', ['EVENTO'],
+        ['create' => false, 'shopify' => null, 'campaigns' => 0, 'open' => $open]);
+
+    it('el texto dice sus encargos', function () {
+        expect(TestingRules::stillTesting('Sonrisa V34', ['B0158', 'B0159', 'B0160']))
+            ->toBe('Sonrisa V34 ya está en testeo: sus batches del testeo ya le llegaron al editor líder (B0158, B0159 y B0160). No vuelve a la cola.');
+    });
+
+    it('si la tarjeta trae otros cambios, se guardan y la fase se queda en testeo, con el aviso', function () use ($card, $args) {
+        $p = $card($args(['que_es' => 'Espuma morada de 60 ml']), ['B0158', 'B0159', 'B0160']);
+        expect($p->payload['phase'])->toBeNull()
+            ->and($p->payload['profile']['what_it_is'])->toBe('Espuma morada de 60 ml')
+            ->and($p->warnings[0])->toStartWith('Sonrisa V34 ya está en testeo')->toEndWith('El resto de la ficha sí se guarda.');
+    });
+
+    it('si solo pedía volver a la cola, lo dice y no hay tarjeta', function () use ($card, $args) {
+        expect(fn () => $card($args(), ['B0158']))->toThrow(ToolProblem::class, 'Sonrisa V34 ya está en testeo: sus batches del testeo ya le llegaron al editor líder (B0158). No vuelve a la cola.');
+    });
+
+    it('en testeo pero sin batches pedidos, sí puede volver a la cola', function () use ($card, $args) {
+        expect($card($args(), [])->payload['phase'])->toBe('queued');
     });
 });

@@ -81,7 +81,13 @@ class TestingPhase
             return;
         }
         $from = $p->phase;
-        $p->forceFill(['phase' => $phase, 'phase_at' => now(), 'testing_round' => $phase === 'testing' ? $p->testing_round + 1 : $p->testing_round]
+        // .179: con su ronda abierta (batches ya pedidos), no vuelve a la cola y, si vuelve al testeo, sigue en la misma ronda
+        $open = $phase === 'testing' || $phase === 'queued' && $from === 'testing' ? self::openRound($productId) : [];
+        if ($phase === 'queued' && $open !== []) {
+            $name = DB::table('products')->where('id', $productId)->get(['title', 'showable_name'])->map(fn ($x) => $x->showable_name ?: $x->title)->first() ?? 'El producto';
+            throw ValidationException::withMessages(['phase' => TestingRules::stillTesting($name, $open)]);
+        }
+        $p->forceFill(['phase' => $phase, 'phase_at' => now(), 'testing_round' => $phase === 'testing' && $open === [] ? $p->testing_round + 1 : $p->testing_round]
             + ($phase === 'queued' ? ['queue_position' => ProductQueue::nextPosition()] : [])
             + ($from === 'queued' ? ['queue_position' => null] + ($phase === 'testing' ? ['released_at' => now()] : []) : []))->save();
         if ($from === 'queued') {
@@ -91,6 +97,25 @@ class TestingPhase
         if ($phase === 'testing' || $phase === 'queued') {
             \App\Services\Meta\Queue\QueueProposer::later();
         }
+    }
+
+    /**
+     * `.179` (2026-11-26: Sonrisa V34 volvió a la cola con sus 3 batches del testeo ya pedidos; al salir otra vez, su ronda pasó
+     * a 2 sin batches y el sistema dejó de ver su testeo): los encargos de la ronda que sigue abierta (sin cerrar y con
+     * batches). Mientras haya, el producto no vuelve a la cola y su ronda no sube.
+     *
+     * @return list<string> sus códigos (B0158…)
+     */
+    public static function openRound(int $productId): array
+    {
+        $p = ProductProfile::where('product_id', $productId)->first(['testing_round', 'testing_results']);
+        $round = (int) ($p->testing_round ?? 0);
+        if ($round < 1 || collect($p->testing_results ?? [])->firstWhere('round', $round) !== null) {
+            return [];
+        }
+
+        return CreativeBatch::where('product_id', $productId)->where('testing_round', $round)->where('status', '!=', 'discarded')->orderBy('id')->get()
+            ->map(fn (CreativeBatch $b) => $b->code() ?? "B{$b->id}")->all();
     }
 
     /** "Probar los siguientes": otra ronda con los ángulos de la ficha que no salieron en las anteriores. */
