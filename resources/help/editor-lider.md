@@ -17,7 +17,7 @@
 - El horario de tus editores de video lo pones tú; el tuyo lo pone el dueño.
 
 ## El menú del líder
-- Pantallas: "Encargos del equipo" (su pantalla principal, al entrar cae ahí), "Productos nuevos", "Banca", "Mis
+- Pantallas: "Encargos del equipo" (su pantalla principal, al entrar cae ahí), "Productos", "Banca", "Mis
   encargos", "Referencias" y "Mis resultados".
 - El número de encargos del menú suma lo que tiene por hacer, por asignar, por revisar y cada editor libre (también tú).
 - La campanita le avisa una vez por día lo urgente que está atrasado (por ejemplo "Urgente: B0108 era para el lunes y se
@@ -62,7 +62,7 @@
   y al final "Para adelantar".
 - "Para adelantar": lo que va a hacer falta después y el sistema todavía no pidió (él pide un batch a la vez por
   producto). De cada producto que vende: cuántos batches más va a necesitar en las próximas 2 semanas y para cuándo hace
-  falta el próximo. Los productos nuevos de la cola del dueño están en su pantalla, "Productos nuevos": debajo dice
+  falta el próximo. Los productos nuevos de la cola del dueño están en su pantalla, "Productos": debajo dice
   cuántos hay, con "Ver".
 - "Adelantar": eliges quién lo hace (un editor, tú o "Sin asignar todavía") y el sistema escribe el encargo como los de
   cada mañana (puede tardar hasta un minuto). Lo adelantado se entrega como siempre y espera en la banca su turno. Un
@@ -116,15 +116,22 @@
 - Mientras un producto tiene un batch esperando en la banca, el sistema no pide otro de ese producto hasta que se lance.
   Por eso conviene cargar los batches ya hechos: así no se piden encargos de más.
 
-## "Productos nuevos": todo lo que el dueño va a montar
-- En el menú, "Productos nuevos". Están todos los productos de la cola del dueño, en su orden. El orden lo pone el dueño.
-- Arriba, el marcador: cuántos hay en la cola, cuántos se pueden adelantar ya y qué testeo está haciendo el equipo ahora.
-- De cada uno: su lugar en la cola, su foto, su nombre y su ficha (qué es, para qué sirve y lo que nunca se dice). Con
-  "Ver la ficha completa": cómo funciona, la información clave, todos sus buyer personas, sus ángulos (de qué trata cada
-  uno) y sus fotos (toca una para bajarla). También los documentos de estrategia del dueño, para abrirlos o bajarlos.
+## "Productos": la ficha, las fotos y la estrategia de cada producto
+- En el menú, "Productos". Están todos los productos con los que trabaja el equipo: "En cola" (los que el dueño va a
+  montar, en su orden: el orden lo pone el dueño), "En testeo" (dice en qué van sus batches del testeo, por ejemplo
+  "Testeo: 1 de 3 en la banca") y "Vendiendo" (con campañas activas).
+- Arriba: un buscador por nombre y botones para ver solo una parte ("Todos", "En cola", "En testeo", "Vendiendo").
+- Cada producto es una tarjeta con su foto. Tócala y se abre su hoja: la ficha (qué es, para qué sirve, cómo funciona, la
+  información clave y, en rojo, lo que nunca se dice), las fotos (toca una para verla en grande o "Bajar"), los PDF de
+  estrategia del dueño ("Abrir" o "Bajar"), los buyer personas y los ángulos (de qué trata cada uno). Arriba de la hoja
+  hay botones para saltar a cada parte.
+- La misma hoja se abre desde cada encargo con "Ver el producto" (con el buyer persona y el ángulo del encargo marcados).
+  Tus editores de video también la ven en sus encargos.
+- Un producto nuevo sale de la cola apenas el equipo tiene chance: pasa a "En testeo" y sus batches llegan a "Sin asignar".
 - "Sale solo primero": es el que el sistema te pasa solo cuando el equipo tenga chance (uno a la vez: cuando no hay nada
   urgente ni atrasado y el equipo terminó el testeo del anterior).
-- "Adelantar": si a alguien (o a ti) le sobra tiempo, adelanta el que quieras. Eliges quién lo hace y sale ya de la cola:
+- "Adelantar" (en la hoja de un producto de la cola): si a alguien (o a ti) le sobra tiempo, adelanta el que quieras.
+  Eliges quién lo hace y sale ya de la cola:
   el sistema escribe sus batches del testeo (puede tardar hasta un minuto); el primero queda para quien elegiste y los
   demás en "Sin asignar". No depende del stock.
 - Si a un producto le falta algo, dice qué tiene que completar el dueño (por ejemplo "Todavía no se puede adelantar: el
@@ -194,8 +201,8 @@ computadora.
 
 ## Tu día, en orden
 1. Abre "Encargos del equipo": empieza por lo de arriba.
-2. Si alguien está libre (o tú), dale otro encargo: lo sin asignar, algo de "Para adelantar" o un producto de
-   "Productos nuevos".
+2. Si alguien está libre (o tú), dale otro encargo: lo sin asignar, algo de "Para adelantar" o un producto de la cola en
+   "Productos".
 3. Revisa lo que está "Por revisar", primero lo atrasado.
 4. Asigna lo que está "Sin asignar".
 5. Haz lo tuyo en "Mis encargos": tu meta también es de 2 por día.
@@ -209,8 +216,10 @@ computadora.
 - Un editor entregó algo que no es lo que se pidió: "Cambiar algo" → "No es lo que se pidió" y una nota corta.
 - El sistema pide un encargo que no tiene sentido: avísale al dueño; él lo puede descartar.
 - ¿Dónde está la banca? En el menú, "Banca". Ahí se cargan los batches ya hechos.
-- ¿Por qué no veo un producto nuevo? En "Productos nuevos" están todos los de la cola del dueño. Si no está ahí, el dueño
-  todavía no lo puso en la cola, o ya salió: sus encargos están en "Sin asignar" o "En curso".
+- ¿Por qué no veo un producto nuevo en la cola? Ya salió: en "Productos" está en "En testeo" y sus encargos están en "Sin
+  asignar" o "En curso". Si no está en ninguna parte, el dueño todavía no lo creó.
+- ¿Dónde veo el PDF de la estrategia o las fotos de un producto? En "Productos", tocando el producto, o en cualquier encargo
+  con "Ver el producto".
 - Desaparecieron los encargos de un producto: el dueño lo pausó (por ejemplo, sin stock). Mira la línea "En espera" en
   "Encargos del equipo". Vuelven solos cuando él lo reactive.
 - ¿Tengo un tope de preguntas en "¿Dudas?"? No: el líder puede preguntar todo lo que necesite.

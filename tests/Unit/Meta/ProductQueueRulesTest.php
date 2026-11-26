@@ -148,3 +148,10 @@ describe('Uno en testeo con sus batches no vuelve a la cola', function () {
         expect($card($args(), [])->payload['phase'])->toBe('queued');
     });
 });
+
+// .180: en qué va el testeo de cada producto, en la pantalla "Productos" del líder
+it('el testeo en palabras: en la banca, en Meta o sin lugares', function () {
+    expect(ProductQueueRules::testingNote(['bank', 'approved', 'production'], 3))->toBe('Testeo: 1 de 3 en la banca')
+        ->and(ProductQueueRules::testingNote(['testing', 'testing', 'bank'], 3))->toBe('Testeo en Meta: 2 de 3')
+        ->and(ProductQueueRules::testingNote([], 0))->toBe('En testeo');
+});

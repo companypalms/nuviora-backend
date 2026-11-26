@@ -51,8 +51,12 @@
   en la carpeta de ese batch, con el nombre del anuncio. Si el sistema no sabe dónde está en Meta, dice solo su nombre y su
   ángulo ("búscalo en el Drive antiguo como «CRE002-FLEX-FAS-BATCH005» (ángulo FASP)"). Si aun así no lo encuentras,
   pregúntale a tu líder.
-- "Ver todo el encargo" muestra la ficha del producto: qué es, para qué sirve, cómo funciona, las fotos, los buyer
-  personas y los ángulos. Si las piezas son distintas entre sí (por ejemplo, 1 de hook y 2 de formato), dice qué lleva cada una.
+- "Ver todo el encargo" muestra todo lo que se pidió. Si las piezas son distintas entre sí (por ejemplo, 1 de hook y 2 de
+  formato), dice qué lleva cada una.
+- En cada encargo, el cuadro "El producto" dice qué es, para qué sirve y lo que nunca se dice. El botón "Ver el producto" abre
+  su hoja completa: la ficha (también cómo funciona y la información clave), las fotos (toca una para verla en grande o
+  "Bajar"), los PDF de estrategia del dueño ("Abrir" o "Bajar"), todos los buyer personas y los ángulos (de qué trata cada
+  uno). El buyer persona y el ángulo de tu encargo salen marcados. Arriba de la hoja hay botones para saltar a cada parte.
 - Más abajo: "Lo que sigue", lo que está "Esperando revisión" y los terminados (se pueden ocultar).
 - No hay botón "Empezar": el encargo empieza solo cuando subes el primer archivo.
 - Si no tienes nada: "Estás al día". Cuando te asignen uno, aparece ahí con su plazo.

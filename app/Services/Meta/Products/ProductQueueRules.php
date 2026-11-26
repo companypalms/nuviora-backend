@@ -130,6 +130,21 @@ final class ProductQueueRules
         return $ids;
     }
 
+    /**
+     * `.180`: en qué va el testeo de un producto, en palabras, para la pantalla "Productos" del líder.
+     *
+     * @param list<string> $statuses los estados de los batches de su ronda
+     */
+    public static function testingNote(array $statuses, int $of): string
+    {
+        if ($of < 1) {
+            return 'En testeo';
+        }
+        $inMeta = count(array_filter($statuses, fn ($s) => in_array($s, ['testing', 'tested'], true)));
+
+        return $inMeta > 0 ? "Testeo en Meta: {$inMeta} de {$of}" : 'Testeo: ' . self::progress($statuses, $of)['delivered'] . " de {$of} en la banca";
+    }
+
     /** En cuántos batches va el testeo de un producto: los que ya están en la banca (o salieron) de los que lleva su ronda. */
     public static function progress(array $statuses, int $of): array
     {

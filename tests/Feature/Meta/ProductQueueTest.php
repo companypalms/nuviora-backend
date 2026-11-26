@@ -305,27 +305,51 @@ describe('El editor líder ve toda la cola', function () {
         $this->editor = User::forceCreate(['names' => 'Ana', 'email' => 'a@test', 'password' => 'x', 'role_id' => Role::forceCreate(['description' => 'Editor de video'])->id]);
     });
 
-    it('todos, en orden: la ficha sin precios, los buyer personas, los ángulos, las fotos, la estrategia y qué le falta', function () {
+    // .180 (dueño, 2026-11-26: "necesito que al líder le aparezca de manera fácil e intuitiva la ficha de los productos y el pdf e
+    // imágenes que yo monto para cada producto"): no solo la cola; también los que están en testeo y los que venden
+    it('todos: la cola en orden, los que están en testeo y los que venden, cada uno con su hoja (ficha sin precios, fotos y estrategia)', function () {
+        Schema::table('meta_campaigns', function ($t) {
+            $t->string('effective_status')->nullable();
+            $t->timestamp('missing_since')->nullable();
+        });
         productoEnCola154(20, 'Termafit', 'queued', 1);
         productoEnCola154(21, 'Glowmax', 'queued', 2, angles: false);
+        productoTaller154(30, 'Sonrisa V34', ['bank', 'approved']);
+        productoTaller154(31, 'Pausado', ['approved']);
+        DB::table('product_ad_settings')->insert(['product_id' => 31, 'mode' => 'paused']);
+        productoEnCola154(40, 'BoxBeat', 'iterate');
+        DB::table('meta_campaigns')->insert([['product_id' => 40, 'effective_status' => 'ACTIVE'], ['product_id' => 40, 'effective_status' => 'ACTIVE'],
+            ['product_id' => 41, 'effective_status' => 'PAUSED']]);
         DB::table('product_profiles')->where('product_id', 20)->update(['what_it_is' => 'Una faja de compresión. Cuesta $25.']);
         DB::table('stored_files')->insert([
             ['kind' => 'photo', 'product_id' => 20, 'name' => 'foto.jpg', 'status' => 'ready'],
             ['kind' => 'strategy', 'product_id' => 20, 'name' => 'estrategia.pdf', 'status' => 'ready'],
             ['kind' => 'photo', 'product_id' => 21, 'name' => 'subiendo.jpg', 'status' => 'pending'],
+            ['kind' => 'strategy', 'product_id' => 30, 'name' => 'estrategia-sonrisa.pdf', 'status' => 'ready'],
         ]);
         Sanctum::actingAs($this->leader);
         $r = $this->getJson('/api/editor/products')->assertOk();
-        expect(array_column($r->json('queue'), 'product'))->toBe(['Termafit', 'Glowmax'])
-            ->and($r->json('queue.0'))->toMatchArray(['position' => 1, 'ready' => true, 'waiting_for' => null, 'next' => true])
-            ->and($r->json('queue.0.info.what_it_is'))->toBe('Una faja de compresión.')
-            ->and($r->json('queue.0.personas.0.name'))->toBe('Ana')
-            ->and($r->json('queue.0.angles.0'))->toMatchArray(['code' => 'POSP', 'name' => 'Posparto'])
-            ->and(array_column($r->json('queue.0.photos'), 'name'))->toBe(['foto.jpg'])
-            ->and(array_column($r->json('queue.0.strategy'), 'name'))->toBe(['estrategia.pdf'])
-            ->and($r->json('queue.1'))->toMatchArray(['position' => 2, 'ready' => false, 'next' => false, 'photos' => [],
+        expect(array_map(fn ($p) => [$p['product'], $p['stage'], $p['note']], $r->json('products')))->toBe([
+            ['Termafit', 'queued', 'Lugar 1 de la cola'], ['Glowmax', 'queued', 'Lugar 2 de la cola'],
+            ['Sonrisa V34', 'testing', 'Testeo: 1 de 2 en la banca'], ['BoxBeat', 'selling', '2 campañas activas'],
+        ])
+            ->and($r->json('products.0'))->toMatchArray(['position' => 1, 'ready' => true, 'waiting_for' => null, 'next' => true])
+            ->and($r->json('products.0.info.what_it_is'))->toBe('Una faja de compresión.')
+            ->and($r->json('products.0.personas.0.name'))->toBe('Ana')
+            ->and($r->json('products.0.angles.0'))->toMatchArray(['code' => 'POSP', 'name' => 'Posparto'])
+            ->and(array_column($r->json('products.0.photos'), 'name'))->toBe(['foto.jpg'])
+            ->and(array_column($r->json('products.0.strategy'), 'name'))->toBe(['estrategia.pdf'])
+            ->and($r->json('products.1'))->toMatchArray(['position' => 2, 'ready' => false, 'next' => false, 'photos' => [],
                 'waiting_for' => 'Todavía no se puede adelantar: el dueño tiene que poner sus ángulos de venta.'])
+            ->and(array_column($r->json('products.2.strategy'), 'name'))->toBe(['estrategia-sonrisa.pdf'])
+            ->and($r->json('products.3.info.what_it_is'))->toBe('a')
             ->and(array_column($r->json('team'), 'name'))->toBe(['Leo', 'Ana']);
+    });
+
+    it('en cada encargo (el líder y los editores) van también los documentos de estrategia del dueño', function () {
+        $b = (new App\Models\CreativeBatch())->forceFill(['product_id' => 20]);
+        $out = App\Services\Meta\Queue\EditorWork::product($b, [], [], [20 => [['name' => 'foto.jpg']]], [20 => [['name' => 'estrategia.pdf']]]);
+        expect($out['photos'])->toBe([['name' => 'foto.jpg']])->and($out['strategy'])->toBe([['name' => 'estrategia.pdf']]);
     });
 
     it('solo el líder: el editor de video no la ve', function () {

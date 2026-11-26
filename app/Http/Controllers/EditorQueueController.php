@@ -84,14 +84,15 @@ class EditorQueueController extends Controller
     }
 
     /**
-     * `.177`: "Productos nuevos" del líder: toda la cola del dueño con la ficha, las fotos y la estrategia de cada uno, lo
-     * que el equipo está haciendo del testeo y el equipo hoy (para elegir a quién dárselo al adelantar).
+     * `.177`/`.180`: "Productos" del líder: todos los productos con los que trabaja el equipo (la cola del dueño, los que
+     * están en testeo y los que venden) con la hoja de cada uno, lo que el equipo está haciendo del testeo y el equipo hoy
+     * (para elegir a quién dárselo al adelantar).
      */
     public function products(Request $request)
     {
-        abort_unless(EditorWork::who($request->user())['role'] === EditorRules::LEADER, 403, 'Los productos nuevos los ve el editor líder.');
+        abort_unless(EditorWork::who($request->user())['role'] === EditorRules::LEADER, 403, 'Esta pantalla la ve el editor líder.');
 
-        return response()->json(\App\Services\Meta\Products\ProductQueue::forLeader() + ['team' => EditorTeam::today()]);
+        return response()->json(\App\Services\Meta\Products\ProductCatalog::forLeader() + ['team' => EditorTeam::today()]);
     }
 
     /** El número del menú: lo que tiene pendiente (se pide cada pocos minutos). */

@@ -400,6 +400,8 @@ class EditorWork
         // .90: la ficha completa (todos los buyer personas y ángulos), las fotos del producto y el archivo de cada pieza
         $allAngles = \App\Services\Meta\Products\TestingPhase::anglesMany($productIds);
         $photos = StoredFile::photosOf($productIds);
+        // .180: y los documentos de estrategia del dueño (eligió que el líder y los editores los vean)
+        $strategy = StoredFile::filesOf($productIds, 'strategy');
         $pieceFiles = StoredFile::payloads($batches->flatMap(fn (CreativeBatch $b) => $b->pieces->pluck('file_id'))->all());
         $uploads = FileStore::on();
 
@@ -408,7 +410,7 @@ class EditorWork
         // .139: lo de los productos Regulares va después de lo de los Buenos (a igual fecha); el líder ve por qué, sin números
         $ranks = ProductWorthBoard::ranks();
 
-        return self::sorted($batches, $ranks)->map(function (CreativeBatch $b) use ($angles, $refs, $scripts, $profiles, $who, $clean, $allAngles, $photos, $pieceFiles, $uploads, $ranks) {
+        return self::sorted($batches, $ranks)->map(function (CreativeBatch $b) use ($angles, $refs, $scripts, $profiles, $who, $clean, $allAngles, $photos, $strategy, $pieceFiles, $uploads, $ranks) {
             $task = self::task($b, $angles["{$b->product_id}:{$b->angle_code}"] ?? null);
             // .128: en una variación de las reglas, el editor y el líder leen la hipótesis fija (BatchTask), no la de la IA
             $plain = $b->source === 'rules' && $b->kind === 'iteration';
@@ -426,7 +428,7 @@ class EditorWork
                 'concept' => $clean($b->concept), 'audience' => $clean($b->audience),
                 // .93: de qué trata el ángulo, para tenerlo a la vista al revisar
                 'angle_about' => $clean(collect($allAngles[$b->product_id] ?? [])->firstWhere('code', $b->angle_code)['hypothesis'] ?? null),
-            ] + ($plain ? ['hypothesis' => $task['hypothesis'] ?? null] : self::hypothesisFor($who, $b->hypothesis)) + self::product($b, $profiles, $allAngles, $photos) + [
+            ] + ($plain ? ['hypothesis' => $task['hypothesis'] ?? null] : self::hypothesisFor($who, $b->hypothesis)) + self::product($b, $profiles, $allAngles, $photos, $strategy) + [
                 'reference' => self::referenceName($b->reference), 'reference_thumbnail' => $refs[$b->reference_creative_id]['thumbnail'] ?? null,
                 'reference_texts' => QueueRules::withoutPricesIn($refs[$b->reference_creative_id]['texts'] ?? []),
                 'reference_script' => QueueRules::withoutPricesIn($scripts[$b->reference_creative_id] ?? null),
@@ -505,8 +507,9 @@ class EditorWork
      * @param array<int, array{profile: ?array, personas: list<array>}> $profiles ProductProfiles::many
      * @param array<int, list<array>> $angles TestingPhase::anglesMany
      * @param array<int, list<array>> $photos StoredFile::photosOf
+     * @param array<int, list<array>> $strategy `.180`: StoredFile::filesOf(…, 'strategy')
      */
-    public static function product(CreativeBatch $b, array $profiles, array $angles = [], array $photos = []): array
+    public static function product(CreativeBatch $b, array $profiles, array $angles = [], array $photos = [], array $strategy = []): array
     {
         $rules = \App\Services\Meta\Products\ProductProfileRules::class;
 
@@ -516,6 +519,7 @@ class EditorWork
             'personas' => $rules::personasForEditor($profiles[$b->product_id]['personas'] ?? []),
             'angles' => $rules::anglesForEditor($angles[$b->product_id] ?? []),
             'photos' => $photos[$b->product_id] ?? [],
+            'strategy' => $strategy[$b->product_id] ?? [],
         ];
     }
 
