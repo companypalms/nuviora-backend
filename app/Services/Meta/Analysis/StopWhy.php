@@ -161,10 +161,16 @@ final class StopWhy
             return null;
         }
         $on = array_values(array_unique(array_map(fn ($c) => (string) $c['city'], array_filter($rest, fn ($c) => $c['active'] ?? false))));
-        $off = array_values(array_diff(array_unique(array_map(fn ($c) => (string) $c['city'], $rest)), $on));
+        // .183: donde no está activo (el anuncio, su conjunto o su campaña apagados) y no perdió, no se probó: no se toca
+        $untested = array_values(array_diff(array_unique(array_map(fn ($c) => (string) $c['city'], array_filter($rest,
+            fn ($c) => !($c['active'] ?? false) && isset($c['key']) && $c['key'] !== 'loser'))), $on));
+        $off = array_values(array_diff(array_unique(array_map(fn ($c) => (string) $c['city'], $rest)), $on, $untested));
+        if ($on === [] && $untested === []) {
+            return 'Ya está apagado en ' . CreativeCalls::join($off) . ': con esto queda apagado del todo.';
+        }
 
-        return $on === [] ? 'Ya está apagado en ' . CreativeCalls::join($off) . ': con esto queda apagado del todo.'
-            : 'En ' . CreativeCalls::join($on) . ' sigue prendido: ahí no lo toques.';
+        return implode(' ', array_filter([$on ? 'En ' . CreativeCalls::join($on) . ' sigue prendido: ahí no lo toques.' : null,
+            $untested ? 'En ' . CreativeCalls::join($untested) . ' no está activo y no se probó: no lo toques.' : null]));
     }
 
     /** "Tu C ahí es $4,65 y tu BE $7,03." */

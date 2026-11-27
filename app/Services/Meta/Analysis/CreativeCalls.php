@@ -160,6 +160,20 @@ final class CreativeCalls
     }
 
     /**
+     * `.183` (dueño, 2026-11-27: C0103 de FlexiStep salió "Apaga C0103 en todas las campañas" porque perdió en Carabobo, pero
+     * su otro anuncio estaba en una campaña apagada con $0,25: "solamente una campaña tiene criterios para apagarse. El otro ni
+     * siquiera tiene suficiente gasto"): se apaga en todas las campañas solo si perdió en todas las ciudades donde tiene
+     * anuncios. Si en alguna no se probó (aunque ahí esté apagado o su campaña esté apagada), se apaga solo donde perdió
+     * (stopIn) y ahí no se toca.
+     */
+    public static function lostEverywhere(array $cr): bool
+    {
+        $cities = $cr['cities'] ?? [];
+
+        return $cities !== [] && collect($cities)->every(fn ($c) => ($c['key'] ?? $c['verdict'] ?? null) === 'loser');
+    }
+
+    /**
      * `.80`: lo que lee el editor: qué hacer, qué está bien (no tocar), qué está flojo y los números del video (sin plata).
      * $fix null = un ganador con todo bien.
      */

@@ -81,8 +81,9 @@ final class AnalysisFacts
                         $watchByCity[(string) $c['city']][] = ['label' => (string) $cr['label'], 'text' => (string) $c['watch']];
                     }
                 }
-                // .82: los perdedores (PARAR), que se apagan en todas las ciudades
-                if (($cr['verdict']['key'] ?? null) === 'loser') {
+                // .82: los perdedores (PARAR), que se apagan en todas las ciudades. .183: solo si perdieron en todas donde tienen
+                // anuncios; si en alguna no se probaron, se apagan solo donde perdieron (stopIn, arriba)
+                if (($cr['verdict']['key'] ?? null) === 'loser' && CreativeCalls::lostEverywhere($cr)) {
                     $stopAll[] = $label;
                     $lost = [];
                     foreach ($cr['cities'] ?? [] as $c) {

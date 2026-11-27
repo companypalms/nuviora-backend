@@ -101,13 +101,27 @@ describe('.113: se apaga solo donde perdió; "en todas las campañas" solo si pe
             ->and($stops[0]['title'])->toBe('Apaga C0153: aquí pierde');
     });
 
-    it('si en Carabobo ya está apagado, sí es perdedor y se apaga en todas (como antes)', function () {
+    it('.183: si en Carabobo no está activo y no se probó (FlexiStep C0103: su campaña apagada, $0,25), se apaga solo en Aragua', function () {
         $d = c0153Decision(['Carabobo' => [[1.15, 0, 1.15, 0, 1.15, 0], false]]);
         $cr = $d['creatives'][153];
         $facts = AnalysisFacts::build([1149 => $d]);
+        $m = collect(UrgentList::build($facts))->firstWhere('kind', 'stop_creatives');
 
-        expect($cr['verdict']['key'])->toBe('loser')
-            ->and($cr['verdict']['proposal'])->toBe('Apagarlo en todas las ciudades.')
+        expect($cr['verdict']['key'])->toBe('loser') // para el editor y los batches sigue siendo perdedor
+            ->and($cr['verdict']['proposal'])->toBe('Apagarlo solo en Aragua. En Carabobo no se probó: no lo toques.')
+            ->and($facts[0]['stop_all'])->toBe([])
+            ->and($facts[0]['stop_by_city'])->toBe(['Aragua' => ['C0153']])
+            ->and($m['title'])->toBe('Apaga C0153: aquí pierde')
+            ->and($m['city'])->toBe('Aragua')
+            ->and(end($m['detail']))->toBe('En Carabobo no está activo y no se probó: no lo toques.');
+    });
+
+    it('si perdió en Aragua y también en Carabobo (ya apagado ahí), sí se apaga en todas las campañas (como antes)', function () {
+        $d = c0153Decision(['Carabobo' => [[9.0, 1, 9.0, 1, 9.0, 1], false]]);
+        $facts = AnalysisFacts::build([1149 => $d]);
+
+        expect(collect($d['creatives'][153]['cities'])->pluck('key', 'city')->all())->toBe(['Carabobo' => 'loser', 'Aragua' => 'loser'])
+            ->and($d['creatives'][153]['verdict']['proposal'])->toBe('Apagarlo en todas las ciudades.')
             ->and($facts[0]['stop_all'])->toBe(['C0153'])
             ->and(collect(UrgentList::build($facts))->firstWhere('kind', 'stop_creatives')['title'])->toBe('Apaga C0153 en todas las campañas');
     });

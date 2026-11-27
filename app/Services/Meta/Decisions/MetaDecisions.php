@@ -1052,6 +1052,13 @@ class MetaDecisions
         $v = $best;
         if ($v['key'] === 'loser') {
             $v['proposal'] = count($byCity) > 1 ? 'Apagarlo en todas las ciudades.' : 'Apagarlo' . (($city = array_key_first($cityNames)) ? " en {$city}" : '') . '.';
+            // .183: si en alguna ciudad no se probó (y ahí no está prendido: si lo estuviera, sigue probándose), solo donde perdió
+            $lost = array_keys(array_filter($cityNames, fn ($k) => $k === 'loser'));
+            $untested = array_keys(array_filter($cityNames, fn ($k) => $k !== 'loser'));
+            if (count($byCity) > 1 && $lost && $untested) {
+                $v['proposal'] = 'Apagarlo solo en ' . CreativeCalls::join($lost) . '. En '
+                    . CreativeCalls::join($untested) . ' no se probó: no lo toques.';
+            }
         }
         if ($cross) {
             $v['reading'] = $cross['label'] . ($cross['detail'] ? " ({$cross['detail']})" : '') . '. ' . $v['reading'];

@@ -66,7 +66,13 @@ describe('En palabras', function () {
                 ['city' => 'Aragua', 'active' => false]]))->toBe('Ya está apagado en Carabobo y Aragua: con esto queda apagado del todo.')
             ->and(StopWhy::others('Distrito Capital', [['city' => 'Distrito Capital', 'active' => true], ['city' => 'Aragua', 'active' => true]]))
             ->toBe('En Aragua sigue prendido: ahí no lo toques.')
-            ->and(StopWhy::others('Distrito Capital', [['city' => 'Distrito Capital', 'active' => true]]))->toBeNull();
+            ->and(StopWhy::others('Distrito Capital', [['city' => 'Distrito Capital', 'active' => true]]))->toBeNull()
+            // .183: donde no está activo y no perdió, no se probó
+            ->and(StopWhy::others('Carabobo', [['city' => 'Carabobo', 'active' => true, 'key' => 'loser'],
+                ['city' => 'Distrito Capital', 'active' => false, 'key' => 'no_data']]))->toBe('En Distrito Capital no está activo y no se probó: no lo toques.')
+            ->and(StopWhy::others('Carabobo', [['city' => 'Carabobo', 'active' => true, 'key' => 'loser'], ['city' => 'Aragua', 'active' => true, 'key' => 'no_data'],
+                ['city' => 'Distrito Capital', 'active' => false, 'key' => 'no_data'], ['city' => 'Lara', 'active' => false, 'key' => 'loser']]))
+            ->toBe('En Aragua sigue prendido: ahí no lo toques. En Distrito Capital no está activo y no se probó: no lo toques.');
     });
 
     it('3 días malos: por qué su semana no lo salvó', function () {
