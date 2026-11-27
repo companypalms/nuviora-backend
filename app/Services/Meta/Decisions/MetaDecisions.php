@@ -499,8 +499,13 @@ class MetaDecisions
         // .117: en cada ciudad sin campañas prendidas, la última que se apagó es la que se vuelve a prender
         $toRelaunch = self::toRelaunch($f['campaigns'], $history['campaigns'] ?? []);
         $relaunchOffers = 0;
+        $relaunchCodes = [];
         $dismissed = $ops['dismissed'] ?? [];
         $relaunches = false;
+        // .184 (dueño, 2026-11-27: Releev "ya no está en ninguna ciudad publicándose debido a que fue un mal producto, entonces no
+        // me debería decir que lo reactive en ninguna ciudad"): con el producto apagado en todas sus ciudades no se sugiere prender
+        // una, aunque tenga los batches; lo decide él (no_city). Si dice que no lo deja ("No estoy de acuerdo"), sí
+        $mayRelaunch = array_filter($f['campaigns'], fn ($c) => $c['active']) || isset($dismissed["{$f['product']['id']}:no_city"]);
         // .139: la etiqueta del producto. Un Malo frena sus encargos nuevos; la misión sale si gastó en Meta en 14 días (los
         // productos viejos sin campañas solo llevan la etiqueta). `.145`: se calcula antes de las campañas, que la usan
         $worth = ProductWorth::verdict($sample, self::periodMoney($f, $history['campaigns'] ?? [], $yesterday, 28)['gain'], $s)
@@ -527,8 +532,11 @@ class MetaDecisions
                 // .117: una campaña apagada espera a tener 3 batches nunca publicados en su ciudad. No cuenta para la urgencia
                 if (($toRelaunch[$c['city_id']] ?? null) === $id) {
                     $offers = self::offers($f, $out, $id, $ops['bank']['launched'] ?? [], $ops['bank']['ready'] ?? [], $ops['bank']['names'] ?? []);
+                    if (count($offers) > $relaunchOffers) {
+                        $relaunchCodes = array_column(array_slice($offers, 0, (int) $s['relaunch_batches']), 'code');
+                    }
                     $relaunchOffers = max($relaunchOffers, count($offers));
-                    $action = $cr->relaunch(['mode' => $mode, 'c' => $c['target'], 'be' => $c['break_even'], 'city_free' => true, 'available' => $city['available'] ?? true,
+                    $action = !$mayRelaunch ? null : $cr->relaunch(['mode' => $mode, 'c' => $c['target'], 'be' => $c['break_even'], 'city_free' => true, 'available' => $city['available'] ?? true,
                         'dismissed' => isset($dismissed["{$f['product']['id']}:{$id}:relaunch"]), 'offers' => $offers, 'status_events' => $h['status_events'], 'new_ads' => $h['new_ads'],
                         'daily' => $h['daily'], 'today' => $today]);
                     if ($action) {
@@ -820,7 +828,7 @@ class MetaDecisions
                 array_keys(array_filter($actions, fn ($k) => in_array($k, ['intervene', 'decrease', 'pause_city'], true))))), 2),
             // .117: el producto se quedó sin ninguna ciudad prendida y no alcanza para prender una: lo decide el dueño
             'no_city' => $f['campaigns'] && !$activeCities && !$relaunches && $mode === 'normal' && !isset($dismissed["{$f['product']['id']}:no_city"])
-                ? ['have' => $relaunchOffers, 'need' => (int) $s['relaunch_batches']] : null,
+                ? ['have' => $relaunchOffers, 'need' => (int) $s['relaunch_batches']] + ($relaunchOffers >= (int) $s['relaunch_batches'] ? ['codes' => $relaunchCodes] : []) : null,
             // .126: lo que dejó el producto entero en 3 y en 7 días (la suma de sus campañas con BE, prendidas o no)
             'gain' => self::productGain($f['campaigns']),
             // .125 (dueño, 2026-11-09: "sí debemos establecer un límite para soltar producto, dependiendo de su CPA y si hicimos

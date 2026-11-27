@@ -1000,9 +1000,22 @@ final class UrgentList
             ])), 'money' => null];
     }
 
-    /** `.117`: el producto se quedó sin ninguna ciudad prendida y no alcanzan los batches para prender una. */
+    /**
+     * `.117`: el producto se quedó sin ninguna ciudad prendida y no alcanzan los batches para prender una. `.184`: o sí alcanzan,
+     * pero no se prende solo (el dueño lo pudo haber dejado por malo): dejarlo, o "No estoy de acuerdo" y se prende una ciudad.
+     */
     private static function noCity(int $productId, string $short, array $n): array
     {
+        if ($n['have'] >= $n['need']) {
+            $codes = $n['codes'] ?? [];
+            $why = "Tiene {$n['need']} batches listos que nunca se publicaron" . ($codes ? ' (' . CreativeCalls::join($codes) . ')' : '') . ', pero no está prendido en ninguna ciudad';
+
+            return ['key' => "{$productId}:no_city", 'city' => null, 'kind' => 'no_city', 'label' => 'Sin ciudades', 'tone' => 'warning', 'text' => "{$why}.", 'where' => $short,
+                'title' => "{$short} no está prendido en ninguna ciudad: ¿lo dejas o lo vuelves a lanzar?",
+                'steps' => ["Si ya no lo vas a vender: dile a tu asistente «pausa {$short}», o márcalo «Abandonado» en Meta Ads › Pausar o activar productos. No se le pide nada más.",
+                    "Si lo quieres volver a lanzar: toca «No estoy de acuerdo». Desde el análisis de mañana te sale la misión de prender una ciudad con esos {$n['need']} batches."],
+                'why' => $why, 'detail' => [], 'money' => null];
+        }
         $why = "Tiene {$n['have']} de los {$n['need']} batches sin publicar que hacen falta para volver a prender una ciudad, y sin ciudades prendidas no se piden más";
 
         return ['key' => "{$productId}:no_city", 'city' => null, 'kind' => 'no_city', 'label' => 'Sin ciudades', 'tone' => 'warning', 'text' => "{$why}.", 'where' => $short,

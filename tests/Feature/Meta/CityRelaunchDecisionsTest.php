@@ -68,8 +68,13 @@ describe('Con los datos de Meta', function () {
         expect(decisionesReactivar(metaReactivar(false), ['B0101'], ['dismissed' => ['5:no_city' => '2026-11-09']])['plan']['no_city'])->toBeNull();
     });
 
-    it('sin ninguna ciudad prendida pero con 3 batches: se prende, no hace falta decidir', function () {
+    it('.184: sin ninguna ciudad prendida y con 3 batches no se prende solo (Releev): lo decide el dueño; si no lo deja, sí', function () {
         $d = decisionesReactivar(metaReactivar(false), ['B0101', 'B0102', 'B0103']);
+        expect($d['campaigns']['200']['action'])->toBeNull()->and($d['campaigns']['100']['action'])->toBeNull()
+            ->and($d['plan']['no_city'])->toBe(['have' => 3, 'need' => 3, 'codes' => ['B0101', 'B0102', 'B0103']]);
+
+        // "No estoy de acuerdo" en la misión de decidir: no lo deja, así que ahora sí sale prender una ciudad
+        $d = decisionesReactivar(metaReactivar(false), ['B0101', 'B0102', 'B0103'], ['dismissed' => ['5:no_city' => '2026-11-27']]);
         expect($d['plan']['no_city'])->toBeNull()->and($d['campaigns']['200']['action']['key'])->toBe('relaunch');
     });
 });

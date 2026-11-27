@@ -120,6 +120,14 @@ describe('La misión', function () {
             ->and($i['steps'][1])->toContain('«pon FlexiStep en testeo»');
     });
 
+    it('.184: sin ninguna ciudad prendida y con los batches listos: dejarlo o volver a lanzarlo (no se prende solo)', function () use ($base) {
+        $i = UrgentList::build([array_replace($base, ['cities' => [], 'no_city' => ['have' => 3, 'need' => 3, 'codes' => ['B0147', 'B0155', 'B0136']]])])[0];
+        expect($i)->toMatchArray(['kind' => 'no_city', 'key' => '1:no_city', 'title' => 'FlexiStep no está prendido en ninguna ciudad: ¿lo dejas o lo vuelves a lanzar?'])
+            ->and($i['why'])->toBe('Tiene 3 batches listos que nunca se publicaron (B0147, B0155 y B0136), pero no está prendido en ninguna ciudad')
+            ->and($i['steps'][0])->toContain('«Abandonado» en Meta Ads › Pausar o activar productos')
+            ->and($i['steps'][1])->toContain('toca «No estoy de acuerdo»');
+    });
+
     it('prender una ciudad no pide batches ni la vuelve urgente', function () {
         $r = relaunchRules()->urgency(['mode' => 'normal', 'cities' => ['scale'], 'healthy' => 1, 'failing' => 0]);
         expect($r['level'])->toBe(3)->and(UrgentList::need('relaunch', ['live' => 0], 'normal'))->toBe(0);
