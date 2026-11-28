@@ -56,7 +56,9 @@ final class DemandRules
             $offers = $n['offers'] ?? [];
             // .123: entre C y BE, mientras se espera a ver si el último cambio la devolvió a C, no hace falta un batch hoy
             $holds = !empty($a['ladder']['hold']);
-            $need = UrgentList::need($key, $n, $mode, $holds);
+            // .188: en liquidación, cada ciudad con sus reglas (con unidades de sobra, las de siempre)
+            $cmode = ($n['mode'] ?? null) ?: $mode;
+            $need = UrgentList::need($key, $n, $cmode, $holds);
             foreach (array_slice($offers, 0, $need) as $o) {
                 if (($o['how'] ?? 'bank') === 'bank') {
                     $consumed[] = (string) $o['code'];
@@ -64,10 +66,12 @@ final class DemandRules
             }
             $live = $n['live'] ?? null;
             // .100: con algo que lanzar (de la banca o de otra ciudad), hoy se lanza eso: no hace falta un batch nuevo para hoy
+            // .188: también con pocos creativos prendidos
+            $few = UrgentList::fewCreatives($n);
             $why = match (true) {
-                $mode !== 'normal' || $offers !== [] => null,
-                in_array($key, self::AT_BE, true) || $key === 'hold_prune' && !$holds || $need > 0 && $live !== null && $live < UrgentList::MIN_LIVE
-                    => self::reason($holds ? 'hold' : $key, $live),
+                $cmode !== 'normal' || $offers !== [] => null,
+                in_array($key, self::AT_BE, true) || $key === 'hold_prune' && !$holds || $need > 0 && ($live !== null && $live < UrgentList::MIN_LIVE || $few)
+                    => self::reason($holds ? 'hold' : $key, $live, $few ? (int) $n['live_creatives'] : null),
                 default => null,
             };
             if ($why !== null) {
@@ -80,12 +84,14 @@ final class DemandRules
     }
 
     /** Por qué una ciudad necesita un batch, en palabras y sin montos (`.89`: también para lo que llega a la banca). */
-    public static function reason(string $key, ?int $live): ?string
+    public static function reason(string $key, ?int $live, ?int $creatives = null): ?string
     {
         return match (true) {
             in_array($key, self::AT_BE, true) => 'está en su límite o encima',
             $key === 'hold_prune' => 'subió de su costo objetivo',
             $live !== null && $live < UrgentList::MIN_LIVE => $live === 0 ? 'no le queda ningún batch vivo' : 'le queda 1 solo batch vivo',
+            // .188: "a Carabobo le quedan solo 2 creativos prendidos"
+            $creatives !== null => $creatives === 1 ? 'le queda 1 solo creativo prendido' : "le quedan solo {$creatives} creativos prendidos",
             default => null,
         };
     }

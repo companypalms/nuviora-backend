@@ -162,6 +162,18 @@ class CampaignRules
         // En el break-even o encima
         if ($be && (($cpa !== null && $cpa >= $be) || ($cpa === null && $spend >= $c * $this->s['loser_spend_cpa']))) {
             if ($mode === 'liquidation') {
+                // .188 (dueño, 2026-11-28: "cuando ya queden pocas, entonces sí se puede permitir que estén en BE"): aquí llegan solo
+                // las ciudades con pocas unidades (las que tienen de sobra van con las reglas de siempre). Se acepta el BE, pero no
+                // perder: si en los días sin dejar dinero está más de `liquidation_be_margin_pct` % encima del BE, se pausa la ciudad
+                $ch = $in['chronic'] ?? null;
+                $pct = (float) $this->s['liquidation_be_margin_pct'];
+                if ($ch && $ch['spend'] >= $c * $this->s['chronic_min_cpa'] && ($ch['purchases'] <= 0 || $ch['spend'] / $ch['purchases'] > $be * (1 + $pct / 100))) {
+                    return $this->out('pause_city', $data, "En liquidación y con pocas unidades: en {$ch['days']} días gastó " . AdRules::money($ch['spend'])
+                        . ($ch['purchases'] > 0 ? ' y vendió a ' . AdRules::money($ch['spend'] / $ch['purchases']) . ' por compra' : ' sin compras')
+                        . ', más de un ' . AdRules::num($pct) . ' % encima de tu BE (' . AdRules::money($be) . ').',
+                        'Pausar la ciudad: con pocas unidades se acepta vender en el BE, pero no perder dinero.', $budget, null) + ['chronic' => $ch];
+                }
+
                 return $this->out('hold_prune', $data, 'En liquidación y en el break-even o encima.', 'Dejar solo los anuncios cerca o debajo del BE; sin creativos nuevos.' . $pruneText);
             }
             $relaunch = 'Pausar la ciudad. Se vuelve a prender cuando haya ' . (int) $this->s['relaunch_batches'] . ' batches que nunca se publicaron ahí.';

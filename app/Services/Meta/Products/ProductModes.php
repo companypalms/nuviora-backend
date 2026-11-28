@@ -29,22 +29,27 @@ final class ProductModes
     public const HELP = [
         'normal' => 'Se analiza, se escala y se le piden encargos a los editores.',
         'paused' => 'No se escala ni se le piden encargos. Úsalo si no tienes unidades (por ejemplo, sin stock del proveedor).',
-        'liquidation' => 'Te quedan unidades pero no vas a reponer: no se escala ni se piden encargos; solo siguen los anuncios cerca o debajo del break-even, y se apagan al agotarse.',
+        'liquidation' => 'Te quedan unidades pero no vas a reponer. En cada ciudad con unidades de sobra (para los días de ventas de tus reglas), sigue como un producto activo, para ganarle lo máximo a cada unidad, con sus encargos uno a la vez; con pocas, se acepta vender en el break-even, sin creativos nuevos, y se apaga al agotarse.',
         'abandoned' => 'Se dejó: no recibe trabajo.',
     ];
 
     /** Los estados de un encargo que todavía es tarea de alguien (asignar, hacer, entregar o revisar). */
     public const HOLD = ['approved', 'production', 'review'];
 
+    /**
+     * Si un producto no recibe encargos: en pausa o abandonado. `.188` (dueño, 2026-11-28: "que esté en liquidación solo significa
+     * que no conseguimos más de esos productos con los proveedores"): la liquidación ya no los frena; lo que se pide lo decide
+     * cada ciudad con sus unidades (MetaDecisions, DemandPlanner).
+     */
     public static function stopped(?string $mode): bool
     {
-        return ($mode ?? 'normal') !== 'normal';
+        return in_array($mode ?? 'normal', ['paused', 'abandoned'], true);
     }
 
-    /** @return list<int> los productos en pausa, en liquidación o abandonados */
+    /** @return list<int> los productos en pausa o abandonados (`.188`: en liquidación, no) */
     public static function stoppedIds(): array
     {
-        return ProductAdSetting::where('mode', '!=', 'normal')->pluck('product_id')->map(fn ($v) => (int) $v)->all();
+        return ProductAdSetting::whereIn('mode', ['paused', 'abandoned'])->pluck('product_id')->map(fn ($v) => (int) $v)->all();
     }
 
     public static function modeOf(int $productId): string
@@ -161,6 +166,10 @@ final class ProductModes
 
         return match (true) {
             $from === $to => 'Ya está así: no cambia nada.',
+            // .188: en liquidación sigue con encargos donde quedan unidades de sobra
+            $to === 'liquidation' => 'No se repone: en cada ciudad con unidades de sobra sigue como un producto activo, con sus encargos uno a la vez; con pocas, '
+                . 'se acepta vender en el break-even, sin creativos nuevos.' . ($list && self::stopped($from) ? " Vuelven a las listas, con fecha nueva: {$list}." : ''),
+            $from === 'liquidation' && $to === 'normal' => 'Vuelve a ser un producto activo en todas sus ciudades.',
             self::stopped($to) && !self::stopped($from) => 'Deja de pedir encargos para este producto.'
                 . ($list ? " Quedan en espera (salen de las listas de los editores): {$list}." : ''),
             !self::stopped($to) => 'Vuelve a recibir encargos cuando haga falta.'

@@ -159,7 +159,8 @@ class AnalysisSender
     {
         $out = [];
         foreach ($facts as $p) {
-            if (($p['mode'] ?? 'normal') !== 'normal' || ($p['urgency']['level'] ?? null) === 5) {
+            // .188: en liquidación, sí (lo que se manda lo limita lo que pide DemandPlanner)
+            if (\App\Services\Meta\Products\ProductModes::stopped($p['mode'] ?? 'normal') || ($p['urgency']['level'] ?? null) === 5) {
                 continue;
             }
             // .119: después de los prendidos, los ganadores ya apagados

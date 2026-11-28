@@ -100,6 +100,16 @@ class DecisionSettings
         'drop_days' => [7, 3, 60],                // .186: el producto entero, 7 días (antes los 14 de la campaña)
         'sync_stale_hours' => [6, 1, 72],
         'relaunch_batches' => [3, 1, 10],        // .117: una campaña apagada se prende con 3 batches nunca publicados en esa ciudad
+        // .188 (dueño, 2026-11-28: "si dejamos toda la campaña en manos de solamente 2 o 3 creativos… no le estamos dando suficiente
+        // variedad a Meta"): una ciudad con menos de estos creativos prendidos pide un batch (además de los 2 batches vivos)
+        'min_live_creatives' => [4, 0, 20],
+        // .188 (dueño, 2026-11-28: "que esté en liquidación solo significa que no conseguimos más de esos productos con los
+        // proveedores. Pero si quedan bastantes unidades todavía en stock hay que tratar de ganarle las máximas unidades a esas,
+        // ahora, cuando ya queden pocas, entonces sí se puede permitir que estén en BE"): en liquidación, una ciudad con unidades
+        // para estos días de ventas o más sigue las reglas de siempre; con menos, se acepta vender en el BE…
+        'liquidation_low_days' => [7, 1, 60],
+        // …pero si en los días sin dejar dinero (chronic_days) está más de este % encima del BE, se pausa la ciudad
+        'liquidation_be_margin_pct' => [10, 0, 100],
         'startup_min_mult' => [2.5, 1, 10],      // presupuesto de arranque = C × batches nuevos × 2,5 a 3
         'startup_max_mult' => [3, 1, 10],
         'mins_ok_pct' => [40, 0, 100],           // los mínimos de los ad sets: hasta el 40 % del presupuesto, bien

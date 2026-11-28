@@ -7,6 +7,7 @@ use App\Services\Meta\Decisions\MetaDecisions;
 use App\Services\Meta\Decisions\Readers\AdFacts;
 use App\Services\Meta\Decisions\Readers\OpsFacts;
 use App\Services\Meta\MetaMetrics;
+use App\Services\Meta\Queue\DemandRules;
 
 // .125 (dueño, 2026-11-09): "sí debemos establecer un límite para soltar producto, dependiendo de su CPA y si hicimos cambios y
 // no mejoró"; del paso C de antes: "puede ser que la campaña se esté comenzando a recuperar e igual me la mande a apagar"; y
@@ -91,7 +92,7 @@ function singanarDecide(array $aragua3d, array $o = []): array
     $facts->allows('dailyHistory')->andReturn([]);
     $settings = Mockery::mock(DecisionSettings::class);
     $settings->allows('get')->andReturn(($o['settings'] ?? SINGANAR_ANTES) + DecisionSettings::defaults());
-    $city = ['available' => true, 'stock' => 300, 'units_per_day' => 10.0, 'days_of_stock' => 30.0, 'sizes_out' => [], 'version' => null];
+    $city = ($o['city'] ?? []) + ['available' => true, 'stock' => 300, 'units_per_day' => 10.0, 'days_of_stock' => 30.0, 'sizes_out' => [], 'version' => null];
     // Caracas gana: $40 por día con 10 compras
     $good = [];
     foreach (array_keys(singanarDias()) as $d) {
@@ -301,6 +302,89 @@ describe('.186: 5 días sin dejar dinero (primero un batch nuevo) y el producto 
         expect($d['plan']['drop'])->toMatchArray(['days' => 7]);
         // .187: mientras el producto se testea, no (ahí decide la fase de testeo)
         expect($nuevas(['ccs3d' => [120.0, 15], 'ccs_daily' => $bad, 'extra' => true, 'phase' => 'testing'])['plan']['drop'])->toBeNull();
+    });
+});
+
+describe('.188: en liquidación, cada ciudad según sus unidades', function () {
+    // Dueño, 2026-11-28 (Comprimax): "que esté en liquidación solo significa que no conseguimos más de esos productos con los
+    // proveedores. Pero si quedan bastantes unidades todavía en stock hay que tratar de ganarle las máximas unidades a esas, ahora,
+    // cuando ya queden pocas, entonces sí se puede permitir que estén en BE". Eligió "pocas" = para menos de 7 días de ventas.
+
+    it('con unidades de sobra (30 días de ventas): las reglas de siempre, también los encargos', function () {
+        $this->travelTo(\Carbon\CarbonImmutable::parse('2026-11-09 00:30:00'));
+        $h = singanarHistorial('2026-11-09');
+        $h['new_ads'] = ['2026-10-26'];
+        $d = singanarDecide([95.3, 6], ['mode' => 'liquidation', 'settings' => [], 'history' => $h, 'bank' => ['B0130']]);
+        $c = $d['campaigns'][SINGANAR_ARAGUA];
+
+        // 5 días sin dejar dinero y ningún batch nuevo: primero un batch, como en un producto activo
+        expect($c['action']['key'])->toBe('intervene')->and($c['action']['proposal'])->toStartWith('Primero un batch nuevo: lanzar B0130 de la banca.')
+            ->and($c['numbers']['mode'])->toBe('normal')
+            ->and(collect($c['notes'])->firstWhere('key', 'liquidation_open')['text'])->toBe('Quedan 300 unidades (unos 30 días de ventas): reglas de siempre, para ganarle lo máximo a cada unidad.')
+            ->and($d['product']['liquidation_open'])->toBeTrue()
+            ->and($d['plan']['next_work'])->not->toContain('En liquidación: sin creativos nuevos.');
+        expect(collect(singanarMisiones($d))->firstWhere('kind', 'intervene')['title'])->toBe('Lanza B0130');
+    });
+
+    it('con pocas unidades (3 días de ventas): se acepta el BE; más de un 10 % encima en 5 días, se pausa', function () {
+        $this->travelTo(\Carbon\CarbonImmutable::parse('2026-11-09 00:30:00'));
+        $pocas = ['city' => ['stock' => 30, 'days_of_stock' => 3.0]];
+        // del 4 al 8/11: $95,30 con 6 compras ($15,88; BE $7,49): pausar, sin pedir batch
+        $d = singanarDecide([95.3, 6], ['mode' => 'liquidation', 'settings' => [], 'bank' => ['B0130']] + $pocas);
+        $a = $d['campaigns'][SINGANAR_ARAGUA]['action'];
+        expect($a['key'])->toBe('pause_city')
+            ->and($a['reading'])->toBe('En liquidación y con pocas unidades: en 5 días gastó $95,30 y vendió a $15,88 por compra, más de un 10 % encima de tu BE ($7,49).')
+            ->and($a['proposal'])->toBe('Pausar la ciudad: con pocas unidades se acepta vender en el BE, pero no perder dinero.')
+            ->and($d['campaigns'][SINGANAR_ARAGUA]['numbers']['mode'])->toBe('liquidation')
+            ->and(collect($d['campaigns'][SINGANAR_ARAGUA]['notes'])->firstWhere('key', 'liquidation_low')['text'])
+            ->toBe('Quedan 30 unidades (unos 3 días de ventas): se acepta vender en el BE, sin creativos nuevos ni subidas. Si en 5 días está más de un 10 % encima del BE, se pausa.')
+            ->and($d['product']['liquidation_open'])->toBeFalse()
+            ->and(collect(singanarMisiones($d))->firstWhere('kind', 'pause_city')['title'])->toBe('Pausa la campaña: 5 días sin dejar dinero');
+        // apenas encima del BE (5 días a $7,94, 6 % encima): se aguanta, solo se apagan los que pierden
+        $h = singanarHistorial('2026-11-09');
+        $h['daily']['2026-11-04'] = ['spend' => 0.0, 'purchases' => 6.0];
+        $b = singanarDecide([95.3, 12], ['mode' => 'liquidation', 'settings' => [], 'history' => $h] + $pocas)['campaigns'][SINGANAR_ARAGUA]['action'];
+        expect($b['key'])->toBe('hold_prune')->and($b['reading'])->toBe('En liquidación y en el break-even o encima.');
+    });
+
+    it('sin unidades para medir los días (no vende): cuenta como con unidades de sobra', function () {
+        expect(MetaDecisions::liquidationOpen(['stock' => 12, 'days_of_stock' => null], DecisionSettings::defaults()))->toBeTrue()
+            ->and(MetaDecisions::liquidationOpen(['stock' => 0, 'days_of_stock' => null], DecisionSettings::defaults()))->toBeFalse()
+            ->and(MetaDecisions::liquidationOpen(['stock' => 40, 'days_of_stock' => 6.9], DecisionSettings::defaults()))->toBeFalse()
+            ->and(MetaDecisions::liquidationOpen(['stock' => 40, 'days_of_stock' => 7.0], DecisionSettings::defaults()))->toBeTrue()
+            ->and(DecisionSettings::defaults())->toMatchArray(['liquidation_low_days' => 7.0, 'liquidation_be_margin_pct' => 10.0, 'min_live_creatives' => 4.0]);
+    });
+});
+
+describe('.188: una ciudad con pocos creativos prendidos pide un batch', function () {
+    // Dueño, 2026-11-28: "si dejamos toda la campaña en manos de solamente 2 o 3 creativos, pues realmente no le estamos dando
+    // suficiente variedad a Meta para que tome decisiones"
+    $n = fn (array $o = []) => $o + ['live' => 2, 'live_creatives' => 3, 'min_creatives' => 4, 'offers' => [['code' => 'B0148', 'how' => 'bank']]];
+
+    it('se mantiene con 2 batches vivos pero 3 creativos: lanzar 1 batch', function () use ($n) {
+        expect(UrgentList::need('hold', $n(), 'normal'))->toBe(1)
+            ->and(UrgentList::need('hold', $n(['live_creatives' => 4]), 'normal'))->toBe(0)
+            ->and(UrgentList::need('hold', $n(['min_creatives' => 0]), 'normal'))->toBe(0);
+        $d = ['product' => ['mode' => 'normal'], 'campaigns' => ['c1' => ['active' => true, 'city' => 'Carabobo',
+            'action' => ['key' => 'hold', 'label' => 'Mantener'], 'numbers' => $n(['offers' => []])]]];
+        expect(DemandRules::today($d))->toMatchArray(['today' => 1, 'cities' => ['Carabobo' => 'le quedan solo 3 creativos prendidos']])
+            ->and(DemandRules::today($d)['why'])->toBe('a Carabobo le quedan solo 3 creativos prendidos: hace falta un batch nuevo hoy para volver a bajar el costo por compra y seguir escalando.');
+    });
+
+    it('no, si hoy hay otro cambio grande o algo que esperar: subir, una subida que se mide, la espera de 24 horas, sin stock, revivir un ganador o en pausa', function () use ($n) {
+        expect(UrgentList::need('scale', $n(), 'normal'))->toBe(0)
+            ->and(UrgentList::need('hold', $n(['raise_waiting' => true]), 'normal'))->toBe(0)
+            ->and(UrgentList::need('hold', $n(), 'normal', true))->toBe(0)
+            ->and(UrgentList::need('hold', $n(['stock_issue' => true]), 'normal'))->toBe(0)
+            ->and(UrgentList::need('hold', $n(['revive' => ['ad' => 'x']]), 'normal'))->toBe(0)
+            ->and(UrgentList::need('none', $n(), 'paused'))->toBe(0)
+            ->and(UrgentList::need('hold', $n(), 'liquidation'))->toBe(0);
+    });
+
+    it('cuenta los creativos prendidos de la ciudad, sin los que se apagan hoy', function () {
+        $this->travelTo(\Carbon\CarbonImmutable::parse('2026-11-09 00:30:00'));
+        $c = singanarDecide([95.3, 6])['campaigns'][SINGANAR_ARAGUA]['numbers'];
+        expect($c['live'])->toBe(2)->and($c['live_creatives'])->toBe(2)->and($c['min_creatives'])->toBe(4);
     });
 });
 

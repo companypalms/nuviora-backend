@@ -708,8 +708,11 @@ describe('Las entregas con archivo', function () {
             ->and($late())->toBe(['B0113'])
             ->and(DB::table('product_ad_settings')->where('product_id', 5)->value('note'))->toBe('Sin stock del proveedor');
 
-        // en liquidación también queda en espera
-        ProductModes::set(5, 'liquidation', 1);
+        // .188: en liquidación ya no queda en espera (sigue donde quedan unidades de sobra); abandonado, sí
+        $r = ProductModes::set(5, 'liquidation', 1);
+        expect($ids())->toBe([1, 2, 3, 4])
+            ->and(ProductModes::effect($r['from'], $r['to'], $r['tasks']))->toStartWith('No se repone: en cada ciudad con unidades de sobra sigue como un producto activo');
+        ProductModes::set(5, 'abandoned', 1);
         expect($ids())->toBe([3, 4]);
     });
 

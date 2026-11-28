@@ -14,7 +14,8 @@ describe('Qué se le manda al editor líder', function () use ($creative) {
         $facts = [
             ['product_id' => 1, 'mode' => 'normal', 'urgency' => ['level' => 1], 'creatives' => [
                 $creative(10, 'stop', null), $creative(11, 'iterate', 'Cambia los primeros 3 segundos.', 'hook'), $creative(12, 'keep', null)]],
-            ['product_id' => 2, 'mode' => 'liquidation', 'urgency' => null, 'creatives' => [$creative(20, 'scale', 'Haz versiones nuevas.')]],
+            // En pausa: nada (.188: en liquidación sí; lo que se manda lo limita lo que pide DemandPlanner)
+            ['product_id' => 2, 'mode' => 'paused', 'urgency' => null, 'creatives' => [$creative(20, 'scale', 'Haz versiones nuevas.')]],
             ['product_id' => 3, 'mode' => 'normal', 'urgency' => ['level' => 3], 'creatives' => [$creative(30, 'scale', 'Haz versiones nuevas.')]],
             // Sin trabajo (U5, por ejemplo sin stock): no se le manda nada al equipo
             ['product_id' => 4, 'mode' => 'normal', 'urgency' => ['level' => 5], 'creatives' => [$creative(40, 'iterate', 'Acorta el video.', 'duration')]],
@@ -22,6 +23,8 @@ describe('Qué se le manda al editor líder', function () use ($creative) {
         $c = AnalysisSender::candidates($facts);
         expect(array_map(fn ($x) => $x['creative']['id'], $c))->toBe([11, 30])
             ->and($c[0])->toMatchArray(['product_id' => 1, 'urgency' => 1]);
+        $facts[1]['mode'] = 'liquidation';
+        expect(array_map(fn ($x) => $x['creative']['id'], AnalysisSender::candidates($facts)))->toBe([11, 20, 30]);
         // Los análisis viejos (sin decisiones) no mandan nada
         expect(AnalysisSender::candidates([['product_id' => 1, 'mode' => 'normal', 'creatives' => [['id' => 5, 'label' => 'C05']]]]))->toBe([]);
     });

@@ -142,7 +142,8 @@ final class UrgentList
                 $a = $c['action'];
                 $kind = self::kind($a);
                 $n = $c['numbers'] ?? null;
-                $mode = $p['mode'] ?? 'normal';
+                // .188: en liquidación, cada ciudad va con sus reglas (con unidades de sobra, las de siempre)
+                $mode = ($n['mode'] ?? null) ?: ($p['mode'] ?? 'normal');
                 // .87: los batches que hay que lanzar aquí (mínimo 2 vivos) y cuáles, de la banca de esta ciudad
                 // .123: tampoco mientras se espera a ver si el último cambio la devolvió a C
                 $need = self::need($kind, $n, $mode, self::holds($a));
@@ -185,7 +186,7 @@ final class UrgentList
                     'upload' => $wait || $kind === 'relaunch' ? [] : self::uploads($mission['batches'], (string) $c['campaign_meta_id'], self::newMin($c['campaign'] ?? null, $n)),
                     'why' => self::why($kind, $a, $n),
                     'detail' => array_values(array_filter([...($wait ? [] : $mission['lines']), ...self::numbers($n), $a['reading'], $a['proposal'], ...$c['notes'], ...$c['budget_notes'],
-                        count($prune) > self::NAMES_IN_STEP ? 'Todos los anuncios a apagar: ' . CreativeCalls::join($prune) . '.' : null, self::liveLine($n)])),
+                        count($prune) > self::NAMES_IN_STEP ? 'Todos los anuncios a apagar: ' . CreativeCalls::join($prune) . '.' : null, self::liveLine($n), self::creativesLine($n)])),
                     'money' => self::money($kind, $a, $n)] + ($wait ? ['group' => 'aviso'] : []);
             }
             foreach ($p['alarms'] as $t) {
@@ -689,8 +690,31 @@ final class UrgentList
         if (in_array($kind, self::FEEDS, true) && !$cooling) {
             return max(1, self::MIN_LIVE - (int) ($live ?? self::MIN_LIVE));
         }
+        // .188: también si a la ciudad le quedan menos creativos prendidos que tu mínimo (variedad para Meta), cuando se mantiene sin
+        // otro cambio grande: no mientras se espera a ver cómo resultó uno, ni con una subida que todavía se mide, sin stock o si
+        // hoy se revive un ganador (eso ya le suma un creativo)
+        $few = !$cooling && $kind === 'hold' && empty($n['raise_waiting']) && empty($n['stock_issue']) && empty($n['revive']) && self::fewCreatives($n) ? 1 : 0;
 
-        return $live === null ? 0 : max(0, self::MIN_LIVE - (int) $live);
+        return max($few, $live === null ? 0 : max(0, self::MIN_LIVE - (int) $live));
+    }
+
+    /** `.188`: a la ciudad le quedan menos creativos prendidos que tu mínimo (`min_live_creatives`), sin contar lo que se apaga hoy. */
+    public static function fewCreatives(?array $n): bool
+    {
+        return isset($n['live_creatives'], $n['min_creatives']) && (int) $n['min_creatives'] > 0 && (int) $n['live_creatives'] < (int) $n['min_creatives'];
+    }
+
+    /** `.188`: "Quedan solo 2 creativos prendidos". */
+    private static function creatives(int $n): string
+    {
+        return $n === 0 ? 'No queda ningún creativo prendido' : ($n === 1 ? 'Queda 1 solo creativo prendido' : "Quedan solo {$n} creativos prendidos");
+    }
+
+    /** `.188`: los creativos prendidos de la ciudad, para "¿Por qué?" (solo si son menos que tu mínimo). */
+    private static function creativesLine(?array $n): ?string
+    {
+        return self::fewCreatives($n) ? self::creatives((int) $n['live_creatives']) . ' aquí (sin contar lo que apagas hoy). Tu regla: nunca menos de '
+            . (int) $n['min_creatives'] . ', para que Meta tenga variedad.' : null;
     }
 
     /**
@@ -850,20 +874,25 @@ final class UrgentList
         $live = (int) $n['live'];
         $go = CreativeCalls::join(array_column($launch, 'code'));
         $budget = ($n['budget'] ?? null) ? AdRules::money($n['budget']) . ' por día' : 'el presupuesto';
+        // .188: con 2 batches vivos o más, lo que falta son creativos
+        $state = $live >= self::MIN_LIVE && self::fewCreatives($n) ? self::creatives((int) $n['live_creatives']) : self::alive($live);
 
         return ['key' => "{$productId}:{$c['campaign_meta_id']}:few_batches", 'city' => $c['city'], 'kind' => 'few_batches', 'label' => 'Batches vivos',
-            'text' => self::alive($live) . ' en esta campaña.', 'tone' => 'warning', 'where' => $short . ($c['city'] ? " · {$c['city']}" : ''),
+            'text' => $state . ' en esta campaña.', 'tone' => 'warning', 'where' => $short . ($c['city'] ? " · {$c['city']}" : ''),
             'title' => match (true) {
-                $launch === [] => self::alive($live) . ' y no hay más en la banca',
+                $launch === [] => $state . ' y no hay más en la banca',
                 $live === 1 && count($launch) === 1 => "Lanza 1 batch más: {$go}",
                 default => "Lanza {$go}",
             },
             'steps' => $launch ? [self::open($c['campaign'] ?? null, $short, $c['city']), ...self::launchSteps($launch, self::newMin($c['campaign'] ?? null, $n))] : [],
             'batches' => self::bankCodes($launch), 'copy' => $launch ? self::urlTags() : null,
             'upload' => self::uploads(self::bankCodes($launch), (string) $c['campaign_meta_id'], self::newMin($c['campaign'] ?? null, $n)), // .155
-            'why' => $live === 0 ? 'No queda ningún batch vivo: la campaña no tiene anuncios que mostrar'
-                : "Solo queda 1 batch vivo: {$budget} cae todo en él; con 2, Meta reparte",
-            'detail' => array_values(array_filter([self::liveLine($n), $launch === [] ? 'Cuando haya un batch en la banca, te sale como misión.' : null])),
+            'why' => match (true) {
+                $live === 0 => 'No queda ningún batch vivo: la campaña no tiene anuncios que mostrar',
+                $live < self::MIN_LIVE => "Solo queda 1 batch vivo: {$budget} cae todo en él; con 2, Meta reparte",
+                default => "{$state}: con tan pocos, Meta no tiene variedad para elegir",
+            },
+            'detail' => array_values(array_filter([self::liveLine($n), self::creativesLine($n), $launch === [] ? 'Cuando haya un batch en la banca, te sale como misión.' : null])),
             'money' => null] + ($launch === [] ? ['group' => 'aviso'] : []);
     }
 

@@ -21,8 +21,10 @@ class DemandPlanner
         $ids = [];
         foreach ($decisions as $pid => $d) {
             // En pausa, abandonados, en liquidación o sin trabajo (U5: sin stock, sin C ni BE) no reciben creativos nuevos. .139: un
-            // producto Malo por su efectividad tampoco, mientras el dueño decide (con "No estoy de acuerdo", sí)
-            if (($d['product']['mode'] ?? 'normal') === 'normal' && ($d['plan']['urgency']['level'] ?? 5) < 5 && !in_array((int) $pid, $skip, true)
+            // producto Malo por su efectividad tampoco, mientras el dueño decide (con "No estoy de acuerdo", sí). .188: en liquidación,
+            // sí mientras alguna ciudad tenga unidades de sobra (ahí va con las reglas de siempre)
+            $mode = $d['product']['mode'] ?? 'normal';
+            if (($mode === 'normal' || $mode === 'liquidation' && !empty($d['product']['liquidation_open'])) && ($d['plan']['urgency']['level'] ?? 5) < 5 && !in_array((int) $pid, $skip, true)
                 && !($d['product']['worth']['stop'] ?? false)) {
                 $ids[] = (int) $pid;
             }

@@ -52,7 +52,8 @@ final class ProposalRules
         foreach ($decisions as $pid => $d) {
             $dates = array_values($quotas[$pid] ?? []);
             $city = self::city($d['campaigns'] ?? [], $anyStock);
-            if ($dates === [] || $city === null || ($d['product']['mode'] ?? 'normal') !== 'normal') {
+            // .188: en liquidación, lo que pide DemandPlanner (solo con alguna ciudad con unidades de sobra)
+            if ($dates === [] || $city === null || \App\Services\Meta\Products\ProductModes::stopped($d['product']['mode'] ?? 'normal')) {
                 continue;
             }
             $products[] = ['d' => $d, 'level' => (int) ($d['plan']['urgency']['level'] ?? 9), 'risk' => (float) ($d['plan']['money_at_risk'] ?? 0),

@@ -507,6 +507,7 @@ class MetaDecisions
         $today = $history['today'];
         $yesterday = $history['yesterday'];
         $actions = [];
+        $cityModes = [];
         $prices = [];
         $alarms = [];
         $minFor = [];
@@ -533,6 +534,9 @@ class MetaDecisions
             $id = (string) $id;
             $h = $history['campaigns'][$id] ?? ['daily' => [], 'budget_events' => [], 'status_events' => [], 'ad_pauses' => [], 'new_ads' => [], 'mins' => 0.0];
             $city = $c['city_id'] !== null ? ($ops['cities'][$c['city_id']] ?? null) : null;
+            // .188: en liquidación, una ciudad con unidades para `liquidation_low_days` días de ventas o más sigue las reglas de
+            // siempre ("ganarle las máximas unidades"); con menos, las de liquidación (se acepta vender en el BE)
+            $cityMode = $mode === 'liquidation' && $city && self::liquidationOpen($city, $s) ? 'normal' : $mode;
             $w3 = $c['windows']['3d'] ?? null;
             $w7 = $c['windows']['7d'] ?? null;
             $cpa7 = $w7['metrics']['cpa'] ?? null;
@@ -643,7 +647,7 @@ class MetaDecisions
             // .87: lo que puede lanzar esta ciudad: la banca y los batches que ya salieron en otra ciudad, no en esta
             $offers = self::offers($f, $out, $id, $ops['bank']['launched'] ?? [], $ops['bank']['ready'] ?? [], $ops['bank']['names'] ?? []);
             // .125 (dueño, 2026-11-09: "sí, que corra"): en el BE o encima y sin nada que lanzar, la cuenta corre desde el primer día
-            $noBatch = $streak['days'] > 0 && $offers === [] && $mode === 'normal';
+            $noBatch = $streak['days'] > 0 && $offers === [] && $cityMode === 'normal';
             if ($noBatch && ($intervention === null || $intervention > $streak['start'])) {
                 $intervention = $streak['start'];
                 $closed = max(0, (int) round((strtotime($yesterday) - strtotime($intervention)) / 86400));
@@ -658,8 +662,12 @@ class MetaDecisions
                     . AdRules::num($delivers['effectiveness']) . " % en {$delivers['orders']} pedidos): reglas de siempre."];
             }
             $recent = self::recentChange($h, $f, $id, now()->toDateTimeString(), (float) $s['change_wait_hours']);
+            // .144: la última subida (o bajada): si todavía se espera, si aguantó o si hay que devolverla
+            $raise = CampaignRules::raiseCheck($h['daily'], $h['budget_events'], $budget !== null ? (float) $budget : null,
+                $c['break_even'] ? (float) $c['break_even'] : null, $yesterday, (int) $s['raise_wait_days'], (float) $s['raise_drop_pct'], (int) $s['climb_days'],
+                (float) $s['climb_min_pct']);
             $action = $cr->action([
-                'c' => $c['target'], 'be' => $c['break_even'], 'be_estimated' => (bool) ($c['break_even_estimated'] ?? false), 'mode' => $mode, 'budget' => $budget,
+                'c' => $c['target'], 'be' => $c['break_even'], 'be_estimated' => (bool) ($c['break_even_estimated'] ?? false), 'mode' => $cityMode, 'budget' => $budget,
                 'spend3' => $w3['totals']['spend'] ?? 0, 'purchases3' => $w3['totals']['purchases'] ?? 0, 'cpa7' => $cpa7, 'freq3' => $w3['metrics']['frequency'] ?? null,
                 'stock_alert' => $stockAlert, 'stock_waiting' => $stockWaiting, 'stock_out' => $noStock, 'c_source' => $c['target_source'] ?? null,
                 'increased_24h' => collect($h['budget_events'])->contains(fn ($e) => $e['to'] > $e['from'] && strtotime($e['at']) >= strtotime('-24 hours')),
@@ -672,10 +680,7 @@ class MetaDecisions
                 'recent_change' => $recent,
                 // .123: entre C y BE, lo último que se hizo desde que la campaña se pasó de C
                 'band' => self::band($h, $f, $id, $c['target'] ? (float) $c['target'] : null, $budget !== null ? (float) $budget : null, $today, $yesterday, (int) $s['band_undo_days']),
-                // .144: la última subida (o bajada): si todavía se espera, si aguantó o si hay que devolverla
-                'raise' => CampaignRules::raiseCheck($h['daily'], $h['budget_events'], $budget !== null ? (float) $budget : null,
-                    $c['break_even'] ? (float) $c['break_even'] : null, $yesterday, (int) $s['raise_wait_days'], (float) $s['raise_drop_pct'], (int) $s['climb_days'],
-                    (float) $s['climb_min_pct']),
+                'raise' => $raise,
                 // .185: la subida que se devolvió deja ese presupuesto como techo, hasta un batch nuevo con el CPA debajo de C. .187: el
                 // techo encima del presupuesto de hoy
                 'ceiling' => CampaignRules::ceiling($h['budget_events'], $h['new_ads'] ?? [], $budget !== null ? (float) $budget : null),
@@ -707,7 +712,13 @@ class MetaDecisions
                 'mins' => ['off' => $mins['off'], 'keep' => $mins['keep'], 'stays' => $mins['stays']],
                 // .166: el ganador que descansa y se revive hoy: no en un producto que no está normal, sin stock, Malo ni con un
                 // cambio grande en 24 horas (y la lista lo da solo si la ciudad no tiene otro cambio grande hoy)
-                'revive' => $mode === 'normal' && !$noStock && !($worth['stop'] && !$delivers) && $recent === null ? ($out['campaigns'][$id]['revive'] ?? null) : null,
+                'revive' => $cityMode === 'normal' && !$noStock && !($worth['stop'] && !$delivers) && $recent === null ? ($out['campaigns'][$id]['revive'] ?? null) : null,
+                // .188: las reglas con que va esta ciudad (en liquidación con unidades, las de siempre) y sus creativos prendidos
+                'mode' => $cityMode,
+                'live_creatives' => self::liveCreatives($f, $out, $id, in_array($action['key'], ['hold_prune', 'intervene'], true)),
+                'min_creatives' => (int) $s['min_live_creatives'],
+                // .188: con una subida que todavía se mide o sin stock, los pocos creativos no piden un batch (un cambio grande a la vez)
+                'raise_waiting' => ($raise['status'] ?? null) === 'waiting', 'stock_issue' => $noStock || $stockWaiting > 0,
                 // .126: lo que dejó la campaña (compras × BE − gasto) en 3 y en 7 días
                 'gain3' => self::gain((float) ($w3['totals']['spend'] ?? 0), (float) ($w3['totals']['purchases'] ?? 0), $c['break_even']),
                 'gain7' => self::gain((float) ($w7['totals']['spend'] ?? 0), (float) ($w7['totals']['purchases'] ?? 0), $c['break_even'])]
@@ -715,6 +726,15 @@ class MetaDecisions
                 + (($c['break_even_estimated'] ?? null) ? ['be_estimated' => (float) $c['break_even_estimated']] : []);
             $out['campaigns'][$id]['budget_notes'] = $cr->budgetNotes($budget, (float) $h['mins'], $newBatches, $c['target'], $mins['missing']);
             $actions[$id] = $action['key'];
+            $cityModes[$id] = $cityMode;
+            // .188: en liquidación, por qué esta ciudad va con unas reglas u otras
+            if ($mode === 'liquidation' && $city) {
+                $left = 'Quedan ' . $city['stock'] . ' unidades' . ($city['days_of_stock'] !== null ? ' (unos ' . AdRules::num($city['days_of_stock']) . ' días de ventas)' : '');
+                $out['campaigns'][$id]['notes'][] = $cityMode === 'normal'
+                    ? ['key' => 'liquidation_open', 'label' => 'En liquidación, con unidades', 'text' => "{$left}: reglas de siempre, para ganarle lo máximo a cada unidad."]
+                    : ['key' => 'liquidation_low', 'label' => 'En liquidación, pocas unidades', 'text' => "{$left}: se acepta vender en el BE, sin creativos nuevos ni subidas. Si en "
+                        . (int) $s['chronic_days'] . ' días está más de un ' . AdRules::num($s['liquidation_be_margin_pct']) . ' % encima del BE, se pausa.'];
+            }
 
             // El precio mínimo con el CPA de 7 días, para vigilar un precio que cambió. .140: la opción de bajarlo de a $2 junto al
             // escalado se reemplazó por la recomendación del producto entero (PriceRules, abajo)
@@ -783,7 +803,10 @@ class MetaDecisions
                 : 'Sin CPA de referencia: escribe "CPA $X | BE $Y" en el nombre de la campaña o ponlo en Meta Ads › Productos y objetivos.');
         }
         $stockAllOut = $ops && $activeCities && !array_filter($activeCities, fn ($c) => ($ops['cities'][$c['city_id']]['stock'] ?? 1) > 0);
-        $urgency = $cr->urgency(['mode' => $mode, 'cities' => array_values($actions), 'healthy' => $healthy, 'failing' => $failing, 'stock_all_out' => $stockAllOut]);
+        // .188: en liquidación con alguna ciudad con unidades, el producto se mueve como uno activo (encargos uno a la vez)
+        $productMode = $mode === 'liquidation' && in_array('normal', $cityModes, true) ? 'normal' : $mode;
+        $out['product']['liquidation_open'] = $mode === 'liquidation' && $productMode === 'normal';
+        $urgency = $cr->urgency(['mode' => $productMode, 'cities' => array_values($actions), 'healthy' => $healthy, 'failing' => $failing, 'stock_all_out' => $stockAllOut]);
         // Paso 4a: lo que ya está en la banca (aprobado sin testear) se resta de lo que hay que pedir
         $bank = $ops['bank']['codes'] ?? [];
         $urgency['needed'] = $urgency['batches'];
@@ -830,7 +853,7 @@ class MetaDecisions
         $out['plan'] = [
             'price_down' => $priceDown,
             'urgency' => $urgency,
-            'next_work' => $cr->nextWork(['mode' => $mode, 'winner' => $winner, 'saturated' => $saturated, 'main_angle' => $mainAngle,
+            'next_work' => $cr->nextWork(['mode' => $productMode, 'winner' => $winner, 'saturated' => $saturated, 'main_angle' => $mainAngle,
                 'rested' => $restedCodes, 'rest_batches' => $restN, 'bank' => $bank, 'needed' => $urgency['needed']], $urgency['batches']),
             'price' => $prices,
             'price_watch' => $cr->priceWatch($ops['price_change'] ?? null, $mainCampaign !== null ? ($minFor[$mainCampaign] ?? null) : null),
@@ -875,8 +898,23 @@ class MetaDecisions
         return count(self::liveSets($f, $out, $campaignId, $prunes));
     }
 
-    /** Los ad sets vivos de una campaña (ver `live`). @return array<string, true> */
-    private static function liveSets(array $f, array $out, string $campaignId, bool $prunes): array
+    /** `.188`: cuántos creativos siguen prendidos en una campaña (como `live`, contando creativos en vez de ad sets). PHP puro. */
+    public static function liveCreatives(array $f, array $out, string $campaignId, bool $prunes): int
+    {
+        return count(self::liveSets($f, $out, $campaignId, $prunes, true));
+    }
+
+    /**
+     * `.188`: en liquidación, ¿a la ciudad le quedan unidades para `liquidation_low_days` días de ventas o más? Con unidades y sin
+     * ventas para medirlas (sin días), sí. PHP puro.
+     */
+    public static function liquidationOpen(array $city, array $s): bool
+    {
+        return ($city['stock'] ?? 0) > 0 && (($city['days_of_stock'] ?? null) === null || (float) $city['days_of_stock'] >= (float) $s['liquidation_low_days']);
+    }
+
+    /** Los ad sets vivos de una campaña (ver `live`); `.188`: o sus creativos. @return array<string, true> */
+    private static function liveSets(array $f, array $out, string $campaignId, bool $prunes, bool $byCreative = false): array
     {
         $sets = [];
         foreach ($f['ads'] as $adId => $ad) {
@@ -889,7 +927,7 @@ class MetaDecisions
             $off = ($cr['verdict']['key'] ?? null) === 'loser' || ($here['key'] ?? null) === 'loser' || !empty($here['stop'])
                 || $prunes && ($out['ads'][$adId]['key'] ?? null) === 'loser';
             if (!$off) {
-                $sets[(string) $ad['adset_meta_id']] = true;
+                $sets[$byCreative ? (string) ($ad['creative_id'] ?? "ad:{$adId}") : (string) $ad['adset_meta_id']] = true;
             }
         }
 

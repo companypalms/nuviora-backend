@@ -47,13 +47,19 @@ describe('Cuántos y en qué orden', function () {
             ->and(ProposalRules::plan($d, [3 => ['2026-11-03']], [], [3 => 1])[0]['kind'])->toBe('new_concept');
     });
 
-    it('nunca un producto en liquidación o sin una ciudad con stock', function () {
+    it('nunca un producto en pausa o sin una ciudad con stock', function () {
         $sinStock = ['campaigns' => ['c1a' => ['stock' => 0], 'c1b' => ['stock' => 0]]];
         $d = [
             1 => productoCola(1, 'Sin stock', 1, '2–3', $sinStock),
-            2 => productoCola(2, 'Liquidación', 1, '2–3', ['product' => ['mode' => 'liquidation']]),
+            2 => productoCola(2, 'En pausa', 1, '2–3', ['product' => ['mode' => 'paused']]),
         ];
         expect(ProposalRules::plan($d, [1 => ['2026-11-03'], 2 => ['2026-11-03']]))->toBe([]);
+    });
+
+    it('.188: en liquidación, lo que pida DemandPlanner (solo con alguna ciudad con unidades de sobra)', function () {
+        $d = [2 => productoCola(2, 'Liquidación', 1, '2–3', ['product' => ['mode' => 'liquidation']])];
+        expect(ProposalRules::plan($d, [2 => ['2026-11-03']]))->toHaveCount(1)
+            ->and(ProposalRules::plan($d, []))->toBe([]);
     });
 
     it('la ciudad de aprendizaje: la que más vendió en 7 días con stock, sin las que se pausan', function () {
