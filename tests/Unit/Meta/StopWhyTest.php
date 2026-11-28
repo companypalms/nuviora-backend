@@ -79,7 +79,12 @@ describe('En palabras', function () {
         $v = reglas156()->recentLoser(['spend' => 12.0, 'purchases' => 0], ['key' => 'intermediate', 'label' => 'Intermedio'], 4.0, 7.0, ['spend' => 20.0, 'purchases' => 2]);
 
         expect(StopWhy::lines('C0111 FASP', 'Aragua', $v['why'])[2])
-            ->toBe('En su semana gastó $20,00 con 2 compras (CPA $10,00): para no apagarlo hacían falta 5 compras en 7 días con el costo por compra como mucho un 10 % encima de tu C.');
+            ->toBe('En su semana gastó $20,00 con 2 compras (CPA $10,00): para no apagarlo hacían falta 5 compras en 7 días con el costo por compra '
+                . 'en el punto medio entre tu C y tu BE ($5,50) o debajo.');
+        // los análisis guardados antes de la .187 siguen diciendo lo suyo
+        $antes = array_diff_key($v['why'], ['watch_mid' => true]);
+        expect(StopWhy::lines('C0111 FASP', 'Aragua', $antes + ['watch_pct' => 10.0])[2])->toEndWith('como mucho un 10 % encima de tu C.')
+            ->and(StopWhy::lines('C0111 FASP', 'Aragua', $antes)[2])->toEndWith('en tu BE o debajo.');
     });
 
     it('cada regla tiene su frase', function () {

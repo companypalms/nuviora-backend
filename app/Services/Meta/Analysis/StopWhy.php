@@ -144,9 +144,14 @@ final class StopWhy
         $p = (float) $w['purchases'];
         $got = 'En su semana gastó ' . AdRules::money((float) $w['spend']) . ($p == 0 ? ' sin compras' : ' con ' . AdRules::num($p) . ($p == 1 ? ' compra' : ' compras')
             . ' (CPA ' . AdRules::money((float) $w['spend'] / $p) . ')');
-        // .186: la semana protege si está como mucho un % encima de C (los análisis de antes, en el BE o debajo)
-        $need = 'para no apagarlo hacían falta ' . AdRules::num((float) $why['watch']) . ' compras en 7 días con el costo por compra '
-            . (isset($why['watch_pct']) ? 'como mucho un ' . AdRules::num((float) $why['watch_pct']) . ' % encima de tu C' : 'en tu BE o debajo');
+        // .187: la semana protege si está en el punto medio entre C y BE o debajo (con la .186, como mucho un % encima de C; los
+        // análisis de antes, en el BE o debajo)
+        $mid = !empty($why['watch_mid']) && ($why['be'] ?? null) ? ((float) $why['c'] + (float) $why['be']) / 2 : null;
+        $need = 'para no apagarlo hacían falta ' . AdRules::num((float) $why['watch']) . ' compras en 7 días con el costo por compra ' . match (true) {
+            $mid !== null => 'en el punto medio entre tu C y tu BE (' . AdRules::money($mid) . ') o debajo',
+            isset($why['watch_pct']) => 'como mucho un ' . AdRules::num((float) $why['watch_pct']) . ' % encima de tu C',
+            default => 'en tu BE o debajo',
+        };
 
         return $why['estimated'] ? "{$got}. Con un BE estimado, la semana no lo protege." : "{$got}: {$need}.";
     }

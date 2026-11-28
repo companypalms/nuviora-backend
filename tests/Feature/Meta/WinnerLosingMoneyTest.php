@@ -148,19 +148,21 @@ describe('.119: ZenPulse en Caracas, con los números del 9/11', function () {
     });
 
     // .152 (dueño, 2026-11-17): con la semana del 9/11 en el BE o debajo, se vigilaban; al día siguiente su semana pasó el BE y
-    // se apagaron (la ciudad pasó de $7,09 a $3,97). .186 (dueño, 2026-11-28: "debería ser si en la semana estuvo solo un
-    // porcentaje corto por encima del C (no del BE)"): su semana ($6,98) está 57 % encima de C ($4,44): se apagan ese mismo día
-    it('.186: con su semana del 9/11 debajo del BE pero muy encima de C, ya no se vigilan: se apagan ese día', function () {
+    // se apagaron (la ciudad pasó de $7,09 a $3,97). .187 (dueño, 2026-11-28, después de la revisión: "el punto medio entre C y
+    // BE", $6,03): el CREATIVO 5 (su semana $6,98) se apaga ese mismo día; el CREATIVO 4 ($5,04) se vigila
+    it('.187: con su semana del 9/11 encima del punto medio entre C y BE, el CREATIVO 5 se apaga; el CREATIVO 4, debajo, se vigila', function () {
         $d = zenCaracasDecision([], [], true, ZEN_REAL_WEEK);
         $facts = AnalysisFacts::build([1149 => $d]);
         $urgent = collect(UrgentList::build($facts));
 
         expect($d['creatives'][5]['cities'][0]['stop'])->toBeTrue()
             ->and(CreativeCalls::stopIn($d['creatives'][5]))->toBe(['Distrito Capital'])
-            ->and($facts[0]['stop_by_city'])->toBe(['Distrito Capital' => ['CREATIVO 5 27/10/2026', 'CREATIVO 4 27/10/2026']])
-            ->and($d['campaigns'][ZEN_CARACAS]['numbers']['prune'])->toBe(['CREATIVO 5 27/10/2026', 'CREATIVO 4 27/10/2026'])
-            ->and($urgent->firstWhere('kind', 'watch'))->toBeNull()
-            ->and($urgent->firstWhere('kind', 'stop_creatives')['title'])->toBe('Apaga 2 creativos que aquí pierden');
+            ->and($d['creatives'][4]['cities'][0])->not->toHaveKey('stop')
+            ->and($d['creatives'][4]['cities'][0]['watch'])->toContain('(tu C es $4,44 y tu BE $7,61)')
+            ->and($facts[0]['stop_by_city'])->toBe(['Distrito Capital' => ['CREATIVO 5 27/10/2026']])
+            ->and($d['campaigns'][ZEN_CARACAS]['numbers']['prune'])->toBe(['CREATIVO 5 27/10/2026'])
+            ->and($urgent->firstWhere('kind', 'watch')['title'])->toStartWith('Vigila CREATIVO 4 27/10/2026')
+            ->and($urgent->firstWhere('kind', 'stop_creatives')['title'])->toStartWith('Apaga CREATIVO 5 27/10/2026');
     });
 });
 

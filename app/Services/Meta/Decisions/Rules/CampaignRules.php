@@ -167,16 +167,35 @@ class CampaignRules
             $relaunch = 'Pausar la ciudad. Se vuelve a prender cuando haya ' . (int) $this->s['relaunch_batches'] . ' batches que nunca se publicaron ahí.';
             // .125: 14 días sin dejar dinero, y los últimos 3 tampoco (aquí el CPA de 3 días ya está en el BE o encima)
             $ch = $in['chronic'] ?? null;
-            $chronicLoss = $ch && $ch['spend'] >= $c * $this->s['chronic_min_cpa'] && ($ch['purchases'] <= 0 || $ch['spend'] / $ch['purchases'] >= $be);
+            // .187 (la revisión del 2026-11-28: con 5 días, una mala racha pausaba 6 de cada 10 ciudades que dejan dinero): "sin dejar
+            // dinero" es con el margen de los creativos encima del BE; apenas encima, siguen los pasos de siempre del BE
+            $margin = (float) $this->s['loser_be_margin_pct'];
+            $chronicLoss = $ch && $ch['spend'] >= $c * $this->s['chronic_min_cpa'] && ($ch['purchases'] <= 0 || $ch['spend'] / $ch['purchases'] >= $be * (1 + $margin / 100));
+            $over = $margin > 0 ? 'un ' . AdRules::num($margin) . ' % o más encima de tu BE (' . AdRules::money($be) . ')' : 'en tu BE (' . AdRules::money($be) . ') o encima';
             // .186 (dueño, 2026-11-28: "no puede ser 14 días, deben ser menos, máximo 5 días. Claro, primero tenemos que tratar de
             // recuperarla con un batch nuevo, pero si no funciona se apaga"): sin un batch nuevo en esos días, primero el batch. Si no
             // hay ninguno para lanzar, la cuenta corre igual (.125: "sí, que corra") y se pausa
             if ($chronicLoss && ($ch['batches'] ?? 0) === 0 && !($in['no_batch'] ?? false) && $mode !== 'liquidation') {
                 return $this->out('intervene', $data, "{$ch['days']} días sin dejar dinero: gastó " . AdRules::money($ch['spend'])
-                    . ($ch['purchases'] > 0 ? ' y vendió a ' . AdRules::money($ch['spend'] / $ch['purchases']) . ' por compra' : ' sin compras') . ', en tu BE (' . AdRules::money($be)
-                    . ') o encima, y en esos días no entró ningún batch nuevo.',
+                    . ($ch['purchases'] > 0 ? ' y vendió a ' . AdRules::money($ch['spend'] / $ch['purchases']) . ' por compra' : ' sin compras') . ", {$over}, y en esos días no entró ningún batch nuevo.",
                     'Primero un batch nuevo: lanzar ' . (($in['bank_ready'] ?? []) ? $in['bank_ready'][0] . ' de la banca' : 'un batch nuevo') . '. Si con él sigue sin dejar dinero, se pausa la ciudad. No tocar el presupuesto hoy.'
                     . $pruneText) + ['chronic' => $ch];
+            }
+            // .187 (la revisión del 2026-11-28: al día siguiente de "primero un batch nuevo" ya pausaba la ciudad): al batch nuevo se
+            // le dan sus días cerrados (`band_wait_days`), como entre C y BE; mientras tanto, solo se apagan los que pierden
+            $wait = (int) $this->s['band_wait_days'];
+            $last = $ch['last_batch'] ?? null;
+            if ($chronicLoss && $last && $last['closed'] < $wait) {
+                $what = ($last['name'] ?? null) ? 'entró el batch «' . $last['name'] . '»' : 'entraron anuncios nuevos';
+                $until = date('Y-m-d', strtotime($last['date'] . ' +' . ($wait + 1) . ' days'));
+                $span = $wait === 1 ? '1 día cerrado' : "{$wait} días cerrados";
+
+                return $this->out('hold_prune', $data, "{$ch['days']} días sin dejar dinero: gastó " . AdRules::money($ch['spend'])
+                    . ($ch['purchases'] > 0 ? ' y vendió a ' . AdRules::money($ch['spend'] / $ch['purchases']) . ' por compra' : ' sin compras') . ", {$over}. El "
+                    . date('d/m', strtotime($last['date'])) . " {$what}.",
+                    "Esperar: se le dan {$span} al batch nuevo. Si el " . date('d/m', strtotime($until)) . ' sigue sin dejar dinero, se pausa la ciudad. No tocar el presupuesto.' . $pruneText)
+                    + ['ladder' => ['hold' => true, 'what' => $what, 'since' => $last['date'], 'until' => $until, 'days' => $wait, 'next' => 'pausar la ciudad',
+                        'check' => 'vuelve a dejar dinero'], 'chronic' => $ch];
             }
             if ($chronicLoss) {
                 $tried = array_filter([
@@ -185,8 +204,8 @@ class CampaignRules
                 ]);
 
                 return $this->out('pause_city', $data, "{$ch['days']} días sin dejar dinero: gastó " . AdRules::money($ch['spend'])
-                    . ($ch['purchases'] > 0 ? ' y vendió a ' . AdRules::money($ch['spend'] / $ch['purchases']) . ' por compra' : ' sin compras') . ', en tu BE (' . AdRules::money($be)
-                    . ') o encima; y en los últimos 3 días tampoco. ' . ($tried ? 'En ese tiempo ' . implode(' y ', $tried) . ', y no mejoró.' : 'En ese tiempo no se le hizo ningún cambio.'),
+                    . ($ch['purchases'] > 0 ? ' y vendió a ' . AdRules::money($ch['spend'] / $ch['purchases']) . ' por compra' : ' sin compras') . ", {$over}; y en los últimos 3 días tampoco dejó dinero. "
+                    . ($tried ? 'En ese tiempo ' . implode(' y ', $tried) . ', y no mejoró.' : 'En ese tiempo no se le hizo ningún cambio.'),
                     $relaunch, $budget, null) + ['chronic' => $ch];
             }
             $since = $in['intervention'] ?? null;
@@ -241,7 +260,10 @@ class CampaignRules
             (bool) ($in['stock_out'] ?? false) => 'Va bien, pero no hay stock en esta ciudad: no se sube hasta que llegue.',
             ($in['stock_waiting'] ?? 0) > 0 => 'Va bien, pero hay ' . (int) $in['stock_waiting'] . ' pedidos esperando stock en esta ciudad: no se sube hasta que llegue.',
             $purchases < $this->s['scale_min_purchases'] => 'Va bien, pero con poco volumen: ' . AdRules::num($purchases) . ' compras en 3 días (hacen falta ' . (int) $this->s['scale_min_purchases'] . ').',
-            $be && ($in['cpa7'] ?? null) !== null && $in['cpa7'] > $be => 'Los 7 días no acompañan (CPA 7D ' . AdRules::money($in['cpa7']) . ', encima del BE).',
+            // .187 (la revisión del 2026-11-28: con la semana solo debajo del BE, una campaña 10 % encima de C salía "Sube" 4 de cada 10
+            // días, por 3 días buenos): la semana también en C o debajo
+            ($in['cpa7'] ?? null) !== null && $in['cpa7'] > $c => 'Va bien en 3 días, pero la semana no acompaña: CPA de 7 días ' . AdRules::money($in['cpa7'])
+                . ', encima de tu C (' . AdRules::money($c) . ').',
             // .144: una subida a la vez: la siguiente, cuando la anterior ya se revisó
             ($in['raise']['status'] ?? null) === 'waiting' => self::raiseWaiting($in['raise']),
             // .111: con un cambio en las últimas 24 horas, la espera (cooldown) dice hasta cuándo y cuánto subir después
@@ -312,7 +334,7 @@ class CampaignRules
 
             return $this->out('step_down', $data, "{$reading} Los 7 días también están encima de C (CPA 7D " . AdRules::money((float) $in['cpa7']) . '): primero se devuelve la última subida, después el batch.',
                 'Devolver la subida del ' . $day($undo['date']) . ': ' . AdRules::money($budget) . ' → ' . AdRules::money($to) . '.'
-                . ($to > (float) $undo['from'] + 0.005 ? ' Como mucho un ' . self::DOWN_CAP . ' % de una vez, para no dañar la optimización: el resto, en ' . $days . '.' : '')
+                . ($to > (float) $undo['from'] + 0.005 ? ' Como mucho un ' . self::DOWN_CAP . ' % de una vez, para no dañar la optimización.' : '')
                 . " Si en {$days} sigue encima de C, toca meter un batch. Si vuelve a C, se sube otra vez.", $budget, $to)
                 + ['ladder' => ['hold' => false, 'what' => 'devolver la subida primero', 'since' => $undo['date'], 'undo' => $undo['date'], 'days' => $wait]];
         }
@@ -351,7 +373,8 @@ class CampaignRules
      * @param list<array{date: string, at?: string, from: float, to: float}> $events los cambios de presupuesto
      * @return array{status: string, raise: bool, date: string, from: float, to: float, days: int, closed: int, until: string, before?: ?float, after?: ?float}|null
      */
-    public static function raiseCheck(array $daily, array $events, ?float $budget, ?float $be, string $yesterday, int $wait, float $dropPct, int $climbDays = 0): ?array
+    public static function raiseCheck(array $daily, array $events, ?float $budget, ?float $be, string $yesterday, int $wait, float $dropPct, int $climbDays = 0,
+        float $climbMinPct = 0): ?array
     {
         if ($events === []) {
             return null;
@@ -384,7 +407,7 @@ class CampaignRules
         }
 
         // .185: si toda la escalera deja menos, eso manda (es la misma subida que devolver, con su porqué completo)
-        return self::climb($events, $budget, $yesterday, $climbDays, $gain, $wait, $closed) ?? $last;
+        return self::climb($events, $budget, $yesterday, $climbDays, $gain, $wait, $closed, $climbMinPct, $dropPct) ?? $last;
     }
 
     /**
@@ -394,8 +417,13 @@ class CampaignRules
      * $climbDays días. Si desde la primera la campaña deja menos por día (sus últimos 7 días cerrados contra los 7 antes de esa
      * primera subida), se devuelve la última que sigue puesta; con la espera de siempre entre un cambio y otro, la siguiente, y
      * así hasta volver a donde dejaba más. null si no hay escalera, todavía no pasaron 7 días o deja igual o más.
+     *
+     * `.187` (la revisión del 2026-11-28: con una subida sola, la suerte de cada día pesa más que lo que cambió; sin margen se
+     * devolvía la mitad de las subidas, buenas o malas): se juzga desde que el presupuesto está $minPct % encima de donde empezó
+     * la escalera, y solo si deja $dropPct % menos o más (el mismo margen que una subida sola, `.144`).
      */
-    private static function climb(array $events, ?float $budget, string $yesterday, int $climbDays, \Closure $gain, int $wait, int $closed): ?array
+    private static function climb(array $events, ?float $budget, string $yesterday, int $climbDays, \Closure $gain, int $wait, int $closed, float $minPct = 0,
+        float $dropPct = 0): ?array
     {
         if ($climbDays <= 0 || $budget === null) {
             return null;
@@ -403,7 +431,7 @@ class CampaignRules
         $since = date('Y-m-d', strtotime("{$yesterday} -{$climbDays} days"));
         $raises = array_values(array_filter($events, fn ($e) => $e['to'] > $e['from'] && $e['date'] >= $since));
         $standing = array_values(array_filter($raises, fn ($e) => $e['from'] > 0 && $e['from'] < $budget - 0.005));
-        if ($raises === [] || $standing === [] || $budget <= $raises[0]['from'] + 0.005) {
+        if ($raises === [] || $standing === [] || $budget <= $raises[0]['from'] + 0.005 || $budget < $raises[0]['from'] * (1 + $minPct / 100) - 0.005) {
             return null;
         }
         $first = $raises[0];
@@ -412,7 +440,7 @@ class CampaignRules
         }
         $before = $gain(date('Y-m-d', strtotime($first['date'] . ' -' . self::CLIMB_WINDOW . ' days')), date('Y-m-d', strtotime($first['date'] . ' -1 day')));
         $after = $gain(date('Y-m-d', strtotime($yesterday . ' -' . (self::CLIMB_WINDOW - 1) . ' days')), $yesterday);
-        if ($before === null || $after === null || $after >= $before) {
+        if ($before === null || $after === null || $after >= $before - abs($before) * $dropPct / 100) {
             return null;
         }
         $undo = end($standing);
@@ -427,10 +455,13 @@ class CampaignRules
      * `.185`: el techo: la subida más baja que se devolvió (o se bajó después), de las que están en el historial de la campaña.
      * No tiene plazo: se levanta con un batch nuevo después de devolverla ($newAds) y el CPA debajo de C (en `decide`). PHP puro.
      *
+     * `.187` (la revisión del 2026-11-28: una vez pasado, el techo seguía frenando cada subida): solo cuenta un techo encima del
+     * presupuesto de hoy ($budget), el más cercano: el que la próxima subida cruzaría.
+     *
      * @param list<string> $newAds los días en que entraron anuncios nuevos
      * @return ?array{level: float, date: string, batch_after: bool}
      */
-    public static function ceiling(array $events, array $newAds = []): ?array
+    public static function ceiling(array $events, array $newAds = [], ?float $budget = null): ?array
     {
         usort($events, fn ($a, $b) => strtotime($a['at'] ?? $a['date']) <=> strtotime($b['at'] ?? $b['date']));
         $best = null;
@@ -440,7 +471,7 @@ class CampaignRules
             }
             foreach (array_slice($events, $i + 1) as $e) {
                 if ($e['to'] < $e['from'] && $e['to'] < $r['to'] - 0.005) {
-                    if ($best === null || $r['to'] < $best['level']) {
+                    if (($budget === null || $r['to'] > $budget + 0.005) && ($best === null || $r['to'] < $best['level'])) {
                         $best = ['level' => (float) $r['to'], 'date' => $e['date']];
                     }
                     break;
@@ -519,7 +550,7 @@ class CampaignRules
     {
         $day = date('d/m', strtotime($r['date']));
         $to = self::backTo($budget, (float) $r['from']);
-        $part = $to > (float) $r['from'] + 0.005 ? ' Como mucho un ' . self::DOWN_CAP . ' % de una vez, para no dañar la optimización: el resto, en ' . $r['days'] . ' días.' : '';
+        $part = $to > (float) $r['from'] + 0.005 ? ' Como mucho un ' . self::DOWN_CAP . ' % de una vez, para no dañar la optimización.' : '';
         if ($cl = $r['climb'] ?? null) {
             $top = (float) ($cl['top'] ?? $budget);
 

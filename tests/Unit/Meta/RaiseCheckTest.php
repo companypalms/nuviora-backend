@@ -151,6 +151,38 @@ describe('.185: toda la escalera de subidas, el techo y bajar como mucho 20 %', 
     });
 });
 
+describe('.187: la escalera se juzga cuando ya es grande, y el techo que se cruzaría', function () {
+    // La revisión del 2026-11-28: con una subida sola, la suerte de cada día pesa más que lo que cambió (sin margen se devolvía la
+    // mitad de las subidas, buenas o malas); y una vez pasado, el techo seguía frenando cada subida
+    $dias = [];
+    foreach (range(1, 21) as $d) {
+        $dias[sprintf('2026-11-%02d', $d)] = $d <= 7 ? ['spend' => 50.0, 'purchases' => 15.0] : ['spend' => 59.0, 'purchases' => 16.0]; // $40 → $37 por día
+    }
+
+    it('con la escalera chica (+20 %) no se juzga: queda la revisión de esa subida (.144)', function () use ($dias) {
+        $r = CampaignRules::raiseCheck($dias, [subida('2026-11-08', 50, 60)], 60.0, 6.0, '2026-11-21', 3, 10, 21, 40);
+        expect($r['status'])->toBe('held')->and($r)->not->toHaveKey('climb');
+    });
+
+    it('con la escalera grande, se devuelve solo si deja un 10 % menos o más', function () use ($dias) {
+        $escalera = [subida('2026-11-08', 50, 60), subida('2026-11-12', 60, 72)];
+        // $40 → $37 por día: 7,5 % menos, dentro del margen
+        expect(CampaignRules::raiseCheck($dias, $escalera, 72.0, 6.0, '2026-11-21', 3, 10, 21, 40))->not->toHaveKey('climb');
+        // $40 → $34,50 por día: 14 % menos
+        $peor = array_map(fn ($d) => $d['spend'] > 50 ? ['spend' => 67.5, 'purchases' => 17.0] : $d, $dias);
+        expect(CampaignRules::raiseCheck($peor, $escalera, 72.0, 6.0, '2026-11-21', 3, 10, 21, 40))->toMatchArray(['status' => 'fell', 'date' => '2026-11-12'])
+            ->and(DecisionSettings::defaults()['climb_min_pct'])->toBe(40.0);
+    });
+
+    it('el techo: solo el que la próxima subida cruzaría; si la campaña ya lo pasó, no frena', function () {
+        $events = [subida('2026-11-01', 30, 36), subida('2026-11-05', 36, 30), subida('2026-11-12', 30, 36), subida('2026-11-16', 36, 43)];
+        expect(CampaignRules::ceiling($events, ['2026-11-08'], 43.0))->toBeNull()
+            ->and(CampaignRules::ceiling($events, ['2026-11-08'], 30.0))->toBe(['level' => 36.0, 'date' => '2026-11-05', 'batch_after' => true]);
+        // después de devolver la de $43: el techo es $43, el más cercano encima
+        expect(CampaignRules::ceiling([...$events, subida('2026-11-20', 43, 36)], ['2026-11-08'], 36.0))->toBe(['level' => 43.0, 'date' => '2026-11-20', 'batch_after' => false]);
+    });
+});
+
 describe('.144: lo que pide la regla', function () {
     $campana = fn (array $in) => (new CampaignRules(DecisionSettings::defaults()))->action(array_merge(['c' => 4.0, 'be' => 5.70, 'mode' => 'normal', 'budget' => 33.0,
         'spend3' => 30.0, 'purchases3' => 12, 'cpa7' => 3.0, 'freq3' => 1.3], $in));

@@ -507,9 +507,9 @@ class AdRules
     /**
      * `.152` (dueño, 2026-11-17, al ver que de 8 apagados grandes que en su semana dejaban plata solo 2 cumplieron, −$71 por
      * día contra las otras ciudades, y de 8 que perdían cumplieron 8, +$167): 3 días malos no apagan a un creativo que en sus 7
-     * días en esa ciudad vende en el BE o debajo con WATCH_PURCHASES compras o más. Se vigila; los 3 días malos cuentan en la
-     * semana, así que si siguen malos, la semana pasa el BE y se apaga como siempre. Sin BE, o con uno estimado, no se protege.
-     * $seen: la parte de las compras que ve Meta (`.121`).
+     * días en esa ciudad vende bien con WATCH_PURCHASES compras o más. Se vigila; los 3 días malos cuentan en la semana, así que
+     * si siguen malos, la semana se pasa y se apaga como siempre. Sin BE, o con uno estimado, no se protege. `.187`: "bien" es
+     * en el punto medio entre C y el BE o debajo. $seen: la parte de las compras que ve Meta (`.121`).
      *
      * @return ?string el aviso ("Vigila: …"), o null si la semana no lo sostiene
      */
@@ -517,18 +517,17 @@ class AdRules
     {
         $wSpend = (float) ($week['spend'] ?? 0);
         $wRaw = (float) ($week['purchases'] ?? 0);
-        // Los dos seguros que eligió el dueño: con un BE estimado (`.120`) no se sabe si de verdad deja plata. `.186` (dueño, 2026-11-28:
-        // "debería ser si en la semana estuvo solo un porcentaje corto por encima del C (no del BE), entonces no se apaga"): la
-        // semana tiene que estar como mucho `watch_above_c_pct` % encima de C
-        $top = $c * (1 + $this->s['watch_above_c_pct'] / 100);
-        if ($be === null || $estimated || $week === null || $wRaw / $seen < self::WATCH_PURCHASES || $wSpend / ($wRaw / $seen) > $top) {
+        // Los dos seguros que eligió el dueño: con un BE estimado (`.120`) no se sabe si de verdad deja plata. `.187` (dueño, 2026-11-28,
+        // después de la revisión: con C + 10 % de la `.186` se apagaban por mala suerte 64 de cada 100 creativos buenos, en vez de 45;
+        // eligió "el punto medio entre C y BE"): la semana tiene que estar en el punto medio entre C y el BE o debajo
+        if ($be === null || $estimated || $week === null || $wRaw / $seen < self::WATCH_PURCHASES || $wSpend / ($wRaw / $seen) > ($c + $be) / 2) {
             return null;
         }
 
         return 'Vigila: en los últimos 3 días gastó ' . self::money($spend) . ' (' . self::num($spend / $c) . '×C) '
             . ($purchases > 0 ? 'con ' . self::num($purchases) . ($purchases == 1 ? ' compra' : ' compras') . ' (CPA ' . self::money($spend / $purchases) . ')' : 'sin compras')
-            . ', pero en su semana va cerca de tu C: ' . self::num($wRaw) . ' compras con CPA ' . self::money($wSpend / $wRaw) . ' (tu C es ' . self::money($c)
-            . '). No se apaga mientras su semana siga como mucho ' . self::num($this->s['watch_above_c_pct']) . ' % encima de C.';
+            . ', pero en su semana va bien: ' . self::num($wRaw) . ' compras con CPA ' . self::money($wSpend / $wRaw) . ' (tu C es ' . self::money($c) . ' y tu BE '
+            . self::money($be) . '). No se apaga mientras su semana siga en el punto medio entre los dos (' . self::money(($c + $be) / 2) . ') o debajo.';
     }
 
     /**
@@ -625,8 +624,8 @@ class AdRules
     }
 
     /**
-     * `.127`: paciencia. Un perdedor por pocas compras (0 o 1, con 2×C gastado en toda su vida) que tiene buenas señales y
-     * todavía no llegó a `patience_cpa`×C queda en evaluación hasta ahí; si llega con 0 o 1 compra, se apaga como siempre.
+     * `.127`: paciencia. Un perdedor por pocas compras (2×C gastado en toda su vida; desde la `.186`, solo con 1 compra) que tiene
+     * buenas señales y todavía no llegó a `patience_cpa`×C queda en evaluación hasta ahí; si llega con 1 compra, se apaga.
      * Cuesta como mucho un C más por creativo: a 2×C se apagan unos 4 de cada 10 creativos que en realidad venden a tu C; a
      * 3×C, unos 2 de cada 10.
      */
@@ -711,7 +710,7 @@ class AdRules
     {
         return ['rule' => $rule, 'days' => $days, 'spend' => round($spend, 2), 'purchases' => $purchases, 'c' => $c, 'be' => $be, 'estimated' => $estimated,
             'min' => (float) $this->s['loser_spend_cpa'], 'cap' => (float) $this->s['evaluation_cap_cpa'], 'margin' => (float) $this->s['loser_be_margin_pct'],
-            'margin_n' => (float) $this->s['loser_be_margin_purchases'], 'watch' => self::WATCH_PURCHASES, 'watch_pct' => (float) $this->s['watch_above_c_pct']] + $extra;
+            'margin_n' => (float) $this->s['loser_be_margin_purchases'], 'watch' => self::WATCH_PURCHASES, 'watch_mid' => true] + $extra;
     }
 
     /** `.156`: solo el gasto y las compras de unos totales. */

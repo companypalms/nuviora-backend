@@ -104,13 +104,13 @@ describe('.119: un ganador que falla y pierde dinero se apaga en esa ciudad (Zen
         expect(reglas()->failingStop($falla, ['spend' => 26.19, 'purchases' => 2], 4.44, 7.61)['stop'])->toBeTrue();
     });
 
-    it('.186: con su semana del 9/11 debajo del BE pero más de 10 % encima de C, ya no se vigilan: se apagan', function () use ($falla) {
-        // dueño, 2026-11-28: "debería ser si en la semana estuvo solo un porcentaje corto por encima del C (no del BE)"
-        expect(reglas()->failingStop($falla, ['spend' => 51.87, 'purchases' => 5], 4.44, 7.61, ['spend' => 118.61, 'purchases' => 17])['stop'])->toBeTrue() // $6,98
-            ->and(reglas()->failingStop($falla, ['spend' => 26.19, 'purchases' => 2], 4.44, 7.61, ['spend' => 45.39, 'purchases' => 9])['stop'])->toBeTrue(); // $5,04
-        // con la semana como mucho 10 % encima de C, sí
-        $cerca = reglas()->failingStop($falla, ['spend' => 51.87, 'purchases' => 5], 4.44, 7.61, ['spend' => 82.0, 'purchases' => 17]); // $4,82
-        expect($cerca)->not->toHaveKey('stop')->and($cerca['watch'])->toContain('17 compras con CPA $4,82 (tu C es $4,44)');
+    it('.187: con su semana del 9/11 encima del punto medio entre C y BE ($6,03), se apaga; en el punto medio o debajo, se vigila', function () use ($falla) {
+        // dueño, 2026-11-28, después de la revisión: eligió "el punto medio entre C y BE" (con C + 10 % de la .186 se apagaban por
+        // mala suerte muchos creativos buenos)
+        expect(reglas()->failingStop($falla, ['spend' => 51.87, 'purchases' => 5], 4.44, 7.61, ['spend' => 118.61, 'purchases' => 17])['stop'])->toBeTrue(); // $6,98
+        $medio = reglas()->failingStop($falla, ['spend' => 26.19, 'purchases' => 2], 4.44, 7.61, ['spend' => 45.39, 'purchases' => 9]); // $5,04
+        expect($medio)->not->toHaveKey('stop')->and($medio['watch'])->toContain('9 compras con CPA $5,04 (tu C es $4,44 y tu BE $7,61)')
+            ->and($medio['watch'])->toEndWith('No se apaga mientras su semana siga en el punto medio entre los dos ($6,03) o debajo.');
     });
 
     it('CREATIVO 8: en 3 días no llegó a 3×C y en 7 días su CPA está debajo del BE: sigue', function () use ($falla) {
@@ -455,18 +455,18 @@ describe('.152: 3 días malos no apagan al que deja plata en la semana (ZenPulse
     $intermedio = ['key' => 'intermediate', 'label' => 'Intermedio', 'reading' => 'Intermedio en toda su vida.'];
     $malos = ['spend' => 40.0, 'purchases' => 2]; // $20,00 por compra
 
-    it('.186: con 5 compras o más en la semana, como mucho 10 % encima de C: se vigila (no es perdedor)', function () use ($intermedio, $malos) {
-        $v = reglas()->recentLoser($malos, $intermedio, 3.96, 6.80, ['spend' => 95.0, 'purchases' => 23]);       // $4,13: 4 % encima de C
+    it('.187: con 5 compras o más en la semana, en el punto medio entre C y BE ($5,38) o debajo: se vigila (no es perdedor)', function () use ($intermedio, $malos) {
+        $v = reglas()->recentLoser($malos, $intermedio, 3.96, 6.80, ['spend' => 109.93, 'purchases' => 23]);    // $4,78, la semana del 9/11
         $sinCompras = reglas()->recentLoser(['spend' => 12.0, 'purchases' => 0], $intermedio, 3.96, 6.80, ['spend' => 24.0, 'purchases' => 6]);
 
         expect($v['key'])->toBe('intermediate')
-            ->and($v['watch'])->toBe('Vigila: en los últimos 3 días gastó $40,00 (10,1×C) con 2 compras (CPA $20,00), pero en su semana va cerca de tu C: '
-                . '23 compras con CPA $4,13 (tu C es $3,96). No se apaga mientras su semana siga como mucho 10 % encima de C.')
+            ->and($v['watch'])->toBe('Vigila: en los últimos 3 días gastó $40,00 (10,1×C) con 2 compras (CPA $20,00), pero en su semana va bien: '
+                . '23 compras con CPA $4,78 (tu C es $3,96 y tu BE $6,80). No se apaga mientras su semana siga en el punto medio entre los dos ($5,38) o debajo.')
             ->and($v['reading'])->toBe($v['watch'] . ' Intermedio en toda su vida.')
-            ->and($sinCompras['watch'])->toBe('Vigila: en los últimos 3 días gastó $12,00 (3×C) sin compras, pero en su semana va cerca de tu C: '
-                . '6 compras con CPA $4,00 (tu C es $3,96). No se apaga mientras su semana siga como mucho 10 % encima de C.');
-        // la semana del 9/11 ($4,78: debajo del BE, pero 21 % encima de C) ya no lo protege
-        expect(reglas()->recentLoser($malos, $intermedio, 3.96, 6.80, ['spend' => 109.93, 'purchases' => 23])['key'])->toBe('loser');
+            ->and($sinCompras['watch'])->toBe('Vigila: en los últimos 3 días gastó $12,00 (3×C) sin compras, pero en su semana va bien: '
+                . '6 compras con CPA $4,00 (tu C es $3,96 y tu BE $6,80). No se apaga mientras su semana siga en el punto medio entre los dos ($5,38) o debajo.');
+        // encima del punto medio (aunque debajo del BE), ya no lo protege
+        expect(reglas()->recentLoser($malos, $intermedio, 3.96, 6.80, ['spend' => 126.5, 'purchases' => 23])['key'])->toBe('loser'); // $5,50
     });
 
     // Los 2 seguros que eligió el dueño: 5 compras (3 pueden ser suerte) y un BE real (con uno estimado no se sabe si deja plata)
@@ -482,13 +482,13 @@ describe('.152: 3 días malos no apagan al que deja plata en la semana (ZenPulse
         expect(reglas()->recentLoser(['spend' => 7.0, 'purchases' => 0], $intermedio, 3.96, 6.80, ['spend' => 30.0, 'purchases' => 0])['key'])->toBe('loser');
     });
 
-    it('el ganador que falla (.119) también se vigila si su semana va cerca de C', function () {
+    it('el ganador que falla (.119) también se vigila si su semana va bien', function () {
         $falla = ['key' => 'failing', 'label' => 'Ganador que falla', 'reading' => 'Ganador que falla.'];
         $v = reglas()->failingStop($falla, ['spend' => 51.87, 'purchases' => 5], 4.44, 7.61, ['spend' => 96.0, 'purchases' => 20]);
 
         expect($v)->not->toHaveKey('stop')
             ->and($v['key'])->toBe('failing')
-            ->and($v['watch'])->toStartWith('Vigila: en los últimos 3 días gastó $51,87 (11,7×C) con 5 compras (CPA $10,37), pero en su semana va cerca de tu C: 20 compras con CPA $4,80')
+            ->and($v['watch'])->toStartWith('Vigila: en los últimos 3 días gastó $51,87 (11,7×C) con 5 compras (CPA $10,37), pero en su semana va bien: 20 compras con CPA $4,80')
             ->and(reglas()->failingStop($falla, ['spend' => 51.87, 'purchases' => 5], 4.44, 7.61, ['spend' => 160.0, 'purchases' => 20])['stop'])->toBeTrue(); // $8,00
     });
 });

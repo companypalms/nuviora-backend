@@ -1054,7 +1054,8 @@ final class UrgentList
         // .123: entre C y BE, un cambio a la vez: "Espera hasta el 13/11: el 09/11 entró el batch «B0118»…"
         if (($ladder['hold'] ?? false) && ($live === null || $live >= self::MIN_LIVE)) {
             return 'Espera hasta el ' . date('d/m', strtotime($ladder['until'])) . ': el ' . date('d/m', strtotime($ladder['since'])) . " {$ladder['what']} y se le dan "
-                . ((int) $ladder['days'] === 1 ? '1 día cerrado' : (int) $ladder['days'] . ' días cerrados') . " para ver si vuelve a tu objetivo. Si no, toca {$ladder['next']}";
+                . ((int) $ladder['days'] === 1 ? '1 día cerrado' : (int) $ladder['days'] . ' días cerrados') . ' para ver si ' . ($ladder['check'] ?? 'vuelve a tu objetivo')
+                . ". Si no, toca {$ladder['next']}";
         }
         if ($cool && ($live === null || $live >= self::MIN_LIVE)) {
             return self::cooling($cool) . ': ' . lcfirst(self::cooledBy($cool));
@@ -1202,8 +1203,8 @@ final class UrgentList
         $days = $streak > 0 ? " · {$streak} " . ($streak === 1 ? 'día' : 'días') . ' encima' : '';
         // .163: si la misión nombra anuncios, que se sepa que estos números son de la campaña
         $camp = in_array($kind, ['intervene', 'hold_prune'], true) ? 'La campaña: ' : '';
-        // .125: "En 14 días gastó $290,10 a $8,53 por compra; tu límite es $7,49"
-        if ($kind === 'pause_city' && ($ch = $a['chronic'] ?? null) && $be) {
+        // .125: "En 14 días gastó $290,10 a $8,53 por compra; tu límite es $7,49". .187: también mientras se espera al batch nuevo
+        if (in_array($kind, ['pause_city', 'hold_prune'], true) && ($ch = $a['chronic'] ?? null) && $be) {
             return "En {$ch['days']} días gastó " . AdRules::money($ch['spend']) . ($ch['purchases'] > 0 ? ' a ' . AdRules::money($ch['spend'] / $ch['purchases']) . ' por compra' : ' sin compras')
                 . "; tu {$limit} es {$be}";
         }

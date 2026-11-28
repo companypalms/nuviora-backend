@@ -37,7 +37,7 @@ describe('.145: un producto Malo frena su gasto', function () use ($malo, $zen) 
         $a = $zen(['spend3' => 45.0, 'purchases3' => 30, 'worth_bad' => $malo]);  // $1,50 por compra: con un Bueno, se subiría
 
         expect($a['key'])->toBe('hold')->and($a['reading'])->toEndWith('Aquí todavía paga (debajo de C), pero no se sube.')
-            ->and($zen(['spend3' => 45.0, 'purchases3' => 30])['key'])->toBe('scale');
+            ->and($zen(['spend3' => 45.0, 'purchases3' => 30, 'cpa7' => 1.8])['key'])->toBe('scale'); // .187: con la semana también debajo de C
     });
 
     it('.146 y .186: el margen del 10 %: con pocas compras, apenas encima del BE baja; 10 % encima, o con 10 compras, pausa', function () use ($malo, $zen) {
