@@ -195,7 +195,10 @@ describe('.125: campañas que no dejan dinero', function () {
                 . 'En ese tiempo entraron anuncios nuevos 4 veces, y no mejoró.');
         // lo que se intentó: también las bajadas de presupuesto; y si no se hizo nada, lo dice
         expect($flexi(['chronic' => ['batches' => 1, 'lowered' => 2] + $catorce])['reading'])->toEndWith('En ese tiempo entraron anuncios nuevos 1 vez y bajaste el presupuesto 2 veces, y no mejoró.')
-            ->and($flexi(['chronic' => ['batches' => 0] + $catorce])['reading'])->toEndWith('En ese tiempo no se le hizo ningún cambio.');
+            ->and($flexi(['chronic' => ['batches' => 0] + $catorce, 'no_batch' => true])['reading'])->toEndWith('En ese tiempo no se le hizo ningún cambio.');
+        // .186: sin un batch nuevo en esos días (y con uno para lanzar), primero el batch
+        expect($flexi(['chronic' => ['batches' => 0] + $catorce, 'bank_ready' => ['B0130']]))->toMatchArray(['key' => 'intervene'])
+            ->and($flexi(['chronic' => ['batches' => 0] + $catorce, 'bank_ready' => ['B0130']])['proposal'])->toStartWith('Primero un batch nuevo: lanzar B0130 de la banca.');
     });
 
     it('tu protección: si en los últimos 3 días vende debajo del BE, no se pausa', function () use ($flexi, $catorce) {
@@ -204,12 +207,12 @@ describe('.125: campañas que no dejan dinero', function () {
     });
 
     it('no aplica con poco gasto en los 14 días, si esos 14 días dejaron dinero, o sin 14 días de historia', function () use ($flexi, $catorce) {
-        expect($flexi(['chronic' => ['spend' => 45.0, 'purchases' => 5.0] + $catorce])['key'])->toBe('intervene')
+        expect($flexi(['chronic' => ['spend' => 20.0, 'purchases' => 2.0] + $catorce])['key'])->toBe('intervene')
             ->and($flexi(['chronic' => ['purchases' => 45.0] + $catorce])['key'])->toBe('intervene')
             ->and($flexi(['chronic' => null])['key'])->toBe('intervene');
         // en Reglas se cambia el 10×C
         expect(campana(['chronic_min_cpa' => 60.0])->action(['c' => 5.01, 'be' => 7.49, 'mode' => 'normal', 'budget' => 25.0, 'spend3' => 95.3, 'purchases3' => 6, 'chronic' => $catorce])['key'])->toBe('intervene')
-            ->and(DecisionSettings::defaults()['chronic_days'])->toBe(14.0)->and(DecisionSettings::defaults()['chronic_min_cpa'])->toBe(10.0);
+            ->and(DecisionSettings::defaults()['chronic_days'])->toBe(5.0)->and(DecisionSettings::defaults()['chronic_min_cpa'])->toBe(5.0); // .186
     });
 
     it('sin batch para lanzar, la cuenta corre: 2 días cerrados, bajar 20 %; 5, pausar ("sí, que corra")', function () use ($flexi) {

@@ -99,7 +99,7 @@ describe('.127: qué son buenas señales (PHP puro)', function () {
 describe('.127: la paciencia (PHP puro)', function () {
     $buenas = ['good' => true, 'text' => 'hook 45 % · hold 42 % · CTR 3,1 %'];
 
-    it('perdedor por 0 o 1 compra con buenas señales: en evaluación hasta 3×C', function () use ($buenas) {
+    it('.186: perdedor por 1 compra con buenas señales: en evaluación hasta 2,5×C; con 0 compras, no hay paciencia', function () use ($buenas) {
         $r = pacienciaReglas();
         $loser = $r->state(10.0, 1, 4.44, 7.61, 'creativo');
         $v = $r->patient($loser, 10.0, 1, 4.44, $buenas);
@@ -107,13 +107,14 @@ describe('.127: la paciencia (PHP puro)', function () {
         expect($loser['key'])->toBe('loser')
             ->and($v['key'])->toBe('evaluation')->and($v['patient'])->toBeTrue()
             ->and($v['reading'])->toBe('En evaluación, con paciencia: gastó 2,3×C con una sola compra, pero sus señales son buenas.')
-            ->and($v['proposal'])->toBe('Tiene buenas señales (hook 45 % · hold 42 % · CTR 3,1 %): darle hasta $13,32 (3×C); si llega ahí con 0 o 1 compra, apagarlo.')
-            ->and($r->patient($r->state(9.0, 0, 4.44, 7.61), 9.0, 0, 4.44, $buenas)['reading'])->toContain('con ninguna compra');
+            ->and($v['proposal'])->toBe('Tiene buenas señales (hook 45 % · hold 42 % · CTR 3,1 %): darle hasta $11,10 (2,5×C); si llega ahí con 1 compra, apagarlo.')
+            // dueño, 2026-11-28: "también me parece que favorece la pérdida de dinero": sin ninguna compra, se apaga a 2×C
+            ->and($r->patient($r->state(9.0, 0, 4.44, 7.61), 9.0, 0, 4.44, $buenas))->toBeNull();
     });
 
-    it('a 3×C se apaga como siempre; sin buenas señales, a 2×C como siempre', function () use ($buenas) {
+    it('a 2,5×C se apaga; sin buenas señales, a 2×C como siempre', function () use ($buenas) {
         $r = pacienciaReglas();
-        expect($r->patient($r->state(13.4, 1, 4.44, 7.61), 13.4, 1, 4.44, $buenas))->toBeNull()
+        expect($r->patient($r->state(11.2, 1, 4.44, 7.61), 11.2, 1, 4.44, $buenas))->toBeNull()
             ->and($r->patient($r->state(10.0, 1, 4.44, 7.61), 10.0, 1, 4.44, ['good' => false, 'text' => 'hook 35 %']))->toBeNull()
             ->and($r->patient($r->state(10.0, 1, 4.44, 7.61), 10.0, 1, 4.44, null))->toBeNull();
     });
@@ -127,9 +128,9 @@ describe('.127: la paciencia (PHP puro)', function () {
             ->and($r->patient($r->state(6.0, 1, 4.44, 7.61), 6.0, 1, 4.44, $buenas))->toBeNull();
     });
 
-    it('en Reglas se cambia el 3×C (con 2×C, no hay paciencia)', function () use ($buenas) {
+    it('en Reglas se cambia el 2,5×C (con 2×C, no hay paciencia)', function () use ($buenas) {
         $r = pacienciaReglas(['patience_cpa' => 2.0]);
-        expect(DecisionSettings::defaults()['patience_cpa'])->toBe(3.0)
+        expect(DecisionSettings::defaults()['patience_cpa'])->toBe(2.5)
             ->and($r->patient($r->state(10.0, 1, 4.44, 7.61), 10.0, 1, 4.44, $buenas))->toBeNull();
     });
 });
@@ -141,7 +142,7 @@ describe('.127: en el análisis', function () {
 
         expect($d['creatives'][2]['verdict']['key'])->toBe('evaluation')
             ->and($d['creatives'][2]['cities'][0]['reading'])->toBe('En evaluación, con paciencia: gastó 2,3×C con una sola compra, pero sus señales son buenas.')
-            ->and($d['creatives'][2]['cities'][0]['proposal'])->toBe('Tiene buenas señales (hook 45 % · hold 42 % · CTR 3,1 %): darle hasta $13,32 (3×C); si llega ahí con 0 o 1 compra, apagarlo.')
+            ->and($d['creatives'][2]['cities'][0]['proposal'])->toBe('Tiene buenas señales (hook 45 % · hold 42 % · CTR 3,1 %): darle hasta $11,10 (2,5×C); si llega ahí con 1 compra, apagarlo.')
             ->and($d['ads']['120000000000001312']['key'])->toBe('evaluation')
             ->and($d['adsets']['p2']['key'])->not->toBe('loser')
             ->and($d['campaigns'][PACIENCIA_CCS]['numbers']['prune'])->toBe([]);
@@ -149,13 +150,13 @@ describe('.127: en el análisis', function () {
         $facts = AnalysisFacts::build([1149 => $d], ['campaigns' => [PACIENCIA_CCS => 'ZENPULSE | CCS | CBO | 27/10/2026']]);
         // en la lista de creativos del análisis se lee el porqué
         expect(collect($facts[0]['creatives'])->firstWhere('label', 'C0457 ZEN')['call'])->toMatchArray(['key' => 'keep',
-            'todo' => 'Tiene buenas señales (hook 45 % · hold 42 % · CTR 3,1 %): darle hasta $13,32 (3×C); si llega ahí con 0 o 1 compra, apagarlo.']);
+            'todo' => 'Tiene buenas señales (hook 45 % · hold 42 % · CTR 3,1 %): darle hasta $11,10 (2,5×C); si llega ahí con 1 compra, apagarlo.']);
         expect(array_column(UrgentList::build($facts), 'kind'))->not->toContain('stop_creatives');
     });
 
-    it('con señales regulares, o al llegar a 3×C, sale para apagar como siempre', function () {
+    it('con señales regulares, o al llegar a 2,5×C, sale para apagar como siempre', function () {
         $regular = pacienciaDecide([10.0, 1, 35, 35, 2.5]);
-        $tope = pacienciaDecide([13.5, 1, 45, 42, 3.1]);
+        $tope = pacienciaDecide([11.2, 1, 45, 42, 3.1]);
 
         expect($regular['creatives'][2]['verdict']['key'])->toBe('loser')
             ->and($tope['creatives'][2]['verdict']['key'])->toBe('loser');
@@ -163,11 +164,13 @@ describe('.127: en el análisis', function () {
         expect(collect($list)->firstWhere('kind', 'stop_creatives')['title'])->toBe('Apaga C0457 ZEN en todas las campañas');
     });
 
-    it('una imagen con el CTR bueno también tiene paciencia', function () {
-        $d = pacienciaDecide([10.0, 0, null, null, 3.4], 'image');
+    it('una imagen con el CTR bueno también tiene paciencia (con 1 compra)', function () {
+        $d = pacienciaDecide([10.0, 1, null, null, 3.4], 'image');
 
         expect($d['creatives'][2]['verdict']['key'])->toBe('evaluation')
-            ->and($d['creatives'][2]['cities'][0]['reading'])->toContain('con ninguna compra, pero sus señales son buenas')
-            ->and($d['creatives'][2]['cities'][0]['proposal'])->toStartWith('Tiene buenas señales (CTR 3,4 %): darle hasta $13,32');
+            ->and($d['creatives'][2]['cities'][0]['reading'])->toContain('con una sola compra, pero sus señales son buenas')
+            ->and($d['creatives'][2]['cities'][0]['proposal'])->toStartWith('Tiene buenas señales (CTR 3,4 %): darle hasta $11,10');
+        // .186: sin ninguna compra, no
+        expect(pacienciaDecide([10.0, 0, null, null, 3.4], 'image')['creatives'][2]['verdict']['key'])->toBe('loser');
     });
 });

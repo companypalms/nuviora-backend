@@ -60,7 +60,7 @@ describe('En palabras', function () {
         expect(StopWhy::lines('CRE003-FLEX-FAS-BATCH004', 'Distrito Capital', flexiStep156()['why']))->toBe([
             'CRE003-FLEX-FAS-BATCH004 en Distrito Capital, últimos 7 días: gastó $9,34 (2×C) y no tuvo compras. Tu C ahí es $4,65 y tu BE $7,03.',
             'En toda su vida ahí iba bien (prometedor), pero tu regla apaga un creativo que en una ciudad gasta 2 veces tu C sin vender, o vendiendo con el costo '
-                . 'por compra más de un 20 % encima de tu BE. Se miró la semana porque en 3 días gastó solo $4,71 y no llegó a 2×C.',
+                . 'por compra más de un 10 % encima de tu BE. Se miró la semana porque en 3 días gastó solo $4,71 y no llegó a 2×C.',
         ])
             ->and(StopWhy::others('Distrito Capital', [['city' => 'Distrito Capital', 'active' => true], ['city' => 'Carabobo', 'active' => false],
                 ['city' => 'Aragua', 'active' => false]]))->toBe('Ya está apagado en Carabobo y Aragua: con esto queda apagado del todo.')
@@ -79,16 +79,16 @@ describe('En palabras', function () {
         $v = reglas156()->recentLoser(['spend' => 12.0, 'purchases' => 0], ['key' => 'intermediate', 'label' => 'Intermedio'], 4.0, 7.0, ['spend' => 20.0, 'purchases' => 2]);
 
         expect(StopWhy::lines('C0111 FASP', 'Aragua', $v['why'])[2])
-            ->toBe('En su semana gastó $20,00 con 2 compras (CPA $10,00): para no apagarlo hacían falta 5 compras en 7 días con el costo por compra en tu BE o debajo.');
+            ->toBe('En su semana gastó $20,00 con 2 compras (CPA $10,00): para no apagarlo hacían falta 5 compras en 7 días con el costo por compra como mucho un 10 % encima de tu C.');
     });
 
     it('cada regla tiene su frase', function () {
         expect(StopWhy::lines('C1', 'Aragua', reglas156()->state(10.0, 1, 4.0, 7.0)['why'])[1])
             ->toBe('Tu regla: un creativo que en una ciudad gasta 2 veces tu C con 0 o 1 compra se apaga ahí.')
             ->and(StopWhy::lines('C1', 'Aragua', reglas156()->state(30.0, 3, 4.0, 7.0)['why'])[1])
-            ->toBe('Tu regla: con 2 compras o más se le da hasta 3 veces tu C; si llega con el costo por compra encima de tu BE (más de un 20 %, o con 20 compras o más), se apaga ahí.')
+            ->toBe('Tu regla: con 2 compras o más se le da hasta 3 veces tu C; si llega con el costo por compra encima de tu BE (más de un 10 %, o con 10 compras o más), se apaga ahí.')
             ->and(StopWhy::lines('C1', 'Aragua', reglas156()->failingStop(['key' => 'failing', 'label' => 'x', 'reading' => ''], ['spend' => 15.0, 'purchases' => 0], 4.0, 7.0)['why'])[1])
-            ->toBe('Fue ganador, pero tu regla apaga en una ciudad a un ganador que gasta 3 veces tu C sin vender, o vendiendo con el costo por compra más de un 20 % encima de tu BE. Se sigue iterando en batches nuevos.');
+            ->toBe('Fue ganador, pero tu regla apaga en una ciudad a un ganador que gasta 3 veces tu C sin vender, o vendiendo con el costo por compra más de un 10 % encima de tu BE. Se sigue iterando en batches nuevos.');
     });
 
     it('con un BE estimado lo dice', function () {

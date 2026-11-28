@@ -167,7 +167,18 @@ class CampaignRules
             $relaunch = 'Pausar la ciudad. Se vuelve a prender cuando haya ' . (int) $this->s['relaunch_batches'] . ' batches que nunca se publicaron ahí.';
             // .125: 14 días sin dejar dinero, y los últimos 3 tampoco (aquí el CPA de 3 días ya está en el BE o encima)
             $ch = $in['chronic'] ?? null;
-            if ($ch && $ch['spend'] >= $c * $this->s['chronic_min_cpa'] && ($ch['purchases'] <= 0 || $ch['spend'] / $ch['purchases'] >= $be)) {
+            $chronicLoss = $ch && $ch['spend'] >= $c * $this->s['chronic_min_cpa'] && ($ch['purchases'] <= 0 || $ch['spend'] / $ch['purchases'] >= $be);
+            // .186 (dueño, 2026-11-28: "no puede ser 14 días, deben ser menos, máximo 5 días. Claro, primero tenemos que tratar de
+            // recuperarla con un batch nuevo, pero si no funciona se apaga"): sin un batch nuevo en esos días, primero el batch. Si no
+            // hay ninguno para lanzar, la cuenta corre igual (.125: "sí, que corra") y se pausa
+            if ($chronicLoss && ($ch['batches'] ?? 0) === 0 && !($in['no_batch'] ?? false) && $mode !== 'liquidation') {
+                return $this->out('intervene', $data, "{$ch['days']} días sin dejar dinero: gastó " . AdRules::money($ch['spend'])
+                    . ($ch['purchases'] > 0 ? ' y vendió a ' . AdRules::money($ch['spend'] / $ch['purchases']) . ' por compra' : ' sin compras') . ', en tu BE (' . AdRules::money($be)
+                    . ') o encima, y en esos días no entró ningún batch nuevo.',
+                    'Primero un batch nuevo: lanzar ' . (($in['bank_ready'] ?? []) ? $in['bank_ready'][0] . ' de la banca' : 'un batch nuevo') . '. Si con él sigue sin dejar dinero, se pausa la ciudad. No tocar el presupuesto hoy.'
+                    . $pruneText) + ['chronic' => $ch];
+            }
+            if ($chronicLoss) {
                 $tried = array_filter([
                     ($ch['batches'] ?? 0) > 0 ? 'entraron anuncios nuevos ' . ($ch['batches'] === 1 ? '1 vez' : "{$ch['batches']} veces") : null,
                     ($ch['lowered'] ?? 0) > 0 ? 'bajaste el presupuesto ' . ($ch['lowered'] === 1 ? '1 vez' : "{$ch['lowered']} veces") : null,

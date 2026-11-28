@@ -40,14 +40,14 @@ describe('.145: un producto Malo frena su gasto', function () use ($malo, $zen) 
             ->and($zen(['spend3' => 45.0, 'purchases3' => 30])['key'])->toBe('scale');
     });
 
-    it('.146: el margen del 20 %: con pocas compras, apenas encima del BE baja; 20 % encima, o con 20 compras, pausa', function () use ($malo, $zen) {
-        // $3,90 por compra (6 % encima del BE de $3,67) con 10 compras: baja
-        $a = $zen(['spend3' => 39.0, 'purchases3' => 10, 'worth_bad' => $malo]);
+    it('.146 y .186: el margen del 10 %: con pocas compras, apenas encima del BE baja; 10 % encima, o con 10 compras, pausa', function () use ($malo, $zen) {
+        // $3,90 por compra (6 % encima del BE de $3,67) con 9 compras: baja
+        $a = $zen(['spend3' => 35.1, 'purchases3' => 9, 'worth_bad' => $malo]);
         expect($a)->toMatchArray(['key' => 'decrease', 'from' => 41.4, 'to' => 33.12])
-            ->and($a['reading'])->toEndWith('Aquí está apenas encima del break-even (menos de 20 % y con menos de 20 compras): baja antes de pausar.')
-            // $4,50 (23 % encima) con 10 compras, o $3,90 con 20 compras: pausa
-            ->and($zen(['spend3' => 45.0, 'purchases3' => 10, 'worth_bad' => $malo])['key'])->toBe('pause_city')
-            ->and($zen(['spend3' => 78.0, 'purchases3' => 20, 'worth_bad' => $malo])['key'])->toBe('pause_city');
+            ->and($a['reading'])->toEndWith('Aquí está apenas encima del break-even (menos de 10 % y con menos de 10 compras): baja antes de pausar.')
+            // $4,50 (23 % encima) con 9 compras, o $3,90 con 10 compras: pausa
+            ->and($zen(['spend3' => 40.5, 'purchases3' => 9, 'worth_bad' => $malo])['key'])->toBe('pause_city')
+            ->and($zen(['spend3' => 39.0, 'purchases3' => 10, 'worth_bad' => $malo])['key'])->toBe('pause_city');
     });
 
     it('sin la etiqueta de Malo (Bueno, Regular, o "No estoy de acuerdo"), las reglas de siempre', function () use ($zen) {
@@ -61,7 +61,8 @@ describe('.145: un producto Malo frena su gasto', function () use ($malo, $zen) 
 // 1 día encima), la .145 la mandaba a pausar. A $25 había dejado +$76 en 7 días.
 describe('.146: primero se devuelve la subida', function () {
     $aragua = fn (array $in) => (new CampaignRules(DecisionSettings::defaults()))->action(array_merge(['c' => 4.13, 'be' => 6.45, 'mode' => 'normal', 'budget' => 27.5,
-        'spend3' => 75.83, 'purchases3' => 11, 'cpa7' => 5.12, 'freq3' => 1.3, 'worth_bad' => ['effectiveness' => 44.0, 'orders' => 75]], $in));
+        // .186: con 9 compras (antes 11) para que siga "apenas encima" con el margen nuevo (10 compras)
+        'spend3' => 62.04, 'purchases3' => 9, 'cpa7' => 5.12, 'freq3' => 1.3, 'worth_bad' => ['effectiveness' => 44.0, 'orders' => 75]], $in));
     $subida = ['status' => 'waiting', 'raise' => true, 'date' => '2026-11-14', 'from' => 25.0, 'to' => 27.5, 'days' => 3, 'closed' => 1, 'until' => '2026-11-18'];
 
     it('ResistBarPro Aragua el 16/11: dos días después de subir, devolver la subida ($27,50 → $25), no pausar', function () use ($aragua, $subida) {

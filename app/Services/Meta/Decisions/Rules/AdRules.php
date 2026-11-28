@@ -517,15 +517,18 @@ class AdRules
     {
         $wSpend = (float) ($week['spend'] ?? 0);
         $wRaw = (float) ($week['purchases'] ?? 0);
-        // Los dos seguros que eligió el dueño: con un BE estimado (`.120`) no se sabe si de verdad deja plata
-        if ($be === null || $estimated || $week === null || $wRaw / $seen < self::WATCH_PURCHASES || $wSpend / ($wRaw / $seen) > $be) {
+        // Los dos seguros que eligió el dueño: con un BE estimado (`.120`) no se sabe si de verdad deja plata. `.186` (dueño, 2026-11-28:
+        // "debería ser si en la semana estuvo solo un porcentaje corto por encima del C (no del BE), entonces no se apaga"): la
+        // semana tiene que estar como mucho `watch_above_c_pct` % encima de C
+        $top = $c * (1 + $this->s['watch_above_c_pct'] / 100);
+        if ($be === null || $estimated || $week === null || $wRaw / $seen < self::WATCH_PURCHASES || $wSpend / ($wRaw / $seen) > $top) {
             return null;
         }
 
         return 'Vigila: en los últimos 3 días gastó ' . self::money($spend) . ' (' . self::num($spend / $c) . '×C) '
             . ($purchases > 0 ? 'con ' . self::num($purchases) . ($purchases == 1 ? ' compra' : ' compras') . ' (CPA ' . self::money($spend / $purchases) . ')' : 'sin compras')
-            . ', pero en su semana deja plata: ' . self::num($wRaw) . ' compras con CPA ' . self::money($wSpend / $wRaw) . ' (tu BE es ' . self::money($be)
-            . '). No se apaga mientras su semana siga en tu BE o debajo.';
+            . ', pero en su semana va cerca de tu C: ' . self::num($wRaw) . ' compras con CPA ' . self::money($wSpend / $wRaw) . ' (tu C es ' . self::money($c)
+            . '). No se apaga mientras su semana siga como mucho ' . self::num($this->s['watch_above_c_pct']) . ' % encima de C.';
     }
 
     /**
@@ -629,15 +632,15 @@ class AdRules
      */
     public function patient(array $state, float $spend, float $purchases, ?float $c, ?array $signals): ?array
     {
-        if (($state['key'] ?? null) !== 'loser' || !$c || $c <= 0 || $purchases > 1 || !($signals['good'] ?? false) || $spend >= $c * $this->s['patience_cpa']) {
+        // .186 (dueño, 2026-11-28: "me parece que favorece la pérdida de dinero, tenemos que ajustarla"): solo con 1 compra; con 0 se apaga a 2×C
+        if (($state['key'] ?? null) !== 'loser' || !$c || $c <= 0 || $purchases < 1 || $purchases >= 2 || !($signals['good'] ?? false) || $spend >= $c * $this->s['patience_cpa']) {
             return null;
         }
         $cap = $c * $this->s['patience_cpa'];
 
         // El porqué va en lo que se propone: es lo que se lee en la lista de creativos del análisis
-        return $this->verdict('evaluation', $state['data'], 'En evaluación, con paciencia: gastó ' . self::num($spend / $c) . '×C con '
-            . ($purchases == 0 ? 'ninguna compra' : 'una sola compra') . ', pero sus señales son buenas.',
-            "Tiene buenas señales ({$signals['text']}): darle hasta " . self::money($cap) . ' (' . self::num($this->s['patience_cpa']) . '×C); si llega ahí con 0 o 1 compra, apagarlo.')
+        return $this->verdict('evaluation', $state['data'], 'En evaluación, con paciencia: gastó ' . self::num($spend / $c) . '×C con una sola compra, pero sus señales son buenas.',
+            "Tiene buenas señales ({$signals['text']}): darle hasta " . self::money($cap) . ' (' . self::num($this->s['patience_cpa']) . '×C); si llega ahí con 1 compra, apagarlo.')
             + ['patient' => true];
     }
 
@@ -708,7 +711,7 @@ class AdRules
     {
         return ['rule' => $rule, 'days' => $days, 'spend' => round($spend, 2), 'purchases' => $purchases, 'c' => $c, 'be' => $be, 'estimated' => $estimated,
             'min' => (float) $this->s['loser_spend_cpa'], 'cap' => (float) $this->s['evaluation_cap_cpa'], 'margin' => (float) $this->s['loser_be_margin_pct'],
-            'margin_n' => (float) $this->s['loser_be_margin_purchases'], 'watch' => self::WATCH_PURCHASES] + $extra;
+            'margin_n' => (float) $this->s['loser_be_margin_purchases'], 'watch' => self::WATCH_PURCHASES, 'watch_pct' => (float) $this->s['watch_above_c_pct']] + $extra;
     }
 
     /** `.156`: solo el gasto y las compras de unos totales. */

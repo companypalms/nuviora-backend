@@ -15,6 +15,8 @@ use App\Services\Meta\MetaMetrics;
 // y dejó −$29.
 
 const SINGANAR_ARAGUA = '120000000000000111';
+// Estas pruebas miden la regla de la .125 con sus números de entonces (14 días, 10×C, 2 batches); la .186 los bajó (abajo)
+const SINGANAR_ANTES = ['chronic_days' => 14.0, 'chronic_min_cpa' => 10.0, 'drop_days' => 14.0, 'drop_min_batches' => 2.0];
 const SINGANAR_CCS = '120000000000000112';
 
 /** FlexiStep Aragua: gasto y compras por día, del 5/10 al 8/11 (los de producción). */
@@ -88,7 +90,7 @@ function singanarDecide(array $aragua3d, array $o = []): array
     $facts->allows('load')->andReturn([1146 => $meta]);
     $facts->allows('dailyHistory')->andReturn([]);
     $settings = Mockery::mock(DecisionSettings::class);
-    $settings->allows('get')->andReturn(DecisionSettings::defaults());
+    $settings->allows('get')->andReturn(($o['settings'] ?? SINGANAR_ANTES) + DecisionSettings::defaults());
     $city = ['available' => true, 'stock' => 300, 'units_per_day' => 10.0, 'days_of_stock' => 30.0, 'sizes_out' => [], 'version' => null];
     // Caracas gana: $40 por día con 10 compras
     $good = [];
@@ -243,6 +245,42 @@ describe('.125: el producto entero sin dejar dinero es una misión para decidir'
         $f = singanarMeta([95.3, 6], [120.0, 15], 'normal', true);
         $young = [SINGANAR_ARAGUA => ['daily' => array_slice(singanarDias(), -8, null, true)], SINGANAR_CCS => ['daily' => array_slice($bad(), -8, null, true)]];
         expect(MetaDecisions::dropProduct($f, $young, '2026-11-08', 14, 10, 2))->toBeNull();
+    });
+});
+
+describe('.186: 5 días sin dejar dinero (primero un batch nuevo) y el producto en 7 días', function () {
+    // Dueño, 2026-11-28: "no puede ser 14 días, deben ser menos, máximo 5 días. Claro, primero tenemos que tratar de recuperarla
+    // con un batch nuevo, pero si no funciona se apaga"; y el producto, "tal vez en 7 días como máximo".
+    // FlexiStep Aragua del 4 al 8/11: $95,30 y 6 compras ($15,88; BE $7,49), con anuncios nuevos el 4 y el 6/11.
+    $nuevas = fn (array $o = []) => singanarDecide([95.3, 6], ['settings' => []] + $o);
+
+    it('con batches nuevos en esos 5 días y sin dejar dinero: pausar la ciudad', function () use ($nuevas) {
+        $this->travelTo(\Carbon\CarbonImmutable::parse('2026-11-09 00:30:00'));
+        $a = $nuevas(['bank' => ['B0130']])['campaigns'][SINGANAR_ARAGUA]['action'];
+
+        expect(DecisionSettings::defaults())->toMatchArray(['chronic_days' => 5.0, 'chronic_min_cpa' => 5.0, 'drop_days' => 7.0, 'drop_min_batches' => 1.0])
+            ->and($a['key'])->toBe('pause_city')
+            ->and($a['reading'])->toStartWith('5 días sin dejar dinero: gastó $95,30 y vendió a $15,88 por compra, en tu BE ($7,49) o encima');
+    });
+
+    it('sin ningún batch nuevo en esos 5 días: primero lanzar uno; si no hay ninguno para lanzar, se pausa igual', function () use ($nuevas) {
+        $this->travelTo(\Carbon\CarbonImmutable::parse('2026-11-09 00:30:00'));
+        $sinNuevos = singanarHistorial('2026-11-09');
+        $sinNuevos['new_ads'] = ['2026-10-26'];
+        $a = $nuevas(['history' => $sinNuevos, 'bank' => ['B0130']])['campaigns'][SINGANAR_ARAGUA]['action'];
+        expect($a['key'])->toBe('intervene')
+            ->and($a['reading'])->toEndWith('y en esos días no entró ningún batch nuevo.')
+            ->and($a['proposal'])->toStartWith('Primero un batch nuevo: lanzar B0130 de la banca. Si con él sigue sin dejar dinero, se pausa la ciudad.');
+
+        expect($nuevas(['history' => $sinNuevos])['campaigns'][SINGANAR_ARAGUA]['action']['key'])->toBe('pause_city');
+    });
+
+    it('el producto entero: 7 días sin dejar dinero con 1 batch nuevo ya es "decide si lo sueltas"', function () use ($nuevas) {
+        $this->travelTo(\Carbon\CarbonImmutable::parse('2026-11-09 00:30:00'));
+        $bad = array_map(fn ($r) => ['spend' => 40.0, 'purchases' => 5.0], singanarDias());
+        $d = $nuevas(['ccs3d' => [120.0, 15], 'ccs_daily' => $bad, 'extra' => true]);
+
+        expect($d['plan']['drop'])->toMatchArray(['days' => 7]);
     });
 });
 

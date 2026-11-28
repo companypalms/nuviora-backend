@@ -838,8 +838,9 @@ class MetaDecisions
             // él; si dice que no, no se le vuelve a preguntar en esos días
             // .139: si el producto ya salió Malo, esa misión lo dice (no salen las dos)
             'worth_bad' => $worthBad,
-            'drop' => !$worthBad && $mode === 'normal' && $activeCities && (($dismissed["{$f['product']['id']}:drop_product"] ?? '') < date('Y-m-d', strtotime("{$today} -" . (int) $s['chronic_days'] . ' days')))
-                ? self::dropProduct($f, $history['campaigns'] ?? [], $yesterday, (int) $s['chronic_days'], (float) $s['chronic_min_cpa'], (int) $s['drop_min_batches']) : null,
+            // .186 (dueño, 2026-11-28: "esto tampoco debería ser en 14 días sino en menos, tal vez en 7 días como máximo"): drop_days
+            'drop' => !$worthBad && $mode === 'normal' && $activeCities && (($dismissed["{$f['product']['id']}:drop_product"] ?? '') < date('Y-m-d', strtotime("{$today} -" . (int) $s['drop_days'] . ' days')))
+                ? self::dropProduct($f, $history['campaigns'] ?? [], $yesterday, (int) $s['drop_days'], (float) $s['chronic_min_cpa'], (int) $s['drop_min_batches']) : null,
         ];
 
         return $out;

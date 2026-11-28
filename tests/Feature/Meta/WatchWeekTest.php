@@ -68,28 +68,21 @@ beforeEach(function () {
 });
 
 describe('.152: 3 días malos no apagan al que deja plata en la semana', function () {
-    it('CREATIVO 5 se vigila en Aragua; CREATIVO 8, que también pierde en la semana, se apaga', function () {
+    it('.186: CREATIVO 5 (su semana $4,78: debajo del BE, pero 21 % encima de C) ya no se vigila: se apaga con el CREATIVO 8', function () {
+        // dueño, 2026-11-28: "debería ser si en la semana estuvo solo un porcentaje corto por encima del C (no del BE)"
         $d = zenWatchDecision();
-        $vigila = collect($d['creatives'][5]['cities'])->firstWhere('city', 'Aragua');
-        $pierde = collect($d['creatives'][8]['cities'])->firstWhere('city', 'Aragua');
 
-        expect($vigila['key'])->not->toBe('loser')
-            ->and($vigila['watch'])->toBe('Vigila: en los últimos 3 días gastó $40,00 (10,1×C) con 2 compras (CPA $20,00), pero en su semana deja plata: '
-                . '23 compras con CPA $4,78 (tu BE es $6,80). No se apaga mientras su semana siga en tu BE o debajo.')
-            ->and(CreativeCalls::stopIn($d['creatives'][5]))->toBe([])
-            ->and($pierde['key'])->toBe('loser')
+        expect(collect($d['creatives'][5]['cities'])->firstWhere('city', 'Aragua')['key'])->toBe('loser')
+            ->and(CreativeCalls::stopIn($d['creatives'][5]))->toBe(['Aragua'])
             ->and(CreativeCalls::stopIn($d['creatives'][8]))->toBe(['Aragua']);
 
         $facts = AnalysisFacts::build([1200 => $d]);
-        expect($facts[0]['stop_by_city'])->toBe(['Aragua' => ['CREATIVO 8']])
-            ->and($facts[0]['watch_by_city'])->toBe(['Aragua' => [['label' => 'CREATIVO 5', 'text' => $vigila['watch']]]]);
+        expect($facts[0]['stop_by_city'])->toBe(['Aragua' => ['CREATIVO 5', 'CREATIVO 8']])
+            ->and($facts[0]['watch_by_city'])->toBe([]);
 
         $urgent = collect(UrgentList::build($facts));
-        $watch = $urgent->firstWhere('kind', 'watch');
-        // Aragua es su única ciudad: perdió en todas
-        expect($urgent->where('kind', 'stop_creatives')->pluck('title')->all())->toBe(['Apaga CREATIVO 8 en todas las campañas'])
-            ->and($watch)->toMatchArray(['label' => 'Vigilar', 'group' => 'aviso', 'tone' => 'info', 'city' => 'Aragua', 'where' => 'ZenPulse · Aragua',
-                'title' => 'Vigila CREATIVO 5: 3 días malos, pero en su semana deja plata (no lo apagues)', 'why' => '3 días malos, pero en su semana deja plata',
-                'detail' => ['CREATIVO 5: ' . $vigila['watch']]]);
+        // Aragua es su única ciudad: perdieron en todas
+        expect($urgent->where('kind', 'stop_creatives')->pluck('title')->all())->toBe(['Apaga 2 creativos perdedores en todas las campañas'])
+            ->and($urgent->firstWhere('kind', 'watch'))->toBeNull();
     });
 });
