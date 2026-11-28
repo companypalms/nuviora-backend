@@ -74,9 +74,10 @@ class DecisionSettings
         'raise_wait_days' => [3, 1, 14],
         'raise_drop_pct' => [10, 0, 100],
         // .185 (dueño, 2026-11-28: "priorizar la ganancia neta"): toda la escalera de subidas de estos días se compara con la
-        // semana antes de la primera (0 = no se mira); y una subida devuelta queda de techo estos días
+        // semana antes de la primera (0 = no se mira); y una subida devuelta queda de techo hasta un batch nuevo con el CPA de
+        // 3 días este % debajo de C
         'climb_days' => [21, 0, 60],
-        'ceiling_days' => [14, 0, 60],
+        'ceiling_below_pct' => [10, 1, 50],
         // .125 (dueño, 2026-11-09: "sí debemos establecer un límite… dependiendo de su CPA y si hicimos cambios y no mejoró"; "puede
         // ser que la campaña se esté comenzando a recuperar"): una campaña que en 14 días vendió en el BE o encima (con 10×C
         // gastado) y en los últimos 3 días también, se pausa; el producto entero así, con 2 batches o más lanzados, es una misión

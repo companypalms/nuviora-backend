@@ -118,18 +118,25 @@ describe('.185: toda la escalera de subidas, el techo y bajar como mucho 20 %', 
             ->and(CampaignRules::raiseCheck($dias, [subida('2026-11-17', 50, 60)], 60.0, 6.0, '2026-11-21', 3, 10, 21)['status'] ?? null)->not->toBe('fell');
     });
 
-    it('el techo: una subida devuelta no se repite en 14 días', function () {
-        $c = CampaignRules::ceiling([subida('2026-11-08', 50, 60), subida('2026-11-12', 60, 72), subida('2026-11-21', 72, 60)], '2026-11-22', 14);
-        expect($c)->toBe(['level' => 72.0, 'date' => '2026-11-21', 'until' => '2026-12-05'])
-            ->and(CampaignRules::ceiling([subida('2026-11-08', 50, 60)], '2026-11-22', 14))->toBeNull()
-            ->and(CampaignRules::ceiling([subida('2026-11-01', 50, 60), subida('2026-11-02', 60, 50)], '2026-11-22', 14))->toBeNull();
+    it('el techo: una subida devuelta no se repite hasta un batch nuevo con el CPA 10 % o más debajo de C (sin plazo)', function () {
+        $events = [subida('2026-11-08', 50, 60), subida('2026-11-12', 60, 72), subida('2026-11-21', 72, 60)];
+        $c = CampaignRules::ceiling($events, ['2026-11-10']);
+        expect($c)->toBe(['level' => 72.0, 'date' => '2026-11-21', 'batch_after' => false])
+            ->and(CampaignRules::ceiling($events, ['2026-11-23'])['batch_after'])->toBeTrue()
+            ->and(CampaignRules::ceiling([subida('2026-11-08', 50, 60)]))->toBeNull()
+            // una subida devuelta hace mucho sigue siendo techo: no tiene plazo
+            ->and(CampaignRules::ceiling([subida('2026-10-20', 50, 60), subida('2026-10-22', 60, 50)])['level'])->toBe(60.0);
 
-        $a = (new CampaignRules(DecisionSettings::defaults()))->action(['c' => 4.0, 'be' => 5.70, 'mode' => 'normal', 'budget' => 60.0, 'spend3' => 30.0, 'purchases3' => 12,
-            'cpa7' => 3.0, 'ceiling' => $c]);
-        expect($a['key'])->toBe('hold')->and($a['reading'])->toBe('Va bien, pero el 21/11 se devolvió la subida a $72,00: lo extra no dejó dinero. No se vuelve a subir hasta ahí antes del 05/12.');
+        $rules = new CampaignRules(DecisionSettings::defaults());
+        $in = ['c' => 4.0, 'be' => 5.70, 'mode' => 'normal', 'budget' => 60.0, 'spend3' => 30.0, 'purchases3' => 12, 'cpa7' => 3.0]; // CPA $2,50: 37 % debajo de C
+        $a = $rules->action($in + ['ceiling' => $c]);
+        expect($a['key'])->toBe('hold')->and($a['reading'])->toBe('Va bien, pero el 21/11 se devolvió la subida a $72,00: lo extra no dejó dinero. Para volver a subir hasta ahí: un batch nuevo y el CPA de 3 días un 10 % o más debajo de C.');
+        // con el batch nuevo y el CPA bien debajo de C, se sube otra vez
+        expect($rules->action($in + ['ceiling' => ['batch_after' => true] + $c])['key'])->toBe('scale');
+        // con el batch, pero el CPA apenas debajo de C (5 %), todavía no ($66 + 10 % llega al techo de $72)
+        expect($rules->action(['spend3' => 45.6, 'budget' => 66.0] + $in + ['ceiling' => ['batch_after' => true] + $c])['reading'])->toEndWith('(el batch ya entró; falta el CPA).');
         // una subida chica que no llega al techo sí se puede
-        expect((new CampaignRules(DecisionSettings::defaults()))->action(['c' => 4.0, 'be' => 5.70, 'mode' => 'normal', 'budget' => 50.0, 'spend3' => 30.0, 'purchases3' => 12,
-            'cpa7' => 3.0, 'ceiling' => $c])['key'])->toBe('scale');
+        expect($rules->action(['budget' => 50.0] + $in + ['ceiling' => $c])['key'])->toBe('scale');
     });
 
     it('devolver la escalera lo dice con sus números, y baja como mucho 20 %', function () {
@@ -140,7 +147,7 @@ describe('.185: toda la escalera de subidas, el techo y bajar como mucho 20 %', 
             ->and($a['reading'])->toBe('Desde el 08/11 subiste el presupuesto 2 veces (de $50,00 a $90,00) y lo que deja bajó: $40,00 por día antes de la primera subida, $10,00 en los últimos 7 días cerrados. Lo extra no está dejando dinero.')
             ->and($a['proposal'])->toContain('Devolver la última subida (la del 12/11): $90,00 → $72,00. Como mucho un 20 % de una vez')
             ->and(CampaignRules::backTo(39.6, 33.0))->toBe(33.0)->and(CampaignRules::backTo(100.0, 50.0))->toBe(80.0)
-            ->and(DecisionSettings::defaults()['climb_days'])->toBe(21.0)->and(DecisionSettings::defaults()['ceiling_days'])->toBe(14.0);
+            ->and(DecisionSettings::defaults()['climb_days'])->toBe(21.0)->and(DecisionSettings::defaults()['ceiling_below_pct'])->toBe(10.0);
     });
 });
 

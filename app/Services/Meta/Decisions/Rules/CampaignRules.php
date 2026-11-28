@@ -240,11 +240,16 @@ class CampaignRules
             default => null,
         };
         $pct = self::scalePct($cpa, (float) $c, $this->s);
-        // .185: una subida que se devolvió deja ese presupuesto como techo unos días: no se repite el mismo error
+        // .185: una subida que se devolvió deja ese presupuesto como techo: no se repite el mismo error. Dueño (2026-11-28: "si
+        // metemos un nuevo batch y logramos el objetivo de bajar el CPA por debajo de C en un buen porcentaje, subimos el
+        // presupuesto de nuevo"): se levanta con un batch nuevo después de devolverla y el CPA de 3 días `ceiling_below_pct` % debajo de C
         $ceil = $in['ceiling'] ?? null;
-        if ($block === null && $ceil && $budget && $budget * (1 + $pct / 100) >= $ceil['level'] - 0.005) {
+        $below = (float) $this->s['ceiling_below_pct'];
+        $lifted = $ceil && ($ceil['batch_after'] ?? false) && $cpa <= $c * (1 - $below / 100);
+        if ($block === null && $ceil && !$lifted && $budget && $budget * (1 + $pct / 100) >= $ceil['level'] - 0.005) {
             $block = 'Va bien, pero el ' . date('d/m', strtotime($ceil['date'])) . ' se devolvió la subida a ' . AdRules::money($ceil['level'])
-                . ': lo extra no dejó dinero. No se vuelve a subir hasta ahí antes del ' . date('d/m', strtotime($ceil['until'])) . '.';
+                . ': lo extra no dejó dinero. Para volver a subir hasta ahí: un batch nuevo y el CPA de 3 días un ' . AdRules::num($below) . ' % o más debajo de C'
+                . (($ceil['batch_after'] ?? false) ? ' (el batch ya entró; falta el CPA).' : '.');
         }
         if ($block !== null) {
             return $this->out('hold', $data, $block, 'Mantener.');
@@ -408,18 +413,15 @@ class CampaignRules
     }
 
     /**
-     * `.185`: el techo: la subida más baja que se devolvió (o se bajó después) en los últimos $days días. No se vuelve a subir
-     * hasta ahí antes de que pasen. PHP puro.
+     * `.185`: el techo: la subida más baja que se devolvió (o se bajó después), de las que están en el historial de la campaña.
+     * No tiene plazo: se levanta con un batch nuevo después de devolverla ($newAds) y el CPA debajo de C (en `decide`). PHP puro.
      *
-     * @return ?array{level: float, date: string, until: string}
+     * @param list<string> $newAds los días en que entraron anuncios nuevos
+     * @return ?array{level: float, date: string, batch_after: bool}
      */
-    public static function ceiling(array $events, string $today, int $days): ?array
+    public static function ceiling(array $events, array $newAds = []): ?array
     {
-        if ($days <= 0) {
-            return null;
-        }
         usort($events, fn ($a, $b) => strtotime($a['at'] ?? $a['date']) <=> strtotime($b['at'] ?? $b['date']));
-        $from = date('Y-m-d', strtotime("{$today} -{$days} days"));
         $best = null;
         foreach ($events as $i => $r) {
             if ($r['to'] <= $r['from']) {
@@ -427,15 +429,15 @@ class CampaignRules
             }
             foreach (array_slice($events, $i + 1) as $e) {
                 if ($e['to'] < $e['from'] && $e['to'] < $r['to'] - 0.005) {
-                    if ($e['date'] >= $from && ($best === null || $r['to'] < $best['level'])) {
-                        $best = ['level' => (float) $r['to'], 'date' => $e['date'], 'until' => date('Y-m-d', strtotime($e['date'] . " +{$days} days"))];
+                    if ($best === null || $r['to'] < $best['level']) {
+                        $best = ['level' => (float) $r['to'], 'date' => $e['date']];
                     }
                     break;
                 }
             }
         }
 
-        return $best;
+        return $best ? $best + ['batch_after' => (bool) array_filter($newAds, fn ($d) => $d > $best['date'])] : null;
     }
 
     /** `.185`: a dónde se devuelve una subida: a lo de antes, pero bajando como mucho un DOWN_CAP % de una vez. */
