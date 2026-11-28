@@ -61,6 +61,17 @@ class CampaignRules
     /** `.144`: hasta cuántos días después de la revisión se sigue pidiendo devolver una subida que no aguantó. */
     private const UNDO_DAYS = 7;
 
+    /**
+     * `.185` (dueño, 2026-11-28: de la semana del 26/10 a la del 16/11 la publicidad
+     * subió 73 % y la ganancia bajó 26 %; "siempre tenemos que priorizar la ganancia neta… pero teniendo mucho cuidado con dañar
+     * la optimización de las campañas"): devolver una subida baja el presupuesto
+     * como mucho un 20 % de una vez; una subida más grande se devuelve en partes (un cambio cada `raise_wait_days` días cerrados).
+     */
+    public const DOWN_CAP = 20;
+
+    /** `.185`: la escalera se compara con estos días cerrados de cada lado (más que los 3 de una subida: no se deja llevar por el ruido). */
+    private const CLIMB_WINDOW = 7;
+
     /** `.111`: las acciones que meten creativos: en la espera solo se apagan los que pierden. */
     private const FEEDS = ['intervene', 'hold_prune'];
 
@@ -228,10 +239,16 @@ class CampaignRules
             (bool) ($in['new_ads_today'] ?? false) => 'Hoy entraron creativos nuevos: el presupuesto, mañana.',
             default => null,
         };
+        $pct = self::scalePct($cpa, (float) $c, $this->s);
+        // .185: una subida que se devolvió deja ese presupuesto como techo unos días: no se repite el mismo error
+        $ceil = $in['ceiling'] ?? null;
+        if ($block === null && $ceil && $budget && $budget * (1 + $pct / 100) >= $ceil['level'] - 0.005) {
+            $block = 'Va bien, pero el ' . date('d/m', strtotime($ceil['date'])) . ' se devolvió la subida a ' . AdRules::money($ceil['level'])
+                . ': lo extra no dejó dinero. No se vuelve a subir hasta ahí antes del ' . date('d/m', strtotime($ceil['until'])) . '.';
+        }
         if ($block !== null) {
             return $this->out('hold', $data, $block, 'Mantener.');
         }
-        $pct = self::scalePct($cpa, (float) $c, $this->s);
         $to = $budget ? round($budget * (1 + $pct / 100), 2) : null;
         // .123 (dueño, 2026-11-09: la frecuencia, "solo aviso"): la frecuencia alta ya no frena la subida
         $high = ($in['freq3'] ?? null) !== null && $in['freq3'] >= $this->s['saturation_from'];
@@ -270,9 +287,22 @@ class CampaignRules
         if ($low && $low['closed'] < $wait) {
             return $hold('bajaste el presupuesto de ' . AdRules::money($low['from']) . ' a ' . AdRules::money($low['to']), $low['date'], 'otro batch');
         }
+        // .185 (dueño, 2026-11-28: "bajar antes en la franja C–BE"): al entrar a la franja, si los 7 días también están encima de
+        // C, primero se devuelve la última subida y después el batch. Si ya entró un batch, sigue la escalera de siempre; y
+        // nunca dos cambios de presupuesto seguidos: se espera a que la última subida cumpla sus días cerrados (.144)
+        $c7 = ($in['cpa7'] ?? null) !== null && (float) $in['cpa7'] > (float) ($in['c'] ?? 0);
+        if (!$low && !$batch && $undo && $c7 && ($in['raise']['status'] ?? null) !== 'waiting') {
+            $to = self::backTo((float) $budget, (float) $undo['from']);
+
+            return $this->out('step_down', $data, "{$reading} Los 7 días también están encima de C (CPA 7D " . AdRules::money((float) $in['cpa7']) . '): primero se devuelve la última subida, después el batch.',
+                'Devolver la subida del ' . $day($undo['date']) . ': ' . AdRules::money($budget) . ' → ' . AdRules::money($to) . '.'
+                . ($to > (float) $undo['from'] + 0.005 ? ' Como mucho un ' . self::DOWN_CAP . ' % de una vez, para no dañar la optimización: el resto, en ' . $days . '.' : '')
+                . " Si en {$days} sigue encima de C, toca meter un batch. Si vuelve a C, se sube otra vez.", $budget, $to)
+                + ['ladder' => ['hold' => false, 'what' => 'devolver la subida primero', 'since' => $undo['date'], 'undo' => $undo['date'], 'days' => $wait]];
+        }
         if ($batch && !$low) {
             $name = ($batch['name'] ?? null) ? 'el batch «' . $batch['name'] . '»' : 'un batch nuevo';
-            $back = $undo ? 'la subida del ' . $day($undo['date']) . ': ' . AdRules::money($budget) . ' → ' . AdRules::money($undo['from']) : null;
+            $back = $undo ? 'la subida del ' . $day($undo['date']) . ': ' . AdRules::money($budget) . ' → ' . AdRules::money(self::backTo((float) $budget, (float) $undo['from'])) : null;
             if ($batch['closed'] < $wait) {
                 return $hold("entró {$name}", $batch['date'], $back ? "devolver {$back}" : 'otro batch');
             }
@@ -280,7 +310,7 @@ class CampaignRules
             $passed = 'Pasaron ' . ($batch['closed'] === 1 ? '1 día cerrado' : "{$batch['closed']} días cerrados") . " desde que entró {$name} (" . $day($batch['date']) . ')';
             if ($back) {
                 return $this->out('step_down', $data, "{$passed} y sigue entre C y el break-even.",
-                    'Devolver ' . $back . '. Si vuelve a C, se sube otra vez.', $budget, (float) $undo['from'])
+                    'Devolver ' . $back . '. Si vuelve a C, se sube otra vez.', $budget, self::backTo((float) $budget, (float) $undo['from']))
                     + ['ladder' => ['hold' => false, 'what' => "entró {$name}", 'since' => $batch['date'], 'undo' => $undo['date'], 'days' => $wait]];
             }
 
@@ -305,7 +335,7 @@ class CampaignRules
      * @param list<array{date: string, at?: string, from: float, to: float}> $events los cambios de presupuesto
      * @return array{status: string, raise: bool, date: string, from: float, to: float, days: int, closed: int, until: string, before?: ?float, after?: ?float}|null
      */
-    public static function raiseCheck(array $daily, array $events, ?float $budget, ?float $be, string $yesterday, int $wait, float $dropPct): ?array
+    public static function raiseCheck(array $daily, array $events, ?float $budget, ?float $be, string $yesterday, int $wait, float $dropPct, int $climbDays = 0): ?array
     {
         if ($events === []) {
             return null;
@@ -319,7 +349,7 @@ class CampaignRules
         if ($closed < $wait) {
             return ['status' => 'waiting'] + $base;
         }
-        if (!$raise || !$be || ($budget !== null && $last['from'] >= $budget - 0.005)) {
+        if (!$be) {
             return null;
         }
         $gain = function (string $from, string $to) use ($daily, $be): ?float {
@@ -327,14 +357,91 @@ class CampaignRules
 
             return $days ? array_sum(array_map(fn ($d) => (float) $d['purchases'] * $be - (float) $d['spend'], $days)) / count($days) : null;
         };
-        $before = $gain(date('Y-m-d', strtotime($last['date'] . ' -7 days')), date('Y-m-d', strtotime($last['date'] . ' -1 day')));
-        $after = $gain(date('Y-m-d', strtotime($yesterday . ' -' . ($wait - 1) . ' days')), $yesterday);
-        $fell = $before !== null && $after !== null && $after < $before - abs($before) * $dropPct / 100;
-        if ($fell && $closed > $wait + self::UNDO_DAYS) {
-            return null;
+        $last = null;
+        if ($raise && !($budget !== null && $base['from'] >= $budget - 0.005)) {
+            $before = $gain(date('Y-m-d', strtotime($base['date'] . ' -7 days')), date('Y-m-d', strtotime($base['date'] . ' -1 day')));
+            $after = $gain(date('Y-m-d', strtotime($yesterday . ' -' . ($wait - 1) . ' days')), $yesterday);
+            $fell = $before !== null && $after !== null && $after < $before - abs($before) * $dropPct / 100;
+            // la que cayó se pide hasta UNDO_DAYS días después de la revisión; después ya mandan las otras reglas
+            $last = $fell && $closed > $wait + self::UNDO_DAYS ? null
+                : ['status' => $fell ? 'fell' : 'held', 'before' => $before !== null ? round($before, 2) : null, 'after' => $after !== null ? round($after, 2) : null] + $base;
         }
 
-        return ['status' => $fell ? 'fell' : 'held', 'before' => $before !== null ? round($before, 2) : null, 'after' => $after !== null ? round($after, 2) : null] + $base;
+        // .185: si toda la escalera deja menos, eso manda (es la misma subida que devolver, con su porqué completo)
+        return self::climb($events, $budget, $yesterday, $climbDays, $gain, $wait, $closed) ?? $last;
+    }
+
+    /**
+     * `.185` (dueño, 2026-11-28: de la semana del 26/10 a la del 16/11 la publicidad
+     * subió 73 % y la ganancia bajó 26 %; "siempre tenemos que priorizar la ganancia neta… pero teniendo mucho cuidado con dañar
+     * la optimización de las campañas"): toda la escalera de subidas de los últimos
+     * $climbDays días. Si desde la primera la campaña deja menos por día (sus últimos 7 días cerrados contra los 7 antes de esa
+     * primera subida), se devuelve la última que sigue puesta; con la espera de siempre entre un cambio y otro, la siguiente, y
+     * así hasta volver a donde dejaba más. null si no hay escalera, todavía no pasaron 7 días o deja igual o más.
+     */
+    private static function climb(array $events, ?float $budget, string $yesterday, int $climbDays, \Closure $gain, int $wait, int $closed): ?array
+    {
+        if ($climbDays <= 0 || $budget === null) {
+            return null;
+        }
+        $since = date('Y-m-d', strtotime("{$yesterday} -{$climbDays} days"));
+        $raises = array_values(array_filter($events, fn ($e) => $e['to'] > $e['from'] && $e['date'] >= $since));
+        $standing = array_values(array_filter($raises, fn ($e) => $e['from'] > 0 && $e['from'] < $budget - 0.005));
+        if ($raises === [] || $standing === [] || $budget <= $raises[0]['from'] + 0.005) {
+            return null;
+        }
+        $first = $raises[0];
+        if ((strtotime($yesterday) - strtotime($first['date'])) / 86400 < self::CLIMB_WINDOW) {
+            return null;
+        }
+        $before = $gain(date('Y-m-d', strtotime($first['date'] . ' -' . self::CLIMB_WINDOW . ' days')), date('Y-m-d', strtotime($first['date'] . ' -1 day')));
+        $after = $gain(date('Y-m-d', strtotime($yesterday . ' -' . (self::CLIMB_WINDOW - 1) . ' days')), $yesterday);
+        if ($before === null || $after === null || $after >= $before) {
+            return null;
+        }
+        $undo = end($standing);
+
+        return ['status' => 'fell', 'raise' => true, 'date' => $undo['date'], 'from' => (float) $undo['from'], 'to' => (float) $undo['to'], 'days' => $wait, 'closed' => $closed,
+            'until' => date('Y-m-d', strtotime($undo['date'] . ' +' . ($wait + 1) . ' days')), 'before' => round($before, 2), 'after' => round($after, 2),
+            'climb' => ['since' => $first['date'], 'from' => (float) $first['from'], 'top' => (float) max(array_column($raises, 'to')), 'raises' => count($raises),
+                'window' => self::CLIMB_WINDOW]];
+    }
+
+    /**
+     * `.185`: el techo: la subida más baja que se devolvió (o se bajó después) en los últimos $days días. No se vuelve a subir
+     * hasta ahí antes de que pasen. PHP puro.
+     *
+     * @return ?array{level: float, date: string, until: string}
+     */
+    public static function ceiling(array $events, string $today, int $days): ?array
+    {
+        if ($days <= 0) {
+            return null;
+        }
+        usort($events, fn ($a, $b) => strtotime($a['at'] ?? $a['date']) <=> strtotime($b['at'] ?? $b['date']));
+        $from = date('Y-m-d', strtotime("{$today} -{$days} days"));
+        $best = null;
+        foreach ($events as $i => $r) {
+            if ($r['to'] <= $r['from']) {
+                continue;
+            }
+            foreach (array_slice($events, $i + 1) as $e) {
+                if ($e['to'] < $e['from'] && $e['to'] < $r['to'] - 0.005) {
+                    if ($e['date'] >= $from && ($best === null || $r['to'] < $best['level'])) {
+                        $best = ['level' => (float) $r['to'], 'date' => $e['date'], 'until' => date('Y-m-d', strtotime($e['date'] . " +{$days} days"))];
+                    }
+                    break;
+                }
+            }
+        }
+
+        return $best;
+    }
+
+    /** `.185`: a dónde se devuelve una subida: a lo de antes, pero bajando como mucho un DOWN_CAP % de una vez. */
+    public static function backTo(float $budget, float $from): float
+    {
+        return max(round($from, 2), round($budget * (1 - self::DOWN_CAP / 100), 2));
     }
 
     /**
@@ -359,8 +466,8 @@ class CampaignRules
 
                 return $this->out('undo_raise', $data, "{$why} Aquí está en el break-even o encima, y el {$day} subiste el presupuesto ("
                     . AdRules::money($raise['from']) . ' → ' . AdRules::money($raise['to']) . '): primero se devuelve la subida.',
-                    'Devolver la subida: ' . AdRules::money($budget) . ' → ' . AdRules::money($raise['from']) . ". Si en {$raise['days']} días cerrados sigue en el break-even o encima, se frena.",
-                    $budget, (float) $raise['from']) + ['worth' => $w];
+                    'Devolver la subida: ' . AdRules::money($budget) . ' → ' . AdRules::money(self::backTo((float) $budget, (float) $raise['from'])) . ". Si en {$raise['days']} días cerrados sigue en el break-even o encima, se frena.",
+                    $budget, self::backTo((float) $budget, (float) $raise['from'])) + ['worth' => $w];
             }
             if ($raise && $raise['status'] === 'waiting') {
                 return $this->out('hold', $data, "{$why} Aquí está en el break-even o encima. El " . date('d/m', strtotime($raise['date'])) . ' bajaste el presupuesto ('
@@ -394,15 +501,26 @@ class CampaignRules
         return $this->out('hold', $data, "{$why} Aquí todavía paga (debajo de C), pero no se sube.", 'Mantener.') + ['worth' => $w];
     }
 
-    /** `.144`: "Devolver la subida": la ganancia por día cayó después de subir. */
+    /** `.144`: "Devolver la subida": la ganancia por día cayó después de subir. `.185`: o desde la primera subida de la escalera. */
     private function undoRaise(array $r, string $data, float $budget): array
     {
         $day = date('d/m', strtotime($r['date']));
+        $to = self::backTo($budget, (float) $r['from']);
+        $part = $to > (float) $r['from'] + 0.005 ? ' Como mucho un ' . self::DOWN_CAP . ' % de una vez, para no dañar la optimización: el resto, en ' . $r['days'] . ' días.' : '';
+        if ($cl = $r['climb'] ?? null) {
+            $top = (float) ($cl['top'] ?? $budget);
+
+            return $this->out('undo_raise', $data, 'Desde el ' . date('d/m', strtotime($cl['since'])) . ' subiste el presupuesto ' . ($cl['raises'] === 1 ? '1 vez' : "{$cl['raises']} veces")
+                . ' (de ' . AdRules::money($cl['from']) . ' a ' . AdRules::money($top) . ($top > $budget + 0.005 ? '; hoy está en ' . AdRules::money($budget) : '') . ') y lo que deja bajó: ' . AdRules::money($r['before']) . ' por día antes de la primera subida, '
+                . AdRules::money($r['after']) . " en los últimos {$cl['window']} días cerrados. Lo extra no está dejando dinero.",
+                'Devolver la última subida (la del ' . $day . '): ' . AdRules::money($budget) . ' → ' . AdRules::money($to) . '.' . $part
+                . " En {$r['days']} días cerrados se vuelve a mirar: si todavía deja menos que antes de subir, la anterior.", $budget, $to) + ['raise' => $r];
+        }
 
         return $this->out('undo_raise', $data, "El {$day} subiste el presupuesto de " . AdRules::money($r['from']) . ' a ' . AdRules::money($r['to'])
             . ' y lo que deja bajó: ' . AdRules::money($r['before']) . ' por día antes de subir, ' . AdRules::money($r['after']) . " en los últimos {$r['days']} días cerrados.",
-            'Devolver la subida: ' . AdRules::money($budget) . ' → ' . AdRules::money($r['from']) . ". Si vuelve a ir bien, se puede subir otra vez en {$r['days']} días.",
-            $budget, $r['from']) + ['raise' => $r];
+            'Devolver la subida: ' . AdRules::money($budget) . ' → ' . AdRules::money($to) . '.' . $part . " Si vuelve a ir bien, se puede subir otra vez en {$r['days']} días.",
+            $budget, $to) + ['raise' => $r];
     }
 
     /** `.144`: por qué todavía no se sube: "Subiste el 06/11 ($30 → $36): se revisa el 10/11, con 3 días cerrados". */

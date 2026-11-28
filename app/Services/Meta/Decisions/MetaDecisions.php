@@ -660,7 +660,9 @@ class MetaDecisions
                 'band' => self::band($h, $f, $id, $c['target'] ? (float) $c['target'] : null, $budget !== null ? (float) $budget : null, $today, $yesterday, (int) $s['band_undo_days']),
                 // .144: la última subida (o bajada): si todavía se espera, si aguantó o si hay que devolverla
                 'raise' => CampaignRules::raiseCheck($h['daily'], $h['budget_events'], $budget !== null ? (float) $budget : null,
-                    $c['break_even'] ? (float) $c['break_even'] : null, $yesterday, (int) $s['raise_wait_days'], (float) $s['raise_drop_pct']),
+                    $c['break_even'] ? (float) $c['break_even'] : null, $yesterday, (int) $s['raise_wait_days'], (float) $s['raise_drop_pct'], (int) $s['climb_days']),
+                // .185: la subida que se devolvió deja ese presupuesto como techo unos días
+                'ceiling' => CampaignRules::ceiling($h['budget_events'], $today, (int) $s['ceiling_days']),
                 'chronic' => $chronic, 'no_batch' => $noBatch,
                 // .145: el producto es Malo (y no dijiste "No estoy de acuerdo"): sus campañas frenan el gasto
                 'worth_bad' => $worth['stop'] && !$delivers ? ['effectiveness' => $worth['effectiveness'], 'orders' => $worth['orders']] : null,

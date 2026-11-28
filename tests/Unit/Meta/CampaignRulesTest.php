@@ -101,8 +101,18 @@ describe('.123: entre C y BE, un cambio grande a la vez', function () {
     $undo = ['date' => '2026-11-06', 'from' => 33.0, 'to' => 39.6];
     $batch = fn (int $closed) => ['date' => '2026-11-09', 'name' => 'B0118', 'closed' => $closed];
 
-    it('primero el batch nuevo, como siempre', function () use ($zen, $undo) {
+    it('.185: al entrar a la franja con los 7 días también encima de C, primero se devuelve la subida (y después el batch)', function () use ($zen, $undo) {
         $a = $zen(['batch' => null, 'lowered' => null, 'undo' => $undo]);
+        expect($a['key'])->toBe('step_down')->and($a['from'])->toBe(39.6)->and($a['to'])->toBe(33.0)
+            ->and($a['reading'])->toContain('Los 7 días también están encima de C (CPA 7D $4,85): primero se devuelve la última subida, después el batch.')
+            ->and($a['proposal'])->toBe('Devolver la subida del 06/11: $39,60 → $33,00. Si en 3 días cerrados sigue encima de C, toca meter un batch. Si vuelve a C, se sube otra vez.');
+        // una subida más grande que 20 % se devuelve en partes, para no dañar la optimización
+        $b = $zen(['batch' => null, 'lowered' => null, 'undo' => ['date' => '2026-11-06', 'from' => 25.0, 'to' => 39.6]]);
+        expect($b['to'])->toBe(31.68)->and($b['proposal'])->toContain('Como mucho un 20 % de una vez, para no dañar la optimización');
+    });
+
+    it('si solo fueron 3 días malos (los 7 días debajo de C): primero el batch nuevo, como antes', function () use ($zen, $undo) {
+        $a = $zen(['batch' => null, 'lowered' => null, 'undo' => $undo], ['cpa7' => 4.2]);
         expect($a['key'])->toBe('hold_prune')->and($a['proposal'])->toBe('Mantener, podar los caros y meter creativos.')->and($a)->not->toHaveKey('ladder');
         // un análisis de antes de la .123 (sin "band") sigue igual
         expect(accion(['spend3' => 30, 'purchases3' => 6])['proposal'])->toBe('Mantener, podar los caros y meter creativos.');

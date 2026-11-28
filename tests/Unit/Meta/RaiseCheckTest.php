@@ -84,6 +84,66 @@ describe('.144: la revisión de la última subida', function () use ($flexi, $ze
     });
 });
 
+describe('.185: toda la escalera de subidas, el techo y bajar como mucho 20 %', function () {
+    // Antes de la primera subida dejaba $40 por día (compras × BE − gasto). Cada subida, sola, "aguantó" (perdió menos de 10 %),
+    // pero la escalera completa deja $34,50: lo extra no paga (como FlexiStep del 26/10 al 16/11)
+    $dias = [];
+    foreach (range(1, 21) as $d) {
+        $dias[sprintf('2026-11-%02d', $d)] = match (true) {
+            $d <= 7 => ['spend' => 50.0, 'purchases' => 15.0],   // 15 × 6 − 50 = 40
+            $d <= 11 => ['spend' => 59.0, 'purchases' => 16.0],  // 96 − 59 = 37
+            default => ['spend' => 67.5, 'purchases' => 17.0],   // 102 − 67,5 = 34,5
+        };
+    }
+    $escalera = [subida('2026-11-08', 50, 60), subida('2026-11-12', 60, 72)];
+
+    it('desde la primera subida deja menos por día: se devuelve la última que sigue puesta, aunque cada una sola "aguantó"', function () use ($dias, $escalera) {
+        $r = CampaignRules::raiseCheck($dias, $escalera, 72.0, 6.0, '2026-11-21', 3, 10, 21);
+        expect($r)->toMatchArray(['status' => 'fell', 'date' => '2026-11-12', 'from' => 60.0, 'to' => 72.0, 'before' => 40.0, 'after' => 34.5])
+            ->and($r['climb'])->toBe(['since' => '2026-11-08', 'from' => 50.0, 'top' => 72.0, 'raises' => 2, 'window' => 7]);
+        // sin mirar la escalera (como antes de la .185): la última subida sola "aguantó"
+        expect(CampaignRules::raiseCheck($dias, $escalera, 72.0, 6.0, '2026-11-21', 3, 10))->toMatchArray(['status' => 'held', 'after' => 34.5]);
+    });
+
+    it('después de devolver una: se espera, y si sigue dejando menos, la anterior', function () use ($dias, $escalera) {
+        $back = [...$escalera, subida('2026-11-21', 72, 60)];
+        expect(CampaignRules::raiseCheck($dias, $back, 60.0, 6.0, '2026-11-22', 3, 10, 21)['status'])->toBe('waiting');
+        $dias2 = $dias + array_fill_keys(['2026-11-22', '2026-11-23', '2026-11-24'], ['spend' => 70.0, 'purchases' => 13.0]);
+        expect(CampaignRules::raiseCheck($dias2, $back, 60.0, 6.0, '2026-11-24', 3, 10, 21))->toMatchArray(['status' => 'fell', 'date' => '2026-11-08', 'from' => 50.0, 'to' => 60.0]);
+    });
+
+    it('si la escalera deja más que antes, o todavía no pasaron 7 días, no se toca', function () use ($dias, $escalera) {
+        $gana = array_map(fn ($d) => $d['spend'] > 50 ? ['spend' => 80.0, 'purchases' => 25.0] : $d, $dias);
+        expect(CampaignRules::raiseCheck($gana, $escalera, 72.0, 6.0, '2026-11-21', 3, 10, 21)['status'] ?? null)->not->toBe('fell')
+            ->and(CampaignRules::raiseCheck($dias, [subida('2026-11-17', 50, 60)], 60.0, 6.0, '2026-11-21', 3, 10, 21)['status'] ?? null)->not->toBe('fell');
+    });
+
+    it('el techo: una subida devuelta no se repite en 14 días', function () {
+        $c = CampaignRules::ceiling([subida('2026-11-08', 50, 60), subida('2026-11-12', 60, 72), subida('2026-11-21', 72, 60)], '2026-11-22', 14);
+        expect($c)->toBe(['level' => 72.0, 'date' => '2026-11-21', 'until' => '2026-12-05'])
+            ->and(CampaignRules::ceiling([subida('2026-11-08', 50, 60)], '2026-11-22', 14))->toBeNull()
+            ->and(CampaignRules::ceiling([subida('2026-11-01', 50, 60), subida('2026-11-02', 60, 50)], '2026-11-22', 14))->toBeNull();
+
+        $a = (new CampaignRules(DecisionSettings::defaults()))->action(['c' => 4.0, 'be' => 5.70, 'mode' => 'normal', 'budget' => 60.0, 'spend3' => 30.0, 'purchases3' => 12,
+            'cpa7' => 3.0, 'ceiling' => $c]);
+        expect($a['key'])->toBe('hold')->and($a['reading'])->toBe('Va bien, pero el 21/11 se devolvió la subida a $72,00: lo extra no dejó dinero. No se vuelve a subir hasta ahí antes del 05/12.');
+        // una subida chica que no llega al techo sí se puede
+        expect((new CampaignRules(DecisionSettings::defaults()))->action(['c' => 4.0, 'be' => 5.70, 'mode' => 'normal', 'budget' => 50.0, 'spend3' => 30.0, 'purchases3' => 12,
+            'cpa7' => 3.0, 'ceiling' => $c])['key'])->toBe('scale');
+    });
+
+    it('devolver la escalera lo dice con sus números, y baja como mucho 20 %', function () {
+        $a = (new CampaignRules(DecisionSettings::defaults()))->action(['c' => 4.0, 'be' => 6.0, 'mode' => 'normal', 'budget' => 90.0, 'spend3' => 30.0, 'purchases3' => 12, 'cpa7' => 3.0,
+            'raise' => ['status' => 'fell', 'raise' => true, 'date' => '2026-11-12', 'from' => 60.0, 'to' => 90.0, 'days' => 3, 'closed' => 9, 'until' => '2026-11-16',
+                'before' => 40.0, 'after' => 10.0, 'climb' => ['since' => '2026-11-08', 'from' => 50.0, 'top' => 90.0, 'raises' => 2, 'window' => 7]]]);
+        expect($a)->toMatchArray(['key' => 'undo_raise', 'from' => 90.0, 'to' => 72.0])
+            ->and($a['reading'])->toBe('Desde el 08/11 subiste el presupuesto 2 veces (de $50,00 a $90,00) y lo que deja bajó: $40,00 por día antes de la primera subida, $10,00 en los últimos 7 días cerrados. Lo extra no está dejando dinero.')
+            ->and($a['proposal'])->toContain('Devolver la última subida (la del 12/11): $90,00 → $72,00. Como mucho un 20 % de una vez')
+            ->and(CampaignRules::backTo(39.6, 33.0))->toBe(33.0)->and(CampaignRules::backTo(100.0, 50.0))->toBe(80.0)
+            ->and(DecisionSettings::defaults()['climb_days'])->toBe(21.0)->and(DecisionSettings::defaults()['ceiling_days'])->toBe(14.0);
+    });
+});
+
 describe('.144: lo que pide la regla', function () {
     $campana = fn (array $in) => (new CampaignRules(DecisionSettings::defaults()))->action(array_merge(['c' => 4.0, 'be' => 5.70, 'mode' => 'normal', 'budget' => 33.0,
         'spend3' => 30.0, 'purchases3' => 12, 'cpa7' => 3.0, 'freq3' => 1.3], $in));
