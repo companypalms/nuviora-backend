@@ -30,7 +30,7 @@ final class StopWhy
      */
     public static function lines(string $label, string $city, array $why): array
     {
-        return array_values(array_filter([self::numbers($label, $city, $why), self::rule($why), self::week($why)]));
+        return array_values(array_filter([self::numbers($label, $city, $why), self::rule($why), self::shield($why) ?? self::week($why)]));
     }
 
     /**
@@ -134,11 +134,38 @@ final class StopWhy
         };
     }
 
-    /** `.152`: con 3 días malos, por qué su semana no lo salvó. */
+    /**
+     * `.187`: por qué "Vigila" no lo protegió: la campaña no está sana (por eso se apagan sus creativos en el BE, para bajarle el
+     * CPA), o está sana pero este creativo no vende o vende muy caro. Null en los análisis de antes de la `.187`.
+     */
+    private static function shield(array $why): ?string
+    {
+        $sh = $why['shield'] ?? null;
+        if (!is_array($sh)) {
+            return null;
+        }
+        if ($why['estimated'] ?? false) {
+            return 'Con un BE estimado, la campaña no lo protege.';
+        }
+        $cs = (float) $sh['campaign']['spend'];
+        $cp = (float) $sh['campaign']['purchases'];
+        $campaign = $cp > 0 ? AdRules::money($cs / $cp) . ' por compra' : AdRules::money($cs) . ' sin compras';
+        if (!$sh['healthy']) {
+            return "La campaña no está sana: en 3 días va a {$campaign} (sana hasta " . AdRules::money((float) $sh['top']) . ', un ' . AdRules::num((float) $sh['top_pct'])
+                . ' % encima de tu C). Por eso se apagan sus creativos en el BE, para bajarle el CPA.';
+        }
+        $wp = (float) $sh['week']['purchases'];
+        $sells = $wp > 0 ? 'en su semana vende a ' . AdRules::money((float) $sh['week']['spend'] / $wp) . ', más de un ' . AdRules::num((float) $sh['cap_pct'])
+            . ' % encima de tu BE (' . AdRules::money((float) $sh['cap']) . ')' : 'en su semana no vendió';
+
+        return "La campaña está sana ({$campaign}), pero este creativo {$sells}: por eso se apaga igual.";
+    }
+
+    /** `.152`: con 3 días malos, por qué su semana no lo salvó (los análisis de antes de la `.187`). */
     private static function week(array $why): ?string
     {
         $w = $why['week'] ?? null;
-        if (($why['days'] ?? null) !== 3 || !is_array($w)) {
+        if (($why['days'] ?? null) !== 3 || !is_array($w) || !isset($why['watch'])) {
             return null;
         }
         $p = (float) $w['purchases'];

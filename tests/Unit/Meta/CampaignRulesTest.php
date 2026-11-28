@@ -103,17 +103,16 @@ describe('.123: entre C y BE, un cambio grande a la vez', function () {
     $undo = ['date' => '2026-11-06', 'from' => 33.0, 'to' => 39.6];
     $batch = fn (int $closed) => ['date' => '2026-11-09', 'name' => 'B0118', 'closed' => $closed];
 
-    it('.185: al entrar a la franja con los 7 días también encima de C, primero se devuelve la subida (y después el batch)', function () use ($zen, $undo) {
+    it('.187: al entrar a la franja, primero podar y lanzar el batch, aunque los 7 días también estén encima de C (la .185 devolvía primero la subida)', function () use ($zen, $undo) {
+        // dueño, 2026-11-28, eligió "Podar y lanzar": "lo de podar y lanzar se debe hacer mucho antes de que el producto toque el BE"
         $a = $zen(['batch' => null, 'lowered' => null, 'undo' => $undo]);
-        expect($a['key'])->toBe('step_down')->and($a['from'])->toBe(39.6)->and($a['to'])->toBe(33.0)
-            ->and($a['reading'])->toContain('Los 7 días también están encima de C (CPA 7D $4,85): primero se devuelve la última subida, después el batch.')
-            ->and($a['proposal'])->toBe('Devolver la subida del 06/11: $39,60 → $33,00. Si en 3 días cerrados sigue encima de C, toca meter un batch. Si vuelve a C, se sube otra vez.');
-        // una subida más grande que 20 % se devuelve en partes, para no dañar la optimización
-        $b = $zen(['batch' => null, 'lowered' => null, 'undo' => ['date' => '2026-11-06', 'from' => 25.0, 'to' => 39.6]]);
-        expect($b['to'])->toBe(31.68)->and($b['proposal'])->toContain('Como mucho un 20 % de una vez, para no dañar la optimización');
+        expect($a['key'])->toBe('hold_prune')->and($a['proposal'])->toBe('Mantener, podar los caros y meter creativos.');
+        // con el batch adentro y sus 3 días cerrados, se devuelve la subida; una de más de 20 % se devuelve en partes
+        $b = $zen(['batch' => ['date' => '2026-11-09', 'name' => 'B0118', 'closed' => 3], 'lowered' => null, 'undo' => ['date' => '2026-11-06', 'from' => 25.0, 'to' => 39.6]]);
+        expect($b['key'])->toBe('step_down')->and($b['to'])->toBe(31.68);
     });
 
-    it('si solo fueron 3 días malos (los 7 días debajo de C): primero el batch nuevo, como antes', function () use ($zen, $undo) {
+    it('si solo fueron 3 días malos (los 7 días debajo de C): también primero el batch nuevo', function () use ($zen, $undo) {
         $a = $zen(['batch' => null, 'lowered' => null, 'undo' => $undo], ['cpa7' => 4.2]);
         expect($a['key'])->toBe('hold_prune')->and($a['proposal'])->toBe('Mantener, podar los caros y meter creativos.')->and($a)->not->toHaveKey('ladder');
         // un análisis de antes de la .123 (sin "band") sigue igual
@@ -183,31 +182,34 @@ describe('.123: entre C y BE, un cambio grande a la vez', function () {
     });
 });
 
-describe('.187: la campaña sin dejar dinero, con margen y con tiempo para el batch', function () {
-    // La revisión del 2026-11-28: con 5 días, una mala racha pausaba 6 de cada 10 ciudades que dejan dinero; y al día siguiente de
-    // "primero un batch nuevo" ya pausaba la ciudad. FlexiStep Aragua: C $5,01, BE $7,49 (un 10 % encima: $8,24)
+describe('.187: la campaña sin dejar dinero, con 2 días para el batch nuevo', function () {
+    // La revisión del 2026-11-28: al día siguiente de "primero un batch nuevo" ya pausaba la ciudad. Dueño: "se le debe dar máximo a
+    // ese batch 2 días" y "se pausa si está cualquier porcentaje por encima del BE en 5 días". FlexiStep Aragua: C $5,01, BE $7,49
     $flexi = fn (array $in) => campana()->action(array_merge(['c' => 5.01, 'be' => 7.49, 'mode' => 'normal', 'budget' => 25.0, 'spend3' => 95.3, 'purchases3' => 6,
         'cpa7' => 11.68, 'freq3' => 1.68, 'streak_days' => 3], $in));
     $cinco = ['days' => 5, 'spend' => 95.3, 'purchases' => 6.0, 'batches' => 1, 'lowered' => 0];
 
-    it('apenas encima del BE (menos del 10 %) no es "sin dejar dinero": siguen los pasos de siempre del BE', function () use ($flexi, $cinco) {
-        $a = $flexi(['chronic' => ['spend' => 95.3, 'purchases' => 12.0] + $cinco]); // $7,94: 6 % encima del BE
-        expect($a['key'])->toBe('intervene')->and($a['proposal'])->toStartWith('Intervenir: podar y lanzar')
-            ->and($flexi(['chronic' => ['spend' => 95.3, 'purchases' => 11.0] + $cinco])['key'])->toBe('pause_city'); // $8,66: 16 % encima
+    it('en el BE o encima, por poco que sea, es "sin dejar dinero"', function () use ($flexi, $cinco) {
+        expect($flexi(['chronic' => ['spend' => 95.3, 'purchases' => 12.0] + $cinco])['key'])->toBe('pause_city')   // $7,94: 6 % encima del BE
+            ->and($flexi(['chronic' => ['spend' => 95.3, 'purchases' => 13.0] + $cinco])['key'])->toBe('intervene'); // $7,33: debajo del BE
     });
 
-    it('al batch nuevo se le dan 3 días cerrados; después, si sigue igual, se pausa', function () use ($flexi, $cinco) {
-        $a = $flexi(['chronic' => $cinco + ['last_batch' => ['date' => '2026-11-06', 'closed' => 2, 'name' => 'B0126 FLEX']], 'prune' => ['C0410 FLEX']]);
+    it('al batch nuevo se le dan 2 días cerrados; después, si sigue igual, se pausa', function () use ($flexi, $cinco) {
+        $a = $flexi(['chronic' => $cinco + ['last_batch' => ['date' => '2026-11-07', 'closed' => 1, 'name' => 'B0126 FLEX']], 'prune' => ['C0410 FLEX']]);
         expect($a['key'])->toBe('hold_prune')
-            ->and($a['reading'])->toBe('5 días sin dejar dinero: gastó $95,30 y vendió a $15,88 por compra, un 10 % o más encima de tu BE ($7,49). El 06/11 entró el batch «B0126 FLEX».')
-            ->and($a['proposal'])->toBe('Esperar: se le dan 3 días cerrados al batch nuevo. Si el 10/11 sigue sin dejar dinero, se pausa la ciudad. No tocar el presupuesto. Apagar: C0410 FLEX.')
-            ->and($a['ladder'])->toMatchArray(['hold' => true, 'since' => '2026-11-06', 'until' => '2026-11-10', 'days' => 3, 'next' => 'pausar la ciudad', 'check' => 'vuelve a dejar dinero']);
+            ->and($a['reading'])->toBe('5 días sin dejar dinero: gastó $95,30 y vendió a $15,88 por compra, en tu BE ($7,49) o encima. El 07/11 entró el batch «B0126 FLEX».')
+            ->and($a['proposal'])->toBe('Esperar: se le dan 2 días cerrados al batch nuevo. Si el 10/11 sigue sin dejar dinero, se pausa la ciudad. No tocar el presupuesto. Apagar: C0410 FLEX.')
+            ->and($a['ladder'])->toMatchArray(['hold' => true, 'since' => '2026-11-07', 'until' => '2026-11-10', 'days' => 2, 'next' => 'pausar la ciudad', 'check' => 'vuelve a dejar dinero']);
         // también con un cambio grande en las últimas 24 horas: la espera ya está dicha
-        $cool = ['what' => 'entró el batch «B0126 FLEX»', 'at' => '2026-11-06 10:00:00', 'until' => '2026-11-07 10:00:00', 'hours' => 24.0];
-        expect($flexi(['chronic' => $cinco + ['last_batch' => ['date' => '2026-11-06', 'closed' => 0, 'name' => null]], 'recent_change' => $cool])['proposal'])
-            ->toStartWith('Esperar: se le dan 3 días cerrados al batch nuevo.');
+        $cool = ['what' => 'entró el batch «B0126 FLEX»', 'at' => '2026-11-07 10:00:00', 'until' => '2026-11-08 10:00:00', 'hours' => 24.0];
+        expect($flexi(['chronic' => $cinco + ['last_batch' => ['date' => '2026-11-07', 'closed' => 0, 'name' => null]], 'recent_change' => $cool])['proposal'])
+            ->toStartWith('Esperar: se le dan 2 días cerrados al batch nuevo.');
 
-        expect($flexi(['chronic' => $cinco + ['last_batch' => ['date' => '2026-11-06', 'closed' => 3, 'name' => 'B0126 FLEX']]])['key'])->toBe('pause_city');
+        expect($flexi(['chronic' => $cinco + ['last_batch' => ['date' => '2026-11-07', 'closed' => 2, 'name' => 'B0126 FLEX']]])['key'])->toBe('pause_city')
+            ->and(DecisionSettings::defaults()['chronic_batch_days'])->toBe(2.0);
+        // "primero un batch nuevo" ya dice cuántos días tiene
+        expect($flexi(['chronic' => ['batches' => 0] + $cinco, 'bank_ready' => ['B0130']])['proposal'])
+            ->toStartWith('Primero un batch nuevo: lanzar B0130 de la banca. Se le dan 2 días cerrados: si con él sigue sin dejar dinero, se pausa la ciudad.');
     });
 });
 
@@ -221,7 +223,7 @@ describe('.125: campañas que no dejan dinero', function () {
     it('14 días en el BE o encima con 10×C gastado, y los últimos 3 también: pausar la ciudad', function () use ($flexi, $catorce) {
         $a = $flexi(['chronic' => $catorce]);
         expect($a['key'])->toBe('pause_city')->and($a['chronic'])->toBe($catorce)
-            ->and($a['reading'])->toBe('14 días sin dejar dinero: gastó $290,10 y vendió a $8,53 por compra, un 10 % o más encima de tu BE ($7,49); y en los últimos 3 días '
+            ->and($a['reading'])->toBe('14 días sin dejar dinero: gastó $290,10 y vendió a $8,53 por compra, en tu BE ($7,49) o encima; y en los últimos 3 días '
                 . 'tampoco dejó dinero. En ese tiempo entraron anuncios nuevos 4 veces, y no mejoró.');
         // lo que se intentó: también las bajadas de presupuesto; y si no se hizo nada, lo dice
         expect($flexi(['chronic' => ['batches' => 1, 'lowered' => 2] + $catorce])['reading'])->toEndWith('En ese tiempo entraron anuncios nuevos 1 vez y bajaste el presupuesto 2 veces, y no mejoró.')

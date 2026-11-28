@@ -292,6 +292,13 @@ class MetaDecisions
             if ($back = $rules->recovered($adVerdicts[$id], $ad['windows']['3d']['totals'] ?? null, $c['target'] ?? null, $c['break_even'] ?? null, (bool) ($c['break_even_estimated'] ?? false))) {
                 $adVerdicts[$id] = $back + ['causes' => []];
             }
+            // .187: un perdedor por el BE de toda su vida, con la campaña sana y vendiendo en su semana en el BE o cerca, no se poda
+            $camp3 = $c['windows']['3d']['totals'] ?? null;
+            if ($safe = $rules->sheltered($adVerdicts[$id], $camp3, $ad['windows']['7d']['totals'] ?? null, $c['target'] ?? null, $c['break_even'] ?? null, (bool) ($c['break_even_estimated'] ?? false))) {
+                $adVerdicts[$id] = $safe + ['causes' => []];
+            } else {
+                $adVerdicts[$id] = $rules->withShield($adVerdicts[$id], $camp3, $ad['windows']['7d']['totals'] ?? null, $c['target'] ?? null, $c['break_even'] ?? null);
+            }
             // .127 (dueño, 2026-11-09: "sí acepto gastar 3C" con buenas señales): con 0 o 1 compra y buenas señales, hasta 3×C
             $life = $ad['windows']['max'] ?? null;
             if ($wait = $rules->patient($adVerdicts[$id], (float) ($life['totals']['spend'] ?? 0), (float) ($life['totals']['purchases'] ?? 0), $c['target'] ?? null,
@@ -373,13 +380,20 @@ class MetaDecisions
                 if ($back = $rules->recovered($states[$cid][$campaignId], $w['3d']['totals'] ?? null, $c['target'] ?? null, $c['break_even'] ?? null, $estimated)) {
                     $states[$cid][$campaignId] = $back + ['causes' => []];
                 }
+                // .187: "Vigila" mira la campaña (sus 3 días): con ella sana, un creativo que vende en el BE o cerca no se toca
+                $camp3 = $c['windows']['3d']['totals'] ?? null;
+                if ($safe = $rules->sheltered($states[$cid][$campaignId], $camp3, $w['7d']['totals'] ?? null, $c['target'] ?? null, $c['break_even'] ?? null, $estimated)) {
+                    $states[$cid][$campaignId] = $safe + ['causes' => []];
+                } else {
+                    $states[$cid][$campaignId] = $rules->withShield($states[$cid][$campaignId], $camp3, $w['7d']['totals'] ?? null, $c['target'] ?? null, $c['break_even'] ?? null);
+                }
                 // .86: intermedio o en evaluación en toda su vida, pero perdiendo en los últimos 3 días en esta ciudad
                 // (.114: o en los 7 días, si en 3 no llegó a 2×C; .121: también un prometedor)
-                if ($recent = $rules->recentLoser($w['3d']['totals'] ?? null, $states[$cid][$campaignId], $c['target'] ?? null, $c['break_even'] ?? null, $w['7d']['totals'] ?? null, $estimated)) {
+                if ($recent = $rules->recentLoser($w['3d']['totals'] ?? null, $states[$cid][$campaignId], $c['target'] ?? null, $c['break_even'] ?? null, $w['7d']['totals'] ?? null, $estimated, $camp3)) {
                     $states[$cid][$campaignId] = $recent + ['causes' => []];
                 }
                 // .119: un ganador que falla y pierde dinero se apaga en esta ciudad (y se sigue iterando)
-                if ($stop = $rules->failingStop($states[$cid][$campaignId], $w['3d']['totals'] ?? null, $c['target'] ?? null, $c['break_even'] ?? null, $w['7d']['totals'] ?? null, $estimated, $tracking)) {
+                if ($stop = $rules->failingStop($states[$cid][$campaignId], $w['3d']['totals'] ?? null, $c['target'] ?? null, $c['break_even'] ?? null, $w['7d']['totals'] ?? null, $estimated, $tracking, $camp3)) {
                     $states[$cid][$campaignId] = $stop;
                 }
                 $wasWinner[$cid] = ($wasWinner[$cid] ?? false) || $good;
@@ -673,9 +687,8 @@ class MetaDecisions
             // .125 (dueño: "puede ser que la campaña se esté comenzando a recuperar e igual me la mande a apagar"): 14 días sin
             // dejar dinero, pero en los últimos 3 vende debajo del BE: no se pausa, y se dice por qué
             $cpa3 = ($w3['totals']['purchases'] ?? 0) > 0 ? $w3['totals']['spend'] / $w3['totals']['purchases'] : null;
-            // .187: "sin dejar dinero", con el margen de los creativos encima del BE (como en CampaignRules)
             if ($chronic && $c['target'] && $c['break_even'] && $cpa3 !== null && $cpa3 < $c['break_even'] && $chronic['spend'] >= $c['target'] * $s['chronic_min_cpa']
-                && ($chronic['purchases'] <= 0 || $chronic['spend'] / $chronic['purchases'] >= $c['break_even'] * (1 + $s['loser_be_margin_pct'] / 100))) {
+                && ($chronic['purchases'] <= 0 || $chronic['spend'] / $chronic['purchases'] >= $c['break_even'])) {
                 $out['campaigns'][$id]['notes'][] = ['key' => 'recovering', 'label' => 'Se está recuperando', 'text' => "En {$chronic['days']} días gastó " . AdRules::money($chronic['spend'])
                     . ($chronic['purchases'] > 0 ? ' y vendió a ' . AdRules::money($chronic['spend'] / $chronic['purchases']) . ' por compra' : ' sin compras') . ' (en tu BE o encima), pero en los últimos 3 días vende a '
                     . AdRules::money($cpa3) . ', debajo del BE: no se pausa. Se vuelve a mirar cada día.'];

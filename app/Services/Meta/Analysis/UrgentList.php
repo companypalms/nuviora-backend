@@ -504,8 +504,9 @@ final class UrgentList
     }
 
     /**
-     * `.152` (dueño, 2026-11-17): los creativos que la regla de 3 días habría apagado en una ciudad, pero que en su semana dejan
-     * plata: un aviso para vigilarlos (no se tocan). Si su semana pasa el BE, al día siguiente salen en "Apagar creativos".
+     * `.152` (dueño, 2026-11-17): los creativos que la regla habría apagado en una ciudad, pero que no se tocan: un aviso para
+     * vigilarlos. `.187` (dueño, 2026-11-28: "si el creativo está en BE pero la campaña está saludable… no se debe tocar"): están
+     * en el BE, pero la campaña va bien. Si la campaña deja de estar sana, al día siguiente salen en "Apagar creativos".
      *
      * @param list<array{label: string, text: string}> $list
      */
@@ -514,12 +515,12 @@ final class UrgentList
         $labels = array_column($list, 'label');
         $names = CreativeCalls::join($labels);
         // En la lista de avisos se ve solo esta línea (con el producto y la ciudad delante): que diga el porqué
-        $title = count($labels) === 1 ? "Vigila {$labels[0]}: 3 días malos, pero en su semana deja plata (no lo apagues)"
-            : 'Vigila ' . count($labels) . ' creativos: 3 días malos, pero en su semana dejan plata (no los apagues)';
+        $title = count($labels) === 1 ? "Vigila {$labels[0]}: está en el BE, pero la campaña va bien (no lo apagues)"
+            : 'Vigila ' . count($labels) . ' creativos: están en el BE, pero la campaña va bien (no los apagues)';
 
         return ['key' => "{$productId}:watch:" . substr(md5($city . '|' . implode(',', $labels)), 0, 10), 'city' => $city, 'kind' => 'watch', 'label' => 'Vigilar',
-            'text' => "{$names}: 3 días malos en {$city}, pero en su semana dejan plata.", 'tone' => 'info', 'where' => $short . ' · ' . $city, 'title' => $title,
-            'steps' => [], 'why' => count($labels) === 1 ? '3 días malos, pero en su semana deja plata' : '3 días malos, pero en su semana dejan plata',
+            'text' => "{$names}: en el BE en {$city}, pero la campaña va bien.", 'tone' => 'info', 'where' => $short . ' · ' . $city, 'title' => $title,
+            'steps' => [], 'why' => count($labels) === 1 ? 'Está en el BE, pero la campaña va bien' : 'Están en el BE, pero la campaña va bien',
             'detail' => array_map(fn ($w) => "{$w['label']}: {$w['text']}", $list)];
     }
 

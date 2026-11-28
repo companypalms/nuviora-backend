@@ -26,6 +26,12 @@ class DecisionSettings
         // .101 (dueño, 2026-11-04): con menos de 20 compras, perdedor por el BE solo con el CPA 20 % o más encima
         'loser_be_margin_pct' => [10, 0, 100],         // .186: 20 → 10 %
         'loser_be_margin_purchases' => [10, 2, 1000],  // .186: 20 → 10 compras
+        // .187 (dueño, 2026-11-28: "si el creativo está en BE pero la campaña está saludable… no se debe tocar. Los creativos en BE
+        // solo se deben tocar si está afectando a la campaña general"): "Vigila" mira la campaña. Está sana con su CPA de 3 días como
+        // mucho este % encima de C (y debajo del BE)…
+        'healthy_above_c_pct' => [10, 0, 100],
+        // …y ahí no se apaga el creativo que en su semana vende como mucho este % encima del BE
+        'watch_above_be_pct' => [20, 0, 200],
         // .120 (dueño, 2026-11-09): una campaña con C y sin BE no se queda sin límite: se estima en C × esto hasta que ponga el real
         'be_estimate_mult' => [1.5, 1, 5],
         // .121: un perdedor que en los últimos 3 días vendió esto o más con el CPA en C o debajo se recuperó: no se apaga
@@ -85,8 +91,10 @@ class DecisionSettings
         // ser que la campaña se esté comenzando a recuperar"): una campaña que en 14 días vendió en el BE o encima (con 10×C
         // gastado) y en los últimos 3 días también, se pausa; el producto entero así, con 2 batches o más lanzados, es una misión
         // para decidir. Y si los datos de Meta tienen más de 6 horas, se avisa
-        'chronic_days' => [5, 3, 60],            // .186: 14 → 5 días (primero un batch nuevo; si no funciona, pausar). .187: con el
-                                                 // margen de los creativos encima del BE y 3 días cerrados para el batch nuevo
+        'chronic_days' => [5, 3, 60],            // .186: 14 → 5 días (primero un batch nuevo; si no funciona, pausar)
+        // .187 (dueño, 2026-11-28: "se le debe dar máximo a ese batch 2 días. 3 es demasiado tiempo, si no funciona perderíamos
+        // dinero en vano"): los días cerrados que se le dan al batch nuevo antes de pausar la ciudad
+        'chronic_batch_days' => [2, 1, 14],
         'chronic_min_cpa' => [5, 1, 500],         // .186: 10 → 5×C
         'drop_min_batches' => [1, 0, 20],         // .186: 2 → 1 batch nuevo
         'drop_days' => [7, 3, 60],                // .186: el producto entero, 7 días (antes los 14 de la campaña)

@@ -167,28 +167,29 @@ class CampaignRules
             $relaunch = 'Pausar la ciudad. Se vuelve a prender cuando haya ' . (int) $this->s['relaunch_batches'] . ' batches que nunca se publicaron ahí.';
             // .125: 14 días sin dejar dinero, y los últimos 3 tampoco (aquí el CPA de 3 días ya está en el BE o encima)
             $ch = $in['chronic'] ?? null;
-            // .187 (la revisión del 2026-11-28: con 5 días, una mala racha pausaba 6 de cada 10 ciudades que dejan dinero): "sin dejar
-            // dinero" es con el margen de los creativos encima del BE; apenas encima, siguen los pasos de siempre del BE
-            $margin = (float) $this->s['loser_be_margin_pct'];
-            $chronicLoss = $ch && $ch['spend'] >= $c * $this->s['chronic_min_cpa'] && ($ch['purchases'] <= 0 || $ch['spend'] / $ch['purchases'] >= $be * (1 + $margin / 100));
-            $over = $margin > 0 ? 'un ' . AdRules::num($margin) . ' % o más encima de tu BE (' . AdRules::money($be) . ')' : 'en tu BE (' . AdRules::money($be) . ') o encima';
+            // .187 (dueño, 2026-11-28: "no quiero que esté nada por encima del BE, se pausa si está cualquier porcentaje por encima del BE
+            // en 5 días… la idea es no perder dinero de manera innecesaria"): en el BE o encima, sin margen
+            $chronicLoss = $ch && $ch['spend'] >= $c * $this->s['chronic_min_cpa'] && ($ch['purchases'] <= 0 || $ch['spend'] / $ch['purchases'] >= $be);
+            $over = 'en tu BE (' . AdRules::money($be) . ') o encima';
+            // .187 (dueño, 2026-11-28: "se le debe dar máximo a ese batch 2 días. 3 es demasiado tiempo, si no funciona perderíamos
+            // dinero en vano"): los días cerrados del batch nuevo antes de pausar (`chronic_batch_days`)
+            $wait = (int) $this->s['chronic_batch_days'];
+            $span = $wait === 1 ? '1 día cerrado' : "{$wait} días cerrados";
             // .186 (dueño, 2026-11-28: "no puede ser 14 días, deben ser menos, máximo 5 días. Claro, primero tenemos que tratar de
             // recuperarla con un batch nuevo, pero si no funciona se apaga"): sin un batch nuevo en esos días, primero el batch. Si no
             // hay ninguno para lanzar, la cuenta corre igual (.125: "sí, que corra") y se pausa
             if ($chronicLoss && ($ch['batches'] ?? 0) === 0 && !($in['no_batch'] ?? false) && $mode !== 'liquidation') {
                 return $this->out('intervene', $data, "{$ch['days']} días sin dejar dinero: gastó " . AdRules::money($ch['spend'])
                     . ($ch['purchases'] > 0 ? ' y vendió a ' . AdRules::money($ch['spend'] / $ch['purchases']) . ' por compra' : ' sin compras') . ", {$over}, y en esos días no entró ningún batch nuevo.",
-                    'Primero un batch nuevo: lanzar ' . (($in['bank_ready'] ?? []) ? $in['bank_ready'][0] . ' de la banca' : 'un batch nuevo') . '. Si con él sigue sin dejar dinero, se pausa la ciudad. No tocar el presupuesto hoy.'
+                    'Primero un batch nuevo: lanzar ' . (($in['bank_ready'] ?? []) ? $in['bank_ready'][0] . ' de la banca' : 'un batch nuevo') . ". Se le dan {$span}: si con él sigue sin dejar dinero, se pausa la ciudad. No tocar el presupuesto hoy."
                     . $pruneText) + ['chronic' => $ch];
             }
             // .187 (la revisión del 2026-11-28: al día siguiente de "primero un batch nuevo" ya pausaba la ciudad): al batch nuevo se
-            // le dan sus días cerrados (`band_wait_days`), como entre C y BE; mientras tanto, solo se apagan los que pierden
-            $wait = (int) $this->s['band_wait_days'];
+            // le dan sus días cerrados; mientras tanto, solo se apagan los que pierden
             $last = $ch['last_batch'] ?? null;
             if ($chronicLoss && $last && $last['closed'] < $wait) {
                 $what = ($last['name'] ?? null) ? 'entró el batch «' . $last['name'] . '»' : 'entraron anuncios nuevos';
                 $until = date('Y-m-d', strtotime($last['date'] . ' +' . ($wait + 1) . ' days'));
-                $span = $wait === 1 ? '1 día cerrado' : "{$wait} días cerrados";
 
                 return $this->out('hold_prune', $data, "{$ch['days']} días sin dejar dinero: gastó " . AdRules::money($ch['spend'])
                     . ($ch['purchases'] > 0 ? ' y vendió a ' . AdRules::money($ch['spend'] / $ch['purchases']) . ' por compra' : ' sin compras') . ", {$over}. El "
@@ -325,19 +326,9 @@ class CampaignRules
         if ($low && $low['closed'] < $wait) {
             return $hold('bajaste el presupuesto de ' . AdRules::money($low['from']) . ' a ' . AdRules::money($low['to']), $low['date'], 'otro batch');
         }
-        // .185 (dueño, 2026-11-28: "bajar antes en la franja C–BE"): al entrar a la franja, si los 7 días también están encima de
-        // C, primero se devuelve la última subida y después el batch. Si ya entró un batch, sigue la escalera de siempre; y
-        // nunca dos cambios de presupuesto seguidos: se espera a que la última subida cumpla sus días cerrados (.144)
-        $c7 = ($in['cpa7'] ?? null) !== null && (float) $in['cpa7'] > (float) ($in['c'] ?? 0);
-        if (!$low && !$batch && $undo && $c7 && ($in['raise']['status'] ?? null) !== 'waiting') {
-            $to = self::backTo((float) $budget, (float) $undo['from']);
-
-            return $this->out('step_down', $data, "{$reading} Los 7 días también están encima de C (CPA 7D " . AdRules::money((float) $in['cpa7']) . '): primero se devuelve la última subida, después el batch.',
-                'Devolver la subida del ' . $day($undo['date']) . ': ' . AdRules::money($budget) . ' → ' . AdRules::money($to) . '.'
-                . ($to > (float) $undo['from'] + 0.005 ? ' Como mucho un ' . self::DOWN_CAP . ' % de una vez, para no dañar la optimización.' : '')
-                . " Si en {$days} sigue encima de C, toca meter un batch. Si vuelve a C, se sube otra vez.", $budget, $to)
-                + ['ladder' => ['hold' => false, 'what' => 'devolver la subida primero', 'since' => $undo['date'], 'undo' => $undo['date'], 'days' => $wait]];
-        }
+        // .187 (dueño, 2026-11-28, eligió "Podar y lanzar": "lo de podar y lanzar se debe hacer mucho antes de que el producto toque
+        // el BE"): al entrar a la franja, el mismo día se apagan los que pierden y entra un batch nuevo; si en 3 días cerrados no
+        // vuelve a C, se devuelve la última subida. Es el orden de la .123 (la .185 devolvía primero la subida)
         if ($batch && !$low) {
             $name = ($batch['name'] ?? null) ? 'el batch «' . $batch['name'] . '»' : 'un batch nuevo';
             $back = $undo ? 'la subida del ' . $day($undo['date']) . ': ' . AdRules::money($budget) . ' → ' . AdRules::money(self::backTo((float) $budget, (float) $undo['from'])) : null;

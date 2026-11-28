@@ -30,12 +30,6 @@ class AdRules
 
     public const FUNNEL = ['top' => 'Arriba del embudo', 'middle' => 'Medio del embudo', 'bottom' => 'Abajo del embudo'];
 
-    /**
-     * `.152`: con cuántas compras en sus 7 días en una ciudad, un creativo que vende en el BE o debajo no se apaga por 3 días
-     * malos (dueño, 2026-11-17: eligió 5, no 3, "con los 2 seguros": 3 compras pueden ser suerte).
-     */
-    public const WATCH_PURCHASES = 5;
-
     public function __construct(private array $s)
     {
     }
@@ -423,7 +417,7 @@ class AdRules
      * @param array $state el veredicto de toda su vida en esa ciudad
      * @param array|null $week los totales de los 7 días en esa ciudad
      */
-    public function recentLoser(?array $recent, array $state, ?float $c, ?float $be, ?array $week = null, bool $estimated = false): ?array
+    public function recentLoser(?array $recent, array $state, ?float $c, ?float $be, ?array $week = null, bool $estimated = false, ?array $campaign = null): ?array
     {
         if (!$c || $c <= 0 || !in_array($state['key'] ?? null, ['intermediate', 'evaluation', 'promising'], true)) {
             return null;
@@ -441,8 +435,8 @@ class AdRules
         }
         $data = "{$days} días: " . lcfirst($this->spendText($spend, $purchases, $c)) . ($purchases > 0 ? ' · CPA ' . self::money($spend / $purchases) : '')
             . ' · C ' . self::money($c) . self::beText($be, $estimated);
-        // .152: 3 días malos, pero en la semana deja plata: se vigila, no se apaga
-        if ($days === 3 && ($watch = $this->weekHolds($week, $spend, $purchases, $c, $be, $estimated))) {
+        // .187: en el BE, pero la campaña va bien: se vigila, no se apaga (antes, .152: si su semana dejaba plata)
+        if ($watch = $this->shield($campaign, $week, $c, $be, $estimated)) {
             return array_merge($state, ['watch' => $watch, 'reading' => trim($watch . ' ' . ($state['reading'] ?? ''))]);
         }
 
@@ -450,7 +444,7 @@ class AdRules
             . ($purchases == 0 ? 'sin compras' : 'con el CPA ' . self::num(round(($spend / $purchases / $be - 1) * 100)) . ' % encima del break-even')
             . ' (en toda su vida: ' . mb_strtolower($state['label']) . ').',
             $this->offProposal('creativo')) + ['why' => $this->why('recent', $days, $spend, $purchases, $c, $be, $estimated, ['life' => mb_strtolower($state['label']),
-                'spend3' => (float) ($recent3['spend'] ?? 0), 'week' => $days === 3 ? self::totals($week) : null])];
+                'spend3' => (float) ($recent3['spend'] ?? 0), 'week' => $days === 3 ? self::totals($week) : null, 'shield' => $this->shieldInfo($campaign, $week, $c, $be)])];
     }
 
     /**
@@ -469,7 +463,8 @@ class AdRules
      * @param array|null $week los totales de los 7 días en esa ciudad
      * @param float|null $tracking las compras de Meta sobre los pedidos reales del producto, en % (null si no se sabe)
      */
-    public function failingStop(array $state, ?array $recent, ?float $c, ?float $be, ?array $week = null, bool $estimated = false, ?float $tracking = null): ?array
+    public function failingStop(array $state, ?array $recent, ?float $c, ?float $be, ?array $week = null, bool $estimated = false, ?float $tracking = null,
+        ?array $campaign = null): ?array
     {
         if (($state['key'] ?? null) !== 'failing' || !$c || $c <= 0) {
             return null;
@@ -490,8 +485,8 @@ class AdRules
         }
         $data = "{$days} días: " . lcfirst($this->spendText($spend, $raw, $c)) . ($raw > 0 ? ' · CPA ' . self::money($spend / $raw) : '')
             . ' · C ' . self::money($c) . self::beText($be, $estimated);
-        // .152: también el ganador que falla: si en la semana deja plata, se vigila
-        if ($days === 3 && ($watch = $this->weekHolds($week, $spend, $raw, $c, $be, $estimated, $seen))) {
+        // .187: también el ganador que falla: en el BE, pero con la campaña bien, se vigila
+        if ($watch = $this->shield($campaign, $week, $c, $be, $estimated, $seen)) {
             return array_merge($state, ['watch' => $watch, 'reading' => trim($watch . ' ' . ($state['reading'] ?? ''))]);
         }
         $adjusted = $seen < 1 ? ', ya contando que Meta ve solo el ' . self::num($tracking) . ' % de tus pedidos' : '';
@@ -501,33 +496,79 @@ class AdRules
                 . ($purchases == 0 ? 'sin compras' : 'con el CPA ' . self::num(round(($spend / $purchases / $be - 1) * 100)) . ' % encima del break-even') . $adjusted . '. ' . $state['reading'],
             'proposal' => 'Apagarlo en esta ciudad e iterarlo en un batch nuevo: fue ganador.',
             'why' => $this->why('failing', $days, $spend, $raw, $c, $be, $estimated, ['spend3' => (float) ($recent3['spend'] ?? 0),
-                'week' => $days === 3 ? self::totals($week) : null, 'seen_pct' => $seen < 1 ? $tracking : null])]);
+                'week' => $days === 3 ? self::totals($week) : null, 'seen_pct' => $seen < 1 ? $tracking : null, 'shield' => $this->shieldInfo($campaign, $week, $c, $be)])]);
     }
 
     /**
-     * `.152` (dueño, 2026-11-17, al ver que de 8 apagados grandes que en su semana dejaban plata solo 2 cumplieron, −$71 por
-     * día contra las otras ciudades, y de 8 que perdían cumplieron 8, +$167): 3 días malos no apagan a un creativo que en sus 7
-     * días en esa ciudad vende bien con WATCH_PURCHASES compras o más. Se vigila; los 3 días malos cuentan en la semana, así que
-     * si siguen malos, la semana se pasa y se apaga como siempre. Sin BE, o con uno estimado, no se protege. `.187`: "bien" es
-     * en el punto medio entre C y el BE o debajo. $seen: la parte de las compras que ve Meta (`.121`).
+     * `.187` (dueño, 2026-11-28: "hay que mirar más de manera un poco global, es decir, si el creativo está en BE pero la campaña
+     * está saludable… el creativo que está en BE no se debe tocar. Los creativos en BE solo se deben tocar si está afectando a la
+     * campaña general, con la finalidad de tratar de bajar el CPA al pausar esos creativos"): "Vigila" mira la campaña. Con la
+     * campaña sana (su CPA de 3 días como mucho `healthy_above_c_pct` % encima de C, y debajo del BE), no se apaga el creativo
+     * que en su semana en esa ciudad vende como mucho `watch_above_be_pct` % encima del BE. Los que no venden, o venden más
+     * caro, se apagan igual; y cuando la campaña deja de estar sana, también los que están en el BE. Reemplaza el de la `.152`
+     * (la semana del creativo en el BE, con 5 compras). Sin BE, o con uno estimado (`.120`), no se protege. $seen: la parte de
+     * las compras que ve Meta (`.121`).
      *
-     * @return ?string el aviso ("Vigila: …"), o null si la semana no lo sostiene
+     * @param ?array $campaign el gasto y las compras de los 3 días de la campaña (la ciudad)
+     * @param ?array $week el gasto y las compras de los 7 días del creativo en esa ciudad
+     * @return ?string el aviso ("Vigila: …"), o null si no lo protege
      */
-    private function weekHolds(?array $week, float $spend, float $purchases, float $c, ?float $be, bool $estimated, float $seen = 1.0): ?string
+    public function shield(?array $campaign, ?array $week, ?float $c, ?float $be, bool $estimated = false, float $seen = 1.0): ?string
     {
-        $wSpend = (float) ($week['spend'] ?? 0);
-        $wRaw = (float) ($week['purchases'] ?? 0);
-        // Los dos seguros que eligió el dueño: con un BE estimado (`.120`) no se sabe si de verdad deja plata. `.187` (dueño, 2026-11-28,
-        // después de la revisión: con C + 10 % de la `.186` se apagaban por mala suerte 64 de cada 100 creativos buenos, en vez de 45;
-        // eligió "el punto medio entre C y BE"): la semana tiene que estar en el punto medio entre C y el BE o debajo
-        if ($be === null || $estimated || $week === null || $wRaw / $seen < self::WATCH_PURCHASES || $wSpend / ($wRaw / $seen) > ($c + $be) / 2) {
+        $info = $this->shieldInfo($campaign, $week, $c, $be);
+        if ($info === null || $estimated || !$info['healthy'] || $info['week']['purchases'] <= 0
+            || $info['week']['spend'] / ($info['week']['purchases'] / $seen) > $info['cap']) {
+            return null;
+        }
+        $cp = $info['campaign']['spend'] / $info['campaign']['purchases'];
+
+        return 'Vigila: la campaña va bien (en 3 días, ' . self::money($cp) . ' por compra; está sana hasta ' . self::money($info['top'])
+            . ') y este creativo vende en su semana a ' . self::money($info['week']['spend'] / $info['week']['purchases']) . ' (tu BE es ' . self::money($be)
+            . '). No se apaga mientras la campaña siga sana.';
+    }
+
+    /**
+     * `.187`: lo que mira "Vigila", para decirlo en el porqué (Analysis\StopWhy): la campaña (3 días) y el creativo (7 días), hasta
+     * dónde está sana la campaña ($top) y hasta dónde vende el creativo ($cap). Null sin C, sin BE o sin los números de la campaña.
+     *
+     * @return ?array{campaign: array, week: array, top: float, cap: float, healthy: bool, top_pct: float, cap_pct: float}
+     */
+    public function shieldInfo(?array $campaign, ?array $week, ?float $c, ?float $be): ?array
+    {
+        if ($campaign === null || !$c || $c <= 0 || $be === null) {
+            return null;
+        }
+        $cs = (float) ($campaign['spend'] ?? 0);
+        $cp = (float) ($campaign['purchases'] ?? 0);
+        $top = $c * (1 + $this->s['healthy_above_c_pct'] / 100);
+
+        return ['campaign' => self::totals($campaign), 'week' => self::totals($week) ?? ['spend' => 0.0, 'purchases' => 0.0], 'top' => round($top, 2),
+            'cap' => round($be * (1 + $this->s['watch_above_be_pct'] / 100), 2), 'healthy' => $cp > 0 && $cs / $cp <= $top && $cs / $cp < $be,
+            'top_pct' => (float) $this->s['healthy_above_c_pct'], 'cap_pct' => (float) $this->s['watch_above_be_pct']];
+    }
+
+    /**
+     * `.187`: un perdedor de toda su vida por el BE (`life_be`: llegó a 3×C con el CPA encima) se vigila igual que en lo reciente
+     * (`shield`); los que no vendieron (`life_spend`: 2×C con 0 o 1 compra) se apagan igual. Null si no lo protege; si no lo
+     * protege, `withShield` le pone al porqué lo que miró.
+     */
+    public function sheltered(array $state, ?array $campaign, ?array $week, ?float $c, ?float $be, bool $estimated = false): ?array
+    {
+        if (($state['key'] ?? null) !== 'loser' || ($state['why']['rule'] ?? null) !== 'life_be' || !($watch = $this->shield($campaign, $week, $c, $be, $estimated))) {
             return null;
         }
 
-        return 'Vigila: en los últimos 3 días gastó ' . self::money($spend) . ' (' . self::num($spend / $c) . '×C) '
-            . ($purchases > 0 ? 'con ' . self::num($purchases) . ($purchases == 1 ? ' compra' : ' compras') . ' (CPA ' . self::money($spend / $purchases) . ')' : 'sin compras')
-            . ', pero en su semana va bien: ' . self::num($wRaw) . ' compras con CPA ' . self::money($wSpend / $wRaw) . ' (tu C es ' . self::money($c) . ' y tu BE '
-            . self::money($be) . '). No se apaga mientras su semana siga en el punto medio entre los dos (' . self::money(($c + $be) / 2) . ') o debajo.';
+        return $this->verdict('evaluation', $state['data'], $watch, 'Mantener mientras la campaña siga sana.') + ['watch' => $watch];
+    }
+
+    /** `.187`: el porqué de un perdedor por el BE de toda su vida, con lo que miró "Vigila" (para StopWhy). */
+    public function withShield(array $state, ?array $campaign, ?array $week, ?float $c, ?float $be): array
+    {
+        if (($state['why']['rule'] ?? null) === 'life_be' && ($info = $this->shieldInfo($campaign, $week, $c, $be))) {
+            $state['why']['shield'] = $info;
+        }
+
+        return $state;
     }
 
     /**
@@ -710,7 +751,7 @@ class AdRules
     {
         return ['rule' => $rule, 'days' => $days, 'spend' => round($spend, 2), 'purchases' => $purchases, 'c' => $c, 'be' => $be, 'estimated' => $estimated,
             'min' => (float) $this->s['loser_spend_cpa'], 'cap' => (float) $this->s['evaluation_cap_cpa'], 'margin' => (float) $this->s['loser_be_margin_pct'],
-            'margin_n' => (float) $this->s['loser_be_margin_purchases'], 'watch' => self::WATCH_PURCHASES, 'watch_mid' => true] + $extra;
+            'margin_n' => (float) $this->s['loser_be_margin_purchases']] + $extra;
     }
 
     /** `.156`: solo el gasto y las compras de unos totales. */

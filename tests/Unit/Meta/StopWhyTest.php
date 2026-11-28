@@ -75,16 +75,27 @@ describe('En palabras', function () {
             ->toBe('En Aragua sigue prendido: ahí no lo toques. En Distrito Capital no está activo y no se probó: no lo toques.');
     });
 
-    it('3 días malos: por qué su semana no lo salvó', function () {
-        $v = reglas156()->recentLoser(['spend' => 12.0, 'purchases' => 0], ['key' => 'intermediate', 'label' => 'Intermedio'], 4.0, 7.0, ['spend' => 20.0, 'purchases' => 2]);
+    it('.187: por qué "Vigila" no lo protegió: la campaña no está sana, o lo está pero el creativo no vende o vende muy caro', function () {
+        $intermedio = ['key' => 'intermediate', 'label' => 'Intermedio'];
+        $mal = reglas156()->recentLoser(['spend' => 12.0, 'purchases' => 0], $intermedio, 4.0, 7.0, ['spend' => 20.0, 'purchases' => 4], false, ['spend' => 100.0, 'purchases' => 20]);
+        expect(StopWhy::lines('C0111 FASP', 'Aragua', $mal['why'])[2])
+            ->toBe('La campaña no está sana: en 3 días va a $5,00 por compra (sana hasta $4,40, un 10 % encima de tu C). Por eso se apagan sus creativos en el BE, para bajarle el CPA.');
+        $caro = reglas156()->recentLoser(['spend' => 12.0, 'purchases' => 0], $intermedio, 4.0, 7.0, ['spend' => 40.0, 'purchases' => 4], false, ['spend' => 100.0, 'purchases' => 25]);
+        expect(StopWhy::lines('C0111 FASP', 'Aragua', $caro['why'])[2])
+            ->toBe('La campaña está sana ($4,00 por compra), pero este creativo en su semana vende a $10,00, más de un 20 % encima de tu BE ($8,40): por eso se apaga igual.');
+        $nada = reglas156()->recentLoser(['spend' => 12.0, 'purchases' => 0], $intermedio, 4.0, 7.0, ['spend' => 12.0, 'purchases' => 0], false, ['spend' => 100.0, 'purchases' => 25]);
+        expect(StopWhy::lines('C0111 FASP', 'Aragua', $nada['why'])[2])->toEndWith('pero este creativo en su semana no vendió: por eso se apaga igual.');
+    });
 
-        expect(StopWhy::lines('C0111 FASP', 'Aragua', $v['why'])[2])
-            ->toBe('En su semana gastó $20,00 con 2 compras (CPA $10,00): para no apagarlo hacían falta 5 compras en 7 días con el costo por compra '
-                . 'en el punto medio entre tu C y tu BE ($5,50) o debajo.');
-        // los análisis guardados antes de la .187 siguen diciendo lo suyo
-        $antes = array_diff_key($v['why'], ['watch_mid' => true]);
-        expect(StopWhy::lines('C0111 FASP', 'Aragua', $antes + ['watch_pct' => 10.0])[2])->toEndWith('como mucho un 10 % encima de tu C.')
-            ->and(StopWhy::lines('C0111 FASP', 'Aragua', $antes)[2])->toEndWith('en tu BE o debajo.');
+    it('los análisis guardados antes de la .187 siguen diciendo lo suyo', function () {
+        $v = reglas156()->recentLoser(['spend' => 12.0, 'purchases' => 0], ['key' => 'intermediate', 'label' => 'Intermedio'], 4.0, 7.0, ['spend' => 20.0, 'purchases' => 2]);
+        $antes = array_diff_key($v['why'], ['shield' => true]) + ['watch' => 5];
+        expect(StopWhy::lines('C0111 FASP', 'Aragua', $antes)[2])
+            ->toBe('En su semana gastó $20,00 con 2 compras (CPA $10,00): para no apagarlo hacían falta 5 compras en 7 días con el costo por compra en tu BE o debajo.')
+            ->and(StopWhy::lines('C0111 FASP', 'Aragua', $antes + ['watch_pct' => 10.0])[2])->toEndWith('como mucho un 10 % encima de tu C.')
+            ->and(StopWhy::lines('C0111 FASP', 'Aragua', $antes + ['watch_mid' => true])[2])->toEndWith('en el punto medio entre tu C y tu BE ($5,50) o debajo.')
+            // sin saber cómo iba la campaña ni la semana, no hay línea de más
+            ->and(StopWhy::lines('C0111 FASP', 'Aragua', array_diff_key($v['why'], ['shield' => true])))->toHaveCount(2);
     });
 
     it('cada regla tiene su frase', function () {
@@ -97,10 +108,11 @@ describe('En palabras', function () {
     });
 
     it('con un BE estimado lo dice', function () {
-        $v = reglas156()->recentLoser(['spend' => 12.0, 'purchases' => 0], ['key' => 'intermediate', 'label' => 'Intermedio'], 4.0, 7.0, ['spend' => 30.0, 'purchases' => 6], true);
+        $v = reglas156()->recentLoser(['spend' => 12.0, 'purchases' => 0], ['key' => 'intermediate', 'label' => 'Intermedio'], 4.0, 7.0, ['spend' => 30.0, 'purchases' => 6], true,
+            ['spend' => 100.0, 'purchases' => 25]);
 
         expect(StopWhy::lines('C1', 'Aragua', $v['why'])[0])->toEndWith('Tu C ahí es $4,00 y tu BE $7,00 (estimado).')
-            ->and(StopWhy::lines('C1', 'Aragua', $v['why'])[2])->toEndWith('Con un BE estimado, la semana no lo protege.');
+            ->and(StopWhy::lines('C1', 'Aragua', $v['why'])[2])->toBe('Con un BE estimado, la campaña no lo protege.');
     });
 
     it('perdedor en la única ciudad donde se probó: su regla completa', function () {

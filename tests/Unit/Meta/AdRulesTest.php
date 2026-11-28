@@ -104,13 +104,16 @@ describe('.119: un ganador que falla y pierde dinero se apaga en esa ciudad (Zen
         expect(reglas()->failingStop($falla, ['spend' => 26.19, 'purchases' => 2], 4.44, 7.61)['stop'])->toBeTrue();
     });
 
-    it('.187: con su semana del 9/11 encima del punto medio entre C y BE ($6,03), se apaga; en el punto medio o debajo, se vigila', function () use ($falla) {
-        // dueño, 2026-11-28, después de la revisión: eligió "el punto medio entre C y BE" (con C + 10 % de la .186 se apagaban por
-        // mala suerte muchos creativos buenos)
-        expect(reglas()->failingStop($falla, ['spend' => 51.87, 'purchases' => 5], 4.44, 7.61, ['spend' => 118.61, 'purchases' => 17])['stop'])->toBeTrue(); // $6,98
-        $medio = reglas()->failingStop($falla, ['spend' => 26.19, 'purchases' => 2], 4.44, 7.61, ['spend' => 45.39, 'purchases' => 9]); // $5,04
-        expect($medio)->not->toHaveKey('stop')->and($medio['watch'])->toContain('9 compras con CPA $5,04 (tu C es $4,44 y tu BE $7,61)')
-            ->and($medio['watch'])->toEndWith('No se apaga mientras su semana siga en el punto medio entre los dos ($6,03) o debajo.');
+    it('.187: con la campaña de Caracas el 9/11 ($6,25 por compra, más de C + 10 %: $4,88) se apagan; con la campaña sana, se vigilan', function () use ($falla) {
+        // dueño, 2026-11-28: "los creativos en BE solo se deben tocar si está afectando a la campaña general"
+        $mal = ['spend' => 100.0, 'purchases' => 16];
+        $sana = ['spend' => 100.0, 'purchases' => 25]; // $4,00
+        expect(reglas()->failingStop($falla, ['spend' => 51.87, 'purchases' => 5], 4.44, 7.61, ['spend' => 118.61, 'purchases' => 17], false, null, $mal)['stop'])->toBeTrue()
+            ->and(reglas()->failingStop($falla, ['spend' => 26.19, 'purchases' => 2], 4.44, 7.61, ['spend' => 45.39, 'purchases' => 9], false, null, $mal)['stop'])->toBeTrue();
+        $vigila = reglas()->failingStop($falla, ['spend' => 51.87, 'purchases' => 5], 4.44, 7.61, ['spend' => 118.61, 'purchases' => 17], false, null, $sana); // $6,98
+        expect($vigila)->not->toHaveKey('stop')
+            ->and($vigila['watch'])->toBe('Vigila: la campaña va bien (en 3 días, $4,00 por compra; está sana hasta $4,88) y este creativo vende en su semana a $6,98 '
+                . '(tu BE es $7,61). No se apaga mientras la campaña siga sana.');
     });
 
     it('CREATIVO 8: en 3 días no llegó a 3×C y en 7 días su CPA está debajo del BE: sigue', function () use ($falla) {
@@ -275,8 +278,9 @@ describe('.114: si en 3 días no llegó a 2×C, se mira la semana (FlexiStep en 
     it('si en 3 días ya llegó a 2×C, mandan los 3 días', function () use ($intermedio) {
         $v = reglas()->recentLoser(['spend' => 13.0, 'purchases' => 0], $intermedio, 6.38, 9.78, ['spend' => 30.54, 'purchases' => 2]);
         expect($v['reading'])->toBe('Perdedor en los últimos 3 días: gastó 2×C sin compras (en toda su vida: intermedio).')
-            // .152: con 5 compras a $6,11 en la semana (debajo del BE), se vigila
-            ->and(reglas()->recentLoser(['spend' => 13.0, 'purchases' => 0], $intermedio, 6.38, 9.78, ['spend' => 30.54, 'purchases' => 5])['key'])->toBe('intermediate');
+            // .187: con la campaña sana y 5 compras a $6,11 en la semana (debajo del BE), se vigila; sin saber cómo va la campaña, no
+            ->and(reglas()->recentLoser(['spend' => 13.0, 'purchases' => 0], $intermedio, 6.38, 9.78, ['spend' => 30.54, 'purchases' => 5], false, ['spend' => 120.0, 'purchases' => 20])['key'])->toBe('intermediate')
+            ->and(reglas()->recentLoser(['spend' => 13.0, 'purchases' => 0], $intermedio, 6.38, 9.78, ['spend' => 30.54, 'purchases' => 5])['key'])->toBe('loser');
     });
 });
 
@@ -451,44 +455,63 @@ describe('Estado automático del creativo', function () {
     });
 });
 
-describe('.152: 3 días malos no apagan al que deja plata en la semana (ZenPulse en Aragua: C $3,96, BE $6,80)', function () {
+describe('.187: "Vigila" mira la campaña (ZenPulse en Aragua: C $3,96, BE $6,80; sana hasta $4,36; el creativo, hasta $8,16)', function () {
+    // Dueño, 2026-11-28: "si el creativo está en BE pero la campaña está saludable… el creativo que está en BE no se debe tocar. Los
+    // creativos en BE solo se deben tocar si está afectando a la campaña general". Eligió: la campaña sana con su CPA de 3 días como
+    // mucho 10 % encima de C, y el creativo que vende en su semana como mucho 20 % encima del BE
     $intermedio = ['key' => 'intermediate', 'label' => 'Intermedio', 'reading' => 'Intermedio en toda su vida.'];
     $malos = ['spend' => 40.0, 'purchases' => 2]; // $20,00 por compra
+    $sana = ['spend' => 100.0, 'purchases' => 25]; // $4,00
+    $mal = ['spend' => 100.0, 'purchases' => 20]; // $5,00
 
-    it('.187: con 5 compras o más en la semana, en el punto medio entre C y BE ($5,38) o debajo: se vigila (no es perdedor)', function () use ($intermedio, $malos) {
-        $v = reglas()->recentLoser($malos, $intermedio, 3.96, 6.80, ['spend' => 109.93, 'purchases' => 23]);    // $4,78, la semana del 9/11
-        $sinCompras = reglas()->recentLoser(['spend' => 12.0, 'purchases' => 0], $intermedio, 3.96, 6.80, ['spend' => 24.0, 'purchases' => 6]);
+    it('con la campaña sana, el que vende en su semana en el BE o un poco encima no se apaga (aunque sus 3 días sean malos)', function () use ($intermedio, $malos, $sana) {
+        $v = reglas()->recentLoser($malos, $intermedio, 3.96, 6.80, ['spend' => 109.93, 'purchases' => 23], false, $sana);   // $4,78
+        $caro = reglas()->recentLoser($malos, $intermedio, 3.96, 6.80, ['spend' => 184.0, 'purchases' => 23], false, $sana); // $8,00: 18 % encima del BE
 
         expect($v['key'])->toBe('intermediate')
-            ->and($v['watch'])->toBe('Vigila: en los últimos 3 días gastó $40,00 (10,1×C) con 2 compras (CPA $20,00), pero en su semana va bien: '
-                . '23 compras con CPA $4,78 (tu C es $3,96 y tu BE $6,80). No se apaga mientras su semana siga en el punto medio entre los dos ($5,38) o debajo.')
+            ->and($v['watch'])->toBe('Vigila: la campaña va bien (en 3 días, $4,00 por compra; está sana hasta $4,36) y este creativo vende en su semana a $4,78 '
+                . '(tu BE es $6,80). No se apaga mientras la campaña siga sana.')
             ->and($v['reading'])->toBe($v['watch'] . ' Intermedio en toda su vida.')
-            ->and($sinCompras['watch'])->toBe('Vigila: en los últimos 3 días gastó $12,00 (3×C) sin compras, pero en su semana va bien: '
-                . '6 compras con CPA $4,00 (tu C es $3,96 y tu BE $6,80). No se apaga mientras su semana siga en el punto medio entre los dos ($5,38) o debajo.');
-        // encima del punto medio (aunque debajo del BE), ya no lo protege
-        expect(reglas()->recentLoser($malos, $intermedio, 3.96, 6.80, ['spend' => 126.5, 'purchases' => 23])['key'])->toBe('loser'); // $5,50
+            ->and($caro['key'])->toBe('intermediate');
     });
 
-    // Los 2 seguros que eligió el dueño: 5 compras (3 pueden ser suerte) y un BE real (con uno estimado no se sabe si deja plata)
-    it('si la semana pasa el BE, tiene menos de 5 compras, o el BE es estimado o no hay: se apaga como siempre', function () use ($intermedio, $malos) {
-        expect(reglas()->recentLoser($malos, $intermedio, 3.96, 6.80, ['spend' => 109.93, 'purchases' => 15])['key'])->toBe('loser')   // $7,33
-            ->and(reglas()->recentLoser($malos, $intermedio, 3.96, 6.80, ['spend' => 16.0, 'purchases' => 4])['key'])->toBe('loser')        // 4 compras a $4,00
-            ->and(reglas()->recentLoser($malos, $intermedio, 3.96, 6.80, ['spend' => 109.93, 'purchases' => 23], true)['key'])->toBe('loser') // BE estimado
-            ->and(reglas()->recentLoser($malos, $intermedio, 3.96, 6.80)['key'])->toBe('loser')                                              // sin la semana
-            ->and(reglas()->recentLoser(['spend' => 40.0, 'purchases' => 0], $intermedio, 3.96, null, ['spend' => 60.0, 'purchases' => 20])['key'])->toBe('loser');
+    it('se apaga igual: con la campaña mal, si vende más de 20 % encima del BE, si no vende, o con un BE estimado o sin BE', function () use ($intermedio, $malos, $sana, $mal) {
+        expect(reglas()->recentLoser($malos, $intermedio, 3.96, 6.80, ['spend' => 109.93, 'purchases' => 23], false, $mal)['key'])->toBe('loser')          // la campaña a $5,00
+            ->and(reglas()->recentLoser($malos, $intermedio, 3.96, 6.80, ['spend' => 200.0, 'purchases' => 23], false, $sana)['key'])->toBe('loser')       // $8,70
+            ->and(reglas()->recentLoser(['spend' => 30.0, 'purchases' => 0], $intermedio, 3.96, 6.80, ['spend' => 30.0, 'purchases' => 0], false, $sana)['key'])->toBe('loser')
+            ->and(reglas()->recentLoser($malos, $intermedio, 3.96, 6.80, ['spend' => 109.93, 'purchases' => 23], true, $sana)['key'])->toBe('loser')       // BE estimado
+            ->and(reglas()->recentLoser(['spend' => 40.0, 'purchases' => 0], $intermedio, 3.96, null, ['spend' => 60.0, 'purchases' => 20], false, $sana)['key'])->toBe('loser')
+            // una campaña "sana" que ya llegó a su BE no protege a nadie
+            ->and(reglas()->shield(['spend' => 100.0, 'purchases' => 25], ['spend' => 40.0, 'purchases' => 10], 3.96, 3.90))->toBeNull();
     });
 
-    it('si se juzga por la semana (en 3 días no llegó a 2×C), no hay nada que vigilar', function () use ($intermedio) {
-        expect(reglas()->recentLoser(['spend' => 7.0, 'purchases' => 0], $intermedio, 3.96, 6.80, ['spend' => 30.0, 'purchases' => 0])['key'])->toBe('loser');
+    it('un perdedor por el BE de toda su vida también se vigila; uno que no vendió (2×C con 0 o 1 compra), no', function () use ($sana, $mal) {
+        $life = reglas()->state(30.0, 3, 3.96, 6.80, 'creativo');                       // 7,6×C a $10,00 por compra
+        $semana = ['spend' => 30.0, 'purchases' => 5];                                  // $6,00
+        expect($life['key'])->toBe('loser')
+            ->and(reglas()->sheltered($life, $sana, $semana, 3.96, 6.80))->toMatchArray(['key' => 'evaluation', 'proposal' => 'Mantener mientras la campaña siga sana.'])
+            ->and(reglas()->sheltered($life, $mal, $semana, 3.96, 6.80))->toBeNull()
+            ->and(reglas()->sheltered(reglas()->state(10.0, 1, 3.96, 6.80, 'creativo'), $sana, $semana, 3.96, 6.80))->toBeNull();
+        // si no lo protege, el porqué dice lo que miró
+        expect(reglas()->withShield($life, $mal, $semana, 3.96, 6.80)['why']['shield'])->toMatchArray(['healthy' => false, 'top' => 4.36, 'cap' => 8.16]);
+        expect(DecisionSettings::defaults())->toMatchArray(['healthy_above_c_pct' => 10.0, 'watch_above_be_pct' => 20.0]);
     });
 
-    it('el ganador que falla (.119) también se vigila si su semana va bien', function () {
+    it('sin saber cómo va la campaña, la semana sola ya no lo protege (como en la .152)', function () use ($intermedio, $malos) {
+        expect(reglas()->recentLoser($malos, $intermedio, 3.96, 6.80, ['spend' => 109.93, 'purchases' => 23])['key'])->toBe('loser');
+    });
+
+    it('si se juzga por la semana y no vendió en ella, no hay nada que vigilar', function () use ($intermedio, $sana) {
+        expect(reglas()->recentLoser(['spend' => 7.0, 'purchases' => 0], $intermedio, 3.96, 6.80, ['spend' => 30.0, 'purchases' => 0], false, $sana)['key'])->toBe('loser');
+    });
+
+    it('el ganador que falla (.119) también se vigila con la campaña sana', function () use ($sana) {
         $falla = ['key' => 'failing', 'label' => 'Ganador que falla', 'reading' => 'Ganador que falla.'];
-        $v = reglas()->failingStop($falla, ['spend' => 51.87, 'purchases' => 5], 4.44, 7.61, ['spend' => 96.0, 'purchases' => 20]);
+        $v = reglas()->failingStop($falla, ['spend' => 51.87, 'purchases' => 5], 4.44, 7.61, ['spend' => 96.0, 'purchases' => 20], false, null, $sana);
 
         expect($v)->not->toHaveKey('stop')
             ->and($v['key'])->toBe('failing')
-            ->and($v['watch'])->toStartWith('Vigila: en los últimos 3 días gastó $51,87 (11,7×C) con 5 compras (CPA $10,37), pero en su semana va bien: 20 compras con CPA $4,80')
-            ->and(reglas()->failingStop($falla, ['spend' => 51.87, 'purchases' => 5], 4.44, 7.61, ['spend' => 160.0, 'purchases' => 20])['stop'])->toBeTrue(); // $8,00
+            ->and($v['watch'])->toStartWith('Vigila: la campaña va bien (en 3 días, $4,00 por compra; está sana hasta $4,88) y este creativo vende en su semana a $4,80')
+            ->and(reglas()->failingStop($falla, ['spend' => 51.87, 'purchases' => 5], 4.44, 7.61, ['spend' => 200.0, 'purchases' => 20], false, null, $sana)['stop'])->toBeTrue(); // $10,00
     });
 });

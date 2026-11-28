@@ -15,9 +15,8 @@ use App\Services\Meta\MetaMetrics;
 // y dejó −$29.
 
 const SINGANAR_ARAGUA = '120000000000000111';
-// Estas pruebas miden la regla de la .125 con sus números de entonces (14 días, 10×C, 2 batches, en el BE sin margen); la .186 y
-// la .187 los cambiaron (abajo)
-const SINGANAR_ANTES = ['chronic_days' => 14.0, 'chronic_min_cpa' => 10.0, 'drop_days' => 14.0, 'drop_min_batches' => 2.0, 'loser_be_margin_pct' => 0.0];
+// Estas pruebas miden la regla de la .125 con sus números de entonces (14 días, 10×C, 2 batches); la .186 los bajó (abajo)
+const SINGANAR_ANTES = ['chronic_days' => 14.0, 'chronic_min_cpa' => 10.0, 'drop_days' => 14.0, 'drop_min_batches' => 2.0];
 const SINGANAR_CCS = '120000000000000112';
 
 /** FlexiStep Aragua: gasto y compras por día, del 5/10 al 8/11 (los de producción). */
@@ -133,36 +132,37 @@ describe('.125: los últimos 14 días de una campaña (PHP puro)', function () {
 });
 
 describe('.125: 14 días sin dejar dinero, y los últimos 3 tampoco', function () {
-    it('FlexiStep Aragua el 9/11: el batch del 6/11 tiene 2 días cerrados: .187: se le dan sus 3 antes de pausar', function () {
+    it('FlexiStep Aragua el 9/11: pausar la ciudad, diciendo lo que se intentó (el último batch, del 6/11, ya tuvo sus 2 días cerrados)', function () {
         $this->travelTo(\Carbon\CarbonImmutable::parse('2026-11-09 00:30:00'));
         $d = singanarDecide([95.3, 6], ['bank' => ['B0130']]);
         $a = $d['campaigns'][SINGANAR_ARAGUA]['action'];
 
-        expect($a['key'])->toBe('hold_prune')
-            ->and($a['reading'])->toBe('14 días sin dejar dinero: gastó $290,10 y vendió a $8,53 por compra, en tu BE ($7,49) o encima. El 06/11 entró el batch «B0126 FLEX».')
-            ->and($a['proposal'])->toBe('Esperar: se le dan 3 días cerrados al batch nuevo. Si el 10/11 sigue sin dejar dinero, se pausa la ciudad. No tocar el presupuesto.');
-
-        $m = collect(singanarMisiones($d))->firstWhere('kind', 'hold_prune');
-        expect($m)->toMatchArray(['group' => 'aviso', 'where' => 'FlexiStep · Aragua',
-            'title' => 'Espera hasta el 10/11: el 06/11 entró el batch «B0126 FLEX» y se le dan 3 días cerrados para ver si vuelve a dejar dinero. Si no, toca pausar la ciudad',
-            'why' => 'En 14 días gastó $290,10 a $8,53 por compra; tu límite es $7,49'])
-            ->and(collect(singanarMisiones($d))->firstWhere('kind', 'pause_city'))->toBeNull();
-    });
-
-    it('FlexiStep Aragua el 10/11: pausar la ciudad, diciendo lo que se intentó', function () {
-        $this->travelTo(\Carbon\CarbonImmutable::parse('2026-11-10 00:30:00'));
-        $d = singanarDecide([95.3, 6], ['bank' => ['B0130']]);
-        $a = $d['campaigns'][SINGANAR_ARAGUA]['action'];
-
         expect($a['key'])->toBe('pause_city')
-            ->and($a['reading'])->toBe('14 días sin dejar dinero: gastó $266,80 y vendió a $8,34 por compra, en tu BE ($7,49) o encima; y en los últimos 3 días tampoco dejó dinero. '
-                . 'En ese tiempo entraron anuncios nuevos 3 veces, y no mejoró.')
+            ->and($a['reading'])->toBe('14 días sin dejar dinero: gastó $290,10 y vendió a $8,53 por compra, en tu BE ($7,49) o encima; y en los últimos 3 días tampoco dejó dinero. '
+                . 'En ese tiempo entraron anuncios nuevos 4 veces, y no mejoró.')
             ->and($a['proposal'])->toBe('Pausar la ciudad. Se vuelve a prender cuando haya 3 batches que nunca se publicaron ahí.');
 
         $m = collect(singanarMisiones($d))->firstWhere('kind', 'pause_city');
         expect($m)->toMatchArray(['group' => 'frenar', 'where' => 'FlexiStep · Aragua', 'title' => 'Pausa la campaña: 14 días sin dejar dinero',
-            'why' => 'En 14 días gastó $266,80 a $8,34 por compra; tu límite es $7,49', 'money' => ['cut' => 25.0, 'add' => null]])
+            'why' => 'En 14 días gastó $290,10 a $8,53 por compra; tu límite es $7,49', 'money' => ['cut' => 25.0, 'add' => null]])
             ->and($m['detail'])->toContain($a['reading']);
+    });
+
+    it('.187: con un batch del 7/11 (1 día cerrado), primero se le da su segundo día: la misión es esperar', function () {
+        $this->travelTo(\Carbon\CarbonImmutable::parse('2026-11-09 00:30:00'));
+        $h = singanarHistorial('2026-11-09');
+        $h['new_ads'][] = '2026-11-07';
+        $d = singanarDecide([95.3, 6], ['bank' => ['B0130'], 'history' => $h]);
+        $a = $d['campaigns'][SINGANAR_ARAGUA]['action'];
+
+        expect($a['key'])->toBe('hold_prune')
+            ->and($a['proposal'])->toBe('Esperar: se le dan 2 días cerrados al batch nuevo. Si el 10/11 sigue sin dejar dinero, se pausa la ciudad. No tocar el presupuesto.');
+
+        $m = collect(singanarMisiones($d))->firstWhere('kind', 'hold_prune');
+        expect($m)->toMatchArray(['group' => 'aviso', 'where' => 'FlexiStep · Aragua',
+            'title' => 'Espera hasta el 10/11: el 07/11 entraron anuncios nuevos y se le dan 2 días cerrados para ver si vuelve a dejar dinero. Si no, toca pausar la ciudad',
+            'why' => 'En 14 días gastó $290,10 a $8,53 por compra; tu límite es $7,49'])
+            ->and(collect(singanarMisiones($d))->firstWhere('kind', 'pause_city'))->toBeNull();
     });
 
     it('el 28/10 en los últimos 3 días vendía debajo del BE ($7,17): no se pausa, y dice que se está recuperando', function () {
@@ -272,17 +272,13 @@ describe('.186: 5 días sin dejar dinero (primero un batch nuevo) y el producto 
     // FlexiStep Aragua del 4 al 8/11: $95,30 y 6 compras ($15,88; BE $7,49), con anuncios nuevos el 4 y el 6/11.
     $nuevas = fn (array $o = []) => singanarDecide([95.3, 6], ['settings' => []] + $o);
 
-    it('con batches nuevos en esos 5 días y sin dejar dinero: .187: el último tiene sus 3 días cerrados y después se pausa la ciudad', function () use ($nuevas) {
+    it('con batches nuevos en esos 5 días (el último, del 6/11, con sus 2 días cerrados) y sin dejar dinero: pausar la ciudad', function () use ($nuevas) {
         $this->travelTo(\Carbon\CarbonImmutable::parse('2026-11-09 00:30:00'));
         $a = $nuevas(['bank' => ['B0130']])['campaigns'][SINGANAR_ARAGUA]['action'];
 
         expect(DecisionSettings::defaults())->toMatchArray(['chronic_days' => 5.0, 'chronic_min_cpa' => 5.0, 'drop_days' => 7.0, 'drop_min_batches' => 1.0])
-            ->and($a['key'])->toBe('hold_prune')->and($a['ladder']['until'])->toBe('2026-11-10');
-
-        $this->travelTo(\Carbon\CarbonImmutable::parse('2026-11-10 00:30:00'));
-        $a = $nuevas(['bank' => ['B0130']])['campaigns'][SINGANAR_ARAGUA]['action'];
-        expect($a['key'])->toBe('pause_city')
-            ->and($a['reading'])->toStartWith('5 días sin dejar dinero: gastó $95,30 y vendió a $15,88 por compra, un 10 % o más encima de tu BE ($7,49)');
+            ->and($a['key'])->toBe('pause_city')
+            ->and($a['reading'])->toStartWith('5 días sin dejar dinero: gastó $95,30 y vendió a $15,88 por compra, en tu BE ($7,49) o encima');
     });
 
     it('sin ningún batch nuevo en esos 5 días: primero lanzar uno; si no hay ninguno para lanzar, se pausa igual', function () use ($nuevas) {
@@ -292,7 +288,7 @@ describe('.186: 5 días sin dejar dinero (primero un batch nuevo) y el producto 
         $a = $nuevas(['history' => $sinNuevos, 'bank' => ['B0130']])['campaigns'][SINGANAR_ARAGUA]['action'];
         expect($a['key'])->toBe('intervene')
             ->and($a['reading'])->toEndWith('y en esos días no entró ningún batch nuevo.')
-            ->and($a['proposal'])->toStartWith('Primero un batch nuevo: lanzar B0130 de la banca. Si con él sigue sin dejar dinero, se pausa la ciudad.');
+            ->and($a['proposal'])->toStartWith('Primero un batch nuevo: lanzar B0130 de la banca. Se le dan 2 días cerrados: si con él sigue sin dejar dinero, se pausa la ciudad.');
 
         expect($nuevas(['history' => $sinNuevos])['campaigns'][SINGANAR_ARAGUA]['action']['key'])->toBe('pause_city');
     });

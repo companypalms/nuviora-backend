@@ -11,10 +11,11 @@ use App\Services\Meta\MetaMetrics;
 
 // .152 (dueño, 2026-11-17): de 8 apagados grandes que en su semana dejaban plata, solo 2 cumplieron (−$71 por día contra las
 // otras ciudades); ZenPulse en Aragua (05/11) era el 51 % del gasto, con 23 compras a $4,78 en la semana (BE $6,80), y al
-// apagarlo la ciudad pasó de $7,19 a $14,76. Ahora, 3 días malos con la semana en el BE o debajo: se vigila, no se apaga.
+// apagarlo la ciudad pasó de $7,19 a $14,76. `.187` (dueño, 2026-11-28: "si el creativo está en BE pero la campaña está
+// saludable… no se debe tocar"): "Vigila" mira la campaña: sana con su CPA de 3 días como mucho 10 % encima de C ($4,36).
 
-/** ZenPulse en Aragua: por creativo, [vida, 7 días, 3 días] (gasto, compras). */
-function zenWatchMeta(): array
+/** ZenPulse en Aragua: por creativo, [vida, 7 días, 3 días] (gasto, compras); $campaign3: los 3 días de la campaña. */
+function zenWatchMeta(array $campaign3 = [70, 3]): array
 {
     $creatives = [
         5 => ['CREATIVO 5', [300.0, 60, 109.93, 23, 40.0, 2]],   // 3 días a $20,00, pero la semana a $4,78: se vigila
@@ -29,7 +30,7 @@ function zenWatchMeta(): array
     $id = '120000000000000061';
     $out = ['product' => ['id' => 1200, 'name' => 'ZenPulse', 'mode' => 'normal'], 'dates' => AdFacts::dates(), 'adsets' => [], 'ads' => [], 'creatives' => [],
         'campaigns' => [$id => ['meta_id' => $id, 'name' => 'ZENPULSE | Aragua', 'city_id' => 3, 'city' => 'Aragua', 'active' => true, 'daily_budget' => 28.0,
-            'target' => 3.96, 'break_even' => 6.80, 'target_source' => 'financial', 'target_no_cost' => false, 'windows' => $windows([500, 90, 170, 29, 70, 3])]]];
+            'target' => 3.96, 'break_even' => 6.80, 'target_source' => 'financial', 'target_no_cost' => false, 'windows' => $windows([500, 90, 170, 29, ...$campaign3])]]];
     $out['adsets']["{$id}9"] = ['meta_id' => "{$id}9", 'name' => 'BATCH', 'campaign_meta_id' => $id, 'active' => true, 'missing' => false,
         'batch_code' => null, 'angle_code' => null, 'concept' => null, 'stage' => null, 'windows' => []];
     foreach ($creatives as $cid => [$label, $n]) {
@@ -44,10 +45,10 @@ function zenWatchMeta(): array
     return $out;
 }
 
-function zenWatchDecision(): array
+function zenWatchDecision(array $campaign3 = [70, 3]): array
 {
     $facts = Mockery::mock(AdFacts::class);
-    $facts->allows('load')->andReturn([1200 => zenWatchMeta()]);
+    $facts->allows('load')->andReturn([1200 => zenWatchMeta($campaign3)]);
     $facts->allows('dailyHistory')->andReturn([]);
     $settings = Mockery::mock(DecisionSettings::class);
     $settings->allows('get')->andReturn(DecisionSettings::defaults());
@@ -68,15 +69,23 @@ beforeEach(function () {
 });
 
 describe('.152: 3 días malos no apagan al que deja plata en la semana', function () {
-    it('.187: CREATIVO 5 (su semana $4,78, en el punto medio entre C y BE o debajo: $5,38) se vigila; CREATIVO 8, que también pierde en la semana, se apaga', function () {
-        // dueño, 2026-11-28, después de la revisión: "el punto medio entre C y BE" (con C + 10 % de la .186 se apagaba)
+    it('.187: la campaña mal (3 días a $23,33): se apagan los dos, para bajarle el CPA', function () {
         $d = zenWatchDecision();
+
+        expect(CreativeCalls::stopIn($d['creatives'][5]))->toBe(['Aragua'])->and(CreativeCalls::stopIn($d['creatives'][8]))->toBe(['Aragua']);
+        $facts = AnalysisFacts::build([1200 => $d]);
+        expect($facts[0]['stop_by_city'])->toBe(['Aragua' => ['CREATIVO 5', 'CREATIVO 8']])->and($facts[0]['watch_by_city'])->toBe([])
+            ->and(collect(UrgentList::build($facts))->firstWhere('kind', 'watch'))->toBeNull();
+    });
+
+    it('.187: con la campaña sana (3 días a $4,00), CREATIVO 5 (su semana a $4,78) se vigila; CREATIVO 8 (su semana a $10,00, más de 20 % encima del BE) se apaga', function () {
+        $d = zenWatchDecision([100, 25]);
         $vigila = collect($d['creatives'][5]['cities'])->firstWhere('city', 'Aragua');
         $pierde = collect($d['creatives'][8]['cities'])->firstWhere('city', 'Aragua');
 
         expect($vigila['key'])->not->toBe('loser')
-            ->and($vigila['watch'])->toBe('Vigila: en los últimos 3 días gastó $40,00 (10,1×C) con 2 compras (CPA $20,00), pero en su semana va bien: '
-                . '23 compras con CPA $4,78 (tu C es $3,96 y tu BE $6,80). No se apaga mientras su semana siga en el punto medio entre los dos ($5,38) o debajo.')
+            ->and($vigila['watch'])->toBe('Vigila: la campaña va bien (en 3 días, $4,00 por compra; está sana hasta $4,36) y este creativo vende en su semana a $4,78 '
+                . '(tu BE es $6,80). No se apaga mientras la campaña siga sana.')
             ->and(CreativeCalls::stopIn($d['creatives'][5]))->toBe([])
             ->and($pierde['key'])->toBe('loser')
             ->and(CreativeCalls::stopIn($d['creatives'][8]))->toBe(['Aragua']);
@@ -89,6 +98,6 @@ describe('.152: 3 días malos no apagan al que deja plata en la semana', functio
         // Aragua es su única ciudad: perdió en todas
         expect($urgent->where('kind', 'stop_creatives')->pluck('title')->all())->toBe(['Apaga CREATIVO 8 en todas las campañas'])
             ->and($urgent->firstWhere('kind', 'watch'))->toMatchArray(['label' => 'Vigilar', 'group' => 'aviso', 'city' => 'Aragua',
-                'title' => 'Vigila CREATIVO 5: 3 días malos, pero en su semana deja plata (no lo apagues)']);
+                'title' => 'Vigila CREATIVO 5: está en el BE, pero la campaña va bien (no lo apagues)', 'why' => 'Está en el BE, pero la campaña va bien']);
     });
 });
